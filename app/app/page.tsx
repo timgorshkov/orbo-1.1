@@ -4,10 +4,22 @@ import { redirect } from 'next/navigation'
 
 export default async function AppRoot() {
   const supabase = createClientServer()
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
+  let user: any;
+
+  try {
+    const { data, error } = await supabase.auth.getUser()
+    
+    if (error || !data.user) {
+      console.log("No authenticated user in AppRoot:", error?.message)
+      redirect('/signin')
+      return null; // Важно для типизации React
+    }
+    const user = data.user;
+    // Остальной код...
+  } catch (e) {
+    console.error("Error in AppRoot:", e)
     redirect('/signin')
+    return null;
   }
 
   const { data: orgs } = await supabase

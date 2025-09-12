@@ -62,6 +62,20 @@ export async function middleware(request: NextRequest) {
 
   // Проверяем маршруты, требующие аутентификации
   const { pathname } = request.nextUrl
+
+  // Дополнительная проверка для отладки сессии
+  if (pathname.startsWith('/app')) {
+    console.log('Checking session for path:', pathname);
+    const { data } = await supabase.auth.getSession()
+    console.log('Session found:', !!data?.session);
+    
+    if (!data?.session) {
+      // Добавляем дебаг-инфо в заголовки
+      const redirectUrl = new URL('/signin', request.url)
+      redirectUrl.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(redirectUrl)
+    }
+  }
   
   // Исключаем публичные пути и API маршруты из проверки аутентификации
   if (
@@ -69,6 +83,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/healthz') ||
     pathname.startsWith('/signin') || 
     pathname.startsWith('/signup') ||
+    pathname.startsWith('/auth-callback') ||
     pathname.startsWith('/p/') || // Публичные страницы
     pathname === '/' ||
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
