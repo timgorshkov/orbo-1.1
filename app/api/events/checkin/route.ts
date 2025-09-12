@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClientServer } from '@/lib/supabaseClient'
+import { createClientServer } from '@/lib/server/supabaseServer'
 
 export async function GET(req: NextRequest) {
   // Получаем токен из строки запроса
