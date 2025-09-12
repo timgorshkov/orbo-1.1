@@ -2,7 +2,7 @@ import AppShell from '@/components/app-shell'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { createClientServer } from '@/lib/supabaseClient'
+import { createClientServer } from '@/lib/server/supabaseServer'
 import { notFound } from 'next/navigation'
 
 type TelegramGroup = {

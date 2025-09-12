@@ -1,7 +1,7 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
 import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createClientServer } from '@/lib/supabaseClient'
+import { createClientServer } from '@/lib/server/supabaseServer'
 import { notFound } from 'next/navigation'
 
 type ActivityEvent = {
