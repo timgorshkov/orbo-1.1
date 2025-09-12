@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/supabaseClient'
+import { createClientServer } from '@/lib/server/supabaseServer'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'edge'

@@ -1,4 +1,4 @@
-import { createClientServer } from './supabaseClient'
+import { createClientServer } from './server/supabaseServer'
 
 export async function requireOrgAccess(orgId: string) {
   const supabase = createClientServer()
