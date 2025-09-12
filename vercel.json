@@ -1,0 +1,45 @@
+{
+  "buildCommand": "next build",
+  "ignoreCommand": "false",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "regions": ["fra1"],
+  "headers": [
+    {
+      "source": "/api/telegram/webhook",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/api/events/checkin",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync-users",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "rewrites": [
+    { "source": "/healthz", "destination": "/api/health" }
+  ]
+}
