@@ -51,12 +51,12 @@ export default async function TelegramPage({ params }: { params: { org: string }
     }
     
     // Получаем общее количество участников в организации
-    const { data: stats } = await supabase
+    const { count } = await supabase
       .from('participants')
-      .select('id', { count: 'exact' })
+      .select('*', { count: 'exact', head: true })
       .eq('org_id', params.org)
     
-    const memberCount = stats?.count || 0
+    const memberCount = count || 0
     
     return (
       <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`}>
@@ -115,7 +115,7 @@ export default async function TelegramPage({ params }: { params: { org: string }
                             </span>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm">Настройки</Button>
+                        <Button variant="outline" >Настройки</Button>
                       </div>
                       
                       {group.last_sync_at && (

@@ -63,7 +63,7 @@ export default async function Dashboard({ params }: { params: { org: string } })
       .from('participants')
       .select('id, full_name, username')
       .eq('org_id', params.org)
-      .not('id', 'in', (subquery) => 
+      .not('id', 'in', (subquery: typeof supabase) => 
         subquery
           .from('activity_events')
           .select('participant_id')

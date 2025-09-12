@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/supabaseClient'
+import { createClientServer } from '@/lib/server/supabaseServer'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'

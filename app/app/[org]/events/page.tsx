@@ -148,14 +148,14 @@ function EventCard({
         )}
         
         <div className="flex justify-between items-center">
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" asChild>
             <Link href={`/app/${orgId}/events/${event.id}`}>
               Детали
             </Link>
           </Button>
           
           {!isPast && (
-            <Button variant="ghost" size="sm" className="text-xs">
+            <Button variant="ghost" className="text-xs">
               QR код
             </Button>
           )}

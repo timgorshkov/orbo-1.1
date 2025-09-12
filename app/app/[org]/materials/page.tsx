@@ -21,6 +21,7 @@ type MaterialItem = {
   content: string | null;
   file_path: string | null;
   url: string | null;
+  folder_id: string | null;
   created_at: string;
 };
 
