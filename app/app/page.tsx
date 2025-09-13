@@ -14,7 +14,7 @@ export default async function AppRoot() {
       redirect('/signin')
       return null; // Важно для типизации React
     }
-    const user = data.user;
+    user = data.user;
     // Остальной код...
   } catch (e) {
     console.error("Error in AppRoot:", e)
