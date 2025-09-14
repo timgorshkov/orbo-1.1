@@ -3,6 +3,7 @@ import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { notFound } from 'next/navigation'
+import '../../../globals.css';
 
 type ActivityEvent = {
   id: number;

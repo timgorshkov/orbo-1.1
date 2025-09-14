@@ -19,10 +19,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="min-h-screen bg-[#f7f9fa] text-black antialiased">
-        {children}
-      </body>
-    </html>
+    <html lang="en">
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+    </head>
+    <body className={`${inter.className} bg-slate-50`}>{children}</body>
+  </html>
   );
 }
