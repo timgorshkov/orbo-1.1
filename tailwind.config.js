@@ -7,6 +7,9 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-inter)'],
+      },
       borderRadius: {
         '2xl': '1.5rem',
       },
@@ -18,4 +21,11 @@ module.exports = {
     },
   },
   plugins: [],
+  // Убедитесь, что Tailwind может справиться с динамическими классами
+  safelist: [
+    'bg-white',
+    'text-black',
+    'hover:bg-black/5',
+    'border-black/10',
+  ],
 }

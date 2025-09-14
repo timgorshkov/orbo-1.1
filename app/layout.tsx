@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] });
+const inter = Inter({ 
+  subsets: ['latin', 'cyrillic'],
+  display: 'swap', // Улучшает отображение шрифта
+  variable: '--font-inter', // Добавляем CSS переменную для использования в tailwind
+});
 
 export const metadata: Metadata = {
   title: 'Orbo - Telegram Community Platform',
@@ -15,8 +19,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body className="min-h-screen bg-[#f7f9fa] text-black antialiased">
+        {children}
+      </body>
     </html>
   );
 }

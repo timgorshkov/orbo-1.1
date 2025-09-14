@@ -19,11 +19,21 @@ export default function AuthCallback() {
         }
         if (data && data.session) {
           console.log('Authenticated, redirecting to app...')
+
+          if (data && data.session) {
+            // Сохраняем информацию о сессии для отладки
+            localStorage.setItem('debug_session', JSON.stringify({
+              userId: data.session.user.id,
+              email: data.session.user.email,
+              timestamp: new Date().toISOString()
+            }));
+
           setTimeout(() => router.push('/app'), 500)
-        } else {
-          setError('Не удалось получить сессию пользователя')
+          } else {
+           setError('Не удалось получить сессию пользователя')
+          }
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error('Auth callback error:', e)
         setError('Произошла ошибка при обработке аутентификации')
       }
@@ -42,6 +52,6 @@ export default function AuthCallback() {
     ) : (
       <p>Загрузка...</p>
     )}
-  </div>
+    </div>
   )
 }

@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         role: 'owner' // Роль владельца
       })
-    
+
+    console.log("Membership insertion attempt for user:", user.id, "org:", org.id);
+
     if (memberError) {
       console.error('Error creating membership:', memberError)
       return NextResponse.json(

@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
+export const revalidate = 0; // Отключаем кэширование страницы
 
 export default function CreateOrganizationPage() {
   const [name, setName] = useState('')
@@ -19,55 +20,26 @@ export default function CreateOrganizationPage() {
     setError(null)
 
     try {
-      // Получаем Supabase клиент
-      const supabase = createClientBrowser()
+      // Используем API endpoint вместо прямого доступа к базе
+      const response = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name }),
+      })
       
-      // Проверяем авторизацию пользователя
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError || !user) {
-        setError('Необходимо авторизоваться')
-        setLoading(false)
-        return
-      }
-
-      // Создаем новую организацию
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert({
-          name: name.trim(),
-          plan: 'free' // Базовый план по умолчанию
-        })
-        .select('id')
-        .single()
-        
-      if (orgError) {
-        console.error('Error creating organization:', orgError)
-        setError(orgError.message)
-        setLoading(false)
-        return
-      }
+      const result = await response.json()
       
-      // Создаем членство для текущего пользователя как владельца
-      const { error: memberError } = await supabase
-        .from('memberships')
-        .insert({
-          org_id: org.id,
-          user_id: user.id,
-          role: 'owner' // Роль владельца
-        })
-      
-      if (memberError) {
-        console.error('Error creating membership:', memberError)
-        setError(memberError.message)
-        setLoading(false)
-        return
+      if (!response.ok) {
+        throw new Error(result.error || 'Ошибка при создании организации')
       }
       
       // Перенаправляем на дашборд новой организации
-      router.push(`/app/${org.id}/dashboard`)
+      router.push(`/app/${result.org_id}/dashboard`)
       
     } catch (err: any) {
-      console.error('Unexpected error:', err)
+      console.error('Error creating organization:', err)
       setError(err.message || 'Произошла неизвестная ошибка')
       setLoading(false)
     }

@@ -2,6 +2,8 @@ import { createClientServer } from '@/lib/server/supabaseServer'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
+export const revalidate = 0; // Отключаем кэширование страницы
+
 export default async function AppRoot() {
   const supabase = createClientServer()
   let user: any;
@@ -15,17 +17,28 @@ export default async function AppRoot() {
       return null; // Важно для типизации React
     }
     user = data.user;
-    // Остальной код...
+    console.log("Authenticated user:", user.id, user.email);
   } catch (e) {
     console.error("Error in AppRoot:", e)
     redirect('/signin')
     return null;
   }
 
-  const { data: orgs } = await supabase
-    .from('memberships')
-    .select('org_id, role, organizations(name)')
-    .eq('user_id', user.id)
+
+    // Логирование запроса
+    console.log("Fetching memberships for user ID:", user.id);
+  
+    const { data: orgs, error: orgsError } = await supabase
+      .from('memberships')
+      .select('org_id, role, organizations(name)')
+      .eq('user_id', user.id);
+  
+    // Логирование результата
+    if (orgsError) {
+      console.error("Error fetching organizations:", orgsError);
+    } else {
+      console.log("Organizations found:", orgs?.length || 0, orgs);
+    }
 
   if (!orgs?.length) {
     // Если у пользователя нет организаций, перенаправляем на страницу создания
