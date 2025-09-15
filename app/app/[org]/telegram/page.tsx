@@ -3,7 +3,14 @@ import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createTelegramService } from '@/lib/services/telegramService'
+import { CheckStatusForm, AddGroupManuallyForm } from './form-components'
+import { checkStatus, addGroupManually } from './actions'
 import { notFound } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+
 
 type TelegramGroup = {
   id: number;
@@ -14,26 +21,6 @@ type TelegramGroup = {
   last_sync_at: string | null;
 };
 
-// Server Action для проверки статуса бота
-async function checkStatus(formData: FormData) {
-  'use server'
-  
-  const org = String(formData.get('org'))
-  try {
-    const { supabase } = await requireOrgAccess(org)
-    // Обновляем время синхронизации для демонстрации
-    await supabase
-      .from('telegram_groups')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('org_id', org)
-    
-    // В реальном приложении здесь можно вызвать API Telegram для проверки бота
-    // или запустить Edge Function для синхронизации
-    
-  } catch (error) {
-    console.error('Error checking status:', error)
-  }
-}
 
 export default async function TelegramPage({ params }: { params: { org: string } }) {
   try {
@@ -57,9 +44,19 @@ export default async function TelegramPage({ params }: { params: { org: string }
       .eq('org_id', params.org)
     
     const memberCount = count || 0
+
+      
+    const supabase2 = createClientServer()
+    // Получаем список групп
+    const { data: telegramGroups } = await supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id')
+      .eq('org_id', params.org)
+      .order('title')
+
     
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`}>
+      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`} telegramGroups={telegramGroups || []}>
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
@@ -83,10 +80,21 @@ export default async function TelegramPage({ params }: { params: { org: string }
                 </p>
               </div>
               
-              <form action={checkStatus}>
-                <input type="hidden" name="org" value={params.org} />
-                <Button type="submit">Проверить статус</Button>
-              </form>
+              <div className="flex gap-2 mt-4">
+                <a href={`/app/${params.org}/telegram/setup-telegram`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-black text-white hover:bg-black/85">
+                  Настроить Telegram ID
+                </a>
+                <a href={`/app/${params.org}/telegram/check-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                  Проверить мои группы
+                </a>
+              </div>
+
+              <CheckStatusForm orgId={params.org} action={checkStatus} />
+
+              <AddGroupManuallyForm orgId={params.org} />
+
+
+
             </CardContent>
           </Card>
           
@@ -115,7 +123,12 @@ export default async function TelegramPage({ params }: { params: { org: string }
                             </span>
                           </div>
                         </div>
-                        <Button variant="outline" >Настройки</Button>
+                        <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                          Настройки
+                        </a>
+                        <a href={`/app/${params.org}/telegram/message`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                          Отправить сообщение
+                        </a>
                       </div>
                       
                       {group.last_sync_at && (

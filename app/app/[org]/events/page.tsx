@@ -36,8 +36,16 @@ export default async function EventsPage({ params }: { params: { org: string } }
     const upcomingEvents = events?.filter(e => new Date(e.starts_at) >= now) || []
     const pastEvents = events?.filter(e => new Date(e.starts_at) < now) || []
     
+    // Получаем список групп
+    const { data: telegramGroups } = await supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id')
+      .eq('org_id', params.org)
+      .order('title')
+
+
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`}>
+      <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={telegramGroups || []}>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">События</h1>
           <div>

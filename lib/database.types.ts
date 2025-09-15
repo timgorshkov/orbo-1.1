@@ -362,7 +362,7 @@ export type Database = {
           plan?: string | null
         }
         Relationships: []
-      }
+      }     
       participant_groups: {
         Row: {
           joined_at: string | null
@@ -443,6 +443,44 @@ export type Database = {
           }
         ]
       }
+      profiles: {
+        Row: {
+          id: string
+          updated_at: string
+          username: string | null
+          full_name: string | null
+          avatar_url: string | null
+          website: string | null
+          telegram_user_id: number | null // Новое поле
+        }
+        Insert: {
+          id: string
+          updated_at?: string
+          username?: string | null
+          full_name?: string | null
+          avatar_url?: string | null
+          website?: string | null
+          telegram_user_id?: number | null // Новое поле
+        }
+        Update: {
+          id?: string
+          updated_at?: string
+          username?: string | null
+          full_name?: string | null
+          avatar_url?: string | null
+          website?: string | null
+          telegram_user_id?: number | null // Новое поле
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       telegram_groups: {
         Row: {
           bot_status: string | null
@@ -452,6 +490,7 @@ export type Database = {
           org_id: string
           tg_chat_id: number
           title: string | null
+          added_by_user_id: string | null // Новое поле
         }
         Insert: {
           bot_status?: string | null
@@ -461,6 +500,7 @@ export type Database = {
           org_id: string
           tg_chat_id: number
           title?: string | null
+          added_by_user_id?: string | null // Новое поле
         }
         Update: {
           bot_status?: string | null
@@ -470,6 +510,7 @@ export type Database = {
           org_id?: string
           tg_chat_id?: number
           title?: string | null
+          added_by_user_id?: string | null // Новое поле
         }
         Relationships: [
           {
@@ -477,6 +518,45 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_groups_added_by_user_id_fkey"
+            columns: ["added_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      user_group_admin_status: {
+        Row: {
+          id: number
+          user_id: string
+          tg_chat_id: number
+          is_admin: boolean
+          checked_at: string
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          tg_chat_id: number
+          is_admin?: boolean
+          checked_at?: string
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          tg_chat_id?: number
+          is_admin?: boolean
+          checked_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_group_admin_status_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           }
         ]

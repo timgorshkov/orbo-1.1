@@ -38,8 +38,15 @@ export default async function MembersPage({ params }: { params: { org: string } 
       .select('id, tg_chat_id, title')
       .eq('org_id', params.org)
     
+    const { data: telegramGroups } = await supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id')
+      .eq('org_id', params.org)
+      .order('title')
+
+
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/members`}>
+      <AppShell orgId={params.org} currentPath={`/app/${params.org}/members`} telegramGroups={telegramGroups || []}>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Участники</h1>
           <div className="flex gap-2">

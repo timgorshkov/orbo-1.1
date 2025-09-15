@@ -72,9 +72,15 @@ export default async function Dashboard({ params }: { params: { org: string } })
           .gte('created_at', twoWeeksAgo.toISOString())
       )
       .limit(5)
+
+    const { data: telegramGroups } = await supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id')
+      .eq('org_id', params.org)
+      .order('title')
     
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/dashboard`}>
+      <AppShell orgId={params.org} currentPath={`/app/${params.org}/dashboard`} telegramGroups={telegramGroups || []}>
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Дашборд</h1>
         </div>

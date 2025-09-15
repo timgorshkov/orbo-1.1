@@ -151,5 +151,133 @@ export async function POST(req: NextRequest) {
     console.error('tg webhook error', e)
   }
   
+
+  // Обработка команд бота
+  if (body?.message?.text?.startsWith('/')) {
+    const chatId = body.message.chat.id
+    const from = body.message.from
+    const text = body.message.text
+    const command = text.split(' ')[0].toLowerCase()
+    
+    // Находим организацию по чату
+    const { data: group } = await supabase
+      .from('telegram_groups')
+      .select('org_id')
+      .eq('tg_chat_id', chatId)
+      .single()
+    
+    if (group?.org_id) {
+      const orgId = group.org_id
+      
+      // Обрабатываем команды
+      switch(command) {
+        case '/help':
+          await sendTelegramMessage(chatId, 
+            '<b>Доступные команды:</b>\n' +
+            '/help - показать эту справку\n' +
+            '/stats - показать статистику группы\n' +
+            '/events - показать предстоящие события'
+          )
+          break
+          
+        case '/stats':
+          // Получаем статистику группы
+          const { count: memberCount } = await supabase
+            .from('participants')
+            .select('*', { count: 'exact', head: true })
+            .eq('org_id', orgId)
+          
+          // Получаем количество сообщений
+          const { count: messageCount } = await supabase
+            .from('activity_events')
+            .select('*', { count: 'exact', head: true })
+            .eq('org_id', orgId)
+            .eq('type', 'message')
+          
+          await sendTelegramMessage(chatId, 
+            `<b>Статистика группы:</b>\n` +
+            `Участников: ${memberCount || 0}\n` +
+            `Сообщений: ${messageCount || 0}`
+          )
+          break
+          
+        case '/events':
+          // Получаем предстоящие события
+          const { data: events } = await supabase
+            .from('events')
+            .select('id, title, starts_at')
+            .eq('org_id', orgId)
+            .gt('starts_at', new Date().toISOString())
+            .order('starts_at')
+            .limit(5)
+          
+          if (events && events.length > 0) {
+            const eventsList = events.map(e => {
+              const date = new Date(e.starts_at).toLocaleDateString('ru', {
+                day: 'numeric', 
+                month: 'long',
+                hour: '2-digit', 
+                minute: '2-digit'
+              })
+              return `• <b>${e.title}</b> - ${date}`
+            }).join('\n')
+            
+            await sendTelegramMessage(chatId, 
+              `<b>Предстоящие события:</b>\n${eventsList}`
+            )
+          } else {
+            await sendTelegramMessage(chatId, 
+              'Нет предстоящих событий.'
+            )
+          }
+          break
+      }
+      
+      // Записываем обработанную команду как событие
+      await supabase.from('activity_events').insert({
+        org_id: orgId,
+        type: 'command',
+        participant_id: null,
+        tg_group_id: chatId,
+        meta: { 
+          command, 
+          user_id: from.id
+        }
+      })
+    }
+  }
+
+
+
+
   return NextResponse.json({ ok: true })
+}
+
+async function sendTelegramMessage(chatId: number, text: string, options = {}) {
+  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        ...options
+      }),
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Telegram API error:', errorData)
+    }
+    
+    return response.ok
+  } catch (error) {
+    console.error('Error sending Telegram message:', error)
+    return false
+  }
 }
