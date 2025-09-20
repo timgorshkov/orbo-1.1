@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createEventProcessingService } from '@/lib/services/eventProcessingService'
 
 export const dynamic = 'force-dynamic';
+
+// Создаем глобальный клиент Supabase с сервисной ролью для обхода RLS
+const supabaseServiceRole = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false
+    }
+  }
+);
 
 export async function POST(req: NextRequest) {
   // Проверяем секретный токен
@@ -17,7 +29,18 @@ export async function POST(req: NextRequest) {
     
     console.log('Webhook received:', JSON.stringify(body));
     // Выведем все группы для диагностики
-    const supabaseDebug = createClientServer();
+    // Создаем клиент Supabase с сервисной ролью для обхода RLS
+    const supabaseServiceRole = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false
+        }
+      }
+    );
+    
+    const supabaseDebug = supabaseServiceRole;
 
     try {
       const { count: testCount, error: testError } = await supabaseDebug
@@ -45,7 +68,7 @@ export async function POST(req: NextRequest) {
       console.log('Chat ID type:', typeof chatId, 'Value:', chatId);
 
       const title = body.message.chat.title || `Group ${chatId}`;
-      const supabase = createClientServer();
+      const supabase = supabaseServiceRole;
       
       // Получаем список организаций
       const { data: orgs } = await supabase
@@ -112,6 +135,10 @@ export async function POST(req: NextRequest) {
     // Создаем экземпляр сервиса обработки событий и обрабатываем обновление
     console.log('Processing update with eventProcessingService');
     const eventProcessingService = createEventProcessingService();
+    
+    // Передаем сервисную роль в eventProcessingService
+    eventProcessingService.setSupabaseClient(supabaseServiceRole);
+    
     await eventProcessingService.processUpdate(body);
       
     
@@ -133,7 +160,8 @@ async function handleBotCommand(message: any) {
   const from = message.from;
   const text = message.text;
   const command = text.split(' ')[0].toLowerCase();
-  const supabase = createClientServer();
+  // Используем сервисную роль для обхода RLS
+  const supabase = supabaseServiceRole;
   
   // Находим организацию по чату
   const { data: group } = await supabase
@@ -161,7 +189,8 @@ async function handleBotCommand(message: any) {
 }
 
 async function handleCommandWithOrg(chatId: number, from: any, command: string, orgId: string) {
-  const supabase = createClientServer();
+  // Используем сервисную роль для обхода RLS
+  const supabase = supabaseServiceRole;
   const telegramService = createTelegramService();
   
   // Обрабатываем команды
@@ -201,8 +230,9 @@ async function handleCommandWithOrg(chatId: number, from: any, command: string, 
  * Обрабатывает команду /stats
  */
 async function handleStatsCommand(chatId: number, orgId: string) {
-  const supabase = createClientServer()
-  const telegramService = createTelegramService()
+  // Используем сервисную роль для обхода RLS
+  const supabase = supabaseServiceRole;
+  const telegramService = createTelegramService();
   
   try {
     // Получаем статистику группы
@@ -281,27 +311,28 @@ async function handleStatsCommand(chatId: number, orgId: string) {
  * Обрабатывает команду /events
  */
 async function handleEventsCommand(chatId: number, orgId: string) {
-  const supabase = createClientServer()
-  const telegramService = createTelegramService()
+  // Используем сервисную роль для обхода RLS
+  const supabase = supabaseServiceRole;
+  const telegramService = createTelegramService();
   
   try {
     // Получаем предстоящие события
-    const { data: events } = await supabase
-      .from('events')
-      .select('id, title, starts_at, location')
-      .eq('org_id', orgId)
-      .gt('starts_at', new Date().toISOString())
-      .order('starts_at')
-      .limit(5)
-    
-    if (events && events.length > 0) {
-      const eventsList = events.map(e => {
-        const date = new Date(e.starts_at).toLocaleDateString('ru', {
-          day: 'numeric', 
-          month: 'long',
-          hour: '2-digit', 
-          minute: '2-digit'
-        })
+      const { data: events } = await supabase
+        .from('events')
+        .select('id, title, starts_at, location')
+        .eq('org_id', orgId)
+        .gt('starts_at', new Date().toISOString())
+        .order('starts_at')
+        .limit(5)
+      
+      if (events && events.length > 0) {
+        const eventsList = events.map((e: any) => {
+          const date = new Date(e.starts_at).toLocaleDateString('ru', {
+            day: 'numeric', 
+            month: 'long',
+            hour: '2-digit', 
+            minute: '2-digit'
+          })
         const location = e.location ? ` (${e.location})` : ''
         return `• <b>${e.title}</b> - ${date}${location}`
       }).join('\n')

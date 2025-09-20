@@ -1,6 +1,7 @@
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChatMemberUpdate } from './telegramService';
 import { createTelegramService } from './telegramService';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Сервис для обработки и нормализации событий Telegram
@@ -8,8 +9,24 @@ import { createTelegramService } from './telegramService';
 export class EventProcessingService {
   private supabase;
   
+  /**
+   * Устанавливает клиент Supabase
+   */
+  setSupabaseClient(client: any) {
+    this.supabase = client;
+  }
+  
   constructor() {
-    this.supabase = createClientServer();
+    // Создаем клиент Supabase с сервисной ролью для обхода RLS
+    this.supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false
+        }
+      }
+    );
   }
   
   /**
@@ -165,6 +182,47 @@ export class EventProcessingService {
       }
     });
     
+    try {
+      // Получаем ID участника из таблицы participants
+      const { data: participant } = await this.supabase
+        .from('participants')
+        .select('id')
+        .eq('tg_user_id', member.id)
+        .eq('org_id', orgId)
+        .single();
+      
+      if (participant) {
+        // Обновляем статус участника в группе
+        const { data: participantGroup, error: pgError } = await this.supabase
+          .from('participant_groups')
+          .select('id')
+          .eq('participant_id', participant.id)
+          .eq('tg_group_id', chatId)
+          .maybeSingle();
+        
+        if (participantGroup) {
+          // Обновляем существующую запись
+          await this.supabase
+            .from('participant_groups')
+            .update({
+              left_at: new Date().toISOString(),
+              is_active: false
+            })
+            .eq('id', participantGroup.id);
+        }
+        
+        // Обновляем счетчик участников в группе
+        await this.supabase
+          .from('telegram_groups')
+          .update({
+            member_count: this.supabase.rpc('decrement_counter', { row_id: chatId })
+          })
+          .eq('tg_chat_id', chatId);
+      }
+    } catch (error) {
+      console.error('Error updating participant_groups for leave event:', error);
+    }
+    
     // Обновляем счетчики и статистику
     await this.updateGroupMetrics(orgId, chatId);
   }
@@ -200,23 +258,83 @@ export class EventProcessingService {
         }
       });
       
-      // Проверяем, есть ли участник в базе
-      const { data: participant } = await this.supabase
-        .from('participants')
-        .select('id')
-        .eq('tg_user_id', member.id)
-        .eq('org_id', orgId)
-        .single();
-      
-      // Если нет, создаем запись
-      if (!participant) {
-        await this.supabase.from('participants').insert({
-          org_id: orgId,
-          tg_user_id: member.id,
-          username: member.username,
-          full_name: `${member.first_name} ${member.last_name || ''}`.trim(),
-          last_activity_at: new Date().toISOString()
-        });
+      try {
+        // Проверяем, есть ли участник в базе
+        let participantId;
+        const { data: participant } = await this.supabase
+          .from('participants')
+          .select('id')
+          .eq('tg_user_id', member.id)
+          .eq('org_id', orgId)
+          .single();
+        
+        // Если нет, создаем запись
+        if (!participant) {
+          const { data: newParticipant, error } = await this.supabase
+            .from('participants')
+            .insert({
+              org_id: orgId,
+              tg_user_id: member.id,
+              username: member.username,
+              full_name: `${member.first_name} ${member.last_name || ''}`.trim(),
+              last_activity_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+          
+          if (error) {
+            console.error('Error creating participant:', error);
+            continue;
+          }
+          
+          participantId = newParticipant?.id;
+        } else {
+          participantId = participant.id;
+        }
+        
+        if (participantId) {
+          // Проверяем, есть ли уже связь с группой
+          const { data: existingGroup } = await this.supabase
+            .from('participant_groups')
+            .select('id, is_active')
+            .eq('participant_id', participantId)
+            .eq('tg_group_id', chatId)
+            .maybeSingle();
+          
+          if (existingGroup) {
+            // Если связь есть, но неактивна, активируем ее
+            if (!existingGroup.is_active) {
+              await this.supabase
+                .from('participant_groups')
+                .update({
+                  is_active: true,
+                  left_at: null,
+                  joined_at: new Date().toISOString()
+                })
+                .eq('id', existingGroup.id);
+            }
+          } else {
+            // Если связи нет, создаем
+            await this.supabase
+              .from('participant_groups')
+              .insert({
+                participant_id: participantId,
+                tg_group_id: chatId,
+                joined_at: new Date().toISOString(),
+                is_active: true
+              });
+          }
+          
+          // Обновляем счетчик участников в группе
+          await this.supabase
+            .from('telegram_groups')
+            .update({
+              member_count: this.supabase.rpc('increment_counter', { row_id: chatId })
+            })
+            .eq('tg_chat_id', chatId);
+        }
+      } catch (error) {
+        console.error('Error processing new member:', error);
       }
     }
     
@@ -278,58 +396,72 @@ export class EventProcessingService {
     
     // Записываем событие сообщения
     try {
-      // Проверяем структуру таблицы activity_events
-      const { data: columns, error: columnsError } = await this.supabase
-        .from('activity_events')
-        .select()
-        .limit(0);
+      console.log('Inserting activity event with data:', {
+        org_id: orgId,
+        event_type: 'message',
+        tg_chat_id: chatId,
+        message_id: message.message_id
+      });
       
-      if (columnsError) {
-        console.error('Error checking activity_events structure:', columnsError);
-      }
-      
-      // Базовые поля для вставки
-      const eventData: any = {
+      // Минимальный набор полей для вставки
+      const baseEventData = {
         org_id: orgId,
         event_type: 'message',
         tg_user_id: userId,
         tg_chat_id: chatId,
-        message_id: message.message_id,
-        message_thread_id: message.message_thread_id,
-        reply_to_message_id: message.reply_to_message?.message_id,
-        has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
         meta: {
           user: {
             username: message.from.username,
             name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
-          }
+          },
+          message_length: message.text?.length || 0,
+          links_count: linksCount,
+          mentions_count: mentionsCount,
+          has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+          message_id: message.message_id
         }
       };
       
-      // Добавляем поля, которые могут быть в таблице
-      // Если поля нет, информация будет в meta
-      const messageLength = message.text?.length || 0;
-      
-      // Всегда добавляем информацию в meta
-      eventData.meta.message_length = messageLength;
-      eventData.meta.links_count = linksCount;
-      eventData.meta.mentions_count = mentionsCount;
-      
-      // Пробуем добавить в основные поля
+      // Пробуем добавить дополнительные поля, если они существуют в таблице
       try {
-        eventData.chars_count = messageLength;
-        eventData.links_count = linksCount;
-        eventData.mentions_count = mentionsCount;
-      } catch (e) {
-        console.log('Some fields might not exist in the table, continuing with meta only');
-      }
-      
-      const { error } = await this.supabase.from('activity_events').insert(eventData);
-      
-      if (error) {
-        console.error('Error inserting activity event:', error);
-      } else {
-        console.log('Activity event recorded successfully');
+        // Сначала пробуем вставить только базовые поля
+        const { error } = await this.supabase.from('activity_events').insert(baseEventData);
+        
+        if (error) {
+          console.error('Error inserting activity event with base data:', error);
+          throw error;
+        } else {
+          console.log('Activity event recorded successfully with base data');
+        }
+      } catch (baseError) {
+        console.error('Error in base insert, trying with minimal fields:', baseError);
+        
+        // Если не получилось, пробуем с минимальным набором полей
+        const minimalEventData = {
+          org_id: orgId,
+          event_type: 'message',
+          tg_user_id: userId,
+          tg_chat_id: chatId,
+          meta: {
+            message_id: message.message_id,
+            user: {
+              username: message.from.username,
+              name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
+            }
+          }
+        };
+        
+        try {
+          const { error: minimalError } = await this.supabase.from('activity_events').insert(minimalEventData);
+          
+          if (minimalError) {
+            console.error('Error inserting activity event with minimal data:', minimalError);
+          } else {
+            console.log('Activity event recorded successfully with minimal data');
+          }
+        } catch (minimalInsertError) {
+          console.error('Fatal error inserting activity event:', minimalInsertError);
+        }
       }
     } catch (error) {
       console.error('Exception in activity event insert:', error);
@@ -567,9 +699,23 @@ export class EventProcessingService {
    */
   private async updateGroupMetrics(orgId: string, chatId: number): Promise<void> {
     console.log(`Updating metrics for group ${chatId} in org ${orgId}`);
-    const today = new Date().toISOString().split('T')[0];
     
+    // Сначала проверяем, существует ли таблица group_metrics
     try {
+      // Проверяем существование таблицы group_metrics
+      const { data: tableCheck, error: tableError } = await this.supabase
+        .from('group_metrics')
+        .select('id')
+        .limit(1);
+        
+      if (tableError) {
+        console.error('Error checking group_metrics table:', tableError);
+        console.log('Skipping metrics update - table might not exist yet');
+        return;
+      }
+      
+      const today = new Date().toISOString().split('T')[0];
+      
       // Получаем метрики за сегодня
       const { data: todayMetrics, error: metricsError } = await this.supabase
         .from('group_metrics')
@@ -587,84 +733,112 @@ export class EventProcessingService {
       console.log('Existing metrics for today:', todayMetrics);
       
       // Получаем количество сообщений за сегодня
-      const { count: messageCount, error: messageError } = await this.supabase
-        .from('activity_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', chatId)
-        .eq('event_type', 'message')
-        .gte('created_at', `${today}T00:00:00Z`)
-        .lte('created_at', `${today}T23:59:59Z`);
-      
-      if (messageError) {
-        console.error('Error counting messages:', messageError);
-        return;
+      let messageCount = 0;
+      try {
+        const { count, error: messageError } = await this.supabase
+          .from('activity_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', chatId)
+          .eq('event_type', 'message')
+          .gte('created_at', `${today}T00:00:00Z`)
+          .lte('created_at', `${today}T23:59:59Z`);
+        
+        if (messageError) {
+          console.error('Error counting messages:', messageError);
+        } else {
+          messageCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Exception counting messages:', error);
       }
       
       console.log('Message count for today:', messageCount);
       
       // Получаем количество ответов за сегодня
-      const { count: replyCount, error: replyError } = await this.supabase
-        .from('activity_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', chatId)
-        .eq('event_type', 'message')
-        .not('reply_to_message_id', 'is', null)
-        .gte('created_at', `${today}T00:00:00Z`)
-        .lte('created_at', `${today}T23:59:59Z`);
-      
-      if (replyError) {
-        console.error('Error counting replies:', replyError);
-        return;
+      let replyCount = 0;
+      try {
+        const { count, error: replyError } = await this.supabase
+          .from('activity_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', chatId)
+          .eq('event_type', 'message')
+          .not('reply_to_message_id', 'is', null)
+          .gte('created_at', `${today}T00:00:00Z`)
+          .lte('created_at', `${today}T23:59:59Z`);
+        
+        if (replyError) {
+          console.error('Error counting replies:', replyError);
+        } else {
+          replyCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Exception counting replies:', error);
       }
       
       // Получаем количество присоединений за сегодня
-      const { count: joinCount, error: joinError } = await this.supabase
-        .from('activity_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', chatId)
-        .eq('event_type', 'join')
-        .gte('created_at', `${today}T00:00:00Z`)
-        .lte('created_at', `${today}T23:59:59Z`);
-      
-      if (joinError) {
-        console.error('Error counting joins:', joinError);
-        return;
+      let joinCount = 0;
+      try {
+        const { count, error: joinError } = await this.supabase
+          .from('activity_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', chatId)
+          .eq('event_type', 'join')
+          .gte('created_at', `${today}T00:00:00Z`)
+          .lte('created_at', `${today}T23:59:59Z`);
+        
+        if (joinError) {
+          console.error('Error counting joins:', joinError);
+        } else {
+          joinCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Exception counting joins:', error);
       }
       
       // Получаем количество выходов за сегодня
-      const { count: leaveCount, error: leaveError } = await this.supabase
-        .from('activity_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', chatId)
-        .eq('event_type', 'leave')
-        .gte('created_at', `${today}T00:00:00Z`)
-        .lte('created_at', `${today}T23:59:59Z`);
-      
-      if (leaveError) {
-        console.error('Error counting leaves:', leaveError);
-        return;
+      let leaveCount = 0;
+      try {
+        const { count, error: leaveError } = await this.supabase
+          .from('activity_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', chatId)
+          .eq('event_type', 'leave')
+          .gte('created_at', `${today}T00:00:00Z`)
+          .lte('created_at', `${today}T23:59:59Z`);
+        
+        if (leaveError) {
+          console.error('Error counting leaves:', leaveError);
+        } else {
+          leaveCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Exception counting leaves:', error);
       }
       
       // Получаем количество уникальных пользователей за сегодня (DAU)
-      const { data: uniqueUsers, error: dauError } = await this.supabase
-        .from('activity_events')
-        .select('tg_user_id')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', chatId)
-        .in('event_type', ['message', 'reaction', 'callback'])
-        .gte('created_at', `${today}T00:00:00Z`)
-        .lte('created_at', `${today}T23:59:59Z`);
-      
-      if (dauError) {
-        console.error('Error counting DAU:', dauError);
-        return;
+      let dau = 0;
+      try {
+        const { data: uniqueUsers, error: dauError } = await this.supabase
+          .from('activity_events')
+          .select('tg_user_id')
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', chatId)
+          .in('event_type', ['message', 'reaction', 'callback'])
+          .gte('created_at', `${today}T00:00:00Z`)
+          .lte('created_at', `${today}T23:59:59Z`);
+        
+        if (dauError) {
+          console.error('Error counting DAU:', dauError);
+        } else {
+          dau = uniqueUsers ? new Set(uniqueUsers.map(u => u.tg_user_id)).size : 0;
+        }
+      } catch (error) {
+        console.error('Exception counting DAU:', error);
       }
-      
-      const dau = uniqueUsers ? new Set(uniqueUsers.map(u => u.tg_user_id)).size : 0;
       
       // Вычисляем reply ratio
       const replyRatio = messageCount ? Math.round(((replyCount || 0) / messageCount) * 100) : 0;

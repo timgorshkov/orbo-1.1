@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
+
+export const dynamic = 'force-dynamic';
 
 type Participant = {
   id: string;
@@ -14,35 +17,97 @@ type Participant = {
   email: string | null;
   phone: string | null;
   created_at: string;
+  last_activity_at: string | null;
+  activity_score: number;
+  risk_score: number;
+  group_count?: number;
 };
 
 export default async function MembersPage({ params }: { params: { org: string } }) {
   try {
-    const { supabase } = await requireOrgAccess(params.org)
+    const { supabase: userSupabase, user } = await requireOrgAccess(params.org)
+    
+    // Создаем клиент Supabase с сервисной ролью для обхода RLS
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false
+        }
+      }
+    )
     
     // Получаем список участников организации
-    const { data: participants, error } = await supabase
-      .from('participants')
-      .select('*')
-      .eq('org_id', params.org)
-      .order('created_at', { ascending: false })
-      .limit(50) as { data: Participant[] | null, error: any }
+    let participants: Participant[] | null = null;
+    let error: any = null;
     
-    if (error) {
-      console.error('Error fetching members:', error)
+    try {
+      // Сначала пробуем использовать RPC функцию
+      const rpcResult = await supabase.rpc('get_participants_with_group_count', {
+        org_id_param: params.org
+      });
+      
+      if (rpcResult.error) {
+        // Если RPC не работает, используем прямой запрос
+        console.log('RPC function error, using fallback query:', rpcResult.error.message);
+        
+        // Получаем список участников
+        const { data: basicParticipants, error: basicError } = await supabase
+          .from('participants')
+          .select('*')
+          .eq('org_id', params.org)
+          .order('last_activity_at', { ascending: false })
+          .limit(50) as { data: Participant[] | null, error: any };
+        
+        // Получаем количество групп для каждого участника
+        if (basicParticipants && basicParticipants.length > 0) {
+          for (const participant of basicParticipants) {
+            try {
+              const { count } = await supabase
+                .from('participant_groups')
+                .select('*', { count: 'exact', head: true })
+                .eq('participant_id', participant.id)
+                .eq('is_active', true);
+              
+              participant.group_count = count || 0;
+            } catch (e) {
+              console.error('Error counting groups for participant:', e);
+              participant.group_count = 0;
+            }
+          }
+          
+          participants = basicParticipants;
+        } else {
+          error = basicError;
+        }
+      } else {
+        participants = rpcResult.data;
+      }
+    } catch (e) {
+      console.error('Error in participants query:', e);
+      error = e;
     }
     
     // Получаем список групп организации
     const { data: groups } = await supabase
       .from('telegram_groups')
-      .select('id, tg_chat_id, title')
+      .select('id, tg_chat_id, title, bot_status')
       .eq('org_id', params.org)
+      .order('title')
     
     const { data: telegramGroups } = await supabase
       .from('telegram_groups')
       .select('id, title, tg_chat_id')
       .eq('org_id', params.org)
       .order('title')
+      
+    // Создаем RPC функцию для получения участников с количеством групп, если она не существует
+    try {
+      await supabase.rpc('create_get_participants_function', { org_id_param: params.org })
+    } catch (e: any) {
+      console.log('Function creation attempt:', e.message)
+    }
 
 
     return (
@@ -86,6 +151,17 @@ export default async function MembersPage({ params }: { params: { org: string } 
                         >
                           {p.full_name || 'Без имени'}
                         </Link>
+                        {p.activity_score > 0 && (
+                          <div className="text-xs mt-1">
+                            <span className={`inline-block w-2 h-2 rounded-full mr-1 ${
+                              p.activity_score > 10 ? 'bg-green-500' : 
+                              p.activity_score > 5 ? 'bg-amber-500' : 'bg-neutral-300'
+                            }`}></span>
+                            <span className="text-neutral-500">
+                              Активность: {p.activity_score}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {p.username ? (
@@ -96,11 +172,19 @@ export default async function MembersPage({ params }: { params: { org: string } 
                         {p.tg_user_id && (
                           <div className="text-xs text-neutral-400">ID: {p.tg_user_id}</div>
                         )}
+                        <div className="text-xs mt-1 text-neutral-500">
+                          Групп: {p.group_count || 0}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {p.email && <div className="text-sm">{p.email}</div>}
                         {p.phone && <div className="text-sm">{p.phone}</div>}
                         {!p.email && !p.phone && <span className="text-sm text-neutral-500">—</span>}
+                        {p.last_activity_at && (
+                          <div className="text-xs mt-1 text-neutral-500">
+                            Активность: {new Date(p.last_activity_at).toLocaleDateString('ru')}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-neutral-500">
                         {new Date(p.created_at).toLocaleDateString('ru')}

@@ -4,26 +4,90 @@
 
 1. **Обновите базу данных**
 
-   Выполните следующие SQL-скрипты в Supabase SQL Editor:
+   Выполните следующий SQL-скрипт в Supabase SQL Editor для создания необходимых таблиц:
 
    ```sql
-   -- Проверьте структуру таблиц
-   SELECT EXISTS (
-     SELECT FROM information_schema.tables 
-     WHERE table_schema = 'public'
-     AND table_name = 'group_metrics'
+   -- Создаем таблицу для хранения обработанных Telegram-обновлений (идемпотентность)
+   CREATE TABLE IF NOT EXISTS telegram_updates (
+     id SERIAL PRIMARY KEY,
+     update_id BIGINT UNIQUE NOT NULL,
+     processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
    );
 
-   SELECT column_name, data_type, is_nullable
-   FROM information_schema.columns
-   WHERE table_name = 'activity_events'
-   ORDER BY ordinal_position;
+   -- Таблица для хранения событий активности
+   CREATE TABLE IF NOT EXISTS activity_events (
+     id SERIAL PRIMARY KEY,
+     org_id UUID NOT NULL REFERENCES organizations(id),
+     event_type TEXT NOT NULL,
+     participant_id UUID REFERENCES participants(id),
+     tg_user_id BIGINT,
+     tg_chat_id BIGINT NOT NULL,
+     message_id BIGINT,
+     message_thread_id BIGINT,
+     reply_to_message_id BIGINT,
+     has_media BOOLEAN DEFAULT FALSE,
+     chars_count INTEGER,
+     links_count INTEGER DEFAULT 0,
+     mentions_count INTEGER DEFAULT 0,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+     meta JSONB
+   );
+
+   -- Индексы для быстрых агрегаций
+   CREATE INDEX IF NOT EXISTS idx_activity_org_type_date ON activity_events(org_id, event_type, created_at);
+   CREATE INDEX IF NOT EXISTS idx_activity_participant ON activity_events(participant_id, created_at);
+   CREATE INDEX IF NOT EXISTS idx_activity_chat_date ON activity_events(tg_chat_id, created_at);
+   CREATE INDEX IF NOT EXISTS idx_activity_tg_user_id ON activity_events(tg_user_id);
+
+   -- Таблица для хранения агрегированных метрик по группам
+   CREATE TABLE IF NOT EXISTS group_metrics (
+     id SERIAL PRIMARY KEY,
+     org_id UUID NOT NULL REFERENCES organizations(id),
+     tg_chat_id BIGINT NOT NULL,
+     date DATE NOT NULL,
+     dau INTEGER DEFAULT 0,
+     message_count INTEGER DEFAULT 0,
+     reply_count INTEGER DEFAULT 0,
+     reply_ratio NUMERIC(5,2) DEFAULT 0,
+     join_count INTEGER DEFAULT 0,
+     leave_count INTEGER DEFAULT 0,
+     net_member_change INTEGER DEFAULT 0,
+     silent_rate NUMERIC(5,2) DEFAULT 0,
+     UNIQUE(org_id, tg_chat_id, date)
+   );
    ```
 
-   Затем выполните скрипт обновления структуры таблиц:
+   Затем выполните скрипт для проверки и обновления типов данных:
    
    ```sql
-   -- Выполните содержимое файла db/update_activity_events.sql
+   -- Проверяем и обновляем типы данных для tg_chat_id в telegram_groups
+   DO $$
+   DECLARE
+     column_type TEXT;
+   BEGIN
+     SELECT data_type INTO column_type
+     FROM information_schema.columns
+     WHERE table_name = 'telegram_groups' AND column_name = 'tg_chat_id';
+     
+     IF column_type = 'text' THEN
+       RAISE NOTICE 'tg_chat_id in telegram_groups is text, converting to bigint';
+       
+       -- Создаем временную колонку
+       ALTER TABLE telegram_groups ADD COLUMN tg_chat_id_new BIGINT;
+       
+       -- Копируем данные с преобразованием
+       UPDATE telegram_groups SET tg_chat_id_new = tg_chat_id::bigint;
+       
+       -- Удаляем старую колонку и переименовываем новую
+       ALTER TABLE telegram_groups DROP COLUMN tg_chat_id;
+       ALTER TABLE telegram_groups RENAME COLUMN tg_chat_id_new TO tg_chat_id;
+       
+       RAISE NOTICE 'Converted tg_chat_id to bigint';
+     ELSE
+       RAISE NOTICE 'tg_chat_id in telegram_groups is already %', column_type;
+     END IF;
+   END
+   $$;
    ```
 
 2. **Обновите переменные окружения**

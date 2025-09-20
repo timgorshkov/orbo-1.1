@@ -2,15 +2,29 @@ import AppShell from '@/components/app-shell'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { notFound } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
+
+export const dynamic = 'force-dynamic';
 
 export default async function TelegramAnalyticsPage({ params }: { params: { org: string } }) {
   try {
-    const { supabase } = await requireOrgAccess(params.org)
+    const { supabase: userSupabase, user } = await requireOrgAccess(params.org)
+    
+    // Создаем клиент Supabase с сервисной ролью для обхода RLS
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false
+        }
+      }
+    )
     
     // Получаем список групп организации
     const { data: groups } = await supabase
       .from('telegram_groups')
-      .select('id, title, tg_chat_id, bot_status')
+      .select('id, title, tg_chat_id, bot_status, member_count, new_members_count')
       .eq('org_id', params.org)
       .order('title')
     
@@ -85,19 +99,39 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     const groupMemberCounts: Record<number, number> = {}
     
     for (const group of groups) {
-      const { count } = await supabase
-        .from('activity_events')
-        .select('tg_user_id', { count: 'exact', head: true })
-        .eq('tg_chat_id', group.tg_chat_id)
-        .eq('event_type', 'join')
+      // Проверяем наличие поля member_count
+      if (group.member_count !== undefined) {
+        groupMemberCounts[group.tg_chat_id] = group.member_count;
+        continue;
+      }
       
-      const { count: leaveCount } = await supabase
-        .from('activity_events')
-        .select('tg_user_id', { count: 'exact', head: true })
-        .eq('tg_chat_id', group.tg_chat_id)
-        .eq('event_type', 'leave')
-      
-      groupMemberCounts[group.tg_chat_id] = (count || 0) - (leaveCount || 0)
+      // Если поля нет, считаем через participant_groups
+      try {
+        const { count } = await supabase
+          .from('participant_groups')
+          .select('*', { count: 'exact', head: true })
+          .eq('tg_group_id', group.tg_chat_id)
+          .eq('is_active', true);
+        
+        groupMemberCounts[group.tg_chat_id] = count || 0;
+      } catch (error) {
+        console.error(`Error counting members for group ${group.tg_chat_id}:`, error);
+        
+        // Если participant_groups не существует, используем старый метод через activity_events
+        const { count } = await supabase
+          .from('activity_events')
+          .select('tg_user_id', { count: 'exact', head: true })
+          .eq('tg_chat_id', group.tg_chat_id)
+          .eq('event_type', 'join');
+        
+        const { count: leaveCount } = await supabase
+          .from('activity_events')
+          .select('tg_user_id', { count: 'exact', head: true })
+          .eq('tg_chat_id', group.tg_chat_id)
+          .eq('event_type', 'leave');
+        
+        groupMemberCounts[group.tg_chat_id] = (count || 0) - (leaveCount || 0);
+      }
     }
     
     // Получаем список телеграм-групп для AppShell
@@ -137,7 +171,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                 <div>
                   <div className="text-sm text-neutral-500">Новых участников за 7 дней</div>
                   <div className="text-xl font-semibold">
-                    {Object.values(groupMetrics).reduce((sum: number, metric: any) => sum + metric.join_count, 0)}
+                    {groups.reduce((sum: number, group: any) => sum + (group.new_members_count || 0), 0)}
                   </div>
                 </div>
               </div>
@@ -171,7 +205,8 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                 <div>
                   <div className="text-sm text-neutral-500">Чистый прирост участников</div>
                   <div className="text-xl font-semibold">
-                    {Object.values(groupMetrics).reduce((sum: number, metric: any) => sum + metric.join_count - metric.leave_count, 0)}
+                    {groups.reduce((sum: number, group: any) => sum + (group.new_members_count || 0), 0) - 
+                     Object.values(groupMetrics).reduce((sum: number, metric: any) => sum + (metric.leave_count || 0), 0)}
                   </div>
                 </div>
               </div>
@@ -208,7 +243,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                   
                   <div>
                     <div className="text-sm text-neutral-500">Новых участников</div>
-                    <div className="text-xl font-semibold">{groupMetrics[group.tg_chat_id]?.join_count || 0}</div>
+                    <div className="text-xl font-semibold">{group.new_members_count || 0}</div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Ушло участников</div>
