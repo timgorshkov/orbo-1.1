@@ -75,65 +75,23 @@ export class EventProcessingService {
     console.log('Processing message from chat ID:', chatId, 'Type:', typeof chatId);
 
     try {
-      const { count: testConnection, error: connectionError } = await this.supabase
-        .from('telegram_groups')
-        .select('*', { count: 'exact', head: true });
-      
-      console.log('Database connection test:', testConnection, 'Error:', connectionError);
-      
-      if (connectionError) {
-        console.error('Database connection error:', connectionError);
-        return;
-      }
-    } catch (connErr) {
-      console.error('Failed to connect to database:', connErr);
-      return;
-    }
-  
-    try {
       // Проверяем, существует ли группа с использованием строкового сравнения
-      console.log('Searching for group with tg_chat_id:', chatId, 'Type:', typeof chatId);
-
-      // Попробуем несколько вариантов поиска
-      const { data: groups1 } = await this.supabase
+      const { data: groups } = await this.supabase
         .from('telegram_groups')
         .select('id, org_id, analytics_enabled')
-        .eq('tg_chat_id', chatId);
-
-      console.log('Search result with direct match:', groups1);
-
-      const { data: groups2 } = await this.supabase
-        .from('telegram_groups')
-        .select('id, org_id, analytics_enabled')
-        .eq('tg_chat_id', String(chatId));
-
-      console.log('Search result with string conversion:', groups2);
-
-      // Используем текстовый фильтр
-      const { data: groups3 } = await this.supabase
-        .from('telegram_groups')
-        .select('id, org_id, analytics_enabled')
-        .filter('tg_chat_id::text', 'eq', String(chatId));
-
-      console.log('Search result with text filter:', groups3);
-
-      // Используем любой из результатов, который не пустой
-      const groups = groups1?.length ? groups1 : 
-                    groups2?.length ? groups2 : 
-                    groups3?.length ? groups3 : null;
+        .filter('tg_chat_id::text', 'eq', String(chatId))
+        .limit(1);
       
       console.log('Group lookup result with string comparison:', groups);
       
       if (groups && groups.length > 0) {
         // Группа найдена
+        console.log('Found group, processing message with group data:', groups[0]);
         return this.processMessageWithGroup(message, groups[0]);
       }
       
-      // В методе processMessage, после проверки типа чата:
+      // Если группа не найдена, но это группа/супергруппа, пробуем добавить
       if (message.chat.type === 'supergroup' || message.chat.type === 'group') {
-        const chatId = message.chat.id;
-        const title = message.chat.title || `Group ${chatId}`;
-        
         // Получаем любую организацию
         const { data: orgs } = await this.supabase
           .from('organizations')
@@ -142,42 +100,31 @@ export class EventProcessingService {
         
         if (orgs && orgs.length > 0) {
           const orgId = orgs[0].id;
+          const title = message.chat.title || `Group ${chatId}`;
           
-          // Принудительно добавляем группу, игнорируя ошибки уникальности
-          console.log(`Force inserting group ${title} (${chatId}) for org ${orgId}`);
+          // Добавляем группу
+          const { data: newGroup, error } = await this.supabase
+            .from('telegram_groups')
+            .insert({
+              org_id: orgId,
+              tg_chat_id: chatId,
+              title: title,
+              bot_status: 'connected',
+              analytics_enabled: true,
+              last_sync_at: new Date().toISOString()
+            })
+            .select()
+            .single();
           
-          try {
-            // Используем upsert для обновления или вставки
-            const { data: upsertResult, error: upsertError } = await this.supabase
-              .from('telegram_groups')
-              .upsert({
-                org_id: orgId,
-                tg_chat_id: chatId,
-                title: title,
-                bot_status: 'connected',
-                analytics_enabled: true,
-                last_sync_at: new Date().toISOString()
-              }, {
-                onConflict: 'tg_chat_id',
-                ignoreDuplicates: false
-              })
-              .select();
-            
-            console.log('Upsert result:', upsertResult, 'Error:', upsertError);
-            
-            if (!upsertError) {
-              // Обрабатываем сообщение
-              await this.processUserMessage(message, orgId);
-              
-              // Обновляем метрики группы
-              await this.updateGroupMetrics(orgId, chatId);
-              
-              return; // Выходим из метода после успешной обработки
-            }
-          } catch (error) {
-            console.error('Error in force insert:', error);
+          if (!error && newGroup) {
+            console.log(`Auto-added group in processMessage: ${title} (${chatId})`);
+            // Продолжаем обработку с новой группой
+            return this.processMessageWithGroup(message, newGroup);
           }
         }
+        
+        console.log(`Message from unknown group ${chatId}, skipping`);
+        return;
       }
       
       console.log(`Message from non-group chat ${chatId}, skipping`);
@@ -187,7 +134,6 @@ export class EventProcessingService {
       return;
     }
   }
-
 
   /**
    * Обрабатывает выход участника из группы
@@ -281,6 +227,14 @@ export class EventProcessingService {
   private async processMessageWithGroup(message: TelegramMessage, groupData: any): Promise<void> {
     const chatId = message.chat.id;
     const orgId = groupData.org_id;
+
+    console.log('Processing message with group:', groupData);
+    console.log('Message data:', { 
+      chatId, 
+      orgId, 
+      messageId: message.message_id,
+      from: message.from?.username
+    });
     
     // Обрабатываем новых участников
     if (message.new_chat_members && message.new_chat_members.length > 0) {
@@ -305,8 +259,9 @@ export class EventProcessingService {
    * Обрабатывает обычное сообщение пользователя
    */
   private async processUserMessage(message: TelegramMessage, orgId: string): Promise<void> {
+
     if (!message.from) return;
-    
+  
     const chatId = message.chat.id;
     const userId = message.from.id;
     
@@ -322,38 +277,82 @@ export class EventProcessingService {
     }
     
     // Записываем событие сообщения
-    await this.supabase.from('activity_events').insert({
-      org_id: orgId,
-      event_type: 'message',
-      tg_user_id: userId,
-      tg_chat_id: chatId,
-      message_id: message.message_id,
-      message_thread_id: message.message_thread_id,
-      reply_to_message_id: message.reply_to_message?.message_id,
-      has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-      chars_count: message.text?.length || 0,
-      links_count: linksCount,
-      mentions_count: mentionsCount,
-      meta: {
-        user: {
-          username: message.from.username,
-          name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
-        }
+    try {
+      // Проверяем структуру таблицы activity_events
+      const { data: columns, error: columnsError } = await this.supabase
+        .from('activity_events')
+        .select()
+        .limit(0);
+      
+      if (columnsError) {
+        console.error('Error checking activity_events structure:', columnsError);
       }
-    });
+      
+      // Базовые поля для вставки
+      const eventData: any = {
+        org_id: orgId,
+        event_type: 'message',
+        tg_user_id: userId,
+        tg_chat_id: chatId,
+        message_id: message.message_id,
+        message_thread_id: message.message_thread_id,
+        reply_to_message_id: message.reply_to_message?.message_id,
+        has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+        meta: {
+          user: {
+            username: message.from.username,
+            name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
+          }
+        }
+      };
+      
+      // Добавляем поля, которые могут быть в таблице
+      // Если поля нет, информация будет в meta
+      const messageLength = message.text?.length || 0;
+      
+      // Всегда добавляем информацию в meta
+      eventData.meta.message_length = messageLength;
+      eventData.meta.links_count = linksCount;
+      eventData.meta.mentions_count = mentionsCount;
+      
+      // Пробуем добавить в основные поля
+      try {
+        eventData.chars_count = messageLength;
+        eventData.links_count = linksCount;
+        eventData.mentions_count = mentionsCount;
+      } catch (e) {
+        console.log('Some fields might not exist in the table, continuing with meta only');
+      }
+      
+      const { error } = await this.supabase.from('activity_events').insert(eventData);
+      
+      if (error) {
+        console.error('Error inserting activity event:', error);
+      } else {
+        console.log('Activity event recorded successfully');
+      }
+    } catch (error) {
+      console.error('Exception in activity event insert:', error);
+    }
     
-    // Обновляем время последней активности пользователя
-    await this.supabase
-      .from('participants')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('tg_user_id', userId)
-      .eq('org_id', orgId);
-    
-    // Обновляем время последней активности группы
-    await this.supabase
-      .from('telegram_groups')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('tg_chat_id', chatId);
+    try {
+      // Обновляем время последней активности пользователя
+      await this.supabase
+        .from('participants')
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq('tg_user_id', userId)
+        .eq('org_id', orgId);
+      
+      // Обновляем время последней активности группы
+      await this.supabase
+        .from('telegram_groups')
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq('tg_chat_id', chatId);
+        
+      console.log('Last activity updated successfully');
+    } catch (error) {
+      console.error('Error updating last activity:', error);
+    }
   }
   
   /**
@@ -567,100 +566,153 @@ export class EventProcessingService {
    * Обновляет метрики группы
    */
   private async updateGroupMetrics(orgId: string, chatId: number): Promise<void> {
+    console.log(`Updating metrics for group ${chatId} in org ${orgId}`);
     const today = new Date().toISOString().split('T')[0];
     
-    // Получаем метрики за сегодня
-    const { data: todayMetrics } = await this.supabase
-      .from('group_metrics')
-      .select('id')
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .eq('date', today)
-      .single();
-    
-    // Получаем количество сообщений за сегодня
-    const { count: messageCount } = await this.supabase
-      .from('activity_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .eq('event_type', 'message')
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lte('created_at', `${today}T23:59:59Z`);
-    
-    // Получаем количество ответов за сегодня
-    const { count: replyCount } = await this.supabase
-      .from('activity_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .eq('event_type', 'message')
-      .not('reply_to_message_id', 'is', null)
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lte('created_at', `${today}T23:59:59Z`);
-    
-    // Получаем количество присоединений за сегодня
-    const { count: joinCount } = await this.supabase
-      .from('activity_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .eq('event_type', 'join')
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lte('created_at', `${today}T23:59:59Z`);
-    
-    // Получаем количество выходов за сегодня
-    const { count: leaveCount } = await this.supabase
-      .from('activity_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .eq('event_type', 'leave')
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lte('created_at', `${today}T23:59:59Z`);
-    
-    // Получаем количество уникальных пользователей за сегодня (DAU)
-    const { data: uniqueUsers } = await this.supabase
-      .from('activity_events')
-      .select('tg_user_id')
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', chatId)
-      .in('event_type', ['message', 'reaction', 'callback'])
-      .gte('created_at', `${today}T00:00:00Z`)
-      .lte('created_at', `${today}T23:59:59Z`);
-    
-    const dau = new Set(uniqueUsers?.map(u => u.tg_user_id)).size;
-    
-    // Вычисляем reply ratio
-    const replyRatio = messageCount ? Math.round(((replyCount || 0) / messageCount) * 100) : 0;
-    
-    // Вычисляем net member change
-    const netMemberChange = (joinCount || 0) - (leaveCount || 0);
-    
-    const metricsData = {
-      org_id: orgId,
-      tg_chat_id: chatId,
-      date: today,
-      dau,
-      message_count: messageCount || 0,
-      reply_count: replyCount || 0,
-      reply_ratio: replyRatio,
-      join_count: joinCount || 0,
-      leave_count: leaveCount || 0,
-      net_member_change: netMemberChange
-    };
-    
-    if (todayMetrics) {
-      // Обновляем существующую запись
-      await this.supabase
+    try {
+      // Получаем метрики за сегодня
+      const { data: todayMetrics, error: metricsError } = await this.supabase
         .from('group_metrics')
-        .update(metricsData)
-        .eq('id', todayMetrics.id);
-    } else {
-      // Создаем новую запись
-      await this.supabase
-        .from('group_metrics')
-        .insert(metricsData);
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .eq('date', today)
+        .maybeSingle();
+      
+      if (metricsError) {
+        console.error('Error fetching today metrics:', metricsError);
+        return;
+      }
+      
+      console.log('Existing metrics for today:', todayMetrics);
+      
+      // Получаем количество сообщений за сегодня
+      const { count: messageCount, error: messageError } = await this.supabase
+        .from('activity_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .eq('event_type', 'message')
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lte('created_at', `${today}T23:59:59Z`);
+      
+      if (messageError) {
+        console.error('Error counting messages:', messageError);
+        return;
+      }
+      
+      console.log('Message count for today:', messageCount);
+      
+      // Получаем количество ответов за сегодня
+      const { count: replyCount, error: replyError } = await this.supabase
+        .from('activity_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .eq('event_type', 'message')
+        .not('reply_to_message_id', 'is', null)
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lte('created_at', `${today}T23:59:59Z`);
+      
+      if (replyError) {
+        console.error('Error counting replies:', replyError);
+        return;
+      }
+      
+      // Получаем количество присоединений за сегодня
+      const { count: joinCount, error: joinError } = await this.supabase
+        .from('activity_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .eq('event_type', 'join')
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lte('created_at', `${today}T23:59:59Z`);
+      
+      if (joinError) {
+        console.error('Error counting joins:', joinError);
+        return;
+      }
+      
+      // Получаем количество выходов за сегодня
+      const { count: leaveCount, error: leaveError } = await this.supabase
+        .from('activity_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .eq('event_type', 'leave')
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lte('created_at', `${today}T23:59:59Z`);
+      
+      if (leaveError) {
+        console.error('Error counting leaves:', leaveError);
+        return;
+      }
+      
+      // Получаем количество уникальных пользователей за сегодня (DAU)
+      const { data: uniqueUsers, error: dauError } = await this.supabase
+        .from('activity_events')
+        .select('tg_user_id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .in('event_type', ['message', 'reaction', 'callback'])
+        .gte('created_at', `${today}T00:00:00Z`)
+        .lte('created_at', `${today}T23:59:59Z`);
+      
+      if (dauError) {
+        console.error('Error counting DAU:', dauError);
+        return;
+      }
+      
+      const dau = uniqueUsers ? new Set(uniqueUsers.map(u => u.tg_user_id)).size : 0;
+      
+      // Вычисляем reply ratio
+      const replyRatio = messageCount ? Math.round(((replyCount || 0) / messageCount) * 100) : 0;
+      
+      // Вычисляем net member change
+      const netMemberChange = (joinCount || 0) - (leaveCount || 0);
+      
+      const metricsData = {
+        org_id: orgId,
+        tg_chat_id: chatId,
+        date: today,
+        dau,
+        message_count: messageCount || 0,
+        reply_count: replyCount || 0,
+        reply_ratio: replyRatio,
+        join_count: joinCount || 0,
+        leave_count: leaveCount || 0,
+        net_member_change: netMemberChange
+      };
+      
+      console.log('Metrics data to save:', metricsData);
+      
+      if (todayMetrics) {
+        // Обновляем существующую запись
+        const { error: updateError } = await this.supabase
+          .from('group_metrics')
+          .update(metricsData)
+          .eq('id', todayMetrics.id);
+          
+        if (updateError) {
+          console.error('Error updating metrics:', updateError);
+        } else {
+          console.log('Group metrics updated successfully');
+        }
+      } else {
+        // Создаем новую запись
+        const { error: insertError } = await this.supabase
+          .from('group_metrics')
+          .insert(metricsData);
+          
+        if (insertError) {
+          console.error('Error inserting metrics:', insertError);
+        } else {
+          console.log('Group metrics created successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Exception in updateGroupMetrics:', error);
     }
   }
 }

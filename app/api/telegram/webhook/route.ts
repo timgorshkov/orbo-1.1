@@ -39,13 +39,7 @@ export async function POST(req: NextRequest) {
     console.log('All groups in database:', allGroups);
     console.log('Incoming chat ID:', body.message?.chat?.id, 'Type:', typeof body.message?.chat?.id);
 
-    // Создаем экземпляр сервиса обработки событий
-    const eventProcessingService = createEventProcessingService()
-    
-    // Обрабатываем обновление
-    await eventProcessingService.processUpdate(body)
-
-    // Проверяем, существует ли группа в базе данных
+    // Проверяем, существует ли группа в базе данных и добавляем, если нет
     if (body.message?.chat?.id) {
       const chatId = body.message.chat.id;
       console.log('Chat ID type:', typeof chatId, 'Value:', chatId);
@@ -63,7 +57,7 @@ export async function POST(req: NextRequest) {
         let orgId = orgs[0].id;
         
         // Вставляем группу, игнорируя ошибки уникальности
-        console.log(`Inserting group ${title} (${chatId}) for org ${orgId}`);
+        console.log(`Checking group ${title} (${chatId}) for org ${orgId}`);
         try {
           // Сначала проверяем, существует ли группа
           const { data: existingGroup } = await supabase
@@ -109,35 +103,16 @@ export async function POST(req: NextRequest) {
               console.log('Successfully inserted group');
             }
           }
-          
-          // Теперь обрабатываем сообщение напрямую
-          if (body.message.from && !body.message.from.is_bot) {
-            const { error: activityError } = await supabase.from('activity_events').insert({
-              org_id: orgId,
-              event_type: 'message',
-              tg_user_id: body.message.from.id,
-              tg_chat_id: chatId,
-              message_id: body.message.message_id,
-              chars_count: body.message.text?.length || 0,
-              meta: {
-                user: {
-                  username: body.message.from.username,
-                  name: `${body.message.from.first_name} ${body.message.from.last_name || ''}`.trim()
-                }
-              }
-            });
-            
-            if (activityError) {
-              console.error('Error recording message:', activityError);
-            } else {
-              console.log('Message directly recorded in activity_events');
-            }
-          }
         } catch (error) {
           console.error('Error processing group:', error);
         }
       }
     }
+    
+    // Создаем экземпляр сервиса обработки событий и обрабатываем обновление
+    console.log('Processing update with eventProcessingService');
+    const eventProcessingService = createEventProcessingService();
+    await eventProcessingService.processUpdate(body);
       
     
     // Обработка команд бота
