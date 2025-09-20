@@ -1,6 +1,11 @@
 import { createClientServer } from './server/supabaseServer'
+import { cookies } from 'next/headers'
 
-export async function requireOrgAccess(orgId: string) {
+export async function requireOrgAccess(orgId: string, cookieStore?: any) {
+
+  // Если cookies переданы, используем их, иначе получаем из headers
+  const cookiesObj = cookieStore || cookies();
+  
   const supabase = createClientServer()
   const {
     data: { user },

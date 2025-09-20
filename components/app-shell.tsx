@@ -50,6 +50,7 @@ export default function AppShell({
     { href: `/app/${orgId}/dashboard`, label: 'Дашборд', icon: '🏠' },
     { href: `/app/${orgId}/events`, label: 'События', icon: '📅' },
     { href: `/app/${orgId}/telegram`, label: 'Telegram', icon: '💬' },
+    { href: `/app/${orgId}/telegram/analytics`, label: 'Аналитика', icon: '📊' },
     { href: `/app/${orgId}/members`, label: 'Участники', icon: '👥' },
     { href: `/app/${orgId}/materials`, label: 'Материалы', icon: '📁' },
   ]

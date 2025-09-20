@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClientServer } from '@/lib/server/supabaseServer'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   // Получаем токен из строки запроса
   const token = req.nextUrl.searchParams.get('token')

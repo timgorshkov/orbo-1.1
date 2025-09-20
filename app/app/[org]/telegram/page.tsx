@@ -80,12 +80,15 @@ export default async function TelegramPage({ params }: { params: { org: string }
                 </p>
               </div>
               
-              <div className="flex gap-2 mt-4">
+              <div className="flex gap-2 mt-4 flex-wrap">
                 <a href={`/app/${params.org}/telegram/setup-telegram`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-black text-white hover:bg-black/85">
                   Настроить Telegram ID
                 </a>
                 <a href={`/app/${params.org}/telegram/check-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
                   Проверить мои группы
+                </a>
+                <a href={`/app/${params.org}/telegram/analytics`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                  Аналитика
                 </a>
               </div>
 
