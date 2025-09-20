@@ -72,6 +72,47 @@ export async function addGroupManually(formData: FormData) {
   }
 }
 
+export async function deleteGroup(formData: FormData) {
+  'use server'
+  
+  const org = String(formData.get('org'))
+  const groupId = Number(formData.get('groupId'))
+  
+  if (!groupId || isNaN(groupId)) {
+    console.error('Invalid group ID')
+    return
+  }
+  
+  try {
+    const { supabase } = await requireOrgAccess(org)
+    
+    // Проверяем, существует ли группа и принадлежит ли она организации
+    const { data: existingGroup } = await supabase
+      .from('telegram_groups')
+      .select('id')
+      .eq('id', groupId)
+      .eq('org_id', org)
+      .single()
+    
+    if (!existingGroup) {
+      console.error('Group not found or not belongs to organization')
+      return
+    }
+    
+    // Удаляем группу
+    await supabase
+      .from('telegram_groups')
+      .delete()
+      .eq('id', groupId)
+    
+    console.log(`Deleted group ID: ${groupId}`)
+    return
+  } catch (error) {
+    console.error('Error deleting group:', error)
+    return
+  }
+}
+
 export async function checkStatus(formData: FormData) {
   const org = String(formData.get('org'))
   try {
@@ -100,18 +141,41 @@ export async function checkStatus(formData: FormData) {
       }
     })
     
-    // 4. Для каждой группы из Telegram
+    // 4. Получаем существующие группы по названию для обнаружения дубликатов
+    const { data: existingGroups } = await supabase
+      .from('telegram_groups')
+      .select('id, tg_chat_id, title, bot_status')
+      .eq('org_id', org)
+    
+    const groupsByTitle = new Map()
+    if (existingGroups) {
+      existingGroups.forEach((group: any) => {
+        if (group.title) {
+          if (!groupsByTitle.has(group.title)) {
+            groupsByTitle.set(group.title, [])
+          }
+          groupsByTitle.get(group.title).push(group)
+        }
+      })
+    }
+    
+    // 5. Для каждой группы из Telegram
     for (const [chatId, chatInfo] of Array.from(uniqueGroups.entries())) {
-      // Проверяем, существует ли уже группа в базе
-      const { data: existingGroup } = await supabase
+      const title = chatInfo.title || `Group ${chatId}`
+      
+      // Проверяем, существует ли уже группа в базе по ID чата
+      const { data: existingGroupById } = await supabase
         .from('telegram_groups')
-        .select('id')
+        .select('id, bot_status')
         .eq('tg_chat_id', chatId)
         .eq('org_id', org)
-        .single()
+        .maybeSingle()
       
-      // Если группа не существует, добавляем её
-      if (!existingGroup) {
+      // Проверяем, существуют ли группы с таким же названием
+      const sameNameGroups = groupsByTitle.get(title) || []
+      
+      // Если группа уже существует по ID - обновим информацию
+      if (existingGroupById) {
         // Проверяем, является ли бот администратором
         const chatMember = await telegramService.getChatMember(
           chatId, 
@@ -120,72 +184,135 @@ export async function checkStatus(formData: FormData) {
         
         const isAdmin = chatMember?.result?.status === 'administrator'
         
-        // Добавляем группу в базу данных
+        // Обновляем информацию о группе
         await supabase
           .from('telegram_groups')
-          .insert({
-            org_id: org,
-            tg_chat_id: chatId,
-            title: chatInfo.title || `Group ${chatId}`,
+          .update({
             bot_status: isAdmin ? 'connected' : 'pending',
+            title: title,
             last_sync_at: new Date().toISOString()
           })
+          .eq('id', existingGroupById.id)
+          
+        // Если бот админ, можно получить ссылку-приглашение
+        if (isAdmin) {
+          const inviteLink = await telegramService.createChatInviteLink(chatId)
+          if (inviteLink?.result?.invite_link) {
+            await supabase
+              .from('telegram_groups')
+              .update({
+                invite_link: inviteLink.result.invite_link
+              })
+              .eq('id', existingGroupById.id)
+          }
+        }
         
-        console.log(`Added new group: ${chatInfo.title || chatId}`)
+        // Если нашлись дубликаты по названию с другим ID, и текущая группа активна, удаляем дубликаты
+        if (sameNameGroups.length > 0 && isAdmin) {
+          for (const duplicate of sameNameGroups) {
+            // Удаляем группы с тем же названием, но другим ID и в статусе 'pending'
+            if (duplicate.tg_chat_id !== chatId && duplicate.bot_status === 'pending') {
+              await supabase
+                .from('telegram_groups')
+                .delete()
+                .eq('id', duplicate.id)
+              console.log(`Deleted duplicate group: ${title} (ID: ${duplicate.tg_chat_id})`)
+            }
+          }
+        }
+      } else {
+        // Если группа не существует по ID, проверяем есть ли группы с таким же названием
+        const existingGroupByName = sameNameGroups[0] // Берем первую группу с таким же названием
+        
+        // Проверяем, является ли бот администратором
+        const chatMember = await telegramService.getChatMember(
+          chatId, 
+          Number(process.env.TELEGRAM_BOT_ID)
+        )
+        
+        const isAdmin = chatMember?.result?.status === 'administrator'
+        
+        if (existingGroupByName && existingGroupByName.bot_status === 'pending' && isAdmin) {
+          // Если есть группа с таким же названием в статусе 'pending', а новая группа активна,
+          // обновляем существующую запись новым ID
+          await supabase
+            .from('telegram_groups')
+            .update({
+              tg_chat_id: chatId,
+              bot_status: 'connected',
+              last_sync_at: new Date().toISOString()
+            })
+            .eq('id', existingGroupByName.id)
+          
+          console.log(`Updated group ID: ${title} (${existingGroupByName.tg_chat_id} -> ${chatId})`)
+        } else {
+          // Создаем новую запись
+          await supabase
+            .from('telegram_groups')
+            .insert({
+              org_id: org,
+              tg_chat_id: chatId,
+              title: title,
+              bot_status: isAdmin ? 'connected' : 'pending',
+              last_sync_at: new Date().toISOString()
+            })
+          
+          console.log(`Added new group: ${title} (ID: ${chatId})`)
+        }
       }
     }
     
-    // 5. Теперь обновляем информацию о всех группах
-    const { data: groups } = await supabase
+    // 6. Обновляем статус групп, которые не были затронуты обновлением
+    const { data: remainingGroups } = await supabase
       .from('telegram_groups')
       .select('id, tg_chat_id, title')
       .eq('org_id', org)
     
-    if (!groups || groups.length === 0) {
-      console.error('No groups found after scan')
-      return
-    }
-    
-    // Обновляем статус и информацию о группах
-    for (const group of groups) {
-      try {
-        // Запрашиваем информацию о чате
-        const chatInfo = await telegramService.getChat(group.tg_chat_id)
-        
-        if (chatInfo?.result) {
-          // Проверяем, является ли бот администратором
-          const chatMember = await telegramService.getChatMember(
-            group.tg_chat_id, 
-            Number(process.env.TELEGRAM_BOT_ID)
-          )
+    if (remainingGroups && remainingGroups.length > 0) {
+      for (const group of remainingGroups) {
+        try {
+          // Проверяем, существует ли еще чат
+          const chatInfo = await telegramService.getChat(group.tg_chat_id)
           
-          const isAdmin = chatMember?.result?.status === 'administrator'
-          
-          // Обновляем информацию о группе
+          if (chatInfo?.result) {
+            // Проверяем, является ли бот администратором
+            const chatMember = await telegramService.getChatMember(
+              group.tg_chat_id, 
+              Number(process.env.TELEGRAM_BOT_ID)
+            )
+            
+            const isAdmin = chatMember?.result?.status === 'administrator'
+            
+            // Обновляем статус
+            await supabase
+              .from('telegram_groups')
+              .update({
+                bot_status: isAdmin ? 'connected' : 'pending',
+                title: chatInfo.result.title || group.title,
+                last_sync_at: new Date().toISOString()
+              })
+              .eq('id', group.id)
+          } else {
+            // Если чат не найден, помечаем как неактивный
+            await supabase
+              .from('telegram_groups')
+              .update({
+                bot_status: 'inactive',
+                last_sync_at: new Date().toISOString()
+              })
+              .eq('id', group.id)
+          }
+        } catch (e) {
+          console.error(`Error checking group ${group.tg_chat_id}:`, e)
+          // В случае ошибки помечаем как неактивный
           await supabase
             .from('telegram_groups')
             .update({
-              bot_status: isAdmin ? 'connected' : 'pending',
-              title: chatInfo.result.title || group.title,
+              bot_status: 'inactive',
               last_sync_at: new Date().toISOString()
             })
             .eq('id', group.id)
-            
-          // Если бот админ, можно получить ссылку-приглашение
-          if (isAdmin) {
-            const inviteLink = await telegramService.createChatInviteLink(group.tg_chat_id)
-            if (inviteLink?.result?.invite_link) {
-              await supabase
-                .from('telegram_groups')
-                .update({
-                  invite_link: inviteLink.result.invite_link
-                })
-                .eq('id', group.id)
-            }
-          }
         }
-      } catch (e) {
-        console.error(`Error checking group ${group.tg_chat_id}:`, e)
       }
     }
     

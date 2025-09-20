@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { CheckStatusForm, AddGroupManuallyForm } from './form-components'
-import { checkStatus, addGroupManually } from './actions'
+import { checkStatus, addGroupManually, deleteGroup } from './actions'
 import { notFound } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -17,7 +17,7 @@ type TelegramGroup = {
   tg_chat_id: number;
   title: string | null;
   invite_link: string | null;
-  bot_status: string | null;
+  bot_status: 'connected' | 'pending' | 'inactive' | null;
   last_sync_at: string | null;
 };
 
@@ -98,56 +98,118 @@ export default async function TelegramPage({ params }: { params: { org: string }
             </CardContent>
           </Card>
           
-          {/* Список подключенных групп */}
+          {/* Список активных групп */}
           <Card>
             <CardHeader>
-              <CardTitle>Подключенные группы</CardTitle>
+              <CardTitle>Активные группы</CardTitle>
             </CardHeader>
             <CardContent>
-              {groups && groups.length > 0 ? (
+              {groups && groups.filter(g => g.bot_status === 'connected').length > 0 ? (
                 <div className="space-y-4">
-                  {groups.map(group => (
-                    <div key={group.id} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">{group.title || `Группа ${group.tg_chat_id}`}</h3>
-                          <div className="text-sm text-neutral-500">ID: {group.tg_chat_id}</div>
-                          <div className="flex items-center mt-1">
-                            <span 
-                              className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                group.bot_status === 'connected' ? 'bg-green-500' : 'bg-amber-500'
-                              }`} 
-                            />
-                            <span className="text-sm">
-                              {group.bot_status === 'connected' ? 'Подключен' : 'В ожидании'}
-                            </span>
+                  {groups
+                    .filter(g => g.bot_status === 'connected')
+                    .map(group => (
+                      <div key={group.id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-medium">{group.title || `Группа ${group.tg_chat_id}`}</h3>
+                            <div className="text-sm text-neutral-500">ID: {group.tg_chat_id}</div>
+                            <div className="flex items-center mt-1">
+                              <span className="inline-block w-2 h-2 rounded-full mr-2 bg-green-500" />
+                              <span className="text-sm">Подключен</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                              Настройки
+                            </a>
+                            <a href={`/app/${params.org}/telegram/message`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                              Отправить сообщение
+                            </a>
                           </div>
                         </div>
-                        <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                          Настройки
-                        </a>
-                        <a href={`/app/${params.org}/telegram/message`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                          Отправить сообщение
-                        </a>
+                        
+                        {group.last_sync_at && (
+                          <div className="mt-2 text-xs text-neutral-500">
+                            Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
+                          </div>
+                        )}
                       </div>
-                      
-                      {group.last_sync_at && (
-                        <div className="mt-2 text-xs text-neutral-500">
-                          Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
-                        </div>
-                      )}
-                    </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <p className="text-neutral-500">
-                    Нет подключенных групп. Добавьте бота @orbo_community_bot в группу и назначьте администратором.
+                    Нет активных групп. Добавьте бота @orbo_community_bot в группу и назначьте администратором.
                   </p>
                 </div>
               )}
             </CardContent>
           </Card>
+          
+          {/* Список ожидающих групп */}
+          {groups && groups.filter(g => g.bot_status === 'pending' || g.bot_status === 'inactive').length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Ожидающие и неактивные группы</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {groups
+                    .filter(g => g.bot_status === 'pending' || g.bot_status === 'inactive')
+                    .map(group => (
+                      <div key={group.id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-medium">{group.title || `Группа ${group.tg_chat_id}`}</h3>
+                            <div className="text-sm text-neutral-500">ID: {group.tg_chat_id}</div>
+                            <div className="flex items-center mt-1">
+                              <span 
+                                className={`inline-block w-2 h-2 rounded-full mr-2 ${group.bot_status === 'pending' ? 'bg-amber-500' : 'bg-red-500'}`}
+                              />
+                              <span className="text-sm">
+                                {group.bot_status === 'pending' ? 'В ожидании' : 'Неактивна'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <form action={async (formData) => {
+                              const id = group.id;
+                              const orgId = params.org;
+                              
+                              // Создаем FormData для вызова серверного актиона
+                              formData.append('org', orgId);
+                              formData.append('groupId', id.toString());
+                              
+                              // Вызов серверного актиона
+                              await deleteGroup(formData);
+                            }}>
+                              <button 
+                                type="submit" 
+                                className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                              >
+                                Удалить
+                              </button>
+                            </form>
+                            {group.bot_status === 'pending' && (
+                              <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                                Настройки
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {group.last_sync_at && (
+                          <div className="mt-2 text-xs text-neutral-500">
+                            Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
+                          </div>
+                        )}
+                      </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           {/* Статистика */}
           {groups && groups.length > 0 && (
