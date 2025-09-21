@@ -382,6 +382,8 @@ export class EventProcessingService {
   
     const chatId = message.chat.id;
     const userId = message.from.id;
+    const username = message.from.username;
+    const fullName = `${message.from.first_name} ${message.from.last_name || ''}`.trim();
     
     // Подсчет сущностей в сообщении
     let linksCount = 0;
@@ -392,6 +394,94 @@ export class EventProcessingService {
         if (entity.type === 'url') linksCount++;
         if (entity.type === 'mention' || entity.type === 'text_mention') mentionsCount++;
       }
+    }
+    
+    // Проверяем, есть ли пользователь в таблице participants
+    try {
+      // Проверяем наличие участника
+      const { data: participant } = await this.supabase
+        .from('participants')
+        .select('id')
+        .eq('tg_user_id', userId)
+        .eq('org_id', orgId)
+        .maybeSingle();
+      
+      let participantId;
+      
+      // Если участника нет, создаем его
+      if (!participant) {
+        console.log(`Creating new participant for user ${username} (${userId}) in org ${orgId}`);
+        
+        const { data: newParticipant, error } = await this.supabase
+          .from('participants')
+          .insert({
+            org_id: orgId,
+            tg_user_id: userId,
+            username: username,
+            full_name: fullName,
+            last_activity_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+        
+        if (error) {
+          console.error('Error creating participant from message:', error);
+        } else {
+          participantId = newParticipant.id;
+          console.log(`Created new participant with ID ${participantId}`);
+        }
+      } else {
+        participantId = participant.id;
+      }
+      
+      // Если у нас есть ID участника, проверяем связь с группой
+      if (participantId) {
+        // Проверяем, есть ли уже связь с группой
+        const { data: existingGroup } = await this.supabase
+          .from('participant_groups')
+          .select('id, is_active')
+          .eq('participant_id', participantId)
+          .eq('tg_group_id', chatId)
+          .maybeSingle();
+        
+        if (existingGroup) {
+          // Если связь есть, но неактивна, активируем ее
+          if (!existingGroup.is_active) {
+            await this.supabase
+              .from('participant_groups')
+              .update({
+                is_active: true,
+                left_at: null,
+                joined_at: new Date().toISOString()
+              })
+              .eq('id', existingGroup.id);
+            
+            console.log(`Reactivated participant ${participantId} in group ${chatId}`);
+          }
+        } else {
+          // Если связи нет, создаем
+          await this.supabase
+            .from('participant_groups')
+            .insert({
+              participant_id: participantId,
+              tg_group_id: chatId,
+              joined_at: new Date().toISOString(),
+              is_active: true
+            });
+          
+          console.log(`Added participant ${participantId} to group ${chatId}`);
+          
+          // Обновляем счетчик участников в группе
+          await this.supabase
+            .from('telegram_groups')
+            .update({
+              member_count: this.supabase.rpc('increment_counter', { row_id: chatId })
+            })
+            .eq('tg_chat_id', chatId);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing participant data:', error);
     }
     
     // Записываем событие сообщения
@@ -411,8 +501,8 @@ export class EventProcessingService {
         tg_chat_id: chatId,
         meta: {
           user: {
-            username: message.from.username,
-            name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
+            username: username,
+            name: fullName
           },
           message_length: message.text?.length || 0,
           links_count: linksCount,
@@ -445,8 +535,8 @@ export class EventProcessingService {
           meta: {
             message_id: message.message_id,
             user: {
-              username: message.from.username,
-              name: `${message.from.first_name} ${message.from.last_name || ''}`.trim()
+              username: username,
+              name: fullName
             }
           }
         };

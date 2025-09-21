@@ -3,6 +3,7 @@ import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic';
 
@@ -99,39 +100,16 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     const groupMemberCounts: Record<number, number> = {}
     
     for (const group of groups) {
-      // Проверяем наличие поля member_count
-      if (group.member_count !== undefined) {
-        groupMemberCounts[group.tg_chat_id] = group.member_count;
-        continue;
-      }
+      // Используем значение member_count из группы
+      const memberCount = group.member_count !== undefined ? group.member_count : 0;
       
-      // Если поля нет, считаем через participant_groups
-      try {
-        const { count } = await supabase
-          .from('participant_groups')
-          .select('*', { count: 'exact', head: true })
-          .eq('tg_group_id', group.tg_chat_id)
-          .eq('is_active', true);
-        
-        groupMemberCounts[group.tg_chat_id] = count || 0;
-      } catch (error) {
-        console.error(`Error counting members for group ${group.tg_chat_id}:`, error);
-        
-        // Если participant_groups не существует, используем старый метод через activity_events
-        const { count } = await supabase
-          .from('activity_events')
-          .select('tg_user_id', { count: 'exact', head: true })
-          .eq('tg_chat_id', group.tg_chat_id)
-          .eq('event_type', 'join');
-        
-        const { count: leaveCount } = await supabase
-          .from('activity_events')
-          .select('tg_user_id', { count: 'exact', head: true })
-          .eq('tg_chat_id', group.tg_chat_id)
-          .eq('event_type', 'leave');
-        
-        groupMemberCounts[group.tg_chat_id] = (count || 0) - (leaveCount || 0);
-      }
+      // Преобразуем tg_chat_id в число, если это строка
+      const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
+      
+      // Сохраняем значение в объекте
+      groupMemberCounts[chatId] = memberCount;
+      
+      console.log(`Group ${group.title} (${chatId}): member_count = ${memberCount}`);
     }
     
     // Получаем список телеграм-групп для AppShell
@@ -226,19 +204,52 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <div className="text-sm text-neutral-500">Участников</div>
-                    <div className="text-xl font-semibold">{groupMemberCounts[group.tg_chat_id] || 0}</div>
+                    <div className="text-xl font-semibold">
+                      {(() => {
+                        // Преобразуем tg_chat_id в число, если это строка
+                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
+                        return groupMemberCounts[chatId] || 0;
+                      })()}
+                    </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
-                    <div className="text-xl font-semibold">{groupMetrics[group.tg_chat_id]?.message_count || 0}</div>
+                    <div className="text-xl font-semibold">
+                      {(() => {
+                        // Преобразуем tg_chat_id в число, если это строка
+                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
+                        // Получаем метрики для группы
+                        const metrics = groupMetrics[chatId];
+                        // Если метрики есть, возвращаем количество сообщений, иначе 0
+                        return metrics?.message_count || 0;
+                      })()}
+                    </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Активных пользователей (DAU)</div>
-                    <div className="text-xl font-semibold">{groupMetrics[group.tg_chat_id]?.dau_avg || 0}</div>
+                    <div className="text-xl font-semibold">
+                      {(() => {
+                        // Преобразуем tg_chat_id в число, если это строка
+                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
+                        // Получаем метрики для группы
+                        const metrics = groupMetrics[chatId];
+                        // Если метрики есть, возвращаем DAU, иначе 0
+                        return metrics?.dau_avg || 0;
+                      })()}
+                    </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Коэффициент ответов</div>
-                    <div className="text-xl font-semibold">{groupMetrics[group.tg_chat_id]?.reply_ratio_avg || 0}%</div>
+                    <div className="text-xl font-semibold">
+                      {(() => {
+                        // Преобразуем tg_chat_id в число, если это строка
+                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
+                        // Получаем метрики для группы
+                        const metrics = groupMetrics[chatId];
+                        // Если метрики есть, возвращаем коэффициент ответов, иначе 0
+                        return metrics?.reply_ratio_avg || 0;
+                      })()}%
+                    </div>
                   </div>
                   
                   <div>
@@ -271,12 +282,12 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                 </div>
                 
                 <div className="mt-4">
-                  <a 
-                    href={`/app/${params.org}/telegram/analytics/${group.id}`} 
+                  <Link 
+                    href={`/app/${params.org}/telegram/groups/${group.id}`} 
                     className="text-sm text-blue-600 hover:underline"
                   >
-                    Подробная аналитика →
-                  </a>
+                    Управление группой →
+                  </Link>
                 </div>
               </CardContent>
             </Card>

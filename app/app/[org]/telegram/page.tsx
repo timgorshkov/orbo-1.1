@@ -87,9 +87,9 @@ export default async function TelegramPage({ params }: { params: { org: string }
                 <a href={`/app/${params.org}/telegram/check-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
                   Проверить мои группы
                 </a>
-                <a href={`/app/${params.org}/telegram/analytics`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                  Аналитика
-                </a>
+                <Link href={`/app/${params.org}/telegram/analytics`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                  Общая аналитика
+                </Link>
               </div>
 
               <CheckStatusForm orgId={params.org} action={checkStatus} />
@@ -123,9 +123,9 @@ export default async function TelegramPage({ params }: { params: { org: string }
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                              Настройки
-                            </a>
+                            <Link href={`/app/${params.org}/telegram/groups/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                              Управление группой
+                            </Link>
                             <a href={`/app/${params.org}/telegram/message`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
                               Отправить сообщение
                             </a>
@@ -195,9 +195,9 @@ export default async function TelegramPage({ params }: { params: { org: string }
                               </button>
                             </form>
                             {group.bot_status === 'pending' && (
-                              <a href={`/app/${params.org}/telegram/settings/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                                Настройки
-                              </a>
+                              <Link href={`/app/${params.org}/telegram/groups/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
+                                Управление группой
+                              </Link>
                             )}
                           </div>
                         </div>
