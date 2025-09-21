@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { notFound } from 'next/navigation'
 import '../../../globals.css';
+import { getOrgInfoWithClient } from '@/lib/getOrgInfo';
 
 type ActivityEvent = {
   id: number;
@@ -21,6 +22,9 @@ type DashboardStats = {
 export default async function Dashboard({ params }: { params: { org: string } }) {
   try {
     const { supabase } = await requireOrgAccess(params.org)
+    
+    // Получаем информацию об организации
+    const orgInfo = await getOrgInfoWithClient(supabase, params.org)
 
     // Получаем статистику через RPC
     const { data: statsData, error: statsError } = await supabase.rpc(
@@ -80,7 +84,12 @@ export default async function Dashboard({ params }: { params: { org: string } })
       .order('title')
     
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/dashboard`} telegramGroups={telegramGroups || []}>
+      <AppShell 
+        orgId={params.org} 
+        currentPath={`/app/${params.org}/dashboard`} 
+        telegramGroups={telegramGroups || []} 
+        orgName={orgInfo?.name}
+      >
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Дашборд</h1>
         </div>

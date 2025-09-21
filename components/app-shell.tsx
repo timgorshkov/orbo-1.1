@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ReactNode, useEffect, useState } from 'react'
 import clsx from 'clsx'
 import TelegramGroupsNav from './telegram-groups-nav'
+import OrganizationSwitcher from './organization-switcher'
 
 type NavItem = {
   href: string;
@@ -14,12 +15,14 @@ export default function AppShell({
   orgId, 
   children,
   currentPath,
-  telegramGroups = []
+  telegramGroups = [],
+  orgName = ''
 }: { 
   orgId: string; 
   children: ReactNode;
   currentPath?: string;
   telegramGroups?: any[];
+  orgName?: string;
 }) {
   const [groups, setGroups] = useState(telegramGroups);
   
@@ -58,8 +61,10 @@ export default function AppShell({
   return (
     <div className="flex min-h-screen bg-neutral-50">
       <aside className="w-64 shrink-0 border-r bg-white/70 backdrop-blur fixed h-screen">
-        <div className="p-4 font-semibold">
-          <div className="h-8 flex items-center">Orbo</div>
+        <div className="p-4">
+          <div className="h-8 flex items-center">
+            <OrganizationSwitcher currentOrgId={orgId} currentOrgName={orgName} />
+          </div>
         </div>
         <nav className="px-2 space-y-1 mt-6">
           {nav.map(item => (

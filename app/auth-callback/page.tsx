@@ -11,31 +11,50 @@ export default function AuthCallback() {
     const handleCallback = async () => {
       try {
         const supabase = createClientBrowser()
+        
+        // Явно обрабатываем код из URL
+        const hash = window.location.hash
+        console.log('Auth callback hash:', hash ? 'Hash present' : 'No hash')
+        
+        if (hash && hash.includes('access_token')) {
+          // Обмениваем код на сессию
+          const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(hash.substring(1))
+          
+          if (exchangeError) {
+            console.error('Code exchange error:', exchangeError)
+            setError(exchangeError.message)
+            return
+          }
+          
+          console.log('Code exchange successful:', exchangeData ? 'Session created' : 'No session')
+        }
+        
+        // Проверяем сессию после обмена кода
         const { data, error: sessionError } = await supabase.auth.getSession()
+        
         if (sessionError) {
           console.error('Session error:', sessionError)
           setError(sessionError.message)
           return
         }
+        
         if (data && data.session) {
           console.log('Authenticated, redirecting to app...')
-
-          if (data && data.session) {
-            // Сохраняем информацию о сессии для отладки
-            localStorage.setItem('debug_session', JSON.stringify({
-              userId: data.session.user.id,
-              email: data.session.user.email,
-              timestamp: new Date().toISOString()
-            }));
-
+          
+          // Сохраняем информацию о сессии для отладки
+          localStorage.setItem('debug_session', JSON.stringify({
+            userId: data.session.user.id,
+            email: data.session.user.email,
+            timestamp: new Date().toISOString()
+          }));
+          
           setTimeout(() => router.push('/app'), 500)
-          } else {
-           setError('Не удалось получить сессию пользователя')
-          }
+        } else {
+          setError('Не удалось получить сессию пользователя')
         }
       } catch (e: any) {
         console.error('Auth callback error:', e)
-        setError('Произошла ошибка при обработке аутентификации')
+        setError('Произошла ошибка при обработке аутентификации: ' + (e.message || 'Неизвестная ошибка'))
       }
     }
     handleCallback()

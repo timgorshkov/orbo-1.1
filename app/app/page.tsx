@@ -1,10 +1,12 @@
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 export const revalidate = 0; // Отключаем кэширование страницы
 
 export default async function AppRoot() {
+  // Используем стандартный клиент для получения пользователя
   const supabase = createClientServer()
   let user: any;
 
@@ -23,15 +25,21 @@ export default async function AppRoot() {
     redirect('/signin')
     return null;
   }
-
-
-    // Логирование запроса
-    console.log("Fetching memberships for user ID:", user.id);
   
-    const { data: orgs, error: orgsError } = await supabase
-      .from('memberships')
-      .select('org_id, role, organizations(name)')
-      .eq('user_id', user.id);
+  // Создаем клиент с сервисной ролью для обхода RLS
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Логирование запроса
+  console.log("Fetching memberships for user ID:", user.id);
+
+  // Используем сервисную роль для получения организаций
+  const { data: orgs, error: orgsError } = await supabaseAdmin
+    .from('memberships')
+    .select('org_id, role, organizations(name)')
+    .eq('user_id', user.id);
   
     // Логирование результата
     if (orgsError) {
