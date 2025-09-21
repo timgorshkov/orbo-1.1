@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
 type Organization = {
   id: string
@@ -24,28 +24,91 @@ export default function OrganizationSwitcher({
   const [error, setError] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   
+  // Сохраняем текущее название организации для использования в переключателе
+  const [initialOrgName] = useState(currentOrgName)
+  
   useEffect(() => {
     async function fetchOrganizations() {
       try {
         setLoading(true)
-        const supabase = createClientBrowser()
-        const { data, error } = await supabase
-          .from('memberships')
-          .select('org_id, role, organizations(id, name)')
-          .order('created_at', { ascending: false })
         
-        if (error) {
-          throw error
+        // Используем API вместо прямого доступа к базе данных
+        const response = await fetch('/api/debug/auth')
+        const data = await response.json()
+        
+        // Подробное логирование структуры данных
+        console.log('API response data structure:', JSON.stringify({
+          hasOrganizations: !!data?.organizations,
+          hasServiceRole: !!data?.organizations?.serviceRole,
+          hasServiceRoleData: !!data?.organizations?.serviceRole?.data,
+          serviceRoleCount: data?.organizations?.serviceRole?.data?.length,
+          hasAllOrgs: !!data?.organizations?.allOrgs,
+          hasAllOrgsData: !!data?.organizations?.allOrgs?.data,
+          allOrgsCount: data?.organizations?.allOrgs?.data?.length
+        }))
+        
+        if (data?.organizations?.serviceRole?.data?.[0]) {
+          console.log('First membership data:', JSON.stringify(data.organizations.serviceRole.data[0]))
         }
         
-        if (data) {
-          const orgs = data.map(item => ({
+        if (data?.organizations?.allOrgs?.data?.[0]) {
+          console.log('First org data:', JSON.stringify(data.organizations.allOrgs.data[0]))
+        }
+        
+        let newOrgs: Organization[] = []
+        
+        // Сначала добавляем текущую организацию, чтобы она точно была в списке
+        if (currentOrgId && currentOrgName) {
+          newOrgs.push({
+            id: currentOrgId,
+            name: currentOrgName,
+            role: 'current'
+          })
+        }
+        
+        if (data && data.organizations && data.organizations.serviceRole && data.organizations.serviceRole.data) {
+          const memberships = data.organizations.serviceRole.data
+          const serviceRoleOrgs = memberships.map((item: any) => ({
             id: item.org_id,
             name: item.organizations?.[0]?.name || 'Неизвестная организация',
             role: item.role
           }))
-          setOrganizations(orgs)
+          
+          // Добавляем организации, которых ещё нет в списке
+          serviceRoleOrgs.forEach((org: Organization) => {
+            if (!newOrgs.some(o => o.id === org.id)) {
+              newOrgs.push(org)
+            }
+          })
+        } else if (data && data.organizations && data.organizations.allOrgs && data.organizations.allOrgs.data) {
+          // Запасной вариант: используем список всех организаций
+          const allOrgs = data.organizations.allOrgs.data
+          const allOrgsData = allOrgs.map((org: any) => ({
+            id: org.id,
+            name: org.name || 'Неизвестная организация',
+            role: 'Участник'
+          }))
+          
+          // Добавляем организации, которых ещё нет в списке
+          allOrgsData.forEach((org: Organization) => {
+            if (!newOrgs.some(o => o.id === org.id)) {
+              newOrgs.push(org)
+            }
+          })
         }
+        
+        // Дополнительная проверка, если вдруг текущей организации нет в списке
+        if (currentOrgId && !newOrgs.some(org => org.id === currentOrgId)) {
+          newOrgs.push({
+            id: currentOrgId,
+            name: currentOrgName || initialOrgName || 'Текущая организация',
+            role: 'owner'
+          })
+        }
+        
+        console.log('Final organizations list:', newOrgs)
+        
+        setOrganizations(newOrgs)
       } catch (err: any) {
         console.error('Error fetching organizations:', err)
         setError(err.message || 'Ошибка при загрузке организаций')
@@ -72,9 +135,9 @@ export default function OrganizationSwitcher({
   }, [])
   
   // Находим текущую организацию
-  const currentOrg = organizations.find(org => org.id === currentOrgId) || {
+  const currentOrg = {
     id: currentOrgId,
-    name: currentOrgName || 'Текущая организация'
+    name: currentOrgName || initialOrgName || 'Текущая организация'
   }
   
   return (

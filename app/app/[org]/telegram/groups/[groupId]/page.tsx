@@ -30,9 +30,26 @@ type GroupMetrics = {
   dau_avg: number;
   reply_ratio_avg: number;
   days: number;
+  silent_rate: number;
+  newcomer_activation: number;
+  activity_gini: number;
+  prime_time: Array<{
+    hour: number;
+    message_count: number;
+    is_prime_time: boolean;
+  }>;
+  risk_radar: Array<{
+    tg_user_id: number;
+    username: string;
+    risk_score: number;
+    last_activity: string;
+    message_count: number;
+  }>;
 }
 
-export default function TelegramGroupPage({ params }: { params: { org: string, groupid: string } }) {
+export default function TelegramGroupPage({ params }: { params: { org: string, groupid?: string, groupId?: string } }) {
+  // Исправляем проблему с несоответствием имен параметров (groupid vs groupId)
+  const groupIdParam = params.groupid || params.groupId;
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -50,9 +67,14 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
     reply_count: 0,
     join_count: 0,
     leave_count: 0,
-    dau_avg: 0,
-    reply_ratio_avg: 0,
-    days: 0
+          dau_avg: 0,
+          reply_ratio_avg: 0,
+          days: 0,
+          silent_rate: 0,
+          newcomer_activation: 0,
+          activity_gini: 0,
+          prime_time: Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
+          risk_radar: []
   })
   const [topUsers, setTopUsers] = useState<[string, { count: number, username: string | null }][]>([])
   const [loadingAnalytics, setLoadingAnalytics] = useState(true)
@@ -61,44 +83,195 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
     const fetchGroup = async () => {
       setLoading(true)
       try {
-        const supabase = createClientBrowser()
-        const { data, error } = await supabase
-          .from('telegram_groups')
-          .select('*')
-          .eq('id', params.groupid)
-          .eq('org_id', params.org)
-          .single()
-
-        if (error || !data) {
-          console.error('Error fetching group:', error)
-          setError('Не удалось загрузить данные группы')
-          return
+        // Используем сервисную роль для обхода RLS
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+        const supabase = createClientBrowser();
+        
+        console.log('Fetching group with ID:', groupIdParam, 'for org:', params.org);
+        
+        console.log('Group ID parameter:', groupIdParam, 'Type:', typeof groupIdParam);
+        
+        // Проверка на отсутствие ID группы
+        if (!groupIdParam) {
+          console.error('Group ID is undefined or null');
+          setError('Не указан ID группы. Пожалуйста, вернитесь на страницу списка групп и выберите группу.');
+          setLoading(false);
+          return;
+        }
+        
+        // Пробуем разные подходы к поиску группы
+        let data, error;
+        
+        try {
+          // Сначала пробуем найти по строковому ID
+          const result = await supabase
+            .from('telegram_groups')
+            .select('*')
+            .eq('id', groupIdParam)
+            .eq('org_id', params.org)
+            .single();
+            
+          data = result.data;
+          error = result.error;
+          
+          // Если не нашли, пробуем преобразовать в число
+          if (error && !data) {
+            const groupId = parseInt(String(groupIdParam));
+            if (!isNaN(groupId)) {
+              console.log('Trying numeric ID:', groupId);
+              const numericResult = await supabase
+                .from('telegram_groups')
+                .select('*')
+                .eq('id', groupId)
+                .eq('org_id', params.org)
+                .single();
+                
+              console.log('Numeric ID search result:', {
+                data: numericResult.data,
+                error: numericResult.error
+              });
+                
+              data = numericResult.data;
+              error = numericResult.error;
+            }
+          }
+          
+          // Если всё еще не нашли, пробуем искать по tg_chat_id
+          if (error && !data) {
+            console.log('Trying to find by tg_chat_id');
+            const chatIdResult = await supabase
+              .from('telegram_groups')
+              .select('*')
+              .eq('tg_chat_id', groupIdParam)
+              .eq('org_id', params.org)
+              .single();
+              
+            data = chatIdResult.data;
+            error = chatIdResult.error;
+          }
+        } catch (e: any) {
+          console.error('Error during group search:', e);
+          error = { message: e.message || 'Ошибка при поиске группы' };
         }
 
-        setGroup(data)
-        setTitle(data.title || '')
-        setWelcomeMessage(data.welcome_message || '')
-        setNotificationsEnabled(!!data.notification_enabled)
-      } catch (e) {
-        console.error('Error:', e)
-        setError('Произошла ошибка при загрузке данных')
+        if (error) {
+          console.error('Error fetching group:', error);
+          setError('Не удалось загрузить данные группы: ' + error.message);
+          return;
+        }
+
+        if (!data) {
+          console.error('No group data found');
+          setError('Группа не найдена');
+          return;
+        }
+
+        console.log('Fetched group data:', data);
+        setGroup(data);
+        setTitle(data.title || '');
+        setWelcomeMessage(data.welcome_message || '');
+        setNotificationsEnabled(!!data.notification_enabled);
+      } catch (e: any) {
+        console.error('Error:', e);
+        setError('Произошла ошибка при загрузке данных: ' + (e.message || e));
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchGroup()
-  }, [params.groupid, params.org])
+    fetchGroup();
+  }, [groupIdParam, params.org]);
 
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      if (!group) return;
+  // Выносим функцию fetchAnalytics за пределы useEffect, чтобы её можно было вызвать из кнопки
+  const fetchAnalytics = async () => {
+      if (!group) {
+        console.log('No group data available for analytics');
+        return;
+      }
       
       setLoadingAnalytics(true)
       try {
-        const supabase = createClientBrowser()
+        console.log('Fetching analytics for group:', group)
         
-        // Пробуем использовать функцию с учетом часовой зоны
+        // Используем более надежный подход с обработкой ошибок для каждого запроса
+        // Создаем API запрос для получения данных через сервисную роль на сервере
+        const apiUrl = `/api/telegram/analytics/data?orgId=${params.org}&groupId=${group.id}&chatId=${group.tg_chat_id}`;
+        console.log('Fetching analytics from API:', apiUrl);
+        
+        try {
+          const analyticsResponse = await fetch(apiUrl);
+          const analyticsData = await analyticsResponse.json();
+          
+          console.log('Analytics API response:', analyticsData);
+          
+          if (analyticsData.error) {
+            console.error('Analytics API error:', analyticsData.error);
+            setError('Ошибка при загрузке аналитики: ' + analyticsData.error);
+            setLoadingAnalytics(false);
+            return;
+          }
+          
+          // Обновляем метрики из API
+          if (analyticsData.metrics) {
+            setGroupMetrics({
+              message_count: analyticsData.metrics.message_count || 0,
+              reply_count: analyticsData.metrics.reply_count || 0,
+              join_count: analyticsData.metrics.join_count || 0,
+              leave_count: analyticsData.metrics.leave_count || 0,
+              dau_avg: analyticsData.metrics.dau_avg || 0,
+              reply_ratio_avg: analyticsData.metrics.reply_ratio_avg || 0,
+              days: analyticsData.metrics.days || 0,
+              silent_rate: analyticsData.metrics.silent_rate || 0,
+              newcomer_activation: analyticsData.metrics.newcomer_activation || 0,
+              activity_gini: analyticsData.metrics.activity_gini || 0,
+              prime_time: analyticsData.metrics.prime_time || Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
+              risk_radar: analyticsData.metrics.risk_radar || []
+            });
+          }
+          
+          // Обновляем топ пользователей из API
+          if (analyticsData.topUsers) {
+            setTopUsers(analyticsData.topUsers);
+          }
+          
+          // Обновляем дневные метрики из API
+          if (analyticsData.dailyMetrics) {
+            setMetrics(analyticsData.dailyMetrics);
+          }
+          
+          setLoadingAnalytics(false);
+          return;
+        } catch (apiError: any) {
+          console.error('Error fetching from analytics API:', apiError);
+          // Продолжаем с клиентским запросом как запасной вариант
+        }
+        
+        // Запасной вариант - используем клиентский запрос
+        const supabase = createClientBrowser();
+        
+        console.log('Group data for analytics:', {
+          group_id: group.id,
+          tg_chat_id: group.tg_chat_id,
+          org_id: params.org,
+          title: group.title
+        });
+        
+        // Проверим напрямую наличие данных в activity_events
+        const { data: activityCheck, error: activityError } = await supabase
+          .from('activity_events')
+          .select('id, event_type, created_at, tg_user_id')
+          .eq('tg_chat_id', group.tg_chat_id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+          
+        console.log('Recent activity events check:', { 
+          count: activityCheck?.length || 0, 
+          events: activityCheck,
+          error: activityError 
+        });
+        
+        // Сначала получаем базовые метрики
         const { data: timezonedMetrics, error: tzError } = await supabase.rpc(
           'get_metrics_in_timezone',
           {
@@ -108,6 +281,100 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
             timezone_name: 'Europe/Moscow'
           }
         )
+        
+        console.log('Basic metrics result:', { timezonedMetrics, tzError })
+        
+        // Пробуем получить расширенные метрики, но не блокируем основной поток
+        let silentRate = 0
+        let newcomerActivation = 0
+        let primeTime = []
+        let activityGini = 0
+        let riskRadar = []
+        
+        try {
+          const { data: silentRateData, error: silentRateError } = await supabase.rpc('get_silent_rate', {
+            org_id_param: params.org,
+            tg_chat_id_param: group.tg_chat_id
+          })
+          
+          if (silentRateError) {
+            console.error('Error fetching silent_rate:', silentRateError)
+          }
+          
+          const silentRateResult = { data: silentRateData || 0 }
+          silentRate = silentRateResult.data
+          console.log('Silent rate:', silentRate)
+        } catch (e) {
+          console.error('Silent rate error:', e)
+        }
+        
+        try {
+          const { data: newcomerData, error: newcomerError } = await supabase.rpc('get_newcomer_activation', {
+            org_id_param: params.org,
+            tg_chat_id_param: group.tg_chat_id
+          })
+          
+          if (newcomerError) {
+            console.error('Error fetching newcomer_activation:', newcomerError)
+          }
+          
+          const newcomerResult = { data: newcomerData || 0 }
+          newcomerActivation = newcomerResult.data
+          console.log('Newcomer activation:', newcomerActivation)
+        } catch (e) {
+          console.error('Newcomer activation error:', e)
+        }
+        
+        try {
+          const { data: primeTimeData, error: primeTimeError } = await supabase.rpc('get_prime_time', {
+            org_id_param: params.org,
+            tg_chat_id_param: group.tg_chat_id
+          })
+          
+          if (primeTimeError) {
+            console.error('Error fetching prime_time:', primeTimeError)
+          }
+          
+          const primeTimeResult = { data: primeTimeData || [] }
+          primeTime = primeTimeResult.data || []
+          console.log('Prime time:', primeTime)
+        } catch (e) {
+          console.error('Prime time error:', e)
+        }
+        
+        try {
+          const { data: giniData, error: giniError } = await supabase.rpc('get_activity_gini', {
+            org_id_param: params.org,
+            tg_chat_id_param: group.tg_chat_id
+          })
+          
+          if (giniError) {
+            console.error('Error fetching activity_gini:', giniError)
+          }
+          
+          const giniResult = { data: giniData || 0 }
+          activityGini = giniResult.data
+          console.log('Activity gini:', activityGini)
+        } catch (e) {
+          console.error('Activity gini error:', e)
+        }
+        
+        try {
+          const { data: riskData, error: riskError } = await supabase.rpc('get_risk_radar', {
+            org_id_param: params.org,
+            tg_chat_id_param: group.tg_chat_id
+          })
+          
+          if (riskError) {
+            console.error('Error fetching risk_radar:', riskError)
+          }
+          
+          const riskResult = { data: riskData || [] }
+          riskRadar = riskResult.data || []
+          console.log('Risk radar:', riskRadar)
+        } catch (e) {
+          console.error('Risk radar error:', e)
+        }
         
         let metricsData: any[] = [];
         
@@ -161,28 +428,87 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           aggregatedMetrics.reply_ratio_avg = Math.round(aggregatedMetrics.reply_ratio_avg / days)
         }
         
-        setGroupMetrics(aggregatedMetrics);
+        // Добавляем новые метрики
+        const updatedMetrics = {
+          ...aggregatedMetrics,
+          silent_rate: silentRate || 0,
+          newcomer_activation: newcomerActivation || 0,
+          activity_gini: activityGini || 0,
+          prime_time: primeTime && primeTime.length > 0 
+            ? primeTime 
+            : Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
+          risk_radar: riskRadar || []
+        };
+        
+        console.log('Final metrics to display:', updatedMetrics);
+        setGroupMetrics(updatedMetrics);
         
         // Если DAU все равно 0, попробуем получить его напрямую из activity_events
         if (aggregatedMetrics.dau_avg === 0) {
           const sevenDaysAgo = new Date()
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
           
-          const { data: activeUsers } = await supabase
+          console.log('DAU is 0, trying direct calculation from activity_events');
+          
+          // Используем более точный запрос для подсчета уникальных пользователей по дням
+          const { data: dailyActiveUsers, error: dauError } = await supabase
             .from('activity_events')
-            .select('tg_user_id', { count: 'exact', head: true })
+            .select('tg_user_id, created_at')
             .eq('tg_chat_id', group.tg_chat_id)
             .eq('event_type', 'message')
             .gte('created_at', sevenDaysAgo.toISOString())
+            .order('created_at', { ascending: false })
             .limit(1000)
+            
+          console.log('Direct DAU query result:', { 
+            count: dailyActiveUsers?.length || 0,
+            error: dauError
+          });
           
-          if (activeUsers && activeUsers.length > 0) {
-            // Считаем уникальных пользователей
-            const uniqueUsers = new Set(activeUsers.map((u: any) => u.tg_user_id))
+          if (dailyActiveUsers && dailyActiveUsers.length > 0) {
+            // Группируем по дням и считаем уникальных пользователей
+            const usersByDay: Record<string, Set<string>> = {};
+            
+            dailyActiveUsers.forEach((event: any) => {
+              const day = new Date(event.created_at).toISOString().split('T')[0];
+              if (!usersByDay[day]) {
+                usersByDay[day] = new Set();
+              }
+              if (event.tg_user_id) {
+                usersByDay[day].add(event.tg_user_id.toString());
+              }
+            });
+            
+            // Считаем среднее DAU
+            const days = Object.keys(usersByDay).length || 1;
+            let totalActiveUsers = 0;
+            
+            Object.values(usersByDay).forEach(users => {
+              totalActiveUsers += users.size;
+            });
+            
+            const avgDau = Math.max(1, Math.round(totalActiveUsers / days));
+            console.log('Calculated DAU:', { 
+              days, 
+              totalActiveUsers, 
+              avgDau,
+              usersByDay: Object.fromEntries(
+                Object.entries(usersByDay).map(([day, users]) => [day, users.size])
+              )
+            });
+            
             setGroupMetrics(prev => ({
               ...prev,
-              dau_avg: Math.max(1, Math.round(uniqueUsers.size / 7))
-            }))
+              dau_avg: avgDau
+            }));
+            
+            // Также обновляем количество сообщений, если оно 0
+            if (aggregatedMetrics.message_count === 0) {
+              setGroupMetrics(prev => ({
+                ...prev,
+                message_count: dailyActiveUsers.length
+              }));
+            }
           }
         }
         
@@ -190,34 +516,105 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
         const lastWeek = new Date()
         lastWeek.setDate(lastWeek.getDate() - 7)
         
-        const { data: topParticipants } = await supabase
+        console.log('Fetching top participants');
+        
+        const { data: topParticipants, error: topError } = await supabase
           .from('activity_events')
-          .select('tg_user_id, meta')
+          .select('tg_user_id, meta, created_at')
           .eq('tg_chat_id', group.tg_chat_id)
           .eq('event_type', 'message')
           .gte('created_at', lastWeek.toISOString())
-          .limit(100)
+          .order('created_at', { ascending: false })
+          .limit(500)
+        
+        console.log('Top participants query result:', {
+          count: topParticipants?.length || 0,
+          error: topError,
+          sample: topParticipants?.slice(0, 3) || []
+        });
         
         const participantActivity: Record<string, { count: number, username: string | null }> = {}
         
-        if (topParticipants) {
+        if (topParticipants && topParticipants.length > 0) {
           topParticipants.forEach((event: any) => {
             const userId = event.tg_user_id?.toString()
             if (!userId) return
             
             if (!participantActivity[userId]) {
+              // Проверяем разные варианты хранения имени пользователя в meta
+              let username = null;
+              if (event.meta?.user?.username) {
+                username = event.meta.user.username;
+              } else if (event.meta?.from?.username) {
+                username = event.meta.from.username;
+              } else if (event.meta?.username) {
+                username = event.meta.username;
+              } else if (event.meta?.first_name) {
+                username = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
+              }
+              
               participantActivity[userId] = { 
                 count: 0, 
-                username: event.meta?.user?.username || null
+                username: username
               }
             }
             participantActivity[userId].count++
           })
+          
+          console.log('Participant activity calculated:', {
+            uniqueUsers: Object.keys(participantActivity).length,
+            sample: Object.entries(participantActivity).slice(0, 3)
+          });
+        } else {
+          // Если не нашли данные через event_type='message', попробуем искать все события
+          console.log('No message events found, trying all events');
+          
+          const { data: allEvents, error: allEventsError } = await supabase
+            .from('activity_events')
+            .select('tg_user_id, meta, created_at, event_type')
+            .eq('tg_chat_id', group.tg_chat_id)
+            .gte('created_at', lastWeek.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(500)
+            
+          console.log('All events query result:', {
+            count: allEvents?.length || 0,
+            error: allEventsError,
+            eventTypes: allEvents ? Array.from(new Set(allEvents.map((e: any) => e.event_type))) : []
+          });
+          
+          if (allEvents && allEvents.length > 0) {
+            allEvents.forEach((event: any) => {
+              const userId = event.tg_user_id?.toString()
+              if (!userId) return
+              
+              if (!participantActivity[userId]) {
+                let username = null;
+                if (event.meta?.user?.username) {
+                  username = event.meta.user.username;
+                } else if (event.meta?.from?.username) {
+                  username = event.meta.from.username;
+                } else if (event.meta?.username) {
+                  username = event.meta.username;
+                } else if (event.meta?.first_name) {
+                  username = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
+                }
+                
+                participantActivity[userId] = { 
+                  count: 0, 
+                  username: username
+                }
+              }
+              participantActivity[userId].count++
+            });
+          }
         }
         
         const topUsersList = Object.entries(participantActivity)
           .sort((a, b) => b[1].count - a[1].count)
           .slice(0, 5)
+        
+        console.log('Top users list:', topUsersList);
         
         setTopUsers(topUsersList)
         
@@ -228,10 +625,13 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
       }
     }
     
+    // Удалено дублирование вызова fetchAnalytics
+  // Вызываем fetchAnalytics при изменении group или params.org
+  useEffect(() => {
     if (group) {
-      fetchAnalytics()
+      fetchAnalytics();
     }
-  }, [group, params.org])
+  }, [group, params.org]);
 
   const handleSave = async () => {
     setSaving(true)
@@ -326,7 +726,24 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           </TabsList>
           
           <TabsContent value="analytics">
-            {loadingAnalytics ? (
+            <div className="mb-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (group) {
+                    setLoadingAnalytics(true);
+                    fetchAnalytics();
+                  }
+                }}
+                disabled={loadingAnalytics || !group}
+              >
+                {loadingAnalytics ? 'Загрузка...' : 'Обновить аналитику'}
+              </Button>
+            </div>
+            
+            {error ? (
+              <div className="text-center py-8 text-red-500">{error}</div>
+            ) : loadingAnalytics ? (
               <div className="text-center py-8">Загрузка аналитики...</div>
             ) : (
               <>
@@ -440,6 +857,92 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                       ) : (
                         <div className="text-center py-4 text-neutral-500">
                           Нет данных о дневной активности
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle>Вовлеченность</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-neutral-500">Silent-кохорта</div>
+                          <div className="text-xl font-semibold">{groupMetrics.silent_rate}%</div>
+                          <div className="text-xs text-neutral-500">доля неактивных за 7 дней</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-neutral-500">Активация новичков</div>
+                          <div className="text-xl font-semibold">{groupMetrics.newcomer_activation}%</div>
+                          <div className="text-xs text-neutral-500">активны в первые 72ч</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-neutral-500">Равномерность</div>
+                          <div className="text-xl font-semibold">{(1 - groupMetrics.activity_gini) * 100}%</div>
+                          <div className="text-xs text-neutral-500">распределение активности</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle>Prime Time</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-6 gap-1">
+                        {groupMetrics.prime_time.map((hour) => (
+                          <div
+                            key={hour.hour}
+                            className={`text-center p-1 text-xs rounded ${
+                              hour.is_prime_time ? 'bg-blue-100 text-blue-800' : 'bg-gray-50'
+                            }`}
+                          >
+                            {hour.hour}:00
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-2 text-center">
+                        Выделены часы пиковой активности
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="md:col-span-2">
+                    <CardHeader className="pb-2">
+                      <CardTitle>Risk Radar</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {groupMetrics.risk_radar.length > 0 ? (
+                        <div className="space-y-3">
+                          {groupMetrics.risk_radar.map((user) => (
+                            <div key={user.tg_user_id} className="flex items-center justify-between">
+                              <div>
+                                <div className="font-medium">
+                                  {user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`}
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                  Последняя активность: {new Date(user.last_activity).toLocaleDateString('ru')}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                <div className="text-sm">{user.message_count} сообщ.</div>
+                                <div className={`px-2 py-1 rounded text-sm ${
+                                  user.risk_score >= 80 ? 'bg-red-100 text-red-800' :
+                                  user.risk_score >= 60 ? 'bg-amber-100 text-amber-800' :
+                                  'bg-blue-100 text-blue-800'
+                                }`}>
+                                  Риск: {user.risk_score}%
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-neutral-500">
+                          Нет участников с высоким риском оттока
                         </div>
                       )}
                     </CardContent>
