@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     )
     
     // Получаем список групп организации
-    const { data: groups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id, bot_status, member_count, new_members_count')
-      .eq('org_id', params.org)
-      .order('title')
+    const groups = await getOrgTelegramGroups(params.org)
     
     if (!groups || groups.length === 0) {
       return (
@@ -54,20 +51,25 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     lastWeek.setDate(lastWeek.getDate() - 7)
     const lastWeekStr = lastWeek.toISOString().split('T')[0]
     
-    const { data: metrics } = await supabase
-      .from('group_metrics')
-      .select('*')
-      .eq('org_id', params.org)
-      .gte('date', lastWeekStr)
-      .order('date')
+    const chatIds = groups.map(group => String(group.tg_chat_id));
+
+    const { data: metrics } = chatIds.length > 0
+      ? await supabase
+        .from('group_metrics')
+        .select('*')
+        .in('tg_chat_id', chatIds)
+        .gte('date', lastWeekStr)
+        .order('date')
+      : { data: [] }
     
     // Агрегируем метрики по группам
-    const groupMetrics: Record<number, any> = {}
+    const groupMetrics: Record<string, any> = {}
     
     if (metrics) {
       metrics.forEach(metric => {
-        if (!groupMetrics[metric.tg_chat_id]) {
-          groupMetrics[metric.tg_chat_id] = {
+        const key = String(metric.tg_chat_id);
+        if (!groupMetrics[key]) {
+          groupMetrics[key] = {
             message_count: 0,
             reply_count: 0,
             join_count: 0,
@@ -78,49 +80,35 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
           }
         }
         
-        groupMetrics[metric.tg_chat_id].message_count += metric.message_count || 0
-        groupMetrics[metric.tg_chat_id].reply_count += metric.reply_count || 0
-        groupMetrics[metric.tg_chat_id].join_count += metric.join_count || 0
-        groupMetrics[metric.tg_chat_id].leave_count += metric.leave_count || 0
-        groupMetrics[metric.tg_chat_id].dau_avg += metric.dau || 0
-        groupMetrics[metric.tg_chat_id].reply_ratio_avg += metric.reply_ratio || 0
-        groupMetrics[metric.tg_chat_id].days++
+        groupMetrics[key].message_count += metric.message_count || 0
+        groupMetrics[key].reply_count += metric.reply_count || 0
+        groupMetrics[key].join_count += metric.join_count || 0
+        groupMetrics[key].leave_count += metric.leave_count || 0
+        groupMetrics[key].dau_avg += metric.dau || 0
+        groupMetrics[key].reply_ratio_avg += metric.reply_ratio || 0
+        groupMetrics[key].days++
       })
       
       // Вычисляем средние значения
       Object.keys(groupMetrics).forEach(chatId => {
-        const numChatId = Number(chatId);
-        const days = groupMetrics[numChatId].days || 1;
-        groupMetrics[numChatId].dau_avg = Math.round(groupMetrics[numChatId].dau_avg / days);
-        groupMetrics[numChatId].reply_ratio_avg = Math.round(groupMetrics[numChatId].reply_ratio_avg / days);
+        const days = groupMetrics[chatId].days || 1;
+        groupMetrics[chatId].dau_avg = Math.round(groupMetrics[chatId].dau_avg / days);
+        groupMetrics[chatId].reply_ratio_avg = Math.round(groupMetrics[chatId].reply_ratio_avg / days);
       })
     }
     
     // Получаем общее количество участников для каждой группы
-    const groupMemberCounts: Record<number, number> = {}
-    
+    const groupMemberCounts: Record<string, number> = {}
+
     for (const group of groups) {
-      // Используем значение member_count из группы
-      const memberCount = group.member_count !== undefined ? group.member_count : 0;
-      
-      // Преобразуем tg_chat_id в число, если это строка
-      const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
-      
-      // Сохраняем значение в объекте
+      const memberCount = group.member_count ?? 0;
+      const chatId = String(group.tg_chat_id);
       groupMemberCounts[chatId] = memberCount;
-      
       console.log(`Group ${group.title} (${chatId}): member_count = ${memberCount}`);
     }
-    
-    // Получаем список телеграм-групп для AppShell
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
-    
+
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={telegramGroups || []}>
+      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={groups}>
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Аналитика Telegram</h1>
         </div>
@@ -205,50 +193,25 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                   <div>
                     <div className="text-sm text-neutral-500">Участников</div>
                     <div className="text-xl font-semibold">
-                      {(() => {
-                        // Преобразуем tg_chat_id в число, если это строка
-                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
-                        return groupMemberCounts[chatId] || 0;
-                      })()}
+                      {groupMemberCounts[String(group.tg_chat_id)] || 0}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
                     <div className="text-xl font-semibold">
-                      {(() => {
-                        // Преобразуем tg_chat_id в число, если это строка
-                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
-                        // Получаем метрики для группы
-                        const metrics = groupMetrics[chatId];
-                        // Если метрики есть, возвращаем количество сообщений, иначе 0
-                        return metrics?.message_count || 0;
-                      })()}
+                      {groupMetrics[String(group.tg_chat_id)]?.message_count || 0}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Активных пользователей (DAU)</div>
                     <div className="text-xl font-semibold">
-                      {(() => {
-                        // Преобразуем tg_chat_id в число, если это строка
-                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
-                        // Получаем метрики для группы
-                        const metrics = groupMetrics[chatId];
-                        // Если метрики есть, возвращаем DAU, иначе 0
-                        return metrics?.dau_avg || 0;
-                      })()}
+                      {groupMetrics[String(group.tg_chat_id)]?.dau_avg || 0}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Коэффициент ответов</div>
                     <div className="text-xl font-semibold">
-                      {(() => {
-                        // Преобразуем tg_chat_id в число, если это строка
-                        const chatId = typeof group.tg_chat_id === 'string' ? parseInt(group.tg_chat_id) : group.tg_chat_id;
-                        // Получаем метрики для группы
-                        const metrics = groupMetrics[chatId];
-                        // Если метрики есть, возвращаем коэффициент ответов, иначе 0
-                        return metrics?.reply_ratio_avg || 0;
-                      })()}%
+                      {groupMetrics[String(group.tg_chat_id)]?.reply_ratio_avg || 0}%
                     </div>
                   </div>
                   
@@ -258,12 +221,12 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Ушло участников</div>
-                    <div className="text-xl font-semibold">{groupMetrics[group.tg_chat_id]?.leave_count || 0}</div>
+                    <div className="text-xl font-semibold">{groupMetrics[String(group.tg_chat_id)]?.leave_count || 0}</div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-500">Чистый прирост</div>
                     <div className="text-xl font-semibold">
-                      {(groupMetrics[group.tg_chat_id]?.join_count || 0) - (groupMetrics[group.tg_chat_id]?.leave_count || 0)}
+                      {(groupMetrics[String(group.tg_chat_id)]?.join_count || 0) - (groupMetrics[String(group.tg_chat_id)]?.leave_count || 0)}
                     </div>
                   </div>
                   <div>

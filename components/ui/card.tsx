@@ -16,3 +16,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLDivE
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={clsx("p-5", className)} {...props} />
 }
+
+export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={clsx("text-sm text-neutral-500 mt-1", className)} {...props} />
+}

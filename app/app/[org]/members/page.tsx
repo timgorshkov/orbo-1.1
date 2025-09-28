@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 
 export const dynamic = 'force-dynamic';
 
@@ -90,17 +91,7 @@ export default async function MembersPage({ params }: { params: { org: string } 
     }
     
     // Получаем список групп организации
-    const { data: groups } = await supabase
-      .from('telegram_groups')
-      .select('id, tg_chat_id, title, bot_status')
-      .eq('org_id', params.org)
-      .order('title')
-    
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
+    const telegramGroups = await getOrgTelegramGroups(params.org)
       
     // Создаем RPC функцию для получения участников с количеством групп, если она не существует
     try {

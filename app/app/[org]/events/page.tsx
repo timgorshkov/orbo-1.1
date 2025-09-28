@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 
 type Event = {
   id: string;
@@ -37,11 +38,7 @@ export default async function EventsPage({ params }: { params: { org: string } }
     const pastEvents = events?.filter(e => new Date(e.starts_at) < now) || []
     
     // Получаем список групп
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
+    const telegramGroups = await getOrgTelegramGroups(params.org)
 
 
     return (

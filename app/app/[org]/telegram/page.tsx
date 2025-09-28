@@ -6,10 +6,12 @@ import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { CheckStatusForm, AddGroupManuallyForm } from './form-components'
 import { checkStatus, addGroupManually, deleteGroup } from './actions'
+import AddVerifiedGroup from './add-verified-group'
 import { notFound } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 
 
 type TelegramGroup = {
@@ -48,11 +50,7 @@ export default async function TelegramPage({ params }: { params: { org: string }
       
     const supabase2 = createClientServer()
     // Получаем список групп
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
+    const telegramGroups = await getOrgTelegramGroups(params.org)
 
     
     return (
@@ -81,12 +79,12 @@ export default async function TelegramPage({ params }: { params: { org: string }
               </div>
               
               <div className="flex gap-2 mt-4 flex-wrap">
-                <a href={`/app/${params.org}/telegram/setup-telegram`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-black text-white hover:bg-black/85">
-                  Настроить Telegram ID
-                </a>
-                <a href={`/app/${params.org}/telegram/check-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                  Проверить мои группы
-                </a>
+                <Link href={`/app/${params.org}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-black text-white hover:bg-black/85">
+                  Настроить Telegram аккаунт
+                </Link>
+                <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
+                  Доступные группы
+                </Link>
                 <Link href={`/app/${params.org}/telegram/analytics`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
                   Общая аналитика
                 </Link>
@@ -94,7 +92,7 @@ export default async function TelegramPage({ params }: { params: { org: string }
 
               <CheckStatusForm orgId={params.org} action={checkStatus} />
 
-              <AddGroupManuallyForm orgId={params.org} />
+              <AddVerifiedGroup orgId={params.org} />
 
 
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
-import { createClient } from '@supabase/supabase-js'
+import { useMemo } from 'react'
 
 type Organization = {
   id: string
@@ -23,102 +23,57 @@ export default function OrganizationSwitcher({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  
-  // Сохраняем текущее название организации для использования в переключателе
-  const [initialOrgName] = useState(currentOrgName)
-  
+  const [initialOrgName, setInitialOrgName] = useState(currentOrgName)
+
   useEffect(() => {
+    if (!initialOrgName && currentOrgName) {
+      setInitialOrgName(currentOrgName)
+    }
+  }, [currentOrgName, initialOrgName])
+
+  useEffect(() => {
+    let isMounted = true
+
     async function fetchOrganizations() {
       try {
         setLoading(true)
-        
-        // Используем API вместо прямого доступа к базе данных
-        const response = await fetch('/api/debug/auth')
+
+        const response = await fetch('/api/organizations/list')
         const data = await response.json()
-        
-        // Подробное логирование структуры данных
-        console.log('API response data structure:', JSON.stringify({
-          hasOrganizations: !!data?.organizations,
-          hasServiceRole: !!data?.organizations?.serviceRole,
-          hasServiceRoleData: !!data?.organizations?.serviceRole?.data,
-          serviceRoleCount: data?.organizations?.serviceRole?.data?.length,
-          hasAllOrgs: !!data?.organizations?.allOrgs,
-          hasAllOrgsData: !!data?.organizations?.allOrgs?.data,
-          allOrgsCount: data?.organizations?.allOrgs?.data?.length
-        }))
-        
-        if (data?.organizations?.serviceRole?.data?.[0]) {
-          console.log('First membership data:', JSON.stringify(data.organizations.serviceRole.data[0]))
+
+        if (!isMounted) return
+
+        if (data.error) {
+          throw new Error(data.error)
         }
-        
-        if (data?.organizations?.allOrgs?.data?.[0]) {
-          console.log('First org data:', JSON.stringify(data.organizations.allOrgs.data[0]))
-        }
-        
-        let newOrgs: Organization[] = []
-        
-        // Сначала добавляем текущую организацию, чтобы она точно была в списке
-        if (currentOrgId && currentOrgName) {
-          newOrgs.push({
-            id: currentOrgId,
-            name: currentOrgName,
-            role: 'current'
-          })
-        }
-        
-        if (data && data.organizations && data.organizations.serviceRole && data.organizations.serviceRole.data) {
-          const memberships = data.organizations.serviceRole.data
-          const serviceRoleOrgs = memberships.map((item: any) => ({
-            id: item.org_id,
-            name: item.organizations?.[0]?.name || 'Неизвестная организация',
-            role: item.role
-          }))
-          
-          // Добавляем организации, которых ещё нет в списке
-          serviceRoleOrgs.forEach((org: Organization) => {
-            if (!newOrgs.some(o => o.id === org.id)) {
-              newOrgs.push(org)
-            }
-          })
-        } else if (data && data.organizations && data.organizations.allOrgs && data.organizations.allOrgs.data) {
-          // Запасной вариант: используем список всех организаций
-          const allOrgs = data.organizations.allOrgs.data
-          const allOrgsData = allOrgs.map((org: any) => ({
-            id: org.id,
-            name: org.name || 'Неизвестная организация',
-            role: 'Участник'
-          }))
-          
-          // Добавляем организации, которых ещё нет в списке
-          allOrgsData.forEach((org: Organization) => {
-            if (!newOrgs.some(o => o.id === org.id)) {
-              newOrgs.push(org)
-            }
-          })
-        }
-        
-        // Дополнительная проверка, если вдруг текущей организации нет в списке
-        if (currentOrgId && !newOrgs.some(org => org.id === currentOrgId)) {
-          newOrgs.push({
-            id: currentOrgId,
-            name: currentOrgName || initialOrgName || 'Текущая организация',
-            role: 'owner'
-          })
-        }
-        
-        console.log('Final organizations list:', newOrgs)
-        
-        setOrganizations(newOrgs)
+
+        const list: Organization[] = data.organizations || []
+
+        // Убедимся, что текущая организация присутствует и в списке, и помечена
+        const currentExists = list.some(org => org.id === currentOrgId)
+        const enriched = currentExists
+          ? list
+          : [{ id: currentOrgId, name: currentOrgName || initialOrgName || 'Текущая организация', role: 'current' }, ...list]
+
+        setOrganizations(enriched.sort((a, b) => a.name.localeCompare(b.name)))
       } catch (err: any) {
         console.error('Error fetching organizations:', err)
-        setError(err.message || 'Ошибка при загрузке организаций')
+        if (isMounted) {
+          setError(err.message || 'Ошибка при загрузке организаций')
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
-    
+
     fetchOrganizations()
-  }, [])
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentOrgId, currentOrgName, initialOrgName])
   
   // Закрываем дропдаун при клике вне его
   useEffect(() => {
@@ -135,10 +90,10 @@ export default function OrganizationSwitcher({
   }, [])
   
   // Находим текущую организацию
-  const currentOrg = {
+  const currentOrg = useMemo(() => ({
     id: currentOrgId,
     name: currentOrgName || initialOrgName || 'Текущая организация'
-  }
+  }), [currentOrgId, currentOrgName, initialOrgName])
   
   return (
     <div className="relative" ref={dropdownRef}>

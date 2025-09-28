@@ -50,6 +50,240 @@ export class EventProcessingService {
       .from('telegram_updates')
       .insert({ update_id: updateId });
   }
+
+  private async getOrgIdsForChat(chatId: number | string): Promise<string[]> {
+    const chatIdStr = String(chatId);
+    const orgIds = new Set<string>();
+    try {
+      const { data: mappingRows, error: mappingError } = await this.supabase
+        .from('org_telegram_groups')
+        .select('org_id')
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      if (mappingError) {
+        if (mappingError.code === '42P01') {
+          console.warn('org_telegram_groups table not found while fetching mappings for chat', chatIdStr);
+        } else {
+          console.error('Error fetching org mappings for chat', chatIdStr, mappingError);
+        }
+      }
+
+      (mappingRows || []).forEach(mapping => {
+        if (mapping?.org_id) {
+          orgIds.add(mapping.org_id);
+        }
+      });
+    } catch (error) {
+      console.error('Unexpected error fetching mapping orgs for chat', chatIdStr, error);
+    }
+
+    try {
+      const { data: baseGroups, error: baseError } = await this.supabase
+        .from('telegram_groups')
+        .select('org_id')
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      if (baseError && baseError.code !== 'PGRST116') {
+        console.error('Error fetching base group for chat', chatIdStr, baseError);
+      }
+
+      (baseGroups || []).forEach(group => {
+        if (group?.org_id) {
+          orgIds.add(group.org_id);
+        }
+      });
+    } catch (error) {
+      console.error('Unexpected error fetching base group orgs for chat', chatIdStr, error);
+    }
+
+    const orgList = Array.from(orgIds);
+
+    if (orgList.length === 0) {
+      console.log(`No organizations mapped for chat ${chatIdStr}`);
+    }
+
+    return orgList;
+  }
+
+  private async ensureGroupRecord(chatId: number, title?: string | null): Promise<void> {
+    const chatIdStr = String(chatId);
+
+    try {
+      const { data: existingGroup, error: fetchError } = await this.supabase
+        .from('telegram_groups')
+        .select('id, title, bot_status, is_archived')
+        .filter('tg_chat_id::text', 'eq', chatIdStr)
+        .maybeSingle();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking existing group record for chat', chatIdStr, fetchError);
+        return;
+      }
+
+      if (!existingGroup) {
+        const insertPayload: any = {
+          tg_chat_id: chatId,
+          title: title || `Group ${chatIdStr}`,
+          bot_status: 'pending',
+          analytics_enabled: false,
+          is_archived: false,
+          last_sync_at: new Date().toISOString(),
+        };
+
+        try {
+          await this.supabase
+            .from('telegram_groups')
+            .insert(insertPayload);
+          console.log(`Created canonical group record for chat ${chatIdStr}`);
+        } catch (insertError: any) {
+          if (insertError?.code === '23505') {
+            // Record already created concurrently
+            return;
+          }
+          console.error('Error inserting canonical group record for chat', chatIdStr, insertError);
+        }
+      } else {
+        const updatePatch: Record<string, any> = {};
+        if (title && title !== existingGroup.title) {
+          updatePatch.title = title;
+        }
+        if (existingGroup.bot_status !== 'pending') {
+          updatePatch.bot_status = 'pending';
+        }
+        if (existingGroup.is_archived) {
+          updatePatch.is_archived = false;
+          updatePatch.archived_at = null;
+        }
+        if (Object.keys(updatePatch).length > 0) {
+          try {
+            await this.supabase
+              .from('telegram_groups')
+              .update(updatePatch)
+              .eq('id', existingGroup.id);
+          } catch (updateError) {
+            console.error('Error updating canonical group data for chat', chatIdStr, updateError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected ensureGroupRecord error for chat', chatIdStr, error);
+    }
+  }
+
+  private isAnonymousBot(user?: TelegramUser | null): boolean {
+    if (!user) return false;
+    return user.id === 1087968824 || user.username === 'GroupAnonymousBot';
+  }
+
+  private async setMappingStatus(chatIdStr: string, orgId: string, status: 'active' | 'archived', reason?: string): Promise<void> {
+    try {
+      const updatePayload: any = { status };
+      if (status === 'archived') {
+        updatePayload.archived_at = new Date().toISOString();
+        updatePayload.archived_reason = reason || null;
+      } else {
+        updatePayload.archived_at = null;
+        updatePayload.archived_reason = null;
+      }
+
+      const { error: updateError } = await this.supabase
+        .from('org_telegram_groups')
+        .update(updatePayload)
+        .eq('org_id', orgId)
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      if (updateError) {
+        if (updateError.code !== 'PGRST116') {
+          console.error('Error updating mapping status', chatIdStr, orgId, updateError);
+        }
+        return;
+      }
+
+      if (status === 'archived') {
+        if (reason !== 'manual_remove') {
+          const { count, error: activeCountError } = await this.supabase
+            .from('org_telegram_groups')
+            .select('*', { count: 'exact', head: true })
+            .filter('tg_chat_id::text', 'eq', chatIdStr)
+            .eq('status', 'active');
+
+          if (activeCountError) {
+            console.error('Error counting active mappings for chat', chatIdStr, activeCountError);
+          }
+
+          if (!count || count === 0) {
+            await this.supabase
+              .from('telegram_groups')
+              .update({
+                is_archived: true,
+                archived_at: new Date().toISOString(),
+                archived_reason: reason || 'archived'
+              })
+              .filter('tg_chat_id::text', 'eq', chatIdStr);
+          }
+        }
+      } else {
+        await this.supabase
+          .from('telegram_groups')
+          .update({
+            is_archived: false,
+            archived_at: null,
+            archived_reason: null
+          })
+          .filter('tg_chat_id::text', 'eq', chatIdStr);
+      }
+    } catch (error) {
+      console.error('Unexpected mapping status update error for chat', chatIdStr, orgId, error);
+    }
+  }
+
+  private async archiveMappingsForChat(chatIdStr: string, reason: string): Promise<void> {
+    try {
+      const { data: mappings, error } = await this.supabase
+        .from('org_telegram_groups')
+        .select('org_id, status')
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      if (error) {
+        if (error.code !== '42P01') {
+          console.error('Error fetching mappings for archival', chatIdStr, error);
+        }
+        return;
+      }
+
+      (mappings || []).forEach(async mapping => {
+        if (mapping?.org_id && mapping.status !== 'archived') {
+          await this.setMappingStatus(chatIdStr, mapping.org_id, 'archived', reason);
+        }
+      });
+    } catch (err) {
+      console.error('Unexpected error archiving mappings for chat', chatIdStr, err);
+    }
+  }
+
+  private async activateMappingsForChat(chatIdStr: string): Promise<void> {
+    try {
+      const { data: mappings, error } = await this.supabase
+        .from('org_telegram_groups')
+        .select('org_id, status')
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      if (error) {
+        if (error.code !== '42P01') {
+          console.error('Error fetching mappings for activation', chatIdStr, error);
+        }
+        return;
+      }
+
+      (mappings || []).forEach(async mapping => {
+        if (mapping?.org_id) {
+          await this.setMappingStatus(chatIdStr, mapping.org_id, 'active');
+        }
+      });
+    } catch (err) {
+      console.error('Unexpected error activating mappings for chat', chatIdStr, err);
+    }
+  }
   
   /**
    * Обрабатывает обновление от Telegram
@@ -91,56 +325,26 @@ export class EventProcessingService {
     const chatId = message.chat.id;
     console.log('Processing message from chat ID:', chatId, 'Type:', typeof chatId);
 
+    if (message.from && (message.from.id === 1087968824 || message.from.username === 'GroupAnonymousBot')) {
+      console.log('Skipping message from GroupAnonymousBot');
+      return;
+    }
+
     try {
-      // Проверяем, существует ли группа с использованием строкового сравнения
-      const { data: groups } = await this.supabase
-        .from('telegram_groups')
-        .select('id, org_id, analytics_enabled')
-        .filter('tg_chat_id::text', 'eq', String(chatId))
-        .limit(1);
-      
-      console.log('Group lookup result with string comparison:', groups);
-      
-      if (groups && groups.length > 0) {
-        // Группа найдена
-        console.log('Found group, processing message with group data:', groups[0]);
-        return this.processMessageWithGroup(message, groups[0]);
+      const orgIds = await this.getOrgIdsForChat(chatId);
+
+      if (orgIds.length > 0) {
+        console.log(`Found ${orgIds.length} organization bindings for chat ${chatId}`);
+        for (const orgId of orgIds) {
+          await this.processMessageForOrg(message, orgId);
+        }
+        return;
       }
       
       // Если группа не найдена, но это группа/супергруппа, пробуем добавить
       if (message.chat.type === 'supergroup' || message.chat.type === 'group') {
-        // Получаем любую организацию
-        const { data: orgs } = await this.supabase
-          .from('organizations')
-          .select('id')
-          .limit(1);
-        
-        if (orgs && orgs.length > 0) {
-          const orgId = orgs[0].id;
-          const title = message.chat.title || `Group ${chatId}`;
-          
-          // Добавляем группу
-          const { data: newGroup, error } = await this.supabase
-            .from('telegram_groups')
-            .insert({
-              org_id: orgId,
-              tg_chat_id: chatId,
-              title: title,
-              bot_status: 'connected',
-              analytics_enabled: true,
-              last_sync_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-          
-          if (!error && newGroup) {
-            console.log(`Auto-added group in processMessage: ${title} (${chatId})`);
-            // Продолжаем обработку с новой группой
-            return this.processMessageWithGroup(message, newGroup);
-          }
-        }
-        
-        console.log(`Message from unknown group ${chatId}, skipping`);
+        await this.ensureGroupRecord(chatId, message.chat.title);
+        console.log(`Message from unmapped group ${chatId}, waiting for explicit organization linking`);
         return;
       }
       
@@ -161,6 +365,11 @@ export class EventProcessingService {
     const chatId = message.chat.id;
     const member = message.left_chat_member;
     
+    if (member.id === 1087968824 || member.username === 'GroupAnonymousBot') {
+      console.log('Skipping left event for GroupAnonymousBot');
+      return;
+    }
+
     if (member.is_bot) return; // Пропускаем ботов
     
     // Записываем событие выхода
@@ -237,6 +446,11 @@ export class EventProcessingService {
     const fromUser = message.from;
     
     for (const member of message.new_chat_members) {
+      if (member.id === 1087968824 || member.username === 'GroupAnonymousBot') {
+        console.log('Skipping join event for GroupAnonymousBot');
+        continue;
+      }
+
       if (member.is_bot) continue; // Пропускаем ботов
       
       // Записываем событие присоединения
@@ -342,14 +556,12 @@ export class EventProcessingService {
     await this.updateGroupMetrics(orgId, chatId);
   }
 
-  private async processMessageWithGroup(message: TelegramMessage, groupData: any): Promise<void> {
+  private async processMessageForOrg(message: TelegramMessage, orgId: string): Promise<void> {
     const chatId = message.chat.id;
-    const orgId = groupData.org_id;
 
-    console.log('Processing message with group:', groupData);
-    console.log('Message data:', { 
-      chatId, 
-      orgId, 
+    console.log('Processing message data:', {
+      chatId,
+      orgId,
       messageId: message.message_id,
       from: message.from?.username
     });
@@ -382,6 +594,12 @@ export class EventProcessingService {
   
     const chatId = message.chat.id;
     const userId = message.from.id;
+
+    if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot') {
+      console.log('Skipping user message for GroupAnonymousBot');
+      return;
+    }
+
     const username = message.from.username;
     const fullName = `${message.from.first_name} ${message.from.last_name || ''}`.trim();
     
@@ -582,66 +800,68 @@ export class EventProcessingService {
    */
   private async processChatMemberUpdate(update: TelegramChatMemberUpdate): Promise<void> {
     const chatId = update.chat.id;
-    
-    // Получаем информацию о группе из базы данных
-    const { data: groupData } = await this.supabase
-      .from('telegram_groups')
-      .select('org_id')
-      .eq('tg_chat_id', chatId)
-      .single();
-    
-    if (!groupData) {
-      console.log(`Member update from unknown group ${chatId}, skipping`);
+
+    if (update.new_chat_member?.user?.id === 1087968824 || update.new_chat_member?.user?.username === 'GroupAnonymousBot') {
+      console.log('Skipping chat member update for GroupAnonymousBot');
       return;
     }
-    
-    const orgId = groupData.org_id;
+
+    const orgIds = await this.getOrgIdsForChat(chatId);
+
+    if (orgIds.length === 0) {
+      console.log(`Member update from unmapped group ${chatId}, skipping`);
+      return;
+    }
+
     const userId = update.new_chat_member.user.id;
     const oldStatus = update.old_chat_member.status;
     const newStatus = update.new_chat_member.status;
-    
-    // Если пользователь покинул группу или был исключен
-    if ((oldStatus !== 'left' && oldStatus !== 'kicked') && 
-        (newStatus === 'left' || newStatus === 'kicked')) {
-      await this.supabase.from('activity_events').insert({
-        org_id: orgId,
-        event_type: 'leave',
-        tg_user_id: userId,
-        tg_chat_id: chatId,
-        meta: {
-          old_status: oldStatus,
-          new_status: newStatus,
-          removed_by: update.from ? {
-            id: update.from.id,
-            username: update.from.username,
-            name: `${update.from.first_name} ${update.from.last_name || ''}`.trim()
-          } : null
-        }
-      });
+
+    for (const orgId of orgIds) {
+      // Если пользователь покинул группу или был исключен
+      if ((oldStatus !== 'left' && oldStatus !== 'kicked') &&
+          (newStatus === 'left' || newStatus === 'kicked')) {
+        await this.supabase.from('activity_events').insert({
+          org_id: orgId,
+          event_type: 'leave',
+          tg_user_id: userId,
+          tg_chat_id: chatId,
+          meta: {
+            old_status: oldStatus,
+            new_status: newStatus,
+            removed_by: update.from ? {
+              id: update.from.id,
+              username: update.from.username,
+              name: `${update.from.first_name} ${update.from.last_name || ''}`.trim()
+            } : null
+          }
+        });
+        await this.setMappingStatus(String(chatId), orgId, 'archived', 'member_removed');
+      }
+
+      // Если пользователь присоединился к группе
+      if ((oldStatus === 'left' || oldStatus === 'kicked') &&
+          (newStatus !== 'left' && newStatus !== 'kicked')) {
+        await this.supabase.from('activity_events').insert({
+          org_id: orgId,
+          event_type: 'join',
+          tg_user_id: userId,
+          tg_chat_id: chatId,
+          meta: {
+            old_status: oldStatus,
+            new_status: newStatus,
+            added_by: update.from ? {
+              id: update.from.id,
+              username: update.from.username,
+              name: `${update.from.first_name} ${update.from.last_name || ''}`.trim()
+            } : null
+          }
+        });
+        await this.setMappingStatus(String(chatId), orgId, 'active');
+      }
+
+      await this.updateGroupMetrics(orgId, chatId);
     }
-    
-    // Если пользователь присоединился к группе
-    if ((oldStatus === 'left' || oldStatus === 'kicked') && 
-        (newStatus !== 'left' && newStatus !== 'kicked')) {
-      await this.supabase.from('activity_events').insert({
-        org_id: orgId,
-        event_type: 'join',
-        tg_user_id: userId,
-        tg_chat_id: chatId,
-        meta: {
-          old_status: oldStatus,
-          new_status: newStatus,
-          added_by: update.from ? {
-            id: update.from.id,
-            username: update.from.username,
-            name: `${update.from.first_name} ${update.from.last_name || ''}`.trim()
-          } : null
-        }
-      });
-    }
-    
-    // Обновляем счетчики и статистику
-    await this.updateGroupMetrics(orgId, chatId);
   }
   
   /**
@@ -650,50 +870,37 @@ export class EventProcessingService {
   private async processMyBotStatusUpdate(update: TelegramChatMemberUpdate): Promise<void> {
     const chatId = update.chat.id;
     const newStatus = update.new_chat_member.status;
+    const chatIdStr = String(chatId);
     
-    // Проверяем, существует ли группа в базе
-    const { data: groupData } = await this.supabase
-      .from('telegram_groups')
-      .select('id, org_id')
-      .eq('tg_chat_id', chatId)
-      .single();
-    
-    // Если бот стал администратором
+    await this.ensureGroupRecord(chatId, update.chat?.title);
+
     if (newStatus === 'administrator') {
-      if (groupData) {
-        // Обновляем статус существующей группы
-        await this.supabase
-          .from('telegram_groups')
-          .update({
-            bot_status: 'connected',
-            last_sync_at: new Date().toISOString()
-          })
-          .eq('id', groupData.id);
-      } else {
-        // Группа неизвестна, получаем информацию о ней
-        const telegramService = createTelegramService();
-        const chatInfo = await telegramService.getChat(chatId);
-        
-        if (chatInfo?.result) {
-          // Пока не привязываем к организации, это будет сделано позже
-          // через checkStatus или addGroupManually
-          console.log(`Bot added as admin to new group ${chatId}, title: ${chatInfo.result.title}`);
-        }
-      }
+      await this.supabase
+        .from('telegram_groups')
+        .update({
+          bot_status: 'connected',
+          last_sync_at: new Date().toISOString(),
+          is_archived: false,
+          archived_at: null,
+          archived_reason: null
+        })
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      await this.activateMappingsForChat(chatIdStr);
+      return;
     }
-    
-    // Если бот был удален из группы
-    if (newStatus === 'left' || newStatus === 'kicked') {
-      if (groupData) {
-        // Обновляем статус группы
-        await this.supabase
-          .from('telegram_groups')
-          .update({
-            bot_status: 'inactive',
-            last_sync_at: new Date().toISOString()
-          })
-          .eq('id', groupData.id);
-      }
+
+    if (['member', 'restricted', 'left', 'kicked'].includes(newStatus)) {
+      await this.supabase
+        .from('telegram_groups')
+        .update({
+          bot_status: newStatus === 'member' ? 'pending' : 'inactive',
+          last_sync_at: new Date().toISOString()
+        })
+        .filter('tg_chat_id::text', 'eq', chatIdStr);
+
+      const reason = newStatus === 'left' || newStatus === 'kicked' ? 'bot_removed' : 'bot_not_admin';
+      await this.archiveMappingsForChat(chatIdStr, reason);
     }
   }
   
@@ -702,38 +909,38 @@ export class EventProcessingService {
    */
   private async processChatJoinRequest(request: any): Promise<void> {
     const chatId = request.chat.id;
-    
-    // Получаем информацию о группе из базы данных
-    const { data: groupData } = await this.supabase
-      .from('telegram_groups')
-      .select('org_id')
-      .eq('tg_chat_id', chatId)
-      .single();
-    
-    if (!groupData) {
-      console.log(`Join request from unknown group ${chatId}, skipping`);
+
+    if (request.from?.id === 1087968824 || request.from?.username === 'GroupAnonymousBot') {
+      console.log('Skipping join request for GroupAnonymousBot');
       return;
     }
-    
-    const orgId = groupData.org_id;
+
+    const orgIds = await this.getOrgIdsForChat(chatId);
+
+    if (orgIds.length === 0) {
+      console.log(`Join request from unmapped group ${chatId}, skipping`);
+      return;
+    }
+
     const userId = request.from.id;
-    
-    // Записываем событие запроса на вступление
-    await this.supabase.from('activity_events').insert({
-      org_id: orgId,
-      event_type: 'service',
-      tg_user_id: userId,
-      tg_chat_id: chatId,
-      meta: {
-        service_type: 'join_request',
-        user: {
-          id: userId,
-          username: request.from.username,
-          name: `${request.from.first_name} ${request.from.last_name || ''}`.trim()
-        },
-        bio: request.bio
-      }
-    });
+
+    for (const orgId of orgIds) {
+      await this.supabase.from('activity_events').insert({
+        org_id: orgId,
+        event_type: 'service',
+        tg_user_id: userId,
+        tg_chat_id: chatId,
+        meta: {
+          service_type: 'join_request',
+          user: {
+            id: userId,
+            username: request.from.username,
+            name: `${request.from.first_name} ${request.from.last_name || ''}`.trim()
+          },
+          bio: request.bio
+        }
+      });
+    }
   }
   
   /**
@@ -741,47 +948,44 @@ export class EventProcessingService {
    */
   private async processCallbackQuery(query: any): Promise<void> {
     if (!query.message) return;
-    
     const chatId = query.message.chat.id;
-    
-    // Получаем информацию о группе из базы данных
-    const { data: groupData } = await this.supabase
-      .from('telegram_groups')
-      .select('org_id')
-      .eq('tg_chat_id', chatId)
-      .single();
-    
-    if (!groupData) {
-      console.log(`Callback query from unknown group ${chatId}, skipping`);
+
+    if (query.from?.id === 1087968824 || query.from?.username === 'GroupAnonymousBot') {
+      console.log('Skipping callback query for GroupAnonymousBot');
       return;
     }
-    
-    const orgId = groupData.org_id;
+
+    const orgIds = await this.getOrgIdsForChat(chatId);
+
+    if (orgIds.length === 0) {
+      console.log(`Callback query from unmapped group ${chatId}, skipping`);
+      return;
+    }
     const userId = query.from.id;
-    
-    // Записываем событие callback
-    await this.supabase.from('activity_events').insert({
-      org_id: orgId,
-      event_type: 'callback',
-      tg_user_id: userId,
-      tg_chat_id: chatId,
-      message_id: query.message.message_id,
-      meta: {
-        callback_data: query.data,
-        user: {
-          id: userId,
-          username: query.from.username,
-          name: `${query.from.first_name} ${query.from.last_name || ''}`.trim()
+
+    for (const orgId of orgIds) {
+      await this.supabase.from('activity_events').insert({
+        org_id: orgId,
+        event_type: 'callback',
+        tg_user_id: userId,
+        tg_chat_id: chatId,
+        message_id: query.message.message_id,
+        meta: {
+          callback_data: query.data,
+          user: {
+            id: userId,
+            username: query.from.username,
+            name: `${query.from.first_name} ${query.from.last_name || ''}`.trim()
+          }
         }
-      }
-    });
-    
-    // Обновляем время последней активности пользователя
-    await this.supabase
-      .from('participants')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('tg_user_id', userId)
-      .eq('org_id', orgId);
+      });
+
+      await this.supabase
+        .from('participants')
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq('tg_user_id', userId)
+        .eq('org_id', orgId);
+    }
   }
   
   /**

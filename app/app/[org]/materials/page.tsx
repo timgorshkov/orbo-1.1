@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 
 type MaterialFolder = {
   id: string;
@@ -97,11 +98,7 @@ export default async function MaterialsPage({ params }: { params: { org: string 
     });
     
     // Получаем список групп
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
+    const telegramGroups = await getOrgTelegramGroups(params.org)
 
     return (
       <AppShell orgId={params.org} currentPath={`/app/${params.org}/materials`} telegramGroups={telegramGroups || []}>

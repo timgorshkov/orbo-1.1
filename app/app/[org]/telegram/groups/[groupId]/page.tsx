@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
+import { RemoveGroupButton } from '@/components/telegram-group-actions'
 
 type TelegramGroupSettings = {
   id: number;
@@ -20,6 +21,7 @@ type TelegramGroupSettings = {
   last_sync_at: string | null;
   member_count: number | null;
   new_members_count: number | null;
+  status: string; // Added status field
 }
 
 type GroupMetrics = {
@@ -58,6 +60,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
   const [welcomeMessage, setWelcomeMessage] = useState('')
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   
   // Аналитика
@@ -83,95 +86,36 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
     const fetchGroup = async () => {
       setLoading(true)
       try {
-        // Используем сервисную роль для обхода RLS
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-        const supabase = createClientBrowser();
-        
         console.log('Fetching group with ID:', groupIdParam, 'for org:', params.org);
-        
-        console.log('Group ID parameter:', groupIdParam, 'Type:', typeof groupIdParam);
-        
-        // Проверка на отсутствие ID группы
+
         if (!groupIdParam) {
-          console.error('Group ID is undefined or null');
           setError('Не указан ID группы. Пожалуйста, вернитесь на страницу списка групп и выберите группу.');
           setLoading(false);
           return;
         }
-        
-        // Пробуем разные подходы к поиску группы
-        let data, error;
-        
-        try {
-          // Сначала пробуем найти по строковому ID
-          const result = await supabase
-            .from('telegram_groups')
-            .select('*')
-            .eq('id', groupIdParam)
-            .eq('org_id', params.org)
-            .single();
-            
-          data = result.data;
-          error = result.error;
-          
-          // Если не нашли, пробуем преобразовать в число
-          if (error && !data) {
-            const groupId = parseInt(String(groupIdParam));
-            if (!isNaN(groupId)) {
-              console.log('Trying numeric ID:', groupId);
-              const numericResult = await supabase
-                .from('telegram_groups')
-                .select('*')
-                .eq('id', groupId)
-                .eq('org_id', params.org)
-                .single();
-                
-              console.log('Numeric ID search result:', {
-                data: numericResult.data,
-                error: numericResult.error
-              });
-                
-              data = numericResult.data;
-              error = numericResult.error;
-            }
-          }
-          
-          // Если всё еще не нашли, пробуем искать по tg_chat_id
-          if (error && !data) {
-            console.log('Trying to find by tg_chat_id');
-            const chatIdResult = await supabase
-              .from('telegram_groups')
-              .select('*')
-              .eq('tg_chat_id', groupIdParam)
-              .eq('org_id', params.org)
-              .single();
-              
-            data = chatIdResult.data;
-            error = chatIdResult.error;
-          }
-        } catch (e: any) {
-          console.error('Error during group search:', e);
-          error = { message: e.message || 'Ошибка при поиске группы' };
-        }
 
-        if (error) {
-          console.error('Error fetching group:', error);
-          setError('Не удалось загрузить данные группы: ' + error.message);
+        const res = await fetch(`/api/telegram/groups/detail?orgId=${encodeURIComponent(params.org)}&groupId=${encodeURIComponent(groupIdParam)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.group) {
+          const message = data?.error || res.statusText || 'Не удалось загрузить данные группы';
+          setError(`Не удалось загрузить данные группы: ${message}`);
           return;
         }
 
-        if (!data) {
-          console.error('No group data found');
-          setError('Группа не найдена');
-          return;
-        }
+        const groupData = data.group;
+        console.log('Fetched group data (with mapping support):', groupData);
 
-        console.log('Fetched group data:', data);
-        setGroup(data);
-        setTitle(data.title || '');
-        setWelcomeMessage(data.welcome_message || '');
-        setNotificationsEnabled(!!data.notification_enabled);
+        setGroup(groupData);
+        setTitle(groupData.title || '');
+        setWelcomeMessage(groupData.welcome_message || '');
+        setNotificationsEnabled(!!groupData.notification_enabled);
+        if (groupData.status === 'archived') {
+          setAnalyticsError('Группа находилась в архивации. После восстановления необходимо вернуть права администратора боту.');
+        } else {
+          setAnalyticsError(null);
+        }
+        setError(null);
       } catch (e: any) {
         console.error('Error:', e);
         setError('Произошла ошибка при загрузке данных: ' + (e.message || e));
@@ -191,6 +135,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
       }
       
       setLoadingAnalytics(true)
+      setAnalyticsError(null)
       try {
         console.log('Fetching analytics for group:', group)
         
@@ -207,7 +152,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           
           if (analyticsData.error) {
             console.error('Analytics API error:', analyticsData.error);
-            setError('Ошибка при загрузке аналитики: ' + analyticsData.error);
+            setAnalyticsError('Ошибка при загрузке аналитики: ' + analyticsData.error);
             setLoadingAnalytics(false);
             return;
           }
@@ -620,6 +565,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
         
       } catch (e) {
         console.error('Error fetching analytics:', e)
+        setAnalyticsError('Ошибка при загрузке аналитики: ' + (e instanceof Error ? e.message : String(e)))
       } finally {
         setLoadingAnalytics(false)
       }
@@ -719,365 +665,383 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
       {loading ? (
         <div className="text-center py-8">Загрузка...</div>
       ) : (
-        <Tabs defaultValue="analytics">
-          <TabsList className="mb-6">
-            <TabsTrigger value="analytics">Аналитика</TabsTrigger>
-            <TabsTrigger value="settings">Настройки</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="analytics">
-            <div className="mb-4">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  if (group) {
-                    setLoadingAnalytics(true);
-                    fetchAnalytics();
-                  }
-                }}
-                disabled={loadingAnalytics || !group}
-              >
-                {loadingAnalytics ? 'Загрузка...' : 'Обновить аналитику'}
-              </Button>
+        <>
+          {group?.status === 'archived' && (
+            <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+              Группа помечена как архивная. Чтобы снова получать аналитику, верните боту @orbo_community_bot права администратора и добавьте группу повторно.
             </div>
-            
-            {error ? (
-              <div className="text-center py-8 text-red-500">{error}</div>
-            ) : loadingAnalytics ? (
-              <div className="text-center py-8">Загрузка аналитики...</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Общая статистика</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm text-neutral-500">Участников</div>
-                          <div className="text-xl font-semibold">{group?.member_count || 0}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
-                          <div className="text-xl font-semibold">{groupMetrics.message_count}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Активных пользователей (DAU)</div>
-                          <div className="text-xl font-semibold">{groupMetrics.dau_avg}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Коэффициент ответов</div>
-                          <div className="text-xl font-semibold">{groupMetrics.reply_ratio_avg}%</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Динамика участников</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm text-neutral-500">Новых участников</div>
-                          <div className="text-xl font-semibold">{group?.new_members_count || groupMetrics.join_count || 0}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Ушло участников</div>
-                          <div className="text-xl font-semibold">{groupMetrics.leave_count}</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Чистый прирост</div>
-                          <div className="text-xl font-semibold">
-                            {(group?.new_members_count || groupMetrics.join_count || 0) - groupMetrics.leave_count}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Активность</div>
-                          <div className="text-xl font-semibold">
-                            {group?.member_count && group.member_count > 0 
-                              ? Math.round((groupMetrics.dau_avg / group.member_count) * 100) 
-                              : 0}%
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+          )}
+
+          {error ? (
+            <div className="text-center py-8 text-red-500">{error}</div>
+          ) : (
+            <Tabs defaultValue="analytics">
+              <TabsList className="mb-6">
+                <TabsTrigger value="analytics">Аналитика</TabsTrigger>
+                <TabsTrigger value="settings">Настройки</TabsTrigger>
+              </TabsList>
+
+              {group?.id !== undefined && (
+                <div className="mb-4">
+                  <RemoveGroupButton groupId={group.id} orgId={params.org} onRemoved={() => router.push(`/app/${params.org}/telegram`)} />
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Топ активных участников</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {topUsers.length > 0 ? (
-                        <div className="space-y-2">
-                          {topUsers.map(([userId, data], index) => (
-                            <div key={userId} className="flex justify-between items-center">
-                              <div className="flex items-center">
-                                <span className="w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs mr-2">
-                                  {index + 1}
-                                </span>
-                                <span>
-                                  {data.username ? `@${data.username}` : `ID: ${userId}`}
-                                </span>
-                              </div>
-                              <span className="text-sm text-neutral-500">{data.count} сообщ.</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-neutral-500">
-                          Нет данных об активности
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Дневная активность</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {metrics && metrics.length > 0 ? (
-                        <div className="space-y-2">
-                          {metrics.map((metric: any) => (
-                            <div key={metric.date} className="flex justify-between items-center">
-                              <span>{new Date(metric.date).toLocaleDateString('ru')}</span>
-                              <div className="flex items-center space-x-4">
-                                <span className="text-sm text-neutral-500">{metric.message_count || 0} сообщ.</span>
-                                <span className="text-sm text-neutral-500">{metric.dau || 0} активн.</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-neutral-500">
-                          Нет данных о дневной активности
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+              )}
 
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Вовлеченность</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm text-neutral-500">Silent-кохорта</div>
-                          <div className="text-xl font-semibold">{groupMetrics.silent_rate}%</div>
-                          <div className="text-xs text-neutral-500">доля неактивных за 7 дней</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Активация новичков</div>
-                          <div className="text-xl font-semibold">{groupMetrics.newcomer_activation}%</div>
-                          <div className="text-xs text-neutral-500">активны в первые 72ч</div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-neutral-500">Равномерность</div>
-                          <div className="text-xl font-semibold">{(1 - groupMetrics.activity_gini) * 100}%</div>
-                          <div className="text-xs text-neutral-500">распределение активности</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle>Prime Time</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-6 gap-1">
-                        {groupMetrics.prime_time.map((hour) => (
-                          <div
-                            key={hour.hour}
-                            className={`text-center p-1 text-xs rounded ${
-                              hour.is_prime_time ? 'bg-blue-100 text-blue-800' : 'bg-gray-50'
-                            }`}
-                          >
-                            {hour.hour}:00
-                          </div>
-                        ))}
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-2 text-center">
-                        Выделены часы пиковой активности
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="md:col-span-2">
-                    <CardHeader className="pb-2">
-                      <CardTitle>Risk Radar</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {groupMetrics.risk_radar.length > 0 ? (
-                        <div className="space-y-3">
-                          {groupMetrics.risk_radar.map((user) => (
-                            <div key={user.tg_user_id} className="flex items-center justify-between">
-                              <div>
-                                <div className="font-medium">
-                                  {user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`}
-                                </div>
-                                <div className="text-xs text-neutral-500">
-                                  Последняя активность: {new Date(user.last_activity).toLocaleDateString('ru')}
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-4">
-                                <div className="text-sm">{user.message_count} сообщ.</div>
-                                <div className={`px-2 py-1 rounded text-sm ${
-                                  user.risk_score >= 80 ? 'bg-red-100 text-red-800' :
-                                  user.risk_score >= 60 ? 'bg-amber-100 text-amber-800' :
-                                  'bg-blue-100 text-blue-800'
-                                }`}>
-                                  Риск: {user.risk_score}%
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-neutral-500">
-                          Нет участников с высоким риском оттока
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="settings">
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Основная информация</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    ID группы в Telegram
-                  </label>
-                  <Input value={group?.tg_chat_id || ''} disabled className="bg-gray-50" />
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Технический идентификатор группы в системе Telegram
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Название группы
-                  </label>
-                  <Input
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    placeholder="Название группы"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Статус бота
-                  </label>
-                  <div className="flex items-center">
-                    <span
-                      className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                        group?.bot_status === 'connected' ? 'bg-green-500' : 'bg-amber-500'
-                      }`}
-                    />
-                    <span>
-                      {group?.bot_status === 'connected' ? 'Подключен' : 'Ожидание прав администратора'}
-                    </span>
-                  </div>
-                  {group?.last_sync_at && (
-                    <p className="text-xs text-neutral-500 mt-1">
-                      Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Ссылка для приглашения
-                  </label>
-                  <Input value={group?.invite_link || ''} readOnly className="bg-gray-50" />
-                  {!group?.invite_link && group?.bot_status !== 'connected' && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      Для создания ссылки-приглашения бот должен быть администратором
-                    </p>
-                  )}
-                </div>
-
-                <Button onClick={refreshGroupInfo} disabled={loading}>
-                  Обновить информацию о группе
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Настройки уведомлений</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="notifications"
-                    checked={notificationsEnabled}
-                    onChange={e => setNotificationsEnabled(e.target.checked)}
-                    className="mr-2"
-                  />
-                  <label htmlFor="notifications">Включить уведомления о событиях</label>
-                </div>
-                <p className="text-xs text-neutral-500">
-                  При включении этой опции, бот будет отправлять уведомления о новых событиях в группу
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Приветственное сообщение</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Сообщение для новых участников
-                  </label>
-                  <textarea
-                    className="w-full p-2 border rounded-lg min-h-[100px]"
-                    value={welcomeMessage}
-                    onChange={e => setWelcomeMessage(e.target.value)}
-                    placeholder="Добро пожаловать в нашу группу! Здесь вы можете..."
-                  />
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Поддерживается HTML-форматирование: &lt;b&gt;жирный&lt;/b&gt;, &lt;i&gt;курсив&lt;/i&gt;
-                  </p>
-                </div>
-
-                {error && (
-                  <div className="text-red-500 text-sm">{error}</div>
-                )}
-
-                {success && (
-                  <div className="text-green-500 text-sm">
-                    Настройки успешно сохранены
-                  </div>
-                )}
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSave} disabled={saving}>
-                    {saving ? 'Сохранение...' : 'Сохранить настройки'}
+              <TabsContent value="analytics">
+                <div className="mb-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      if (group) {
+                        setLoadingAnalytics(true);
+                        fetchAnalytics();
+                      }
+                    }}
+                    disabled={loadingAnalytics || !group}
+                  >
+                    {loadingAnalytics ? 'Загрузка...' : 'Обновить аналитику'}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                
+                {analyticsError ? (
+                  <div className="text-center py-8 text-red-500">{analyticsError}</div>
+                ) : loadingAnalytics ? (
+                  <div className="text-center py-8">Загрузка аналитики...</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Общая статистика</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-sm text-neutral-500">Участников</div>
+                              <div className="text-xl font-semibold">{group?.member_count || 0}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
+                              <div className="text-xl font-semibold">{groupMetrics.message_count}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Активных пользователей (DAU)</div>
+                              <div className="text-xl font-semibold">{groupMetrics.dau_avg}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Коэффициент ответов</div>
+                              <div className="text-xl font-semibold">{groupMetrics.reply_ratio_avg}%</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Динамика участников</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-sm text-neutral-500">Новых участников</div>
+                              <div className="text-xl font-semibold">{group?.new_members_count || groupMetrics.join_count || 0}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Ушло участников</div>
+                              <div className="text-xl font-semibold">{groupMetrics.leave_count}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Чистый прирост</div>
+                              <div className="text-xl font-semibold">
+                                {(group?.new_members_count || groupMetrics.join_count || 0) - groupMetrics.leave_count}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Активность</div>
+                              <div className="text-xl font-semibold">
+                                {group?.member_count && group.member_count > 0 
+                                  ? Math.round((groupMetrics.dau_avg / group.member_count) * 100) 
+                                  : 0}%
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Топ активных участников</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {topUsers.length > 0 ? (
+                            <div className="space-y-2">
+                              {topUsers.map(([userId, data], index) => (
+                                <div key={userId} className="flex justify-between items-center">
+                                  <div className="flex items-center">
+                                    <span className="w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs mr-2">
+                                      {index + 1}
+                                    </span>
+                                    <span>
+                                      {data.username ? `@${data.username}` : `ID: ${userId}`}
+                                    </span>
+                                  </div>
+                                  <span className="text-sm text-neutral-500">{data.count} сообщ.</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 text-neutral-500">
+                              Нет данных об активности
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Дневная активность</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {metrics && metrics.length > 0 ? (
+                            <div className="space-y-2">
+                              {metrics.map((metric: any) => (
+                                <div key={metric.date} className="flex justify-between items-center">
+                                  <span>{new Date(metric.date).toLocaleDateString('ru')}</span>
+                                  <div className="flex items-center space-x-4">
+                                    <span className="text-sm text-neutral-500">{metric.message_count || 0} сообщ.</span>
+                                    <span className="text-sm text-neutral-500">{metric.dau || 0} активн.</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 text-neutral-500">
+                              Нет данных о дневной активности
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Вовлеченность</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-sm text-neutral-500">Silent-кохорта</div>
+                              <div className="text-xl font-semibold">{groupMetrics.silent_rate}%</div>
+                              <div className="text-xs text-neutral-500">доля неактивных за 7 дней</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Активация новичков</div>
+                              <div className="text-xl font-semibold">{groupMetrics.newcomer_activation}%</div>
+                              <div className="text-xs text-neutral-500">активны в первые 72ч</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Равномерность</div>
+                              <div className="text-xl font-semibold">{(1 - groupMetrics.activity_gini) * 100}%</div>
+                              <div className="text-xs text-neutral-500">распределение активности</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle>Prime Time</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-6 gap-1">
+                            {groupMetrics.prime_time.map((hour) => (
+                              <div
+                                key={hour.hour}
+                                className={`text-center p-1 text-xs rounded ${
+                                  hour.is_prime_time ? 'bg-blue-100 text-blue-800' : 'bg-gray-50'
+                                }`}
+                              >
+                                {hour.hour}:00
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-xs text-neutral-500 mt-2 text-center">
+                            Выделены часы пиковой активности
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="md:col-span-2">
+                        <CardHeader className="pb-2">
+                          <CardTitle>Risk Radar</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {groupMetrics.risk_radar.length > 0 ? (
+                            <div className="space-y-3">
+                              {groupMetrics.risk_radar.map((user) => (
+                                <div key={user.tg_user_id} className="flex items-center justify-between">
+                                  <div>
+                                    <div className="font-medium">
+                                      {user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`}
+                                    </div>
+                                    <div className="text-xs text-neutral-500">
+                                      Последняя активность: {new Date(user.last_activity).toLocaleDateString('ru')}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-4">
+                                    <div className="text-sm">{user.message_count} сообщ.</div>
+                                    <div className={`px-2 py-1 rounded text-sm ${
+                                      user.risk_score >= 80 ? 'bg-red-100 text-red-800' :
+                                      user.risk_score >= 60 ? 'bg-amber-100 text-amber-800' :
+                                      'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      Риск: {user.risk_score}%
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 text-neutral-500">
+                              Нет участников с высоким риском оттока
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="settings">
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Основная информация</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <label className="text-sm text-neutral-600 block mb-2">
+                        ID группы в Telegram
+                      </label>
+                      <Input value={group?.tg_chat_id || ''} disabled className="bg-gray-50" />
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Технический идентификатор группы в системе Telegram
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-neutral-600 block mb-2">
+                        Название группы
+                      </label>
+                      <Input
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        placeholder="Название группы"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-neutral-600 block mb-2">
+                        Статус бота
+                      </label>
+                      <div className="flex items-center">
+                        <span
+                          className={`inline-block w-3 h-3 rounded-full mr-2 ${
+                            group?.bot_status === 'connected' ? 'bg-green-500' : 'bg-amber-500'
+                          }`}
+                        />
+                        <span>
+                          {group?.bot_status === 'connected' ? 'Подключен' : 'Ожидание прав администратора'}
+                        </span>
+                      </div>
+                      {group?.last_sync_at && (
+                        <p className="text-xs text-neutral-500 mt-1">
+                          Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-neutral-600 block mb-2">
+                        Ссылка для приглашения
+                      </label>
+                      <Input value={group?.invite_link || ''} readOnly className="bg-gray-50" />
+                      {!group?.invite_link && group?.bot_status !== 'connected' && (
+                        <p className="text-xs text-amber-500 mt-1">
+                          Для создания ссылки-приглашения бот должен быть администратором
+                        </p>
+                      )}
+                    </div>
+
+                    <Button onClick={refreshGroupInfo} disabled={loading}>
+                      Обновить информацию о группе
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Настройки уведомлений</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="notifications"
+                        checked={notificationsEnabled}
+                        onChange={e => setNotificationsEnabled(e.target.checked)}
+                        className="mr-2"
+                      />
+                      <label htmlFor="notifications">Включить уведомления о событиях</label>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      При включении этой опции, бот будет отправлять уведомления о новых событиях в группу
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Приветственное сообщение</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <label className="text-sm text-neutral-600 block mb-2">
+                        Сообщение для новых участников
+                      </label>
+                      <textarea
+                        className="w-full p-2 border rounded-lg min-h-[100px]"
+                        value={welcomeMessage}
+                        onChange={e => setWelcomeMessage(e.target.value)}
+                        placeholder="Добро пожаловать в нашу группу! Здесь вы можете..."
+                      />
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Поддерживается HTML-форматирование: &lt;b&gt;жирный&lt;/b&gt;, &lt;i&gt;курсив&lt;/i&gt;
+                      </p>
+                    </div>
+
+                    {error && (
+                      <div className="text-red-500 text-sm">{error}</div>
+                    )}
+
+                    {success && (
+                      <div className="text-green-500 text-sm">
+                        Настройки успешно сохранены
+                      </div>
+                    )}
+
+                    <div className="flex justify-end">
+                      <Button onClick={handleSave} disabled={saving}>
+                        {saving ? 'Сохранение...' : 'Сохранить настройки'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          )}
+        </>
       )}
     </AppShell>
   )

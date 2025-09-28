@@ -50,10 +50,64 @@ export async function POST(req: NextRequest) {
               .eq('id', participant.id)
             
             // Отправляем приветственное сообщение
-            const telegramService = createTelegramService('notifications')
-            await telegramService.sendMessage(userId, 
-              'Уведомления включены! Теперь вы будете получать важные обновления о событиях и активности в ваших группах.'
-            )
+            try {
+              const telegramService = createTelegramService('notifications')
+              console.log(`Sending welcome message to user ID: ${userId}`)
+              
+              const result = await telegramService.sendMessage(userId, 
+                `🤖 *Orbo Assistant Bot*
+
+Добро пожаловать! Этот бот используется для:
+• Отправки уведомлений от системы Orbo
+• Верификации вашего Telegram аккаунта
+
+Доступные команды:
+/help - показать помощь
+/stop - отключить уведомления
+
+Для получения уведомлений о событиях в ваших организациях, убедитесь что уведомления включены в веб-интерфейсе Orbo.
+
+🔐 Если вы ожидаете код верификации, он будет отправлен автоматически после настройки аккаунта в веб-интерфейсе.`, {
+                parse_mode: 'Markdown'
+              })
+              
+              console.log('Welcome message result:', result)
+              
+              // Проверяем, есть ли ожидающие коды верификации для этого пользователя
+              const { data: pendingVerifications } = await supabase
+                .from('user_telegram_accounts')
+                .select('*')
+                .eq('telegram_user_id', userId)
+                .eq('is_verified', false)
+                .not('verification_code', 'is', null)
+                .gt('verification_expires_at', new Date().toISOString())
+                
+              console.log('Found pending verifications:', pendingVerifications?.length || 0)
+              
+              // Если есть ожидающие коды, отправляем их
+              if (pendingVerifications && pendingVerifications.length > 0) {
+                for (const verification of pendingVerifications) {
+                  console.log(`Resending verification code for account ID: ${verification.id}`)
+                  
+                  const message = `🔐 *Код верификации Orbo*
+
+Для подтверждения связи вашего Telegram аккаунта с организацией используйте код:
+
+\`${verification.verification_code}\`
+
+Введите этот код в веб-интерфейсе Orbo.
+
+⏰ Код действителен до ${new Date(verification.verification_expires_at).toLocaleString('ru')}
+🔒 Если вы не запрашивали этот код, проигнорируйте сообщение`
+                  
+                  await telegramService.sendMessage(userId, message, {
+                    parse_mode: 'Markdown'
+                  })
+                }
+              }
+            } catch (error) {
+              console.error('Error sending welcome message:', error)
+            }
             break
             
           case '/stop':

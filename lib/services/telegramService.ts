@@ -6,12 +6,20 @@ export class TelegramService {
   private token: string;
   private botType: 'main' | 'notifications';
 
-  constructor(token = process.env.TELEGRAM_BOT_TOKEN, botType: 'main' | 'notifications' = 'main') {
-    if (!token) {
-      throw new Error('TELEGRAM_BOT_TOKEN not provided');
-    }
-    this.token = token;
+  constructor(botType: 'main' | 'notifications' = 'main') {
     this.botType = botType;
+    
+    // Выбираем токен в зависимости от типа бота
+    const token = botType === 'main' 
+      ? process.env.TELEGRAM_BOT_TOKEN 
+      : process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
+      
+    if (!token) {
+      throw new Error(`${botType === 'main' ? 'TELEGRAM_BOT_TOKEN' : 'TELEGRAM_NOTIFICATIONS_BOT_TOKEN'} not provided`);
+    }
+    
+    this.token = token;
+    console.log(`TelegramService initialized for ${botType} bot with token: ${token.substring(0, 5)}...`);
   }
 
   /**
@@ -101,30 +109,35 @@ async getChatMember(chatId: number, userId: number) {
   /**
    * Получение обновлений бота
    */
-  async getUpdates(options: { offset?: number, limit?: number, timeout?: number } = {}) {
-    const params = new URLSearchParams();
-    if (options.offset !== undefined) params.append('offset', options.offset.toString());
-    if (options.limit !== undefined) params.append('limit', options.limit.toString());
-    if (options.timeout !== undefined) params.append('timeout', options.timeout.toString());
-    
-    const url = `${this.apiBase}${this.token}/getUpdates${params.toString() ? '?' + params.toString() : ''}`;
-    
+  async getUpdates(options: { offset?: number, limit?: number, timeout?: number, deleteWebhook?: boolean } = {}) {
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
+      // Если установлен флаг deleteWebhook, сначала удаляем вебхук
+      if (options.deleteWebhook) {
+        console.log('Deleting webhook before getting updates...');
+        const deleteResult = await this.callApi('deleteWebhook');
+        if (!deleteResult.ok) {
+          console.error('Failed to delete webhook:', deleteResult);
+          throw new Error(`Failed to delete webhook: ${deleteResult.description || 'Unknown error'}`);
         }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Telegram API error: ${response.status}`);
+        console.log('Webhook deleted successfully');
       }
       
-      return await response.json();
+      // Добавляем параметры запроса
+      const params = new URLSearchParams();
+      if (options.offset !== undefined) params.append('offset', options.offset.toString());
+      if (options.limit !== undefined) params.append('limit', options.limit.toString());
+      if (options.timeout !== undefined) params.append('timeout', options.timeout.toString());
+      
+      // Вызываем API через общий метод callApi
+      return await this.callApi('getUpdates', options.offset !== undefined || options.limit !== undefined || options.timeout !== undefined ? 
+        { 
+          offset: options.offset, 
+          limit: options.limit, 
+          timeout: options.timeout 
+        } : {});
     } catch (error) {
       console.error('Error getting Telegram updates:', error);
-      return null;
+      throw error; // Пробрасываем ошибку дальше для обработки
     }
   }
 
@@ -217,11 +230,7 @@ async getChatMember(chatId: number, userId: number) {
  * Создает экземпляр сервиса Telegram с настройками по умолчанию
  */
 export function createTelegramService(botType: 'main' | 'notifications' = 'main') {
-  const token = botType === 'main' 
-    ? process.env.TELEGRAM_BOT_TOKEN 
-    : process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
-  
-  return new TelegramService(token, botType);
+  return new TelegramService(botType);
 }
 
 /**

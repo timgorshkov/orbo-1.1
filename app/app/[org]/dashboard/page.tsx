@@ -1,10 +1,10 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
 import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createClientServer } from '@/lib/server/supabaseServer'
 import { notFound } from 'next/navigation'
 import '../../../globals.css';
 import { getOrgInfoWithClient } from '@/lib/getOrgInfo';
+import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';
 
 type ActivityEvent = {
   id: number;
@@ -77,11 +77,7 @@ export default async function Dashboard({ params }: { params: { org: string } })
       )
       .limit(5)
 
-    const { data: telegramGroups } = await supabase
-      .from('telegram_groups')
-      .select('id, title, tg_chat_id')
-      .eq('org_id', params.org)
-      .order('title')
+    const telegramGroups = await getOrgTelegramGroups(params.org)
     
     return (
       <AppShell 

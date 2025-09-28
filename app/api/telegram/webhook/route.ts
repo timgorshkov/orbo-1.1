@@ -163,12 +163,44 @@ async function handleBotCommand(message: any) {
   // Используем сервисную роль для обхода RLS
   const supabase = supabaseServiceRole;
   
-  // Находим организацию по чату
-  const { data: group } = await supabase
+  // Находим организацию по чату (проверяем как строку и как число)
+  console.log(`Looking for group with tg_chat_id: ${chatId}, type: ${typeof chatId}`);
+  
+  // Сначала пробуем точное совпадение
+  let { data: group } = await supabase
     .from('telegram_groups')
     .select('org_id')
     .eq('tg_chat_id', chatId)
     .maybeSingle();
+    
+  // Если не нашли, пробуем как строку
+  if (!group) {
+    console.log(`Group not found with exact match, trying string conversion...`);
+    const { data: groupStr } = await supabase
+      .from('telegram_groups')
+      .select('org_id')
+      .eq('tg_chat_id', String(chatId))
+      .maybeSingle();
+      
+    if (groupStr) {
+      console.log(`Found group with string tg_chat_id: ${String(chatId)}`);
+      group = groupStr;
+    } else {
+      console.log(`Group not found with string tg_chat_id either`);
+      
+      // Пробуем filter с преобразованием типов
+      const { data: groupFilter } = await supabase
+        .from('telegram_groups')
+        .select('org_id')
+        .filter('tg_chat_id::text', 'eq', String(chatId))
+        .maybeSingle();
+        
+      if (groupFilter) {
+        console.log(`Found group with filter tg_chat_id::text = ${String(chatId)}`);
+        group = groupFilter;
+      }
+    }
+  }
   
   if (!group?.org_id) {
     console.log(`Command from unknown group ${chatId}, trying to get any organization`);
@@ -239,37 +271,109 @@ async function handleStatsCommand(chatId: number, orgId: string) {
     const today = new Date().toISOString().split('T')[0]
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     
+    console.log(`Getting stats for chat ${chatId} in org ${orgId}, today: ${today}, yesterday: ${yesterday}`);
+    
+    // Получаем группу для проверки
+    let { data: groupData } = await supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id')
+      .eq('tg_chat_id', chatId)
+      .maybeSingle();
+      
+    if (!groupData) {
+      // Пробуем найти как строку
+      const { data: groupStrData } = await supabase
+        .from('telegram_groups')
+        .select('id, title, tg_chat_id')
+        .eq('tg_chat_id', String(chatId))
+        .maybeSingle();
+        
+      if (groupStrData) {
+        console.log(`Found group with string tg_chat_id: ${String(chatId)}`);
+        groupData = groupStrData;
+      } else {
+        // Пробуем через filter
+        const { data: groupFilterData } = await supabase
+          .from('telegram_groups')
+          .select('id, title, tg_chat_id')
+          .filter('tg_chat_id::text', 'eq', String(chatId))
+          .maybeSingle();
+          
+        if (groupFilterData) {
+          console.log(`Found group with filter tg_chat_id::text = ${String(chatId)}`);
+          groupData = groupFilterData;
+        }
+      }
+    }
+    
+    console.log(`Group data for stats:`, groupData);
+    
     // Получаем метрики за сегодня
-    const { data: todayMetrics } = await supabase
+    const { data: todayMetrics, error: todayError } = await supabase
       .from('group_metrics')
       .select('*')
       .eq('org_id', orgId)
       .eq('tg_chat_id', chatId)
       .eq('date', today)
-      .single()
+      .maybeSingle();
+      
+    if (todayError) {
+      console.error('Error fetching today metrics:', todayError);
+    }
+    
+    console.log('Today metrics:', todayMetrics);
+    
+    // Если не нашли с числовым chatId, пробуем со строковым
+    if (!todayMetrics) {
+      const { data: todayMetricsStr } = await supabase
+        .from('group_metrics')
+        .select('*')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', String(chatId))
+        .eq('date', today)
+        .maybeSingle();
+        
+      if (todayMetricsStr) {
+        console.log('Found today metrics with string tg_chat_id');
+      }
+    }
     
     // Получаем метрики за вчера
-    const { data: yesterdayMetrics } = await supabase
+    const { data: yesterdayMetrics, error: yesterdayError } = await supabase
       .from('group_metrics')
       .select('*')
       .eq('org_id', orgId)
       .eq('tg_chat_id', chatId)
       .eq('date', yesterday)
-      .single()
+      .maybeSingle();
+      
+    if (yesterdayError) {
+      console.error('Error fetching yesterday metrics:', yesterdayError);
+    }
+    
+    console.log('Yesterday metrics:', yesterdayMetrics);
     
     // Получаем количество участников
-    const { count: memberCount } = await supabase
+    const { count: memberCount, error: memberCountError } = await supabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
+      .eq('org_id', orgId);
+      
+    if (memberCountError) {
+      console.error('Error fetching member count:', memberCountError);
+    }
     
     // Получаем количество сообщений за все время
-    const { count: totalMessages } = await supabase
+    const { count: totalMessages, error: totalMessagesError } = await supabase
       .from('activity_events')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
       .eq('tg_chat_id', chatId)
-      .eq('event_type', 'message')
+      .eq('event_type', 'message');
+      
+    if (totalMessagesError) {
+      console.error('Error fetching total messages:', totalMessagesError);
+    }
     
     // Формируем сообщение со статистикой
     let statsMessage = `<b>Статистика группы:</b>\n\n`
