@@ -395,12 +395,17 @@ export class EventProcessingService {
       // Получаем ID участника из таблицы participants
       const { data: participant } = await this.supabase
         .from('participants')
-        .select('id')
+        .select('id, merged_into')
         .eq('tg_user_id', member.id)
         .eq('org_id', orgId)
-        .single();
+        .maybeSingle();
       
       if (participant) {
+        if (participant.merged_into) {
+          console.log(`Participant ${participant.id} merged into ${participant.merged_into}, skipping group update`);
+          return;
+        }
+
         // Обновляем статус участника в группе
         const { data: participantGroup, error: pgError } = await this.supabase
           .from('participant_groups')
@@ -475,12 +480,12 @@ export class EventProcessingService {
       try {
         // Проверяем, есть ли участник в базе
         let participantId;
-        const { data: participant } = await this.supabase
+        let { data: participant } = await this.supabase
           .from('participants')
-          .select('id')
+          .select('id, merged_into')
           .eq('tg_user_id', member.id)
           .eq('org_id', orgId)
-          .single();
+          .maybeSingle();
         
         // Если нет, создаем запись
         if (!participant) {
@@ -491,6 +496,7 @@ export class EventProcessingService {
               tg_user_id: member.id,
               username: member.username,
               full_name: `${member.first_name} ${member.last_name || ''}`.trim(),
+              merged_into: null,
               last_activity_at: new Date().toISOString()
             })
             .select('id')
@@ -503,7 +509,11 @@ export class EventProcessingService {
           
           participantId = newParticipant?.id;
         } else {
-          participantId = participant.id;
+          if (participant.merged_into) {
+            participantId = participant.merged_into;
+          } else {
+            participantId = participant.id;
+          }
         }
         
         if (participantId) {
@@ -619,7 +629,7 @@ export class EventProcessingService {
       // Проверяем наличие участника
       const { data: participant } = await this.supabase
         .from('participants')
-        .select('id')
+        .select('id, merged_into')
         .eq('tg_user_id', userId)
         .eq('org_id', orgId)
         .maybeSingle();
@@ -649,7 +659,7 @@ export class EventProcessingService {
           console.log(`Created new participant with ID ${participantId}`);
         }
       } else {
-        participantId = participant.id;
+        participantId = participant.merged_into || participant.id;
       }
       
       // Если у нас есть ID участника, проверяем связь с группой

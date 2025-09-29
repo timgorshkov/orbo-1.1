@@ -39,54 +39,69 @@ export default async function MembersPage({ params }: { params: { org: string } 
       }
     )
     
-    // Получаем список участников организации
-    let participants: Participant[] | null = null;
+    // Получаем список участников организации без дублей по tg_user_id
+    let participants: Participant[] = [];
     let error: any = null;
-    
+
     try {
-      // Сначала пробуем использовать RPC функцию
-      const rpcResult = await supabase.rpc('get_participants_with_group_count', {
-        org_id_param: params.org
-      });
-      
-      if (rpcResult.error) {
-        // Если RPC не работает, используем прямой запрос
-        console.log('RPC function error, using fallback query:', rpcResult.error.message);
-        
-        // Получаем список участников
-        const { data: basicParticipants, error: basicError } = await supabase
-          .from('participants')
-          .select('*')
-          .eq('org_id', params.org)
-          .order('last_activity_at', { ascending: false })
-          .limit(50) as { data: Participant[] | null, error: any };
-        
-        // Получаем количество групп для каждого участника
-        if (basicParticipants && basicParticipants.length > 0) {
-          for (const participant of basicParticipants) {
-            try {
-              const { count } = await supabase
-                .from('participant_groups')
-                .select('*', { count: 'exact', head: true })
-                .eq('participant_id', participant.id)
-                .eq('is_active', true);
-              
-              participant.group_count = count || 0;
-            } catch (e) {
-              console.error('Error counting groups for participant:', e);
-              participant.group_count = 0;
+      const { data, error: participantsError } = await supabase
+        .from('participants')
+        .select('*')
+        .eq('org_id', params.org)
+        .order('last_activity_at', { ascending: false }) as { data: Participant[] | null, error: any };
+
+      if (participantsError) {
+        throw participantsError;
+      }
+
+      if (data) {
+        const uniqueByTg = new Map<number, Participant>();
+        const mergedIds = new Set<string>();
+
+        data.forEach(participant => {
+          if (!participant.tg_user_id) {
+            participants.push(participant);
+            return;
+          }
+
+          const existing = uniqueByTg.get(participant.tg_user_id);
+          if (!existing) {
+            uniqueByTg.set(participant.tg_user_id, participant);
+          } else {
+            // выбираем запись с минимальным merged_into или последней активностью
+            const existingActivity = existing.last_activity_at ? new Date(existing.last_activity_at).getTime() : 0;
+            const candidateActivity = participant.last_activity_at ? new Date(participant.last_activity_at).getTime() : 0;
+
+            if (candidateActivity > existingActivity) {
+              uniqueByTg.set(participant.tg_user_id, participant);
             }
           }
-          
-          participants = basicParticipants;
-        } else {
-          error = basicError;
+
+          if ((participant as any).merged_into) {
+            mergedIds.add(participant.id);
+          }
+        });
+
+        participants = [...Array.from(uniqueByTg.values()), ...data.filter(p => !p.tg_user_id && !((p as any).merged_into))]
+          .filter(p => !mergedIds.has(p.id));
+
+        for (const participant of participants) {
+          try {
+            const { count } = await supabase
+              .from('participant_groups')
+              .select('*', { count: 'exact', head: true })
+              .eq('participant_id', participant.id)
+              .eq('is_active', true);
+
+            participant.group_count = count || 0;
+          } catch (e) {
+            console.error('Error counting groups for participant:', e);
+            participant.group_count = 0;
+          }
         }
-      } else {
-        participants = rpcResult.data;
       }
     } catch (e) {
-      console.error('Error in participants query:', e);
+      console.error('Error loading participants:', e);
       error = e;
     }
     
