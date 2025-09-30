@@ -487,6 +487,8 @@ export class EventProcessingService {
           .eq('org_id', orgId)
           .maybeSingle();
         
+        let participantId: string | null = null;
+
         // Если нет, создаем запись
         if (!participant) {
           const { data: newParticipant, error } = await this.supabase
@@ -625,9 +627,13 @@ export class EventProcessingService {
       }
     }
     
+    let identityId: string | null = null;
+    let participantRecord: { id: string; merged_into?: string | null; identity_id?: string | null } | null = null;
+    let participantId: string | null = null;
+
     // Проверяем, есть ли пользователь в таблице participants
     try {
-      const identityId = await this.ensureIdentity(message.from);
+      identityId = await this.ensureIdentity(message.from);
 
       const { data: participant } = await this.supabase
         .from('participants')
@@ -636,7 +642,7 @@ export class EventProcessingService {
         .eq('org_id', orgId)
         .maybeSingle();
       
-      let participantId;
+      participantRecord = participant;
       
       // Если участника нет, создаем его
       if (!participant) {
@@ -717,9 +723,11 @@ export class EventProcessingService {
     
     // Записываем событие сообщения
     try {
+      const effectiveIdentityId = identityId || (participantRecord?.identity_id ?? null);
+
       await this.writeGlobalActivityEvent({
         tg_chat_id: chatId,
-        identity_id: identityId,
+        identity_id: effectiveIdentityId,
         tg_user_id: userId,
         event_type: 'message',
         created_at: new Date().toISOString(),
@@ -813,7 +821,7 @@ export class EventProcessingService {
       // Обновляем время последней активности пользователя
       await this.supabase
         .from('participants')
-        .update({ last_activity_at: new Date().toISOString(), identity_id: participantId })
+        .update({ last_activity_at: new Date().toISOString(), identity_id: identityId || participantRecord?.identity_id || null })
         .eq('tg_user_id', userId)
         .eq('org_id', orgId);
       
@@ -1231,14 +1239,35 @@ export class EventProcessingService {
     const username = user.username || null;
     const firstName = user.first_name || null;
     const lastName = user.last_name || null;
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
 
     const { data: existingIdentity } = await this.supabase
       .from('telegram_identities')
-      .select('id')
+      .select('id, username, full_name, first_name, last_name')
       .eq('tg_user_id', tgUserId)
       .maybeSingle();
 
     if (existingIdentity) {
+      const patch: Record<string, any> = {};
+      if (username && username !== existingIdentity.username) {
+        patch.username = username;
+      }
+      if (fullName && fullName !== existingIdentity.full_name) {
+        patch.full_name = fullName;
+      }
+      if (firstName && firstName !== existingIdentity.first_name) {
+        patch.first_name = firstName;
+      }
+      if (lastName && lastName !== existingIdentity.last_name) {
+        patch.last_name = lastName;
+      }
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = new Date().toISOString();
+        await this.supabase
+          .from('telegram_identities')
+          .update(patch)
+          .eq('tg_user_id', tgUserId);
+      }
       return existingIdentity.id;
     }
 
@@ -1249,6 +1278,7 @@ export class EventProcessingService {
         username,
         first_name: firstName,
         last_name: lastName,
+        full_name: fullName,
         raw: user
       })
       .select('id')

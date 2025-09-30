@@ -11,6 +11,8 @@ create table if not exists public.telegram_identities (
   updated_at timestamptz default now()
 );
 
+create extension if not exists pg_trgm;
+
 create index if not exists telegram_identities_username_idx on public.telegram_identities using gin ((lower(coalesce(username, ''))) gin_trgm_ops);
 
 -- Link participants to identities
@@ -22,11 +24,10 @@ insert into public.telegram_identities (tg_user_id, username, first_name, last_n
 select distinct p.tg_user_id, p.username, null, null
 from public.participants p
 where p.tg_user_id is not null
-  and not exists (
-    select 1
-    from public.telegram_identities ti
-    where ti.tg_user_id = p.tg_user_id
-  );
+  and p.tg_user_id not in (
+    select tg_user_id from public.telegram_identities
+  )
+on conflict (tg_user_id) do nothing;
 
 update public.participants p
 set identity_id = ti.id

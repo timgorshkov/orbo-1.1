@@ -42,7 +42,9 @@ type GroupMetrics = {
   }>;
   risk_radar: Array<{
     tg_user_id: number;
-    username: string;
+    username: string | null;
+    full_name?: string | null;
+    display_name?: string;
     risk_score: number;
     last_activity: string;
     message_count: number;
@@ -79,7 +81,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           prime_time: Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
           risk_radar: []
   })
-  const [topUsers, setTopUsers] = useState<[string, { count: number, username: string | null }][]>([])
+  const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; display_name: string; last_activity?: string }>>([])
   const [loadingAnalytics, setLoadingAnalytics] = useState(true)
 
   useEffect(() => {
@@ -177,7 +179,17 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           
           // Обновляем топ пользователей из API
           if (analyticsData.topUsers) {
-            setTopUsers(analyticsData.topUsers);
+            setTopUsers(
+              (analyticsData?.topUsers || []).map((user: any) => ({
+                tg_user_id: user.tg_user_id,
+                full_name: user.full_name ?? null,
+                username: user.username ?? null,
+                message_count: user.message_count ?? user.count ?? 0,
+                display_name:
+                  user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`),
+                last_activity: user.last_activity ?? null
+              }))
+            )
           }
           
           // Обновляем дневные метрики из API
@@ -460,108 +472,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
         // Получаем топ-5 активных участников за последние 7 дней
         const lastWeek = new Date()
         lastWeek.setDate(lastWeek.getDate() - 7)
-        
-        console.log('Fetching top participants');
-        
-        const { data: topParticipants, error: topError } = await supabase
-          .from('activity_events')
-          .select('tg_user_id, meta, created_at')
-          .eq('tg_chat_id', group.tg_chat_id)
-          .eq('event_type', 'message')
-          .gte('created_at', lastWeek.toISOString())
-          .order('created_at', { ascending: false })
-          .limit(500)
-        
-        console.log('Top participants query result:', {
-          count: topParticipants?.length || 0,
-          error: topError,
-          sample: topParticipants?.slice(0, 3) || []
-        });
-        
-        const participantActivity: Record<string, { count: number, username: string | null }> = {}
-        
-        if (topParticipants && topParticipants.length > 0) {
-          topParticipants.forEach((event: any) => {
-            const userId = event.tg_user_id?.toString()
-            if (!userId) return
-            
-            if (!participantActivity[userId]) {
-              // Проверяем разные варианты хранения имени пользователя в meta
-              let username = null;
-              if (event.meta?.user?.username) {
-                username = event.meta.user.username;
-              } else if (event.meta?.from?.username) {
-                username = event.meta.from.username;
-              } else if (event.meta?.username) {
-                username = event.meta.username;
-              } else if (event.meta?.first_name) {
-                username = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
-              }
-              
-              participantActivity[userId] = { 
-                count: 0, 
-                username: username
-              }
-            }
-            participantActivity[userId].count++
-          })
-          
-          console.log('Participant activity calculated:', {
-            uniqueUsers: Object.keys(participantActivity).length,
-            sample: Object.entries(participantActivity).slice(0, 3)
-          });
-        } else {
-          // Если не нашли данные через event_type='message', попробуем искать все события
-          console.log('No message events found, trying all events');
-          
-          const { data: allEvents, error: allEventsError } = await supabase
-            .from('activity_events')
-            .select('tg_user_id, meta, created_at, event_type')
-            .eq('tg_chat_id', group.tg_chat_id)
-            .gte('created_at', lastWeek.toISOString())
-            .order('created_at', { ascending: false })
-            .limit(500)
-            
-          console.log('All events query result:', {
-            count: allEvents?.length || 0,
-            error: allEventsError,
-            eventTypes: allEvents ? Array.from(new Set(allEvents.map((e: any) => e.event_type))) : []
-          });
-          
-          if (allEvents && allEvents.length > 0) {
-            allEvents.forEach((event: any) => {
-              const userId = event.tg_user_id?.toString()
-              if (!userId) return
-              
-              if (!participantActivity[userId]) {
-                let username = null;
-                if (event.meta?.user?.username) {
-                  username = event.meta.user.username;
-                } else if (event.meta?.from?.username) {
-                  username = event.meta.from.username;
-                } else if (event.meta?.username) {
-                  username = event.meta.username;
-                } else if (event.meta?.first_name) {
-                  username = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
-                }
-                
-                participantActivity[userId] = { 
-                  count: 0, 
-                  username: username
-                }
-              }
-              participantActivity[userId].count++
-            });
-          }
-        }
-        
-        const topUsersList = Object.entries(participantActivity)
-          .sort((a, b) => b[1].count - a[1].count)
-          .slice(0, 5)
-        
-        console.log('Top users list:', topUsersList);
-        
-        setTopUsers(topUsersList)
+        // Остальной код будет использовать ответ API, поэтому локальная агрегация не требуется
         
       } catch (e) {
         console.error('Error fetching analytics:', e)
@@ -777,17 +688,18 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                         <CardContent>
                           {topUsers.length > 0 ? (
                             <div className="space-y-2">
-                              {topUsers.map(([userId, data], index) => (
-                                <div key={userId} className="flex justify-between items-center">
+                              {topUsers.map((user, index) => (
+                                <div key={user.tg_user_id ?? index} className="flex justify-between items-center">
                                   <div className="flex items-center">
                                     <span className="w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs mr-2">
                                       {index + 1}
                                     </span>
                                     <span>
-                                      {data.username ? `@${data.username}` : `ID: ${userId}`}
+                                      {user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
+                                      {user.username ? ` (@${user.username})` : ''}
                                     </span>
                                   </div>
-                                  <span className="text-sm text-neutral-500">{data.count} сообщ.</span>
+                                  <span className="text-sm text-neutral-500">{user.message_count} сообщ.</span>
                                 </div>
                               ))}
                             </div>
@@ -883,7 +795,8 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                                 <div key={user.tg_user_id} className="flex items-center justify-between">
                                   <div>
                                     <div className="font-medium">
-                                      {user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`}
+                                      {user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
+                                      {user.username ? ` (@${user.username})` : ''}
                                     </div>
                                     <div className="text-xs text-neutral-500">
                                       Последняя активность: {new Date(user.last_activity).toLocaleDateString('ru')}

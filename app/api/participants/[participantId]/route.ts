@@ -74,6 +74,19 @@ export async function PUT(request: Request, { params }: { params: { participantI
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { data: participantRecord, error: participantFetchError } = await adminClient
+      .from('participants')
+      .select('id, merged_into')
+      .eq('org_id', orgId)
+      .eq('id', participantId)
+      .maybeSingle();
+
+    if (participantFetchError || !participantRecord) {
+      return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+    }
+
+    const canonicalId = participantRecord.merged_into || participantRecord.id;
+
     const updatePayload: Record<string, any> = {};
     const allowedFields = ['full_name', 'username', 'email', 'phone', 'activity_score', 'risk_score', 'traits_cache', 'last_activity_at'];
     allowedFields.forEach(field => {
@@ -90,7 +103,7 @@ export async function PUT(request: Request, { params }: { params: { participantI
       .from('participants')
       .update(updatePayload)
       .eq('org_id', orgId)
-      .eq('id', participantId)
+      .eq('id', canonicalId)
       .select('*')
       .maybeSingle();
 

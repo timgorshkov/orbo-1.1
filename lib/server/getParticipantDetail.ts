@@ -127,51 +127,99 @@ export async function getParticipantDetail(orgId: string, participantId: string)
   let eventsData: ParticipantTimelineEvent[] = [];
 
   if (identityId) {
-    const { data: accessibleChats, error: chatsError } = await supabase
-      .from('org_telegram_groups')
-      .select('tg_chat_id, status')
-      .eq('status', 'active')
-      .eq('org_id', orgId);
+    let accessibleChatIds: string[] = [];
 
-    if (chatsError) {
-      console.error('Error loading accessible chats for participant:', chatsError);
-      throw chatsError;
+    try {
+      const { data: accessibleChats, error: chatsError } = await supabase
+        .from('org_telegram_groups')
+        .select('tg_chat_id, status')
+        .eq('org_id', orgId);
+
+      if (chatsError) {
+        if (chatsError.code !== '42703' && chatsError.code !== '42P01') {
+          console.error('Error loading accessible chats for participant:', chatsError);
+          throw chatsError;
+        }
+      }
+
+      (accessibleChats || []).forEach(chat => {
+        if (!chat?.tg_chat_id) return;
+        if (!chat.status || chat.status === 'active') {
+          accessibleChatIds.push(String(chat.tg_chat_id));
+        }
+      });
+    } catch (chatError) {
+      console.error('Unexpected error while loading accessible chats:', chatError);
     }
 
-    const allowedChatIds = new Set<string>();
-    (accessibleChats || []).forEach(chat => {
-      allowedChatIds.add(String(chat.tg_chat_id));
-    });
-
     groups.forEach(group => {
-      allowedChatIds.add(String(group.tg_chat_id));
+      accessibleChatIds.push(String(group.tg_chat_id));
     });
 
-    if (allowedChatIds.size > 0) {
-      const chatIdArray = Array.from(allowedChatIds).map(id => Number(id)).filter(id => !Number.isNaN(id));
+    accessibleChatIds = Array.from(new Set(accessibleChatIds));
 
-      if (chatIdArray.length > 0) {
-        const { data: globalEvents, error: globalEventsError } = await supabase
-          .from('telegram_activity_events')
-          .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id')
-          .eq('identity_id', identityId)
-          .in('tg_chat_id', chatIdArray)
-          .order('created_at', { ascending: false })
-          .limit(200);
+    if (accessibleChatIds.length > 0) {
+      const numericChatIds = accessibleChatIds
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id));
 
-        if (globalEventsError) {
-          console.error('Error loading global activity events:', globalEventsError);
-          throw globalEventsError;
+      if (numericChatIds.length > 0) {
+        try {
+          const { data: globalEvents, error: globalEventsError } = await supabase
+            .from('telegram_activity_events')
+            .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id')
+            .eq('identity_id', identityId)
+            .in('tg_chat_id', numericChatIds)
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+          if (globalEventsError) {
+            if (globalEventsError.code === '42P01') {
+              console.warn('telegram_activity_events table missing, falling back to activity_events');
+            } else {
+              throw globalEventsError;
+            }
+          } else if (globalEvents) {
+            eventsData = globalEvents.map(event => ({
+              id: event.id,
+              event_type: event.event_type,
+              created_at: event.created_at,
+              tg_chat_id: String(event.tg_chat_id),
+              meta: event.meta || null
+            }));
+          }
+        } catch (globalError) {
+          console.error('Error loading global activity events:', globalError);
         }
-
-        eventsData = (globalEvents || []).map(event => ({
-          id: event.id,
-          event_type: event.event_type,
-          created_at: event.created_at,
-          tg_chat_id: String(event.tg_chat_id),
-          meta: event.meta || null
-        }));
       }
+    }
+  }
+
+  // Fallback to legacy activity_events if global data is empty
+  if (eventsData.length === 0) {
+    try {
+      const { data: legacyEvents, error: legacyError } = await supabase
+        .from('activity_events')
+        .select('id, event_type, created_at, tg_chat_id, meta')
+        .eq('org_id', orgId)
+        .eq('participant_id', canonicalId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (legacyError) {
+        console.error('Error loading legacy participant events:', legacyError);
+        throw legacyError;
+      }
+
+      eventsData = (legacyEvents || []).map(event => ({
+        id: event.id,
+        event_type: event.event_type,
+        created_at: event.created_at,
+        tg_chat_id: event.tg_chat_id ? String(event.tg_chat_id) : null,
+        meta: event.meta || null
+      }));
+    } catch (legacyException) {
+      console.error('Failed to load fallback participant events:', legacyException);
     }
   }
 

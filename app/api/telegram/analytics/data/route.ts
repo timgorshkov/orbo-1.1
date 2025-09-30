@@ -73,8 +73,9 @@ export async function GET(request: Request) {
     let joinCount = 0;
     let leaveCount = 0;
     const usersByDay: Record<string, Set<string>> = {};
-    const participantActivity: Record<string, { count: number, username: string | null }> = {};
+    const participantActivity: Record<string, { count: number; username: string | null; full_name: string | null; tg_user_id?: number }> = {};
     const dailyMetrics: Record<string, any> = {};
+    const eventLastActivityMap = new Map<string, string>();
 
     activityEvents.forEach((event) => {
       const day = new Date(event.created_at).toISOString().split('T')[0];
@@ -109,11 +110,12 @@ export async function GET(request: Request) {
         // Добавляем пользователя в статистику активности
         const userId = event.tg_user_id?.toString();
         if (userId) {
+          const numericUserId = event.tg_user_id;
           usersByDay[day].add(userId);
+          eventLastActivityMap.set(userId, event.created_at);
           
           // Обновляем статистику активности пользователя
           if (!participantActivity[userId]) {
-            // Проверяем разные варианты хранения имени пользователя в meta
             let username = null;
             if (event.meta?.user?.username) {
               username = event.meta.user.username;
@@ -121,13 +123,22 @@ export async function GET(request: Request) {
               username = event.meta.from.username;
             } else if (event.meta?.username) {
               username = event.meta.username;
-            } else if (event.meta?.first_name) {
-              username = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
             }
-            
-            participantActivity[userId] = { 
-              count: 0, 
-              username: username
+
+            let fullName = null;
+            if (event.meta?.user?.name) {
+              fullName = event.meta.user.name;
+            } else if (event.meta?.from?.name) {
+              fullName = event.meta.from.name;
+            } else if (event.meta?.first_name) {
+              fullName = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
+            }
+
+            participantActivity[userId] = {
+              count: 0,
+              username,
+              full_name: fullName,
+              tg_user_id: numericUserId ?? undefined
             };
           }
           participantActivity[userId].count++;
@@ -216,7 +227,15 @@ export async function GET(request: Request) {
     // Формируем топ активных пользователей
     const topUsers = Object.entries(participantActivity)
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 5);
+      .slice(0, 5)
+      .map(([userId, data]) => ({
+        tg_user_id: Number(userId),
+        full_name: data.full_name,
+        username: data.username,
+        message_count: data.count,
+        display_name: data.full_name || (data.username ? `@${data.username}` : null) || `ID ${userId}`,
+        last_activity: eventLastActivityMap.get(userId) || new Date().toISOString()
+      }));
 
     // Формируем дневные метрики для отображения
     const dailyMetricsArray = Object.values(dailyMetrics).sort((a, b) => 
@@ -230,10 +249,110 @@ export async function GET(request: Request) {
       .map(([userId, data]) => ({
         tg_user_id: parseInt(userId),
         username: data.username,
-        risk_score: Math.round(80 - (data.count / Math.max(...userMessageCounts)) * 50),
-        last_activity: activityEvents.find(e => e.tg_user_id?.toString() === userId)?.created_at || new Date().toISOString(),
+        full_name: data.full_name,
+        display_name: data.full_name || (data.username ? `@${data.username}` : null) || `ID ${userId}`,
+        risk_score: Math.round(
+          80 -
+            (data.count /
+              Math.max(1, Math.max(...userMessageCounts))) *
+              50
+        ),
+        last_activity: eventLastActivityMap.get(userId) || new Date().toISOString(),
         message_count: data.count
       }));
+
+    const missingUserIds: number[] = [];
+    Object.entries(participantActivity).forEach(([userId, data]) => {
+      if (!data.username) {
+        const numericId = Number(userId);
+        if (Number.isFinite(numericId)) {
+          missingUserIds.push(numericId);
+        }
+      }
+    });
+
+    if (missingUserIds.length > 0) {
+      try {
+        const { data: participantUsernameRows, error: participantUsernameError } = await supabase
+          .from('participants')
+          .select('tg_user_id, username, full_name')
+          .eq('org_id', orgId)
+          .in('tg_user_id', missingUserIds);
+
+        if (participantUsernameError) {
+          console.error('Error fetching participant usernames for analytics:', participantUsernameError);
+        } else if (participantUsernameRows) {
+          participantUsernameRows.forEach(row => {
+            if (!row?.tg_user_id) {
+              return;
+            }
+            const key = row.tg_user_id.toString();
+            if (!participantActivity[key]) {
+              participantActivity[key] = {
+                count: 0,
+                username: row.username ?? null,
+                full_name: row.full_name ?? null,
+                tg_user_id: row.tg_user_id ?? undefined
+              };
+            } else {
+              if (!participantActivity[key].username && row.username) {
+                participantActivity[key].username = row.username;
+              }
+              if (!participantActivity[key].full_name && row.full_name) {
+                participantActivity[key].full_name = row.full_name;
+              }
+              if (!participantActivity[key].tg_user_id && row.tg_user_id) {
+                participantActivity[key].tg_user_id = row.tg_user_id;
+              }
+            }
+          });
+        }
+      } catch (participantUsernameException) {
+        console.error('Exception fetching participant usernames for analytics:', participantUsernameException);
+      }
+    }
+
+    if (missingUserIds.length > 0) {
+      try {
+        const { data: identityRows, error: identityError } = await supabase
+          .from('telegram_identities')
+          .select('tg_user_id, username, first_name, last_name, full_name')
+          .in('tg_user_id', missingUserIds);
+
+        if (identityError) {
+          console.error('Error loading telegram identities for analytics:', identityError);
+        } else if (identityRows) {
+          identityRows.forEach(row => {
+            if (!row?.tg_user_id) {
+              return;
+            }
+            const key = row.tg_user_id.toString();
+            if (!participantActivity[key]) {
+              participantActivity[key] = {
+                count: 0,
+                username: row?.username ?? null,
+                full_name:
+                  row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null,
+                tg_user_id: row?.tg_user_id ?? undefined
+              };
+            } else {
+              if (!participantActivity[key].username && row?.username) {
+                participantActivity[key].username = row.username;
+              }
+              if (!participantActivity[key].full_name) {
+                participantActivity[key].full_name =
+                  row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null;
+              }
+              if (!participantActivity[key].tg_user_id && row?.tg_user_id) {
+                participantActivity[key].tg_user_id = row.tg_user_id;
+              }
+            }
+          });
+        }
+      } catch (identitiesException) {
+        console.error('Exception while loading telegram identities for analytics:', identitiesException);
+      }
+    }
 
     return NextResponse.json({
       metrics: {
