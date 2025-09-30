@@ -122,17 +122,57 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     };
   });
 
-  const { data: eventsData, error: eventsError } = await supabase
-    .from('activity_events')
-    .select('id, event_type, created_at, tg_chat_id, meta')
-    .eq('org_id', orgId)
-    .eq('participant_id', canonicalId)
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const identityId = participantRecord.identity_id;
 
-  if (eventsError) {
-    console.error('Error loading participant timeline events:', eventsError);
-    throw eventsError;
+  let eventsData: ParticipantTimelineEvent[] = [];
+
+  if (identityId) {
+    const { data: accessibleChats, error: chatsError } = await supabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id, status')
+      .eq('status', 'active')
+      .eq('org_id', orgId);
+
+    if (chatsError) {
+      console.error('Error loading accessible chats for participant:', chatsError);
+      throw chatsError;
+    }
+
+    const allowedChatIds = new Set<string>();
+    (accessibleChats || []).forEach(chat => {
+      allowedChatIds.add(String(chat.tg_chat_id));
+    });
+
+    groups.forEach(group => {
+      allowedChatIds.add(String(group.tg_chat_id));
+    });
+
+    if (allowedChatIds.size > 0) {
+      const chatIdArray = Array.from(allowedChatIds).map(id => Number(id)).filter(id => !Number.isNaN(id));
+
+      if (chatIdArray.length > 0) {
+        const { data: globalEvents, error: globalEventsError } = await supabase
+          .from('telegram_activity_events')
+          .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id')
+          .eq('identity_id', identityId)
+          .in('tg_chat_id', chatIdArray)
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        if (globalEventsError) {
+          console.error('Error loading global activity events:', globalEventsError);
+          throw globalEventsError;
+        }
+
+        eventsData = (globalEvents || []).map(event => ({
+          id: event.id,
+          event_type: event.event_type,
+          created_at: event.created_at,
+          tg_chat_id: String(event.tg_chat_id),
+          meta: event.meta || null
+        }));
+      }
+    }
   }
 
   return {
@@ -142,6 +182,6 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     duplicates: (duplicates || []) as ParticipantRecord[],
     traits: (traitsData || []) as ParticipantTrait[],
     groups,
-    events: (eventsData || []) as ParticipantTimelineEvent[]
+    events: eventsData
   };
 }

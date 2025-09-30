@@ -75,7 +75,7 @@ export async function PUT(request: Request, { params }: { params: { participantI
     }
 
     const updatePayload: Record<string, any> = {};
-    const allowedFields = ['full_name', 'username', 'email', 'phone', 'activity_score', 'risk_score'];
+    const allowedFields = ['full_name', 'username', 'email', 'phone', 'activity_score', 'risk_score', 'traits_cache', 'last_activity_at'];
     allowedFields.forEach(field => {
       if (field in payload) {
         updatePayload[field] = payload[field];
@@ -85,9 +85,6 @@ export async function PUT(request: Request, { params }: { params: { participantI
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
-
-    updatePayload.updated_by = user.id;
-    updatePayload.last_activity_at = payload?.last_activity_at ?? updatePayload.last_activity_at;
 
     const { data: updatedParticipant, error: updateError } = await adminClient
       .from('participants')

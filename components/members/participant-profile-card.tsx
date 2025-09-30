@@ -36,11 +36,22 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
     phone: participant.phone || '',
     activity_score: participant.activity_score ?? null,
     risk_score: participant.risk_score ?? null,
-    notes: participant.traits_cache?.notes || ''
+    notes: (participant.traits_cache as any)?.notes || ''
   });
 
   const handleChange = (key: keyof FieldState, value: string) => {
-    setFields(prev => ({ ...prev, [key]: value }));
+    if (key === 'activity_score' || key === 'risk_score') {
+      setFields(prev => ({
+        ...prev,
+        [key]: value === '' ? null : Number(value)
+      }));
+      return;
+    }
+
+    setFields(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   const handleSubmit = async () => {

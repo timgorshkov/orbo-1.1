@@ -478,11 +478,11 @@ export class EventProcessingService {
       });
       
       try {
-        // Проверяем, есть ли участник в базе
-        let participantId;
-        let { data: participant } = await this.supabase
+        const identityId = await this.ensureIdentity(member);
+
+        const { data: participant } = await this.supabase
           .from('participants')
-          .select('id, merged_into')
+          .select('id, merged_into, identity_id')
           .eq('tg_user_id', member.id)
           .eq('org_id', orgId)
           .maybeSingle();
@@ -496,6 +496,7 @@ export class EventProcessingService {
               tg_user_id: member.id,
               username: member.username,
               full_name: `${member.first_name} ${member.last_name || ''}`.trim(),
+              identity_id: identityId,
               merged_into: null,
               last_activity_at: new Date().toISOString()
             })
@@ -626,10 +627,11 @@ export class EventProcessingService {
     
     // Проверяем, есть ли пользователь в таблице participants
     try {
-      // Проверяем наличие участника
+      const identityId = await this.ensureIdentity(message.from);
+
       const { data: participant } = await this.supabase
         .from('participants')
-        .select('id, merged_into')
+        .select('id, merged_into, identity_id')
         .eq('tg_user_id', userId)
         .eq('org_id', orgId)
         .maybeSingle();
@@ -647,6 +649,7 @@ export class EventProcessingService {
             tg_user_id: userId,
             username: username,
             full_name: fullName,
+            identity_id: identityId,
             last_activity_at: new Date().toISOString()
           })
           .select('id')
@@ -714,6 +717,27 @@ export class EventProcessingService {
     
     // Записываем событие сообщения
     try {
+      await this.writeGlobalActivityEvent({
+        tg_chat_id: chatId,
+        identity_id: identityId,
+        tg_user_id: userId,
+        event_type: 'message',
+        created_at: new Date().toISOString(),
+        message_id: message.message_id,
+        reply_to_message_id: message.reply_to_message?.message_id,
+        meta: {
+          user: {
+            username: username,
+            name: fullName
+          },
+          message_length: message.text?.length || 0,
+          links_count: linksCount,
+          mentions_count: mentionsCount,
+          has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+          message_id: message.message_id
+        }
+      });
+
       console.log('Inserting activity event with data:', {
         org_id: orgId,
         event_type: 'message',
@@ -789,7 +813,7 @@ export class EventProcessingService {
       // Обновляем время последней активности пользователя
       await this.supabase
         .from('participants')
-        .update({ last_activity_at: new Date().toISOString() })
+        .update({ last_activity_at: new Date().toISOString(), identity_id: participantId })
         .eq('tg_user_id', userId)
         .eq('org_id', orgId);
       
@@ -1191,6 +1215,84 @@ export class EventProcessingService {
       }
     } catch (error) {
       console.error('Exception in updateGroupMetrics:', error);
+    }
+  }
+
+  private async ensureIdentity(user: any): Promise<string | null> {
+    if (!user?.id) {
+      return null;
+    }
+
+    const tgUserId = Number(user.id);
+    if (!Number.isFinite(tgUserId)) {
+      return null;
+    }
+
+    const username = user.username || null;
+    const firstName = user.first_name || null;
+    const lastName = user.last_name || null;
+
+    const { data: existingIdentity } = await this.supabase
+      .from('telegram_identities')
+      .select('id')
+      .eq('tg_user_id', tgUserId)
+      .maybeSingle();
+
+    if (existingIdentity) {
+      return existingIdentity.id;
+    }
+
+    const { data: newIdentity, error } = await this.supabase
+      .from('telegram_identities')
+      .insert({
+        tg_user_id: tgUserId,
+        username,
+        first_name: firstName,
+        last_name: lastName,
+        raw: user
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Failed to create telegram identity:', error);
+      return null;
+    }
+
+    return newIdentity?.id ?? null;
+  }
+
+  private async writeGlobalActivityEvent(payload: {
+    tg_chat_id: number;
+    identity_id: string | null;
+    tg_user_id: number;
+    event_type: string;
+    created_at: string;
+    message_id?: number | null;
+    reply_to_message_id?: number | null;
+    meta?: Record<string, any>;
+  }): Promise<void> {
+    if (!payload.identity_id) {
+      return;
+    }
+
+    const insertPayload = {
+      tg_chat_id: payload.tg_chat_id,
+      identity_id: payload.identity_id,
+      tg_user_id: payload.tg_user_id,
+      event_type: payload.event_type,
+      created_at: payload.created_at,
+      message_id: payload.message_id ?? null,
+      reply_to_message_id: payload.reply_to_message_id ?? null,
+      meta: payload.meta ?? null
+    };
+
+    const { error } = await this.supabase
+      .from('telegram_activity_events')
+      .insert(insertPayload);
+
+    if (error) {
+      console.error('Failed to write global activity event:', error);
     }
   }
 }
