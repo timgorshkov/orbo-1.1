@@ -285,6 +285,34 @@ export class EventProcessingService {
     }
   }
   
+  private extractThreadTitle(message: TelegramMessage): string | null {
+    const topicCreated = (message as any)?.forum_topic_created;
+    if (topicCreated?.name) {
+      return topicCreated.name;
+    }
+
+    const topicEdited = (message as any)?.forum_topic_edited;
+    if (topicEdited?.name) {
+      return topicEdited.name;
+    }
+
+    const replyTopicCreated = (message as any)?.reply_to_message?.forum_topic_created;
+    if (replyTopicCreated?.name) {
+      return replyTopicCreated.name;
+    }
+
+    const replyTopicEdited = (message as any)?.reply_to_message?.forum_topic_edited;
+    if (replyTopicEdited?.name) {
+      return replyTopicEdited.name;
+    }
+
+    if (typeof (message as any)?.thread_title === 'string') {
+      return (message as any).thread_title;
+    }
+
+    return null;
+  }
+
   /**
    * Обрабатывает обновление от Telegram
    */
@@ -330,6 +358,11 @@ export class EventProcessingService {
       return;
     }
 
+    if (message.from?.is_bot) {
+      console.log('Skipping message from bot user', message.from.username || message.from.id);
+      return;
+    }
+
     try {
       const orgIds = await this.getOrgIdsForChat(chatId);
 
@@ -370,7 +403,10 @@ export class EventProcessingService {
       return;
     }
 
-    if (member.is_bot) return; // Пропускаем ботов
+    if (member.is_bot) {
+      console.log('Skipping left event for bot user', member.username || member.id);
+      return;
+    }
     
     // Записываем событие выхода
     await this.supabase.from('activity_events').insert({
@@ -453,6 +489,11 @@ export class EventProcessingService {
     for (const member of message.new_chat_members) {
       if (member.id === 1087968824 || member.username === 'GroupAnonymousBot') {
         console.log('Skipping join event for GroupAnonymousBot');
+        continue;
+      }
+
+      if (member.is_bot) {
+        console.log('Skipping join event for bot user', member.username || member.id);
         continue;
       }
 
@@ -576,7 +617,9 @@ export class EventProcessingService {
       chatId,
       orgId,
       messageId: message.message_id,
-      from: message.from?.username
+      from: message.from?.username,
+      messageThreadId: (message as any)?.message_thread_id ?? null,
+      isTopicMessage: (message as any)?.is_topic_message ?? false
     });
     
     // Обрабатываем новых участников
@@ -608,8 +651,16 @@ export class EventProcessingService {
     const chatId = message.chat.id;
     const userId = message.from.id;
 
+    const messageThreadId = typeof (message as any)?.message_thread_id === 'number' ? (message as any).message_thread_id : null;
+    const threadTitle = this.extractThreadTitle(message);
+
     if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot') {
       console.log('Skipping user message for GroupAnonymousBot');
+      return;
+    }
+
+    if (message.from.is_bot) {
+      console.log('Skipping user message for bot user', message.from.username || userId);
       return;
     }
 
@@ -733,6 +784,8 @@ export class EventProcessingService {
         created_at: new Date().toISOString(),
         message_id: message.message_id,
         reply_to_message_id: message.reply_to_message?.message_id,
+        message_thread_id: messageThreadId,
+        thread_title: threadTitle,
         meta: {
           user: {
             username: username,
@@ -742,7 +795,12 @@ export class EventProcessingService {
           links_count: linksCount,
           mentions_count: mentionsCount,
           has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-          message_id: message.message_id
+          message_id: message.message_id,
+          message_thread_id: messageThreadId,
+          thread_title: threadTitle,
+          is_topic_message: (message as any)?.is_topic_message ?? false,
+          forum_topic_created: (message as any)?.forum_topic_created ?? null,
+          forum_topic_edited: (message as any)?.forum_topic_edited ?? null
         }
       });
 
@@ -759,6 +817,8 @@ export class EventProcessingService {
         event_type: 'message',
         tg_user_id: userId,
         tg_chat_id: chatId,
+        message_thread_id: messageThreadId,
+        thread_title: threadTitle,
         meta: {
           user: {
             username: username,
@@ -768,7 +828,12 @@ export class EventProcessingService {
           links_count: linksCount,
           mentions_count: mentionsCount,
           has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-          message_id: message.message_id
+          message_id: message.message_id,
+          message_thread_id: messageThreadId,
+          thread_title: threadTitle,
+          is_topic_message: (message as any)?.is_topic_message ?? false,
+          forum_topic_created: (message as any)?.forum_topic_created ?? null,
+          forum_topic_edited: (message as any)?.forum_topic_edited ?? null
         }
       };
       
@@ -792,12 +857,16 @@ export class EventProcessingService {
           event_type: 'message',
           tg_user_id: userId,
           tg_chat_id: chatId,
+          message_thread_id: messageThreadId,
+          thread_title: threadTitle,
           meta: {
             message_id: message.message_id,
             user: {
               username: username,
               name: fullName
-            }
+            },
+            message_thread_id: messageThreadId,
+            thread_title: threadTitle
           }
         };
         
@@ -845,6 +914,11 @@ export class EventProcessingService {
 
     if (update.new_chat_member?.user?.id === 1087968824 || update.new_chat_member?.user?.username === 'GroupAnonymousBot') {
       console.log('Skipping chat member update for GroupAnonymousBot');
+      return;
+    }
+
+    if (update.new_chat_member?.user?.is_bot) {
+      console.log('Skipping chat member update for bot user', update.new_chat_member.user.username || update.new_chat_member.user.id);
       return;
     }
 
@@ -957,6 +1031,11 @@ export class EventProcessingService {
       return;
     }
 
+    if (request.from?.is_bot) {
+      console.log('Skipping join request for bot user', request.from.username || request.from.id);
+      return;
+    }
+
     const orgIds = await this.getOrgIdsForChat(chatId);
 
     if (orgIds.length === 0) {
@@ -994,6 +1073,11 @@ export class EventProcessingService {
 
     if (query.from?.id === 1087968824 || query.from?.username === 'GroupAnonymousBot') {
       console.log('Skipping callback query for GroupAnonymousBot');
+      return;
+    }
+
+    if (query.from?.is_bot) {
+      console.log('Skipping callback query for bot user', query.from.username || query.from.id);
       return;
     }
 
@@ -1300,6 +1384,8 @@ export class EventProcessingService {
     created_at: string;
     message_id?: number | null;
     reply_to_message_id?: number | null;
+    message_thread_id?: number | null;
+    thread_title?: string | null;
     meta?: Record<string, any>;
   }): Promise<void> {
     if (!payload.identity_id) {
@@ -1314,6 +1400,8 @@ export class EventProcessingService {
       created_at: payload.created_at,
       message_id: payload.message_id ?? null,
       reply_to_message_id: payload.reply_to_message_id ?? null,
+      message_thread_id: payload.message_thread_id ?? null,
+      thread_title: payload.thread_title ?? null,
       meta: payload.meta ?? null
     };
 

@@ -43,8 +43,8 @@ type GroupMetrics = {
   risk_radar: Array<{
     tg_user_id: number;
     username: string | null;
-    full_name?: string | null;
-    display_name?: string;
+    full_name: string | null;
+    display_name?: string | null;
     risk_score: number;
     last_activity: string;
     message_count: number;
@@ -81,7 +81,8 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
           prime_time: Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
           risk_radar: []
   })
-  const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; display_name: string; last_activity?: string }>>([])
+const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; last_activity?: string }>>([])
+  const [participants, setParticipants] = useState<Array<{ tg_user_id: number | null; full_name: string | null; username: string | null; last_activity: string | null; risk_score: number | null; message_count: number }>>([])
   const [loadingAnalytics, setLoadingAnalytics] = useState(true)
 
   useEffect(() => {
@@ -185,9 +186,20 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                 full_name: user.full_name ?? null,
                 username: user.username ?? null,
                 message_count: user.message_count ?? user.count ?? 0,
-                display_name:
-                  user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`),
                 last_activity: user.last_activity ?? null
+              }))
+            )
+          }
+
+          if (analyticsData.participants) {
+            setParticipants(
+              (analyticsData.participants || []).map((participant: any) => ({
+                tg_user_id: participant.tg_user_id ?? null,
+                full_name: participant.full_name ?? null,
+                username: participant.username ?? null,
+                last_activity: participant.last_activity ?? null,
+                risk_score: participant.risk_score ?? null,
+                message_count: participant.message_count ?? 0
               }))
             )
           }
@@ -589,17 +601,12 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
             <Tabs defaultValue="analytics">
               <TabsList className="mb-6">
                 <TabsTrigger value="analytics">Аналитика</TabsTrigger>
+                <TabsTrigger value="members">Участники</TabsTrigger>
                 <TabsTrigger value="settings">Настройки</TabsTrigger>
               </TabsList>
 
-              {group?.id !== undefined && (
-                <div className="mb-4">
-                  <RemoveGroupButton groupId={group.id} orgId={params.org} onRemoved={() => router.push(`/app/${params.org}/telegram`)} />
-                </div>
-              )}
-
               <TabsContent value="analytics">
-                <div className="mb-4">
+                <div className="mb-4 flex items-center gap-3">
                   <Button 
                     variant="outline" 
                     onClick={() => {
@@ -611,6 +618,13 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                     disabled={loadingAnalytics || !group}
                   >
                     {loadingAnalytics ? 'Загрузка...' : 'Обновить аналитику'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(`/app/${params.org}/telegram/message?groupId=${group?.id ?? ''}`)}
+                    disabled={!group}
+                  >
+                    Отправить сообщение
                   </Button>
                 </div>
                 
@@ -695,7 +709,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                                       {index + 1}
                                     </span>
                                     <span>
-                                      {user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
+                                      {user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
                                       {user.username ? ` (@${user.username})` : ''}
                                     </span>
                                   </div>
@@ -795,7 +809,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                                 <div key={user.tg_user_id} className="flex items-center justify-between">
                                   <div>
                                     <div className="font-medium">
-                                      {user.display_name || user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
+                                      {user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
                                       {user.username ? ` (@${user.username})` : ''}
                                     </div>
                                     <div className="text-xs text-neutral-500">
@@ -826,7 +840,60 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                   </>
                 )}
               </TabsContent>
-              
+
+              <TabsContent value="members">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle>Участники группы</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {participants.length === 0 ? (
+                      <div className="text-center py-6 text-neutral-500">Нет данных об участниках группы</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-neutral-200">
+                          <thead className="bg-neutral-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Участник</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Username</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Последняя активность</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Сообщений за 7 дней</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Риск оттока</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-neutral-200">
+                            {participants.map(participant => {
+                              const key = participant.tg_user_id
+                                ? `tg-${participant.tg_user_id}`
+                                : `anon-${participant.username ?? participant.full_name ?? Math.random().toString(36).slice(2)}`;
+                              return (
+                                <tr key={key}>
+                                  <td className="px-4 py-3 text-sm text-neutral-900">
+                                    {participant.full_name || (participant.username ? `@${participant.username}` : participant.tg_user_id ? `ID: ${participant.tg_user_id}` : 'Неизвестный пользователь')}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-neutral-500">
+                                    {participant.username ? `@${participant.username}` : '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-neutral-500">
+                                    {participant.last_activity ? new Date(participant.last_activity).toLocaleString('ru') : '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-neutral-500">
+                                    {participant.message_count ?? 0}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    {participant.risk_score != null ? `${participant.risk_score}%` : '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="settings">
                 <Card className="mb-6">
                   <CardHeader>
@@ -949,6 +1016,15 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
                         {saving ? 'Сохранение...' : 'Сохранить настройки'}
                       </Button>
                     </div>
+                    {group?.id !== undefined && (
+                      <div className="pt-4 border-t border-neutral-200 flex justify-end">
+                        <RemoveGroupButton
+                          groupId={group.id}
+                          orgId={params.org}
+                          onRemoved={() => router.push(`/app/${params.org}/telegram`)}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

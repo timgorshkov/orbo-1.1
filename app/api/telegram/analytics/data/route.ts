@@ -3,6 +3,66 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
+function pickLatestTimestamp(current: string | null | undefined, incoming: string | null | undefined): string | null {
+  if (!current) {
+    return incoming ?? null;
+  }
+
+  if (!incoming) {
+    return current ?? null;
+  }
+
+  const currentTs = new Date(current).getTime();
+  const incomingTs = new Date(incoming).getTime();
+
+  if (Number.isNaN(currentTs)) {
+    return Number.isNaN(incomingTs) ? null : incoming;
+  }
+
+  if (Number.isNaN(incomingTs)) {
+    return current;
+  }
+
+  return incomingTs >= currentTs ? incoming : current;
+}
+
+function calculateRiskScore(lastActivity: string | null | undefined, fallback?: number | null): number {
+  if (!lastActivity) {
+    return typeof fallback === 'number' ? fallback : 90;
+  }
+
+  const lastTs = new Date(lastActivity).getTime();
+
+  if (Number.isNaN(lastTs)) {
+    return typeof fallback === 'number' ? fallback : 90;
+  }
+
+  const nowTs = Date.now();
+  const diffDays = Math.max(0, Math.floor((nowTs - lastTs) / (1000 * 60 * 60 * 24)));
+
+  if (diffDays <= 3) {
+    return 5;
+  }
+
+  if (diffDays <= 7) {
+    return 15;
+  }
+
+  if (diffDays <= 14) {
+    return 35;
+  }
+
+  if (diffDays <= 30) {
+    return 60;
+  }
+
+  if (diffDays <= 60) {
+    return 80;
+  }
+
+  return 95;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -32,7 +92,7 @@ export async function GET(request: Request) {
     const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
 
     // Получаем метрики из activity_events
-    const { data: activityEvents, error: activityError } = await supabase
+    let { data: activityEvents, error: activityError } = await supabase
       .from('activity_events')
       .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
       .eq('tg_chat_id', chatId)
@@ -60,12 +120,16 @@ export async function GET(request: Request) {
           newcomer_activation: 0,
           activity_gini: 0,
           prime_time: [],
-          risk_radar: []
+          risk_radar: [],
+          member_count: 0
         },
         topUsers: [],
-        dailyMetrics: []
+        dailyMetrics: [],
+        participants: []
       });
     }
+
+    const processedMessageIds = new Set<string>();
 
     // Рассчитываем метрики на основе данных activity_events
     let messageCount = 0;
@@ -73,13 +137,61 @@ export async function GET(request: Request) {
     let joinCount = 0;
     let leaveCount = 0;
     const usersByDay: Record<string, Set<string>> = {};
-    const participantActivity: Record<string, { count: number; username: string | null; full_name: string | null; tg_user_id?: number }> = {};
+    const participantActivity: Record<string, {
+      count: number;
+      username: string | null;
+      full_name: string | null;
+      tg_user_id?: number;
+      last_activity: string | null;
+      risk_score?: number | null;
+      activity_score?: number | null;
+    }> = {};
     const dailyMetrics: Record<string, any> = {};
-    const eventLastActivityMap = new Map<string, string>();
+
+    const botUserIds = new Set([1087968824]);
+    const botUsernames = new Set(['GroupAnonymousBot', 'orbo_community_bot', 'OrboCommunityBot']);
+
+    activityEvents = activityEvents.filter(event => {
+      const tgUserId = event.tg_user_id ?? event.meta?.user?.id ?? event.meta?.from?.id;
+      const username = event.meta?.user?.username || event.meta?.from?.username;
+
+      if (tgUserId != null && botUserIds.has(tgUserId)) {
+        return false;
+      }
+
+      if (typeof username === 'string' && botUsernames.has(username)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!activityEvents || activityEvents.length === 0) {
+      return NextResponse.json({
+        metrics: {
+          message_count: 0,
+          reply_count: 0,
+          join_count: 0,
+          leave_count: 0,
+          dau_avg: 0,
+          reply_ratio_avg: 0,
+          days: 0,
+          silent_rate: 0,
+          newcomer_activation: 0,
+          activity_gini: 0,
+          prime_time: [],
+          risk_radar: [],
+          member_count: 0
+        },
+        topUsers: [],
+        dailyMetrics: [],
+        participants: []
+      });
+    }
 
     activityEvents.forEach((event) => {
       const day = new Date(event.created_at).toISOString().split('T')[0];
-      
+
       // Инициализируем метрики для дня, если еще нет
       if (!dailyMetrics[day]) {
         dailyMetrics[day] = {
@@ -91,7 +203,7 @@ export async function GET(request: Request) {
           dau: 0
         };
       }
-      
+
       // Инициализируем множество пользователей для дня, если еще нет
       if (!usersByDay[day]) {
         usersByDay[day] = new Set();
@@ -99,6 +211,32 @@ export async function GET(request: Request) {
 
       // Обрабатываем событие в зависимости от типа
       if (event.event_type === 'message') {
+        const rawNumericUserId =
+          typeof event.tg_user_id === 'number'
+            ? event.tg_user_id
+            : typeof event.meta?.user?.id === 'number'
+              ? event.meta.user.id
+              : typeof event.meta?.from?.id === 'number'
+                ? event.meta.from.id
+                : null;
+
+        const dauKey =
+          rawNumericUserId != null
+            ? String(rawNumericUserId)
+            : event.meta?.user?.username
+              ? `username:${event.meta.user.username}`
+              : event.meta?.from?.username
+                ? `username:${event.meta.from.username}`
+                : `anon:${event.created_at}`;
+
+        usersByDay[day].add(dauKey);
+
+        const uniqueMessageKey = `${event.tg_user_id ?? 'user'}:${event.meta?.message_id ?? event.id ?? event.created_at}`;
+        if (processedMessageIds.has(uniqueMessageKey)) {
+          return;
+        }
+        processedMessageIds.add(uniqueMessageKey);
+
         messageCount++;
         dailyMetrics[day].message_count++;
         
@@ -107,48 +245,73 @@ export async function GET(request: Request) {
           dailyMetrics[day].reply_count++;
         }
         
-        // Добавляем пользователя в статистику активности
-        const userId = event.tg_user_id?.toString();
-        if (userId) {
-          const numericUserId = event.tg_user_id;
-          usersByDay[day].add(userId);
-          eventLastActivityMap.set(userId, event.created_at);
-          
-          // Обновляем статистику активности пользователя
-          if (!participantActivity[userId]) {
-            let username = null;
-            if (event.meta?.user?.username) {
-              username = event.meta.user.username;
-            } else if (event.meta?.from?.username) {
-              username = event.meta.from.username;
-            } else if (event.meta?.username) {
-              username = event.meta.username;
-            }
-
-            let fullName = null;
-            if (event.meta?.user?.name) {
-              fullName = event.meta.user.name;
-            } else if (event.meta?.from?.name) {
-              fullName = event.meta.from.name;
-            } else if (event.meta?.first_name) {
-              fullName = event.meta.first_name + (event.meta.last_name ? ' ' + event.meta.last_name : '');
-            }
-
-            participantActivity[userId] = {
+        if (rawNumericUserId != null) {
+          const userKey = rawNumericUserId.toString();
+          if (!participantActivity[userKey]) {
+            participantActivity[userKey] = {
               count: 0,
-              username,
-              full_name: fullName,
-              tg_user_id: numericUserId ?? undefined
+              username: null,
+              full_name: null,
+              tg_user_id: rawNumericUserId,
+              last_activity: null
             };
           }
-          participantActivity[userId].count++;
+
+          const metaUsername = event.meta?.user?.username || event.meta?.from?.username || event.meta?.username || null;
+          if (metaUsername && !participantActivity[userKey].username) {
+            participantActivity[userKey].username = metaUsername;
+          }
+
+          let metaFullName: string | null = null;
+          if (event.meta?.user?.name) {
+            metaFullName = event.meta.user.name;
+          } else if (event.meta?.from?.name) {
+            metaFullName = event.meta.from.name;
+          } else if (event.meta?.first_name) {
+            metaFullName = `${event.meta.first_name}${event.meta.last_name ? ` ${event.meta.last_name}` : ''}`;
+          }
+
+          if (metaFullName && !participantActivity[userKey].full_name) {
+            participantActivity[userKey].full_name = metaFullName;
+          }
+
+          participantActivity[userKey].count++;
+          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
         }
       } else if (event.event_type === 'join') {
         joinCount++;
         dailyMetrics[day].join_count++;
+
+        if (event.tg_user_id != null) {
+          const userKey = event.tg_user_id.toString();
+          if (!participantActivity[userKey]) {
+            participantActivity[userKey] = {
+              count: 0,
+              username: null,
+              full_name: null,
+              tg_user_id: event.tg_user_id,
+              last_activity: null
+            };
+          }
+          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
+        }
       } else if (event.event_type === 'leave') {
         leaveCount++;
         dailyMetrics[day].leave_count++;
+
+        if (event.tg_user_id != null) {
+          const userKey = event.tg_user_id.toString();
+          if (!participantActivity[userKey]) {
+            participantActivity[userKey] = {
+              count: 0,
+              username: null,
+              full_name: null,
+              tg_user_id: event.tg_user_id,
+              last_activity: null
+            };
+          }
+          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
+        }
       }
     });
 
@@ -170,15 +333,49 @@ export async function GET(request: Request) {
     // Рассчитываем коэффициент ответов
     const replyRatio = messageCount > 0 ? Math.round((replyCount / messageCount) * 100) : 0;
 
-    // Получаем информацию о группе для расчета Silent Rate
-    const { data: groupData, error: groupError } = await supabase
-      .from('telegram_groups')
-      .select('member_count')
-      .eq('id', groupId)
-      .single();
+    // Подсчитываем фактическое количество участников группы без ботов
+    let memberCount = 0;
+    try {
+      const { data: memberRows, error: memberError } = await supabase
+        .from('participant_groups')
+        .select('participants!inner(tg_user_id, username)')
+        .eq('tg_group_id', Number(chatId))
+        .eq('is_active', true);
 
-    const memberCount = groupData?.member_count || 0;
-    
+      if (memberError) {
+        console.error('Error fetching participant groups for member count:', memberError);
+      } else if (memberRows) {
+        const seen = new Set<number>();
+        memberRows.forEach(row => {
+          const participantsRaw = row?.participants;
+          const participantRecords = Array.isArray(participantsRaw)
+            ? participantsRaw
+            : participantsRaw
+              ? [participantsRaw]
+              : [];
+
+          participantRecords.forEach(participant => {
+            if (!participant?.tg_user_id) {
+              return;
+            }
+
+            if (botUserIds.has(participant.tg_user_id)) {
+              return;
+            }
+
+            if (participant.username && botUsernames.has(participant.username)) {
+              return;
+            }
+
+            seen.add(participant.tg_user_id);
+          });
+        });
+        memberCount = seen.size;
+      }
+    } catch (memberCountException) {
+      console.error('Exception while counting members for analytics:', memberCountException);
+    }
+
     // Рассчитываем Silent Rate
     const activeUsers = Object.values(participantActivity).length;
     const silentRate = memberCount > 0 ? Math.round(((memberCount - activeUsers) / memberCount) * 100) : 0;
@@ -225,7 +422,7 @@ export async function GET(request: Request) {
     }
 
     // Формируем топ активных пользователей
-    const topUsers = Object.entries(participantActivity)
+    let topUsers = Object.entries(participantActivity)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 5)
       .map(([userId, data]) => ({
@@ -233,40 +430,36 @@ export async function GET(request: Request) {
         full_name: data.full_name,
         username: data.username,
         message_count: data.count,
-        display_name: data.full_name || (data.username ? `@${data.username}` : null) || `ID ${userId}`,
-        last_activity: eventLastActivityMap.get(userId) || new Date().toISOString()
+        last_activity: data.last_activity || new Date().toISOString()
       }));
 
-    // Формируем дневные метрики для отображения
-    const dailyMetricsArray = Object.values(dailyMetrics).sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    const maxMessageCount = Math.max(1, ...Object.values(participantActivity).map(u => u.count));
 
-    // Формируем Risk Radar (упрощенно - пользователи с наименьшей активностью)
-    const riskRadar = Object.entries(participantActivity)
+    let riskRadar = Object.entries(participantActivity)
       .sort((a, b) => a[1].count - b[1].count)
       .slice(0, 5)
       .map(([userId, data]) => ({
-        tg_user_id: parseInt(userId),
+        tg_user_id: parseInt(userId, 10),
         username: data.username,
         full_name: data.full_name,
-        display_name: data.full_name || (data.username ? `@${data.username}` : null) || `ID ${userId}`,
-        risk_score: Math.round(
-          80 -
-            (data.count /
-              Math.max(1, Math.max(...userMessageCounts))) *
-              50
-        ),
-        last_activity: eventLastActivityMap.get(userId) || new Date().toISOString(),
+        risk_score: calculateRiskScore(data.last_activity, data.risk_score ?? Math.round(80 - (data.count / maxMessageCount) * 50)),
+        last_activity: data.last_activity || new Date().toISOString(),
         message_count: data.count
       }));
 
     const missingUserIds: number[] = [];
     Object.entries(participantActivity).forEach(([userId, data]) => {
-      if (!data.username) {
+      if (data.tg_user_id == null) {
         const numericId = Number(userId);
         if (Number.isFinite(numericId)) {
-          missingUserIds.push(numericId);
+          data.tg_user_id = numericId;
+        }
+      }
+
+      if (!data.username) {
+        const numericId = data.tg_user_id ?? Number(userId);
+        if (Number.isFinite(numericId)) {
+          missingUserIds.push(Number(numericId));
         }
       }
     });
@@ -275,7 +468,7 @@ export async function GET(request: Request) {
       try {
         const { data: participantUsernameRows, error: participantUsernameError } = await supabase
           .from('participants')
-          .select('tg_user_id, username, full_name')
+          .select('tg_user_id, username, full_name, last_activity_at')
           .eq('org_id', orgId)
           .in('tg_user_id', missingUserIds);
 
@@ -292,7 +485,10 @@ export async function GET(request: Request) {
                 count: 0,
                 username: row.username ?? null,
                 full_name: row.full_name ?? null,
-                tg_user_id: row.tg_user_id ?? undefined
+                tg_user_id: row.tg_user_id ?? undefined,
+                last_activity: null,
+                risk_score: null,
+                activity_score: null
               };
             } else {
               if (!participantActivity[key].username && row.username) {
@@ -303,6 +499,9 @@ export async function GET(request: Request) {
               }
               if (!participantActivity[key].tg_user_id && row.tg_user_id) {
                 participantActivity[key].tg_user_id = row.tg_user_id;
+              }
+              if (!participantActivity[key].last_activity && row.last_activity_at) {
+                participantActivity[key].last_activity = row.last_activity_at;
               }
             }
           });
@@ -333,7 +532,10 @@ export async function GET(request: Request) {
                 username: row?.username ?? null,
                 full_name:
                   row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null,
-                tg_user_id: row?.tg_user_id ?? undefined
+                tg_user_id: row?.tg_user_id ?? undefined,
+                last_activity: null,
+                risk_score: null,
+                activity_score: null
               };
             } else {
               if (!participantActivity[key].username && row?.username) {
@@ -354,6 +556,162 @@ export async function GET(request: Request) {
       }
     }
 
+    if (topUsers.length === 0 && Object.keys(participantActivity).length > 0) {
+      topUsers = Object.entries(participantActivity)
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 5)
+        .map(([userId, data]) => ({
+          tg_user_id: Number(userId),
+          full_name: data.full_name,
+          username: data.username,
+          message_count: data.count,
+          last_activity: data.last_activity || new Date().toISOString()
+        }));
+    }
+
+    if (riskRadar.length === 0 && Object.keys(participantActivity).length > 0) {
+      riskRadar = Object.entries(participantActivity)
+        .sort((a, b) => a[1].count - b[1].count)
+        .slice(0, 5)
+        .map(([userId, data]) => ({
+          tg_user_id: parseInt(userId, 10),
+          username: data.username,
+          full_name: data.full_name,
+          risk_score: Math.round(
+            80 -
+              (data.count /
+                Math.max(1, Math.max(...Object.values(participantActivity).map(u => u.count)))) *
+                50
+          ),
+          last_activity: data.last_activity || new Date().toISOString(),
+          message_count: data.count
+        }));
+    }
+
+    const activityUserIds = Array.from(
+      new Set(
+        Object.entries(participantActivity)
+          .map(([userId, data]) => {
+            if (data.tg_user_id == null) {
+              const numericId = Number(userId);
+              if (Number.isFinite(numericId)) {
+                data.tg_user_id = numericId;
+              }
+            }
+            return data.tg_user_id ?? Number(userId);
+          })
+          .filter((id): id is number => typeof id === 'number' && Number.isFinite(id))
+      )
+    );
+
+    if (activityUserIds.length > 0) {
+      try {
+        const { data: identityEnrichmentRows, error: identityEnrichmentError } = await supabase
+          .from('telegram_identities')
+          .select('tg_user_id, username, first_name, last_name, full_name')
+          .in('tg_user_id', activityUserIds);
+
+        if (identityEnrichmentError) {
+          console.error('Error enriching participant identities for analytics:', identityEnrichmentError);
+        } else if (identityEnrichmentRows) {
+          identityEnrichmentRows.forEach(row => {
+            if (!row?.tg_user_id) {
+              return;
+            }
+            const key = row.tg_user_id.toString();
+            const existing = participantActivity[key];
+            if (!existing) {
+              participantActivity[key] = {
+                count: 0,
+                username: row?.username ?? null,
+                full_name: row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null,
+                tg_user_id: row.tg_user_id ?? undefined,
+                last_activity: null,
+                risk_score: null,
+                activity_score: null
+              };
+              return;
+            }
+
+            if (!existing.username && row?.username) {
+              existing.username = row.username;
+            }
+
+            if (!existing.full_name) {
+              existing.full_name = row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null;
+            }
+
+            if (!existing.tg_user_id && row?.tg_user_id) {
+              existing.tg_user_id = row.tg_user_id;
+            }
+          });
+        }
+      } catch (identityEnrichmentException) {
+        console.error('Unexpected error enriching participant identities for analytics:', identityEnrichmentException);
+      }
+    }
+
+    try {
+      const { data: participantRows, error: participantError } = await supabase
+        .from('participants')
+        .select('tg_user_id, activity_score, risk_score, last_activity_at, username, full_name')
+        .eq('org_id', orgId)
+        .in('tg_user_id', Object.keys(participantActivity).map(Number));
+
+      if (participantError) {
+        console.error('Error loading participant metrics for analytics:', participantError);
+      } else if (participantRows) {
+        participantRows.forEach(row => {
+          if (!row?.tg_user_id) {
+            return;
+          }
+
+          const userKey = row.tg_user_id.toString();
+          const existing = participantActivity[userKey];
+          if (!existing) {
+            participantActivity[userKey] = {
+              count: 0,
+              username: row.username ?? null,
+              full_name: row.full_name ?? null,
+              tg_user_id: row.tg_user_id ?? undefined,
+              last_activity: row.last_activity_at ?? null,
+              activity_score: row.activity_score ?? null,
+              risk_score: row.risk_score ?? null
+            };
+            return;
+          }
+
+          if (!existing.username && row.username) {
+            existing.username = row.username;
+          }
+
+          if (!existing.full_name && row.full_name) {
+            existing.full_name = row.full_name;
+          }
+
+          existing.last_activity = pickLatestTimestamp(existing.last_activity, row.last_activity_at ?? null);
+          existing.activity_score = row.activity_score ?? existing.activity_score ?? existing.count;
+          existing.risk_score = row.risk_score ?? existing.risk_score ?? null;
+        });
+      }
+    } catch (participantMergeException) {
+      console.error('Unexpected error merging participant metrics for analytics:', participantMergeException);
+    }
+
+    // Формируем расширенную информацию для участников
+    const participantList = Object.entries(participantActivity).map(([userId, data]) => ({
+      tg_user_id: Number(userId),
+      username: data.username,
+      full_name: data.full_name,
+      message_count: data.count,
+      last_activity: data.last_activity,
+      risk_score: calculateRiskScore(data.last_activity, data.risk_score ?? null)
+    }));
+
+    const dailyMetricsArray = Object.values(dailyMetrics)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+
     return NextResponse.json({
       metrics: {
         message_count: messageCount,
@@ -367,10 +725,12 @@ export async function GET(request: Request) {
         newcomer_activation: newcomerActivation,
         activity_gini: activityGini,
         prime_time: primeTime,
-        risk_radar: riskRadar
+        risk_radar: riskRadar,
+        member_count: memberCount
       },
       topUsers,
-      dailyMetrics: dailyMetricsArray
+      dailyMetrics: dailyMetricsArray,
+      participants: participantList
     });
 
   } catch (error: any) {
@@ -378,3 +738,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+

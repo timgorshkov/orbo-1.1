@@ -6,8 +6,9 @@ create table if not exists public.telegram_activity_events (
   event_type text not null,
   created_at timestamptz not null default now(),
   message_id bigint,
-  thread_id bigint,
+  message_thread_id bigint,
   reply_to_message_id bigint,
+  thread_title text,
   meta jsonb
 );
 

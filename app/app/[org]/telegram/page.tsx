@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
-import { CheckStatusForm, AddGroupManuallyForm } from './form-components'
-import { checkStatus, addGroupManually, deleteGroup } from './actions'
+import { AddGroupManuallyForm } from './form-components'
+import { addGroupManually, deleteGroup } from './actions'
 import AddVerifiedGroup from './add-verified-group'
 import { notFound } from 'next/navigation'
 import { useRouter } from 'next/navigation'
@@ -85,66 +85,12 @@ export default async function TelegramPage({ params }: { params: { org: string }
                 <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
                   Доступные группы
                 </Link>
-                <Link href={`/app/${params.org}/telegram/analytics`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                  Общая аналитика
-                </Link>
               </div>
 
-              <CheckStatusForm orgId={params.org} action={checkStatus} />
-
-              <AddVerifiedGroup orgId={params.org} />
+               <AddVerifiedGroup orgId={params.org} />
 
 
 
-            </CardContent>
-          </Card>
-          
-          {/* Список активных групп */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Активные группы</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {groups && groups.filter(g => g.bot_status === 'connected').length > 0 ? (
-                <div className="space-y-4">
-                  {groups
-                    .filter(g => g.bot_status === 'connected')
-                    .map(group => (
-                      <div key={group.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium">{group.title || `Группа ${group.tg_chat_id}`}</h3>
-                            <div className="text-sm text-neutral-500">ID: {group.tg_chat_id}</div>
-                            <div className="flex items-center mt-1">
-                              <span className="inline-block w-2 h-2 rounded-full mr-2 bg-green-500" />
-                              <span className="text-sm">Подключен</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Link href={`/app/${params.org}/telegram/groups/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                              Управление группой
-                            </Link>
-                            <a href={`/app/${params.org}/telegram/message`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
-                              Отправить сообщение
-                            </a>
-                          </div>
-                        </div>
-                        
-                        {group.last_sync_at && (
-                          <div className="mt-2 text-xs text-neutral-500">
-                            Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
-                          </div>
-                        )}
-                      </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-neutral-500">
-                    Нет активных групп. Добавьте бота @orbo_community_bot в группу и назначьте администратором.
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
           
@@ -213,28 +159,6 @@ export default async function TelegramPage({ params }: { params: { org: string }
           )}
           
           {/* Статистика */}
-          {groups && groups.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Статистика</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm text-neutral-500">Всего участников</div>
-                    <div className="text-xl font-semibold">{memberCount}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-neutral-500">Подключено групп</div>
-                    <div className="text-xl font-semibold">{groups.length}</div>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button variant="outline">Запустить полную синхронизацию</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </AppShell>
     )

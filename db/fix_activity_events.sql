@@ -15,6 +15,7 @@ BEGIN
       tg_chat_id BIGINT,
       message_id BIGINT,
       message_thread_id BIGINT,
+      thread_title TEXT,
       reply_to_message_id BIGINT,
       has_media BOOLEAN DEFAULT FALSE,
       chars_count INTEGER,
@@ -74,6 +75,14 @@ BEGIN
   ) THEN
     ALTER TABLE activity_events ADD COLUMN message_thread_id BIGINT;
     RAISE NOTICE 'Added message_thread_id column to activity_events';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns 
+    WHERE table_name = 'activity_events' AND column_name = 'thread_title'
+  ) THEN
+    ALTER TABLE activity_events ADD COLUMN thread_title TEXT;
+    RAISE NOTICE 'Added thread_title column to activity_events';
   END IF;
 
   -- Проверяем наличие колонки reply_to_message_id
