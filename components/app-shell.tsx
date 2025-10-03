@@ -110,6 +110,7 @@ export default function AppShell({
     { href: `/app/${orgId}/telegram/analytics`, label: 'Аналитика', icon: '📊' },
     { href: `/app/${orgId}/members`, label: 'Участники', icon: '👥' },
     { href: `/app/${orgId}/materials`, label: 'Материалы', icon: '📁' },
+    { href: `/app/${orgId}/integrations`, label: 'Интеграции', icon: '🔗' },
   ]
   
   return (

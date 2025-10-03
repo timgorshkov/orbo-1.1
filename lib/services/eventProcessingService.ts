@@ -623,21 +623,16 @@ export class EventProcessingService {
     });
     
     // Обрабатываем новых участников
+    await this.recordGlobalMessageEvent(message);
+
     if (message.new_chat_members && message.new_chat_members.length > 0) {
       await this.processNewMembers(message, orgId);
-      return;
-    }
-    
-    // Обрабатываем выход участника
-    if (message.left_chat_member) {
+    } else if (message.left_chat_member) {
       await this.processLeftMember(message, orgId);
-      return;
+    } else {
+      await this.processUserMessage(message, orgId);
     }
-    
-    // Обрабатываем обычное сообщение
-    await this.processUserMessage(message, orgId);
-    
-    // Обновляем метрики группы
+
     await this.updateGroupMetrics(orgId, chatId);
   }
   
@@ -905,7 +900,145 @@ export class EventProcessingService {
       console.error('Error updating last activity:', error);
     }
   }
-  
+ 
+  private async recordGlobalMessageEvent(message: TelegramMessage): Promise<void> {
+    if (!message?.chat?.id) {
+      return;
+    }
+
+    const chatId = message.chat.id;
+    const createdAt = typeof message.date === 'number'
+      ? new Date(message.date * 1000).toISOString()
+      : new Date().toISOString();
+    const messageId = typeof message.message_id === 'number' ? message.message_id : null;
+
+    if (Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) {
+      for (const member of message.new_chat_members) {
+        const identityId = await this.ensureIdentity(member);
+
+        await this.writeGlobalActivityEvent({
+          tg_chat_id: chatId,
+          identity_id: identityId,
+          tg_user_id: member.id,
+          event_type: 'join',
+          created_at: createdAt,
+          message_id: messageId,
+          reply_to_message_id: message.reply_to_message?.message_id ?? null,
+          message_thread_id: null,
+          thread_title: null,
+          meta: {
+            user: {
+              id: member.id,
+              username: member.username ?? null,
+              name: `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim() || null
+            },
+            added_by: message.from
+              ? {
+                  id: message.from.id,
+                  username: message.from.username ?? null,
+                  name: `${message.from.first_name ?? ''} ${message.from.last_name ?? ''}`.trim() || null
+                }
+              : null
+          }
+        });
+      }
+
+      return;
+    }
+
+    if (message.left_chat_member) {
+      const member = message.left_chat_member;
+      const identityId = await this.ensureIdentity(member);
+
+      await this.writeGlobalActivityEvent({
+        tg_chat_id: chatId,
+        identity_id: identityId,
+        tg_user_id: member.id,
+        event_type: 'leave',
+        created_at: createdAt,
+        message_id: messageId,
+        reply_to_message_id: message.reply_to_message?.message_id ?? null,
+        message_thread_id: null,
+        thread_title: null,
+        meta: {
+          user: {
+            id: member.id,
+            username: member.username ?? null,
+            name: `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim() || null
+          },
+          removed_by: message.from
+            ? {
+                id: message.from.id,
+                username: message.from.username ?? null,
+                name: `${message.from.first_name ?? ''} ${message.from.last_name ?? ''}`.trim() || null
+              }
+            : null
+        }
+      });
+
+      return;
+    }
+
+    const fromUser = message.from;
+    if (!fromUser) {
+      return;
+    }
+
+    if (this.isAnonymousBot(fromUser)) {
+      return;
+    }
+
+    if (fromUser.is_bot) {
+      return;
+    }
+
+    let linksCount = 0;
+    let mentionsCount = 0;
+
+    if (message.entities) {
+      for (const entity of message.entities) {
+        if (entity.type === 'url') linksCount++;
+        if (entity.type === 'mention' || entity.type === 'text_mention') mentionsCount++;
+      }
+    }
+
+    const messageThreadId = typeof (message as any)?.message_thread_id === 'number'
+      ? (message as any).message_thread_id
+      : null;
+    const threadTitle = this.extractThreadTitle(message);
+
+    const identityId = await this.ensureIdentity(fromUser);
+    const fullName = `${fromUser.first_name ?? ''} ${fromUser.last_name ?? ''}`.trim() || null;
+
+    await this.writeGlobalActivityEvent({
+      tg_chat_id: chatId,
+      identity_id: identityId,
+      tg_user_id: fromUser.id,
+      event_type: 'message',
+      created_at: createdAt,
+      message_id: messageId,
+      reply_to_message_id: message.reply_to_message?.message_id ?? null,
+      message_thread_id: messageThreadId,
+      thread_title: threadTitle,
+      meta: {
+        user: {
+          username: fromUser.username ?? null,
+          name: fullName
+        },
+        message_length: message.text?.length || 0,
+        links_count: linksCount,
+        mentions_count: mentionsCount,
+        has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+        message_id: messageId,
+        message_thread_id: messageThreadId,
+        thread_title: threadTitle,
+        is_topic_message: (message as any)?.is_topic_message ?? false,
+        forum_topic_created: (message as any)?.forum_topic_created ?? null,
+        forum_topic_edited: (message as any)?.forum_topic_edited ?? null
+      }
+    });
+  }
+
   /**
    * Обрабатывает изменение статуса участника в группе
    */
