@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
         .from('participants')
         .select('id, org_id')
         .eq('tg_user_id', userId)
+        .limit(1)
         .single()
       
       if (!participant) {

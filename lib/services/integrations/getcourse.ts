@@ -3,6 +3,7 @@ import { decryptCredentials } from './credentials';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { updateConnectionLastSync } from './scheduler';
 import { updateIntegrationJob, createIntegrationJobLog } from './connectionStore';
+import { logParticipantAudit } from '@/lib/server/participants/audit';
 
 const supabaseAdmin = createAdminServer();
 
@@ -127,31 +128,91 @@ export class GetCourseConnector implements IntegrationConnector {
             const phone = normalizePhone(user.phone ?? null);
             const telegram = user.telegram?.trim() || null;
 
-            const { data: participants } = await supabaseAdmin
+            let participantQuery = supabaseAdmin
               .from('participants')
-              .select('id, email, phone, username, full_name')
-              .eq('org_id', options.orgId)
-              .or([
-                email ? `email.eq.${email}` : undefined,
-                phone ? `phone.eq.${phone}` : undefined,
-                telegram ? `username.eq.${telegram.replace(/^@/, '')}` : undefined
-              ].filter(Boolean).join(','));
+              .select('id, email, phone, username, full_name, first_name, last_name, source, status')
+              .eq('org_id', options.orgId);
+
+            const matchFilters = [
+              email ? `email.eq.${email}` : undefined,
+              phone ? `phone.eq.${phone}` : undefined,
+              telegram ? `username.eq.${telegram.replace(/^@/, '')}` : undefined
+            ].filter(Boolean);
+
+            if (matchFilters.length > 0) {
+              participantQuery = participantQuery.or(matchFilters.join(','));
+            }
+
+            const { data: participants } = await participantQuery;
 
             let participantId: string | null = null;
 
+            const fullNameCandidate = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+
             if (participants && participants.length > 0) {
-              participantId = participants[0].id;
+              const existing = participants[0];
+              participantId = existing.id;
               stats.matched += 1;
+
+              const patch: Record<string, any> = {};
+              if (!existing.first_name && user.firstName) {
+                patch.first_name = user.firstName;
+              }
+              if (!existing.last_name && user.lastName) {
+                patch.last_name = user.lastName;
+              }
+              if ((!existing.full_name || existing.full_name === existing.username) && fullNameCandidate) {
+                patch.full_name = fullNameCandidate;
+              }
+              if (!existing.email && email) {
+                patch.email = email;
+              }
+              if (!existing.phone && phone) {
+                patch.phone = phone;
+              }
+              if (!existing.username && telegram) {
+                patch.username = telegram.replace(/^@/, '');
+              }
+              if (!existing.source || existing.source === 'unknown') {
+                patch.source = 'getcourse';
+              }
+              if (!existing.status || existing.status === 'inactive') {
+                patch.status = 'active';
+              }
+
+              if (Object.keys(patch).length > 0) {
+                patch.updated_at = new Date().toISOString();
+                await supabaseAdmin
+                  .from('participants')
+                  .update(patch)
+                  .eq('id', existing.id);
+
+                await logParticipantAudit({
+                  orgId: options.orgId,
+                  participantId: existing.id,
+                  actorType: 'integration',
+                  source: 'getcourse',
+                  action: 'update',
+                  fieldChanges: patch,
+                  integrationJobId: options.jobId
+                });
+              }
             } else {
+              const nowIso = new Date().toISOString();
               const { data: inserted, error: insertError } = await supabaseAdmin
                 .from('participants')
                 .insert({
                   org_id: options.orgId,
-                  full_name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || user.phone || 'Участник GetCourse',
+                  first_name: user.firstName ?? null,
+                  last_name: user.lastName ?? null,
+                  full_name: fullNameCandidate || user.email || user.phone || 'Участник GetCourse',
                   email,
                   phone,
                   username: telegram ? telegram.replace(/^@/, '') : null,
-                  created_at: new Date().toISOString()
+                  source: 'getcourse',
+                  status: 'active',
+                  created_at: nowIso,
+                  updated_at: nowIso
                 })
                 .select('id')
                 .single();
@@ -162,6 +223,27 @@ export class GetCourseConnector implements IntegrationConnector {
 
               participantId = inserted?.id ?? null;
               stats.created += 1;
+
+              if (participantId) {
+                await logParticipantAudit({
+                  orgId: options.orgId,
+                  participantId,
+                  actorType: 'integration',
+                  source: 'getcourse',
+                  action: 'create',
+                  fieldChanges: {
+                    first_name: user.firstName ?? null,
+                    last_name: user.lastName ?? null,
+                    full_name: fullNameCandidate || user.email || user.phone || 'Участник GetCourse',
+                    email,
+                    phone,
+                    username: telegram ? telegram.replace(/^@/, '') : null,
+                    source: 'getcourse',
+                    status: 'active'
+                  },
+                  integrationJobId: options.jobId
+                });
+              }
             }
 
             if (participantId) {
@@ -185,6 +267,19 @@ export class GetCourseConnector implements IntegrationConnector {
                 );
 
               stats.updated += 1;
+
+              await logParticipantAudit({
+                orgId: options.orgId,
+                participantId,
+                actorType: 'integration',
+                source: 'getcourse',
+                action: 'external_id_upsert',
+                fieldChanges: {
+                  system_code: 'getcourse',
+                  external_id: String(user.id)
+                },
+                integrationJobId: options.jobId
+              });
             }
           } catch (userError: any) {
             stats.errors += 1;

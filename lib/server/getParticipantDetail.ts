@@ -4,7 +4,9 @@ import type {
   ParticipantGroupLink,
   ParticipantTrait,
   ParticipantRecord,
-  ParticipantTimelineEvent
+  ParticipantTimelineEvent,
+  ParticipantExternalId,
+  ParticipantAuditRecord
 } from '@/lib/types/participant';
 
 export async function getParticipantDetail(orgId: string, participantId: string): Promise<ParticipantDetailResult | null> {
@@ -223,6 +225,50 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     }
   }
 
+  const { data: externalIdsData, error: externalIdsError } = await supabase
+    .from('participant_external_ids')
+    .select('system_code, external_id, url, data')
+    .eq('org_id', orgId)
+    .eq('participant_id', canonicalId);
+
+  if (externalIdsError) {
+    console.error('Error loading participant external IDs:', externalIdsError);
+    throw externalIdsError;
+  }
+
+  const externalIds = (externalIdsData || []).map(row => ({
+    system_code: row.system_code,
+    external_id: row.external_id,
+    url: row.url,
+    data: row.data,
+    label: row.system_code
+  })) as ParticipantExternalId[];
+
+  let auditLog: ParticipantAuditRecord[] = [];
+  try {
+    const { data: auditLogData, error: auditError } = await supabase
+      .from('participant_audit_log')
+      .select('*')
+      .eq('org_id', orgId)
+      .eq('participant_id', canonicalId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (auditError) {
+      if ((auditError as any)?.code === '42P01') {
+        console.warn('participant_audit_log table not found, skipping audit trail');
+      } else {
+        console.error('Error loading participant audit log:', auditError);
+        throw auditError;
+      }
+    }
+
+    auditLog = (auditLogData || []) as ParticipantAuditRecord[];
+  } catch (auditException) {
+    console.error('Unexpected error while loading audit log:', auditException);
+    auditLog = [];
+  }
+
   return {
     participant: participantRecord as ParticipantRecord,
     canonicalParticipantId: canonicalId,
@@ -230,6 +276,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     duplicates: (duplicates || []) as ParticipantRecord[],
     traits: (traitsData || []) as ParticipantTrait[],
     groups,
-    events: eventsData
+    events: eventsData,
+    externalIds,
+    auditLog
   };
 }

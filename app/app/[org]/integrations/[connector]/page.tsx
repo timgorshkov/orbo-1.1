@@ -1,12 +1,12 @@
 import AppShell from '@/components/app-shell';
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { notFound } from 'next/navigation';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import Link from 'next/link';
-import { listIntegrationJobs } from '@/lib/services/integrations/connectionStore';
+import { listIntegrationJobs, listIntegrationJobLogs } from '@/lib/services/integrations/connectionStore';
 import { IntegrationSettingsForm } from './settings-form';
+import { IntegrationActions } from './integration-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,15 +33,21 @@ async function loadIntegration(orgId: string, connectorCode: string) {
 
   let jobs: Awaited<ReturnType<typeof listIntegrationJobs>> = [];
 
+  let logs: Awaited<ReturnType<typeof listIntegrationJobLogs>> = [];
+
   if (connection?.id) {
     jobs = await listIntegrationJobs(connection.id, 5);
+    const jobIds = jobs.map(job => job.id);
+    if (jobIds.length > 0) {
+      logs = await listIntegrationJobLogs(jobIds, 10);
+    }
   }
 
-  return { connector, connection, jobs };
+  return { connector, connection, jobs, logs };
 }
 
 export default async function IntegrationDetailsPage({ params }: { params: { org: string; connector: string } }) {
-  const { connector, connection, jobs } = await loadIntegration(params.org, params.connector);
+  const { connector, connection, jobs, logs } = await loadIntegration(params.org, params.connector);
 
   if (!connector) {
     return notFound();
@@ -95,84 +101,22 @@ export default async function IntegrationDetailsPage({ params }: { params: { org
             ) : (
               <p className="text-sm text-neutral-500">Интеграция пока не настроена.</p>
             )}
-
-            <div className="flex items-center gap-2">
-              <Button variant="outline" disabled>
-                Тестировать подключение
-              </Button>
-              <Button disabled>
-                Запустить синхронизацию
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Настройки</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <IntegrationSettingsForm
-              orgId={params.org}
-              connectorCode={params.connector}
-              config={connection?.config ?? null}
-            />
-          </CardContent>
-        </Card>
+        <IntegrationSettingsForm
+          orgId={params.org}
+          connectorCode={params.connector}
+          config={connection?.config ?? null}
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Журнал операций</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {jobs.length > 0 ? (
-              <div className="space-y-3">
-                {jobs.map(job => (
-                  <div key={job.id} className="rounded border border-neutral-200 p-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">Тип</span>
-                      <span className="font-medium">{job.job_type}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">Статус</span>
-                      <span className="font-medium">{job.status}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">Запущен</span>
-                      <span className="font-medium">{new Date(job.started_at).toLocaleString('ru')}</span>
-                    </div>
-                    {job.finished_at && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-neutral-500">Завершен</span>
-                        <span className="font-medium">{new Date(job.finished_at).toLocaleString('ru')}</span>
-                      </div>
-                    )}
-                    {job.result?.stats && (
-                      <div className="mt-2 text-sm">
-                        <div className="text-neutral-500">Статистика:</div>
-                        <ul className="list-disc list-inside text-neutral-600">
-                          {Object.entries(job.result.stats as Record<string, number>).map(([key, value]) => (
-                            <li key={key}>
-                              <span className="text-neutral-500 mr-1">{key}:</span>
-                              <span className="font-medium">{value}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {job.error && (
-                      <div className="mt-2 text-sm text-red-600">
-                        {job.error.message ?? 'Ошибка синхронизации'}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-neutral-500">История запусков отсутствует.</p>
-            )}
-          </CardContent>
-        </Card>
+        <IntegrationActions
+          orgId={params.org}
+          connectorCode={params.connector}
+          connection={connection}
+          jobs={jobs}
+          logs={logs}
+        />
       </div>
     </AppShell>
   );

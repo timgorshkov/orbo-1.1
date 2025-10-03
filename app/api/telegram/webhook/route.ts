@@ -357,7 +357,8 @@ async function handleStatsCommand(chatId: number, orgId: string) {
     const { count: memberCount, error: memberCountError } = await supabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId);
+      .eq('org_id', orgId)
+      .limit(1);
       
     if (memberCountError) {
       console.error('Error fetching member count:', memberCountError);

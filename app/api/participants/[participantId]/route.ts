@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logParticipantAudit } from '@/lib/server/participants/audit';
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = createClientServer();
@@ -74,9 +75,9 @@ export async function PUT(request: Request, { params }: { params: { participantI
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: participantRecord, error: participantFetchError } = await adminClient
+  const { data: participantRecord, error: participantFetchError } = await adminClient
       .from('participants')
-      .select('id, merged_into')
+      .select('id, merged_into, source, status')
       .eq('org_id', orgId)
       .eq('id', participantId)
       .maybeSingle();
@@ -88,7 +89,7 @@ export async function PUT(request: Request, { params }: { params: { participantI
     const canonicalId = participantRecord.merged_into || participantRecord.id;
 
     const updatePayload: Record<string, any> = {};
-    const allowedFields = ['full_name', 'username', 'email', 'phone', 'activity_score', 'risk_score', 'traits_cache', 'last_activity_at'];
+    const allowedFields = ['full_name', 'first_name', 'last_name', 'username', 'email', 'phone', 'activity_score', 'risk_score', 'traits_cache', 'last_activity_at', 'source', 'status', 'notes'];
     allowedFields.forEach(field => {
       if (field in payload) {
         updatePayload[field] = payload[field];
@@ -99,7 +100,7 @@ export async function PUT(request: Request, { params }: { params: { participantI
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
-    const { data: updatedParticipant, error: updateError } = await adminClient
+  const { data: updatedParticipant, error: updateError } = await adminClient
       .from('participants')
       .update(updatePayload)
       .eq('org_id', orgId)
@@ -111,6 +112,20 @@ export async function PUT(request: Request, { params }: { params: { participantI
       console.error('Error updating participant:', updateError);
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 });
     }
+
+  try {
+    await logParticipantAudit({
+      orgId,
+      participantId: canonicalId,
+      actorId: user.id,
+      actorType: 'user',
+      source: 'manual',
+      action: 'update',
+      fieldChanges: updatePayload
+    });
+  } catch (auditError) {
+    console.error('Failed to log participant update audit:', auditError);
+  }
 
     const detail = await getParticipantDetail(orgId, participantId);
 
@@ -164,7 +179,7 @@ async function handleAddTrait(supabase: SupabaseClient, actorId: string, orgId: 
 
   const { data: participantRecord, error: participantError } = await supabase
     .from('participants')
-    .select('id, merged_into')
+    .select('id, merged_into, source, status')
     .eq('org_id', orgId)
     .eq('id', participantId)
     .maybeSingle();
@@ -234,10 +249,29 @@ async function handleRemoveTrait(supabase: SupabaseClient, orgId: string, partic
 }
 
 async function handleMergeParticipants(supabase: SupabaseClient, actorId: string, orgId: string, participantId: string, payload: any) {
-  const { duplicates } = payload || {};
+  const { duplicates, targetId } = payload || {};
 
-  if (!Array.isArray(duplicates) || duplicates.length === 0) {
+  if (targetId && typeof targetId === 'string') {
+    return mergeIntoTarget(supabase, actorId, orgId, participantId, targetId);
+  }
+
+  const duplicateList = Array.isArray(duplicates) ? duplicates : [];
+  if (duplicateList.length === 0) {
     return NextResponse.json({ error: 'No duplicates provided' }, { status: 400 });
+  }
+
+  return mergeIntoTarget(supabase, actorId, orgId, participantId, duplicateList[0]);
+}
+
+async function mergeIntoTarget(
+  supabase: SupabaseClient,
+  actorId: string,
+  orgId: string,
+  participantId: string,
+  targetId: string
+): Promise<NextResponse> {
+  if (!targetId || typeof targetId !== 'string') {
+    return NextResponse.json({ error: 'Invalid merge target' }, { status: 400 });
   }
 
   const { data: participantRecord, error: participantError } = await supabase
@@ -253,10 +287,31 @@ async function handleMergeParticipants(supabase: SupabaseClient, actorId: string
 
   const canonicalId = participantRecord.merged_into || participantRecord.id;
 
+  if (canonicalId === targetId) {
+    return NextResponse.json({ error: 'Cannot merge participant into itself' }, { status: 400 });
+  }
+
+  const { data: targetRecord, error: targetError } = await supabase
+    .from('participants')
+    .select('id, merged_into')
+    .eq('org_id', orgId)
+    .eq('id', targetId)
+    .maybeSingle();
+
+  if (targetError || !targetRecord) {
+    return NextResponse.json({ error: 'Selected participant not found' }, { status: 404 });
+  }
+
+  const targetCanonical = targetRecord.merged_into || targetRecord.id;
+
+  if (targetCanonical === canonicalId) {
+    return NextResponse.json({ error: 'Participants already share canonical record' }, { status: 400 });
+  }
+
   const { error: mergeError } = await supabase
-    .rpc('merge_participants', {
-      p_target: canonicalId,
-      p_duplicates: duplicates,
+    .rpc('merge_participants_extended', {
+      p_target: targetCanonical,
+      p_duplicates: [canonicalId],
       p_actor: actorId
     });
 
@@ -265,7 +320,24 @@ async function handleMergeParticipants(supabase: SupabaseClient, actorId: string
     return NextResponse.json({ error: 'Failed to merge participants' }, { status: 500 });
   }
 
-  const detail = await getParticipantDetail(orgId, participantId);
+  try {
+    await logParticipantAudit({
+      orgId,
+      participantId: targetCanonical,
+      actorId,
+      actorType: 'user',
+      source: 'manual',
+      action: 'merge',
+      fieldChanges: {
+        merged: canonicalId,
+        into: targetCanonical
+      }
+    });
+  } catch (auditError) {
+    console.error('Failed to log participant merge audit:', auditError);
+  }
 
-  return NextResponse.json({ success: true, detail });
+  const detail = await getParticipantDetail(orgId, targetCanonical);
+
+  return NextResponse.json({ success: true, detail, merged_into: targetCanonical });
 }

@@ -5,6 +5,7 @@ import ParticipantProfileCard from './participant-profile-card';
 import ParticipantTraitsCard from './participant-traits-card';
 import ParticipantActivityTimeline from './participant-activity-timeline';
 import ParticipantDuplicatesCard from './participant-duplicates-card';
+import ParticipantAuditPanel from './participant-audit-panel';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
@@ -35,7 +36,7 @@ export default function ParticipantDetailTabs({ orgId, initialDetail }: Particip
 
       <TabsContent value="profile" className="space-y-6">
         <ParticipantProfileCard orgId={orgId} detail={editableDetail} onDetailUpdate={handleDetailUpdate} />
-        <ParticipantActivityTimeline detail={editableDetail} limit={10} compact />
+        <ParticipantAuditPanel detail={editableDetail} />
       </TabsContent>
 
       <TabsContent value="traits">

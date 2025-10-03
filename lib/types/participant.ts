@@ -35,6 +35,8 @@ export interface ParticipantRecord {
   tg_user_id: number | null;
   username: string | null;
   full_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   email: string | null;
   phone: string | null;
   created_at: string;
@@ -43,6 +45,31 @@ export interface ParticipantRecord {
   risk_score: number | null;
   merged_into: string | null;
   traits_cache: Record<string, any> | null;
+  source?: string | null;
+  status?: string | null;
+  notes?: string | null;
+}
+
+export interface ParticipantExternalId {
+  system_code: string;
+  external_id: string;
+  label?: string;
+  url: string | null;
+  data: Record<string, any> | null;
+}
+
+export interface ParticipantAuditRecord {
+  id: string;
+  org_id: string;
+  participant_id: string;
+  actor_id: string | null;
+  actor_type: string;
+  source: string;
+  action: string;
+  field_changes: Record<string, any> | null;
+  message: string | null;
+  integration_job_id: string | null;
+  created_at: string;
 }
 
 export interface ParticipantDetailResult {
@@ -53,4 +80,6 @@ export interface ParticipantDetailResult {
   traits: ParticipantTrait[];
   groups: ParticipantGroupLink[];
   events: ParticipantTimelineEvent[];
+  externalIds?: ParticipantExternalId[];
+  auditLog?: ParticipantAuditRecord[];
 }

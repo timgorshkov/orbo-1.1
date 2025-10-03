@@ -6,6 +6,18 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Сервис для обработки и нормализации событий Telegram
  */
+type ParticipantRow = {
+  id: string;
+  merged_into?: string | null;
+  identity_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  username?: string | null;
+  source?: string | null;
+  status?: string | null;
+};
+
 export class EventProcessingService {
   private supabase;
   
@@ -523,25 +535,33 @@ export class EventProcessingService {
 
         const { data: participant } = await this.supabase
           .from('participants')
-          .select('id, merged_into, identity_id')
+          .select('id, merged_into, identity_id, first_name, last_name, full_name, username, status, source')
           .eq('tg_user_id', member.id)
           .eq('org_id', orgId)
-          .maybeSingle();
-        
+          .maybeSingle() as { data: ParticipantRow | null };
+
         let participantId: string | null = null;
 
         // Если нет, создаем запись
         if (!participant) {
+          const nowIso = new Date().toISOString();
+          const fullNameCandidate = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
+
           const { data: newParticipant, error } = await this.supabase
             .from('participants')
             .insert({
               org_id: orgId,
               tg_user_id: member.id,
-              username: member.username,
-              full_name: `${member.first_name} ${member.last_name || ''}`.trim(),
+              username: member.username ?? null,
+              first_name: member.first_name ?? null,
+              last_name: member.last_name ?? null,
+              full_name: fullNameCandidate || member.username || null,
               identity_id: identityId,
               merged_into: null,
-              last_activity_at: new Date().toISOString()
+              last_activity_at: nowIso,
+              source: 'telegram',
+              status: 'active',
+              updated_at: nowIso
             })
             .select('id')
             .single();
@@ -553,6 +573,36 @@ export class EventProcessingService {
           
           participantId = newParticipant?.id;
         } else {
+          const patch: Record<string, any> = {};
+          const fullNameCandidate = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
+
+          if (!participant.first_name && member.first_name) {
+            patch.first_name = member.first_name;
+          }
+          if (!participant.last_name && member.last_name) {
+            patch.last_name = member.last_name;
+          }
+          if ((!participant.full_name || participant.full_name === participant.username) && fullNameCandidate) {
+            patch.full_name = fullNameCandidate;
+          }
+          if (!participant.username && member.username) {
+            patch.username = member.username;
+          }
+          if (!participant.source || participant.source === 'unknown') {
+            patch.source = 'telegram';
+          }
+          if (!participant.status || participant.status === 'inactive') {
+            patch.status = 'active';
+          }
+
+          if (Object.keys(patch).length > 0) {
+            patch.updated_at = new Date().toISOString();
+            await this.supabase
+              .from('participants')
+              .update(patch)
+              .eq('id', participant.id);
+          }
+
           if (participant.merged_into) {
             participantId = participant.merged_into;
           } else {
@@ -674,7 +724,7 @@ export class EventProcessingService {
     }
     
     let identityId: string | null = null;
-    let participantRecord: { id: string; merged_into?: string | null; identity_id?: string | null } | null = null;
+    let participantRecord: ParticipantRow | null = null;
     let participantId: string | null = null;
 
     // Проверяем, есть ли пользователь в таблице participants
@@ -683,26 +733,32 @@ export class EventProcessingService {
 
       const { data: participant } = await this.supabase
         .from('participants')
-        .select('id, merged_into, identity_id')
+        .select('id, merged_into, identity_id, first_name, last_name, full_name, username, status, source')
         .eq('tg_user_id', userId)
         .eq('org_id', orgId)
-        .maybeSingle();
-      
+        .maybeSingle() as { data: ParticipantRow | null };
+
       participantRecord = participant;
       
       // Если участника нет, создаем его
       if (!participant) {
         console.log(`Creating new participant for user ${username} (${userId}) in org ${orgId}`);
         
+        const nowIso = new Date().toISOString();
         const { data: newParticipant, error } = await this.supabase
           .from('participants')
           .insert({
             org_id: orgId,
             tg_user_id: userId,
-            username: username,
-            full_name: fullName,
+            username: username ?? null,
+            first_name: message.from.first_name ?? null,
+            last_name: message.from.last_name ?? null,
+            full_name: fullName || username || (userId ? `User ${userId}` : null),
             identity_id: identityId,
-            last_activity_at: new Date().toISOString()
+            last_activity_at: nowIso,
+            source: 'telegram',
+            status: 'active',
+            updated_at: nowIso
           })
           .select('id')
           .single();
@@ -883,9 +939,39 @@ export class EventProcessingService {
     
     try {
       // Обновляем время последней активности пользователя
+      const patch: Record<string, any> = {
+        last_activity_at: new Date().toISOString(),
+        identity_id: identityId || participantRecord?.identity_id || null
+      };
+
+      const from = message.from;
+      if (participantRecord) {
+        if (!participantRecord.first_name && from.first_name) {
+          patch.first_name = from.first_name;
+        }
+        if (!participantRecord.last_name && from.last_name) {
+          patch.last_name = from.last_name;
+        }
+        if (!participantRecord.username && from.username) {
+          patch.username = from.username;
+        }
+        const fullNameCandidate = `${from.first_name ?? ''} ${from.last_name ?? ''}`.trim();
+        if ((!participantRecord.full_name || participantRecord.full_name === participantRecord.username) && fullNameCandidate) {
+          patch.full_name = fullNameCandidate;
+        }
+        if (!participantRecord.source || participantRecord.source === 'unknown') {
+          patch.source = 'telegram';
+        }
+        if (!participantRecord.status || participantRecord.status === 'inactive') {
+          patch.status = 'active';
+        }
+      }
+
+      patch.updated_at = new Date().toISOString();
+
       await this.supabase
         .from('participants')
-        .update({ last_activity_at: new Date().toISOString(), identity_id: identityId || participantRecord?.identity_id || null })
+        .update(patch)
         .eq('tg_user_id', userId)
         .eq('org_id', orgId);
       
@@ -1458,7 +1544,7 @@ export class EventProcessingService {
     const lastName = user.last_name || null;
     const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
 
-    const { data: existingIdentity } = await this.supabase
+        const { data: existingIdentity } = await this.supabase
       .from('telegram_identities')
       .select('id, username, full_name, first_name, last_name')
       .eq('tg_user_id', tgUserId)

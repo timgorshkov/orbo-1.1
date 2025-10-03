@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { format } from 'date-fns';
 import { Textarea } from '@/components/ui/textarea';
+import Link from 'next/link';
 
 interface ParticipantProfileCardProps {
   orgId: string;
@@ -16,12 +17,16 @@ interface ParticipantProfileCardProps {
 
 interface FieldState {
   full_name: string;
+  first_name: string;
+  last_name: string;
   username: string;
   email: string;
   phone: string;
   activity_score: number | null;
   risk_score: number | null;
   notes: string;
+  source: string;
+  status: string;
 }
 
 export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }: ParticipantProfileCardProps) {
@@ -31,12 +36,16 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<FieldState>({
     full_name: participant.full_name || '',
+    first_name: participant.first_name || '',
+    last_name: participant.last_name || '',
     username: participant.username || '',
     email: participant.email || '',
     phone: participant.phone || '',
     activity_score: participant.activity_score ?? null,
     risk_score: participant.risk_score ?? null,
-    notes: (participant.traits_cache as any)?.notes || ''
+    notes: participant.notes || '',
+    source: participant.source || 'unknown',
+    status: participant.status || 'active'
   });
 
   const handleChange = (key: keyof FieldState, value: string) => {
@@ -67,15 +76,16 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
         body: JSON.stringify({
           orgId,
           full_name: fields.full_name,
+          first_name: fields.first_name,
+          last_name: fields.last_name,
           username: fields.username,
           email: fields.email,
           phone: fields.phone,
           activity_score: fields.activity_score,
           risk_score: fields.risk_score,
-          traits_cache: {
-            ...(participant.traits_cache || {}),
-            notes: fields.notes
-          }
+          notes: fields.notes,
+          source: fields.source,
+          status: fields.status
         })
       });
 
@@ -96,8 +106,9 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
     }
   };
 
-  const createdAt = participant.created_at ? format(new Date(participant.created_at), 'dd.MM.yyyy') : null;
-  const lastActivity = participant.last_activity_at ? format(new Date(participant.last_activity_at), 'dd.MM.yyyy HH:mm') : null;
+  const createdAt = participant.created_at ? format(new Date(participant.created_at), 'dd.MM.yy') : null;
+  const lastActivity = participant.last_activity_at ? format(new Date(participant.last_activity_at), 'dd.MM.yy HH:mm') : null;
+  const lastAudit = detail.auditLog?.[0];
 
   return (
     <Card>
@@ -111,6 +122,22 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
             <Input
               value={fields.full_name}
               onChange={e => handleChange('full_name', e.target.value)}
+              disabled={!editing || pending}
+            />
+          </div>
+          <div>
+            <label className="text-sm text-neutral-500">Имя</label>
+            <Input
+              value={fields.first_name}
+              onChange={e => handleChange('first_name', e.target.value)}
+              disabled={!editing || pending}
+            />
+          </div>
+          <div>
+            <label className="text-sm text-neutral-500">Фамилия</label>
+            <Input
+              value={fields.last_name}
+              onChange={e => handleChange('last_name', e.target.value)}
               disabled={!editing || pending}
             />
           </div>
@@ -173,6 +200,46 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
           />
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm text-neutral-500">Источник</label>
+            <Input
+              value={fields.source}
+              onChange={e => handleChange('source', e.target.value)}
+              disabled={!editing || pending}
+            />
+          </div>
+          <div>
+            <label className="text-sm text-neutral-500">Статус</label>
+            <Input
+              value={fields.status}
+              onChange={e => handleChange('status', e.target.value)}
+              disabled={!editing || pending}
+            />
+          </div>
+        </div>
+
+        {detail.externalIds && detail.externalIds.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-neutral-700 mb-2">Внешние идентификаторы</h3>
+            <div className="space-y-2">
+              {detail.externalIds.map(externalId => (
+                <div key={`${externalId.system_code}:${externalId.external_id}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                  <div>
+                    <div className="font-medium">{externalId.label || externalId.system_code}</div>
+                    <div className="text-xs text-neutral-500">ID: {externalId.external_id}</div>
+                  </div>
+                  {externalId.url ? (
+                    <Link href={externalId.url} target="_blank" className="text-xs text-primary hover:underline">
+                      Открыть
+                    </Link>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-4 text-sm text-neutral-500">
           {participant.tg_user_id && (
             <span>ID: {participant.tg_user_id}</span>
@@ -180,6 +247,12 @@ export default function ParticipantProfileCard({ orgId, detail, onDetailUpdate }
           {createdAt && <span>Добавлен: {createdAt}</span>}
           {lastActivity && <span>Последняя активность: {lastActivity}</span>}
         </div>
+
+        {lastAudit && (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Последнее изменение: {new Date(lastAudit.created_at).toLocaleString('ru')} · {lastAudit.source}
+          </div>
+        )}
 
         {detail.groups.length > 0 && (
           <div>

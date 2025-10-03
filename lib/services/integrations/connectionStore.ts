@@ -133,3 +133,24 @@ export async function listIntegrationJobs(connectionId: string, limit = 10) {
   return data ?? [];
 }
 
+export async function listIntegrationJobLogs(jobIds: string[], limitPerJob = 20) {
+  if (!Array.isArray(jobIds) || jobIds.length === 0) {
+    return [] as Array<{ id: string; job_id: string; level: string; message: string | null; context: Record<string, unknown> | null; created_at: string }>;
+  }
+
+  const limit = Math.max(limitPerJob * jobIds.length, limitPerJob);
+
+  const { data, error } = await supabaseAdmin
+    .from('integration_job_logs')
+    .select('id, job_id, level, message, context, created_at')
+    .in('job_id', jobIds)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
+

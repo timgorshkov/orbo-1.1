@@ -1,6 +1,6 @@
 import { requireOrgAccess } from '@/lib/orgGuard';
 import AppShell from '@/components/app-shell';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { notFound } from 'next/navigation';
@@ -13,6 +13,8 @@ export const dynamic = 'force-dynamic';
 type Participant = {
   id: string;
   full_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   username: string | null;
   tg_user_id: number | null;
   identity_id?: string | null;
@@ -23,11 +25,57 @@ type Participant = {
   activity_score: number | null;
   risk_score: number | null;
   group_count?: number;
+  source?: string | null;
+  status?: string | null;
 };
 
 type RawParticipant = Participant & {
   merged_into?: string | null;
 };
+
+function SourceBadge({ source }: { source?: string | null }) {
+  const value = (source || 'unknown').toLowerCase();
+  const labelMap: Record<string, string> = {
+    telegram: 'Telegram',
+    getcourse: 'GetCourse',
+    amocrm: 'AmoCRM',
+    manual: 'Ручной',
+    import: 'Импорт',
+    unknown: 'Неизвестно'
+  };
+  const label = labelMap[value] ?? value;
+  const colorMap: Record<string, string> = {
+    telegram: 'bg-blue-100 text-blue-800',
+    getcourse: 'bg-green-100 text-green-800',
+    amocrm: 'bg-purple-100 text-purple-800',
+    manual: 'bg-amber-100 text-amber-800',
+    import: 'bg-teal-100 text-teal-800',
+    unknown: 'bg-gray-100 text-gray-600'
+  };
+  const classes = colorMap[value] ?? colorMap.unknown;
+
+  return <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${classes}`}>{label}</span>;
+}
+
+function StatusBadge({ status }: { status?: string | null }) {
+  const value = (status || 'active').toLowerCase();
+  const labelMap: Record<string, string> = {
+    active: 'Активен',
+    inactive: 'Неактивен',
+    merged: 'Объединён',
+    deleted: 'Удалён'
+  };
+  const label = labelMap[value] ?? value;
+  const colorMap: Record<string, string> = {
+    active: 'bg-emerald-100 text-emerald-800',
+    inactive: 'bg-yellow-100 text-yellow-800',
+    merged: 'bg-indigo-100 text-indigo-800',
+    deleted: 'bg-red-100 text-red-800'
+  };
+  const classes = colorMap[value] ?? 'bg-gray-100 text-gray-600';
+
+  return <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${classes}`}>{label}</span>;
+}
 
 type IdentityRecord = {
   id: string | null;
@@ -835,7 +883,7 @@ async function fetchParticipantsWithGroups(
 ): Promise<Participant[]> {
   const { data: participantRows, error } = await supabase
     .from('participants')
-    .select('*')
+    .select('id, full_name, first_name, last_name, username, tg_user_id, identity_id, email, phone, created_at, last_activity_at, activity_score, risk_score, merged_into, source, status, notes')
     .eq('org_id', orgId);
 
   if (error) {
@@ -891,7 +939,7 @@ async function fetchParticipantsWithGroups(
   }));
 }
 
-export default async function MembersPage({ params }: { params: { org: string } }) {
+export default async function MembersPage({ params, searchParams }: { params: { org: string }; searchParams: Record<string, string | string[] | undefined> }) {
   try {
     await requireOrgAccess(params.org);
 
@@ -942,78 +990,146 @@ export default async function MembersPage({ params }: { params: { org: string } 
       participants = await fetchParticipantsWithGroups(supabase, params.org, chatIds, true);
     }
 
+    const query = typeof searchParams.q === 'string' ? searchParams.q.trim().toLowerCase() : '';
+    const sourceFilter = typeof searchParams.source === 'string' ? searchParams.source.trim().toLowerCase() : '';
+    const statusFilter = typeof searchParams.status === 'string' ? searchParams.status.trim().toLowerCase() : '';
+
+    const filteredParticipants = participants.filter(participant => {
+      const matchesQuery = query
+        ? [
+            participant.full_name,
+            participant.username,
+            participant.email,
+            participant.phone,
+            participant.first_name,
+            participant.last_name
+          ]
+            .filter(Boolean)
+            .some(value => value!.toLowerCase().includes(query))
+        : true;
+
+      const matchesSource = sourceFilter
+        ? (participant.source ?? 'unknown').toLowerCase().includes(sourceFilter)
+        : true;
+
+      const matchesStatus = statusFilter
+        ? (participant.status ?? 'active').toLowerCase().includes(statusFilter)
+        : true;
+
+      return matchesQuery && matchesSource && matchesStatus;
+    });
+
     return (
       <AppShell orgId={params.org} currentPath={`/app/${params.org}/members`} telegramGroups={telegramGroups}>
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Members</h1>
-          <Link href={`/app/${params.org}/members/add`}>
-            <Button>Add Member</Button>
+          <h1 className="text-2xl font-bold">Участники</h1>
+          <Link href={`/app/${params.org}/participants/new`}>
+            <Button>Добавить участника</Button>
           </Link>
         </div>
         <Card>
+          <CardHeader className="space-y-4">
+            <CardTitle>Список участников</CardTitle>
+            <form className="flex flex-col lg:flex-row gap-3" action="" method="get">
+              <Input
+                name="q"
+                defaultValue={query}
+                placeholder="Поиск: имя, username, email или телефон"
+                className="lg:w-80"
+              />
+              <Input
+                name="source"
+                defaultValue={sourceFilter}
+                placeholder="Источник"
+                className="lg:w-48"
+              />
+              <Input
+                name="status"
+                defaultValue={statusFilter}
+                placeholder="Статус"
+                className="lg:w-48"
+              />
+              <div className="flex gap-2">
+                <Button type="submit">Применить</Button>
+                <Button type="button" variant="outline" asChild>
+                  <Link href={`/app/${params.org}/members`}>Сбросить</Link>
+                </Button>
+              </div>
+            </form>
+          </CardHeader>
           <CardContent>
-            <Input placeholder="Search members..." />
-            <div className="mt-4">
-              <h2 className="text-lg font-semibold mb-2">All Members</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Username
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Telegram ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Groups
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Activity
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Risk
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {participants.map(participant => (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Участник</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Источник</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Telegram</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контакты</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Группы</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Активность</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredParticipants.map(participant => {
+                    const name =
+                      participant.full_name ||
+                      [participant.first_name, participant.last_name].filter(Boolean).join(' ') ||
+                      'Неизвестный участник';
+                    const sourceLabel = participant.source ?? 'unknown';
+                    const statusLabel = participant.status ?? 'active';
+                    return (
                       <tr key={participant.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {participant.full_name || 'N/A'}
+                          <Link href={`/app/${params.org}/members/${participant.id}`} className="flex flex-col text-primary hover:underline">
+                            <span>{name}</span>
+                            <span className="text-xs text-gray-500">
+                              Создан: {new Date(participant.created_at).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                            </span>
+                          </Link>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <StatusBadge status={statusLabel} />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <SourceBadge source={sourceLabel} />
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.username || 'N/A'}
+                          <div className="flex flex-col">
+                            <span>{participant.username ? `@${participant.username}` : '—'}</span>
+                            <span className="text-xs text-gray-400">ID: {participant.tg_user_id ?? '—'}</span>
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.tg_user_id || 'N/A'}
+                          <div className="flex flex-col">
+                            <span>{participant.email || '—'}</span>
+                            <span>{participant.phone || '—'}</span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                           {participant.group_count || 0}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.activity_score}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {participant.risk_score}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <Link href={`/app/${params.org}/members/${participant.id}`}>
-                            View
-                          </Link>
+                          <div className="flex flex-col">
+                            <span>Score: {participant.activity_score ?? 0}</span>
+                            <span className="text-xs text-gray-400">
+                              Последняя активность:{' '}
+                              {participant.last_activity_at
+                                ? new Date(participant.last_activity_at).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                                : '—'}
+                            </span>
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+            {filteredParticipants.length === 0 && (
+              <div className="text-center text-sm text-gray-500 py-8">Участники не найдены.</div>
+            )}
           </CardContent>
         </Card>
       </AppShell>

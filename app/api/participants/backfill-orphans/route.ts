@@ -11,6 +11,8 @@ type IdentityRecord = {
   id: string | null;
   tg_user_id: number | null;
   username: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   full_name: string | null;
   last_activity_at?: string | null;
   activity_score?: number | null;
@@ -23,6 +25,8 @@ type ParticipantRow = {
   identity_id: string | null;
   tg_user_id: number | null;
   username: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   full_name: string | null;
   last_activity_at: string | null;
   activity_score: number | null;
@@ -311,7 +315,7 @@ export async function POST(request: Request) {
 
     const { data: identityRecordsRaw, error: identityRecordsError } = await adminClient
       .from('telegram_identities')
-      .select('id, tg_user_id, username, full_name')
+      .select('id, tg_user_id, username, first_name, last_name, full_name')
       .in('id', missingIdentityIds);
 
     if (identityRecordsError) {
@@ -332,10 +336,16 @@ export async function POST(request: Request) {
           identity_id: identityId,
           tg_user_id: identity.tg_user_id ?? null,
           username: identity.username ?? null,
+          first_name: identity.first_name ?? null,
+          last_name: identity.last_name ?? null,
           full_name:
             identity.full_name ??
-            identity.username ??
-            (identity.tg_user_id ? `User ${identity.tg_user_id}` : 'Telegram user'),
+            ([identity.first_name ?? null, identity.last_name ?? null].filter(Boolean).join(' ') ||
+              identity.username ||
+              (identity.tg_user_id ? `User ${identity.tg_user_id}` : 'Telegram user')),
+          source: 'telegram',
+          status: 'active',
+          updated_at: nowIsoIdentities,
           last_activity_at: activityTimestamp,
           activity_score: null,
           risk_score: null
@@ -346,7 +356,12 @@ export async function POST(request: Request) {
         identity_id: string | null;
         tg_user_id: number | null;
         username: string | null;
+        first_name?: string | null;
+        last_name?: string | null;
         full_name: string | null;
+        source?: string;
+        status?: string;
+        updated_at?: string;
         last_activity_at: string;
         activity_score?: number | null;
         risk_score?: number | null;
@@ -375,7 +390,14 @@ export async function POST(request: Request) {
         identity_id: record.id ?? null,
         tg_user_id: record.tg_user_id ?? null,
         username: record.username ?? null,
-        full_name: record.full_name ?? null,
+        first_name: record.first_name ?? null,
+        last_name: record.last_name ?? null,
+        full_name:
+          record.full_name ??
+          ([record.first_name ?? null, record.last_name ?? null].filter(Boolean).join(' ') || null),
+        source: 'telegram',
+        status: 'active',
+        updated_at: nowIso,
         last_activity_at: record.last_activity_at ?? nowIso,
         activity_score: (record as any).activity_score ?? null,
         risk_score: (record as any).risk_score ?? null
