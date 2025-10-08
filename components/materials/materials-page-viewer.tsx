@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MaterialTreeNode } from '@/lib/server/materials/service';
 import { MaterialsTree } from './materials-tree';
 import { MaterialsEditorPlaceholder } from './materials-editor-placeholder';
@@ -39,12 +39,35 @@ export function MaterialsPageViewer({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<{ page_id: string; title: string }>>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingPageId, setPendingPageId] = useState<string | null>(null);
+  const saveRef = useRef<(() => Promise<void>) | null>(null);
 
   const flattenedTree = useMemo(() => flattenTree(tree), [tree]);
 
   const handleSelect = useCallback((id: string | null) => {
+    if (hasUnsavedChanges) {
+      setPendingPageId(id);
+      return;
+    }
     setSelectedId(id);
     setIsSearchOpen(false);
+  }, [hasUnsavedChanges]);
+
+  const confirmNavigation = useCallback(async (save: boolean) => {
+    if (save && saveRef.current) {
+      await saveRef.current();
+    }
+    setHasUnsavedChanges(false);
+    if (pendingPageId !== null) {
+      setSelectedId(pendingPageId);
+      setPendingPageId(null);
+    }
+    setIsSearchOpen(false);
+  }, [pendingPageId]);
+
+  const cancelNavigation = useCallback(() => {
+    setPendingPageId(null);
   }, []);
 
   const loadPage = useCallback(async (pageId: string) => {
@@ -108,15 +131,14 @@ export function MaterialsPageViewer({
       <aside className="w-72 shrink-0 border-r border-neutral-200 bg-white">
         <div className="px-4 py-4 border-b border-neutral-200 flex items-center gap-3">
           {orgLogoUrl ? (
-            <img src={orgLogoUrl} alt={orgName ?? 'Организация'} className="h-10 w-10 rounded-lg object-cover" />
+            <img src={orgLogoUrl} alt={orgName ?? 'Организация'} className="h-12 w-12 rounded-lg object-cover" />
           ) : (
-            <div className="h-10 w-10 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-600 font-semibold">
+            <div className="h-12 w-12 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-600 font-semibold text-lg">
               {(orgName ?? 'OR')[0]?.toUpperCase()}
             </div>
           )}
-          <div>
-            <div className="text-sm font-semibold text-neutral-900">{orgName ?? 'Организация'}</div>
-            <div className="text-xs text-neutral-500">Раздел «Материалы»</div>
+          <div className="flex-1">
+            <div className="text-base font-semibold text-neutral-900">{orgName ?? 'Организация'}</div>
           </div>
         </div>
         <div className="p-3">
@@ -131,26 +153,17 @@ export function MaterialsPageViewer({
       </aside>
       <main className="flex-1 overflow-hidden bg-neutral-50">
         <div className="h-full p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-neutral-900">Материалы</h1>
-              <p className="text-sm text-neutral-500">Быстрый переход по страницам и поиск по названию.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                <Input
-                  value={searchValue}
-                  onChange={event => setSearchValue(event.target.value)}
-                  onFocus={() => setIsSearchOpen(true)}
-                  placeholder="Поиск материалов"
-                  className="w-64 rounded-full pl-9"
-                />
-                {isSearching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-neutral-400" />}
-              </div>
-              <Button variant="muted" onClick={() => setIsSearchOpen(true)}>
-                <Sparkles className="mr-2 h-4 w-4" /> Быстрый переход
-              </Button>
+          <div className="flex items-center justify-end">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <Input
+                value={searchValue}
+                onChange={event => setSearchValue(event.target.value)}
+                onFocus={() => setIsSearchOpen(true)}
+                placeholder="Поиск материалов"
+                className="w-64 rounded-full pl-9"
+              />
+              {isSearching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-neutral-400" />}
             </div>
           </div>
 
@@ -163,7 +176,14 @@ export function MaterialsPageViewer({
                 </pre>
               </article>
             ) : (
-              <MaterialsPageEditor orgId={orgId} pageId={page.id} initialTitle={page.title} initialContent={page.contentMd} />
+              <MaterialsPageEditor 
+                orgId={orgId} 
+                pageId={page.id} 
+                initialTitle={page.title} 
+                initialContent={page.contentMd}
+                onUnsavedChanges={setHasUnsavedChanges}
+                saveRef={saveRef}
+              />
             )
           ) : isLoading ? (
             <MaterialsEditorPlaceholder />
@@ -204,6 +224,37 @@ export function MaterialsPageViewer({
           </CommandGroup>
         </CommandList>
       </CommandDialog>
+      
+      {pendingPageId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-neutral-900 mb-2">Несохранённые изменения</h3>
+            <p className="text-sm text-neutral-600 mb-6">
+              У вас есть несохранённые изменения. Что вы хотите сделать?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelNavigation}
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => confirmNavigation(false)}
+                className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition"
+              >
+                Отменить изменения
+              </button>
+              <button
+                onClick={() => confirmNavigation(true)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

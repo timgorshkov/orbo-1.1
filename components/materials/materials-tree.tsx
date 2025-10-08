@@ -291,7 +291,7 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-      <aside className="border border-neutral-200 rounded-lg p-3 bg-white overflow-y-auto">
+      <div className="overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold">Материалы</h2>
           <Button
@@ -321,7 +321,7 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
           openMenu={setMenuState}
           activeId={activeId}
         />
-      </aside>
+      </div>
       {menuState && (
         <TreeActionsMenu
           anchor={menuState.anchor}

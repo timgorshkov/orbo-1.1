@@ -12,6 +12,8 @@ export type MaterialsPageEditorProps = {
   pageId: string;
   initialTitle: string;
   initialContent: string;
+  onUnsavedChanges?: (hasChanges: boolean) => void;
+  saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 };
 
 type FormattingAction = 'bold' | 'italic' | 'heading1' | 'heading2' | 'list' | 'quote' | 'link' | 'unlink';
@@ -31,38 +33,154 @@ turndown.addRule('embeds', {
   replacement: (_content, node: any) => {
     const url = node.dataset.url || '';
     const type = node.dataset.embed || 'embed';
-    return `![${type}](${url})`;
+    return `\n\n[${type}:${url}]\n\n`;
   }
 });
 
 function markdownToHtml(markdown: string): string {
-  return marked.parse(markdown ?? '', { breaks: true }) as string;
+  console.log('markdownToHtml - Input markdown:', markdown.substring(0, 300));
+  
+  let processed = markdown ?? '';
+  const embeds: string[] = [];
+  
+  // Заменяем YouTube embed на placeholder
+  processed = processed.replace(/\[youtube:(https?:\/\/[^\]]+)\]/g, (_, url) => {
+    console.log('Found YouTube embed:', url);
+    const videoId = extractYoutubeId(url);
+    const title = getVideoTitle(url, 'youtube');
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50" data-embed="youtube" data-url="${url}" contenteditable="false">
+      <img src="${videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : ''}" alt="YouTube видео" class="block h-48 w-full object-cover" />
+      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700">
+        <span class="font-medium">${title}</span>
+        <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
+      </div>
+    </div>`;
+    embeds.push(embedHtml);
+    return `<!--EMBED_${embeds.length - 1}-->`;
+  });
+  
+  // Заменяем VK embed на placeholder
+  processed = processed.replace(/\[vk:(https?:\/\/[^\]]+)\]/g, (_, url) => {
+    console.log('Found VK embed:', url);
+    const videoId = extractVkVideoId(url);
+    console.log('VK video ID:', videoId);
+    const title = getVideoTitle(url, 'vk');
+    
+    // Пытаемся получить обложку через VK API
+    let thumbnailHtml = '';
+    if (videoId) {
+      thumbnailHtml = `<img src="https://vk.com/video_ext.php?oid=${videoId.oid}&id=${videoId.id}&thumb=1" 
+        alt="VK видео" 
+        class="block h-48 w-full object-cover" 
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />`;
+    }
+    
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50" data-embed="vk" data-url="${url}" contenteditable="false">
+      ${thumbnailHtml}
+      <div class="h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center" style="${videoId ? 'display: none;' : ''}">
+        <svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
+        </svg>
+      </div>
+      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700">
+        <span class="font-medium">${title}</span>
+        <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
+      </div>
+    </div>`;
+    embeds.push(embedHtml);
+    return `<!--EMBED_${embeds.length - 1}-->`;
+  });
+  
+  console.log('Processed markdown with placeholders:', processed.substring(0, 300));
+  console.log('Embeds count:', embeds.length);
+  
+  // Парсим markdown
+  let html = marked.parse(processed, { breaks: true }) as string;
+  console.log('Parsed HTML before embed restoration:', html.substring(0, 500));
+  console.log('Looking for placeholders...');
+  
+  // Восстанавливаем embeds (ищем в любых тегах)
+  embeds.forEach((embedHtml, index) => {
+    const placeholder = `<!--EMBED_${index}-->`;
+    console.log(`Restoring embed ${index}, searching for: "${placeholder}"`);
+    console.log(`HTML contains placeholder: ${html.includes(placeholder)}`);
+    console.log(`HTML contains in <p>: ${html.includes(`<p>${placeholder}</p>`)}`);
+    
+    // Заменяем comment placeholder
+    const before = html.length;
+    html = html.replace(new RegExp(`<!--EMBED_${index}-->`, 'g'), embedHtml);
+    console.log(`After direct replace: ${html.length !== before ? 'SUCCESS' : 'NO MATCH'}`);
+    
+    // На всякий случай, если markdown обернул в теги
+    html = html.replace(new RegExp(`<p><!--EMBED_${index}--></p>`, 'g'), embedHtml);
+    
+    // Проверяем, есть ли еще placeholder в HTML
+    if (html.includes(placeholder)) {
+      console.log(`WARNING: Placeholder ${index} still exists in HTML!`);
+      console.log('HTML snippet:', html.substring(html.indexOf(placeholder) - 50, html.indexOf(placeholder) + 100));
+    }
+  });
+  
+  console.log('Final HTML:', html.substring(0, 500));
+  
+  return html;
 }
 
-export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent }: MaterialsPageEditorProps) {
+export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent, onUnsavedChanges, saveRef }: MaterialsPageEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [contentMd, setContentMd] = useState(initialContent);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [toolbar, setToolbar] = useState<SelectionToolbarState>({ visible: false, top: 0, left: 0 });
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    console.log('=== Editor useEffect ===');
+    console.log('pageId:', pageId);
+    console.log('initialTitle:', initialTitle);
+    console.log('initialContent:', initialContent);
+    
     setTitle(initialTitle);
     setContentMd(initialContent);
+    setHasUnsavedChanges(false);
     if (editorRef.current) {
-      editorRef.current.innerHTML = markdownToHtml(initialContent);
+      const html = markdownToHtml(initialContent);
+      console.log('Setting editor HTML (full):', html);
+      editorRef.current.innerHTML = html;
+      console.log('Editor innerHTML after setting:', editorRef.current.innerHTML.substring(0, 500));
     }
-  }, [initialTitle, initialContent]);
+  }, [initialTitle, initialContent, pageId]);
+
+  useEffect(() => {
+    const hasChanges = title !== initialTitle || contentMd !== initialContent;
+    setHasUnsavedChanges(hasChanges);
+    onUnsavedChanges?.(hasChanges);
+  }, [title, contentMd, initialTitle, initialContent, onUnsavedChanges]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   const synchronizeMarkdown = useCallback(() => {
     if (!editorRef.current) return;
     const html = editorRef.current.innerHTML;
+    console.log('synchronizeMarkdown - HTML:', html.substring(0, 500));
+    
     const markdown = turndown.turndown(html || '<p></p>');
+    console.log('synchronizeMarkdown - Markdown:', markdown.substring(0, 500));
+    
     setContentMd(markdown);
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       const response = await fetch(`/api/materials/${pageId}`, {
@@ -82,12 +200,20 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
       }
 
       setLastSaved(new Date().toLocaleTimeString('ru-RU'));
+      setHasUnsavedChanges(false);
+      onUnsavedChanges?.(false);
     } catch (error) {
       console.error(error);
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [orgId, pageId, title, contentMd, onUnsavedChanges]);
+
+  useEffect(() => {
+    if (saveRef) {
+      saveRef.current = handleSave;
+    }
+  }, [handleSave, saveRef]);
 
   const focusEditor = useCallback(() => {
     if (!editorRef.current) return;
@@ -104,41 +230,89 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
 
   const applyFormatting = useCallback(
     (action: FormattingAction) => {
-      if (!editorRef.current) return;
-      focusEditor();
+      console.log('=== applyFormatting START ===');
+      console.log('Action:', action);
+      console.log('Editor exists:', !!editorRef.current);
+      
+      if (!editorRef.current) {
+        console.log('ERROR: No editor ref');
+        return;
+      }
+      
+      // Сохраняем выделение
+      const selection = window.getSelection();
+      console.log('Selection:', selection);
+      console.log('Range count:', selection?.rangeCount);
+      
+      if (!selection || selection.rangeCount === 0) {
+        console.log('ERROR: No selection');
+        return;
+      }
+      
+      const range = selection.getRangeAt(0).cloneRange();
+      console.log('Range:', range);
+      console.log('Selected text:', range.toString());
+      console.log('Range HTML:', range.cloneContents().textContent);
+      
+      // Фокусируемся на редакторе
+      editorRef.current.focus();
+      console.log('Editor focused');
+      
+      // Восстанавливаем выделение
+      selection.removeAllRanges();
+      selection.addRange(range);
+      console.log('Selection restored');
+      
+      // Применяем форматирование
+      let success = false;
+      console.log('Applying command...');
+      
       switch (action) {
         case 'bold':
-          document.execCommand('bold');
+          success = document.execCommand('bold', false, undefined);
+          console.log('Bold command result:', success);
           break;
         case 'italic':
-          document.execCommand('italic');
+          success = document.execCommand('italic', false, undefined);
+          console.log('Italic command result:', success);
           break;
         case 'heading1':
-          document.execCommand('formatBlock', false, 'H1');
+          success = document.execCommand('formatBlock', false, 'h1');
+          console.log('H1 command result:', success);
           break;
         case 'heading2':
-          document.execCommand('formatBlock', false, 'H2');
+          success = document.execCommand('formatBlock', false, 'h2');
+          console.log('H2 command result:', success);
           break;
         case 'list':
-          document.execCommand('insertUnorderedList');
+          success = document.execCommand('insertUnorderedList', false, undefined);
+          console.log('List command result:', success);
           break;
         case 'quote':
-          document.execCommand('formatBlock', false, 'BLOCKQUOTE');
+          success = document.execCommand('formatBlock', false, 'blockquote');
+          console.log('Quote command result:', success);
           break;
         case 'link': {
           const url = prompt('Введите URL ссылки');
+          console.log('Link URL:', url);
           if (url) {
-            document.execCommand('createLink', false, url);
+            success = document.execCommand('createLink', false, url);
+            console.log('Link command result:', success);
           }
           break;
         }
-        case 'unlink':
-          document.execCommand('unlink');
-          break;
       }
-      synchronizeMarkdown();
+      
+      console.log('Editor HTML after formatting:', editorRef.current.innerHTML.substring(0, 200));
+      
+      // Синхронизируем markdown
+      setTimeout(() => {
+        console.log('Synchronizing markdown...');
+        synchronizeMarkdown();
+        console.log('=== applyFormatting END ===');
+      }, 50);
     },
-    [focusEditor, synchronizeMarkdown]
+    [synchronizeMarkdown]
   );
 
   const handleSelectionChange = useCallback(() => {
@@ -157,8 +331,8 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
     const rect = range.getBoundingClientRect();
     setToolbar({
       visible: true,
-      top: rect.top + window.scrollY - 48,
-      left: rect.left + window.scrollX + rect.width / 2
+      top: rect.top - 48,
+      left: rect.left + rect.width / 2
     });
   }, []);
 
@@ -182,12 +356,57 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
     [synchronizeMarkdown]
   );
 
+  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    // Проверяем, кликнули ли по ссылке с Ctrl/Cmd
+    if (target.tagName === 'A' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      const href = target.getAttribute('href');
+      if (href) {
+        window.open(href, '_blank');
+      }
+    }
+  }, []);
+
+  const handleKeyDownGlobal = useCallback((event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && editorRef.current) {
+      editorRef.current.classList.add('ctrl-pressed');
+    }
+  }, []);
+
+  const handleKeyUpGlobal = useCallback((event: KeyboardEvent) => {
+    if ((!event.ctrlKey && !event.metaKey) && editorRef.current) {
+      editorRef.current.classList.remove('ctrl-pressed');
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDownGlobal);
+    window.addEventListener('keyup', handleKeyUpGlobal);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDownGlobal);
+      window.removeEventListener('keyup', handleKeyUpGlobal);
+    };
+  }, [handleKeyDownGlobal, handleKeyUpGlobal]);
+
   const insertEmbed = useCallback(
     (type: 'youtube' | 'vk') => {
-      if (!editorRef.current) return;
+      console.log('=== insertEmbed START ===');
+      console.log('Type:', type);
+      
+      if (!editorRef.current) {
+        console.log('ERROR: No editor ref');
+        return;
+      }
+      
       focusEditor();
       const url = prompt('Вставьте ссылку на видео');
-      if (!url) return;
+      console.log('URL entered:', url);
+      
+      if (!url) {
+        console.log('No URL, aborting');
+        return;
+      }
 
       const container = document.createElement('div');
       container.className = 'my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50';
@@ -197,21 +416,67 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
 
       if (type === 'youtube') {
         const videoId = extractYoutubeId(url);
+        console.log('YouTube video ID:', videoId);
+        const title = getVideoTitle(url, 'youtube');
+        
         const thumb = document.createElement('img');
         thumb.src = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : '';
         thumb.alt = 'YouTube видео';
         thumb.className = 'block h-48 w-full object-cover';
         container.appendChild(thumb);
+        
         const overlay = document.createElement('div');
         overlay.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700';
-        overlay.innerHTML = `<span>Видео YouTube</span><a href="${url}" target="_blank" class="text-blue-600">Открыть</a>`;
+        overlay.innerHTML = `<span class="font-medium">${title}</span><a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>`;
         container.appendChild(overlay);
       } else {
+        console.log('Creating VK embed...');
+        const vkVideoId = extractVkVideoId(url);
+        console.log('VK video ID:', vkVideoId);
+        const title = getVideoTitle(url, 'vk');
+        
+        // Пытаемся добавить обложку
+        if (vkVideoId) {
+          const thumb = document.createElement('img');
+          thumb.src = `https://vk.com/video_ext.php?oid=${vkVideoId.oid}&id=${vkVideoId.id}&thumb=1`;
+          thumb.alt = 'VK видео';
+          thumb.className = 'block h-48 w-full object-cover';
+          
+          // Fallback на иконку, если обложка не загрузится
+          const iconDiv = document.createElement('div');
+          iconDiv.className = 'h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center';
+          iconDiv.style.display = 'none';
+          iconDiv.innerHTML = `<svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
+          </svg>`;
+          
+          thumb.onerror = () => {
+            thumb.style.display = 'none';
+            iconDiv.style.display = 'flex';
+          };
+          
+          container.appendChild(thumb);
+          container.appendChild(iconDiv);
+          console.log('VK thumbnail and fallback icon added');
+        } else {
+          // Если не удалось извлечь ID, показываем только иконку
+          const iconDiv = document.createElement('div');
+          iconDiv.className = 'h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center';
+          iconDiv.innerHTML = `<svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
+          </svg>`;
+          container.appendChild(iconDiv);
+          console.log('VK icon added (no video ID)');
+        }
+        
         const body = document.createElement('div');
         body.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700';
-        body.innerHTML = `<span>Видео VK</span><a href="${url}" target="_blank" class="text-blue-600">Открыть</a>`;
+        body.innerHTML = `<span class="font-medium">${title}</span><a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>`;
         container.appendChild(body);
+        console.log('VK body added');
       }
+
+      console.log('Container HTML:', container.outerHTML.substring(0, 300));
 
       const selection = window.getSelection();
       const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
@@ -222,15 +487,20 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
         range.setEndAfter(container);
         selection?.removeAllRanges();
         selection?.addRange(range);
+        console.log('Container inserted at selection');
       } else {
         editorRef.current.appendChild(container);
+        console.log('Container appended to editor');
       }
 
       const spacer = document.createElement('p');
       spacer.innerHTML = '<br />';
       container.after(spacer);
 
+      console.log('Editor HTML after insert:', editorRef.current.innerHTML.substring(0, 500));
+      
       synchronizeMarkdown();
+      console.log('=== insertEmbed END ===');
     },
     [focusEditor, synchronizeMarkdown]
   );
@@ -245,7 +515,7 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
   }, [focusEditor, synchronizeMarkdown]);
 
   return (
-    <div className="relative h-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+    <div className="relative h-full overflow-hidden bg-white">
       {toolbar.visible && (
         <FloatingToolbar
           top={toolbar.top}
@@ -254,14 +524,15 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           onHide={() => setToolbar(prev => ({ ...prev, visible: false }))}
         />
       )}
-      <div className="border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
-        <Input
+      <div className="border-b border-neutral-200 px-6 py-6 flex items-center justify-between sticky top-0 bg-white z-10">
+        <input
+          type="text"
           value={title}
           onChange={event => setTitle(event.target.value)}
           placeholder="Название материала"
-          className="text-lg font-semibold border-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+          className="flex-1 text-3xl font-bold border-0 outline-none focus:outline-none bg-transparent"
         />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-4">
           {lastSaved && <span className="text-xs text-neutral-500">Сохранено в {lastSaved}</span>}
           <Button onClick={handleSave} disabled={isSaving || !title.trim()}>
             {isSaving ? 'Сохранение…' : 'Сохранить'}
@@ -269,13 +540,6 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
         </div>
       </div>
       <div className="flex items-center gap-2 border-b border-neutral-100 bg-neutral-50 px-6 py-2 text-xs text-neutral-500">
-        <button
-          className="flex items-center gap-1 rounded border border-dashed border-neutral-300 px-2 py-1 hover:border-neutral-500"
-          onClick={insertParagraph}
-        >
-          <Type className="h-4 w-4" />
-          Новый блок
-        </button>
         <button
           className="flex items-center gap-1 rounded border border-dashed border-neutral-300 px-2 py-1 hover:border-neutral-500"
           onClick={() => insertEmbed('youtube')}
@@ -292,16 +556,70 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-6 py-6 space-y-6">
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            className="min-h-[60vh] rounded-xl border border-neutral-200 bg-white px-6 py-5 text-base leading-relaxed shadow-sm focus:outline-none"
-          />
-        </div>
+        <style dangerouslySetInnerHTML={{__html: `
+          .material-editor h1 {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 0.67em 0;
+            line-height: 1.2;
+          }
+          .material-editor h2 {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 0.75em 0;
+            line-height: 1.3;
+          }
+          .material-editor h3 {
+            font-size: 1.17em;
+            font-weight: bold;
+            margin: 0.83em 0;
+            line-height: 1.4;
+          }
+          .material-editor ul {
+            list-style-type: disc;
+            margin: 1em 0;
+            padding-left: 2em;
+          }
+          .material-editor ol {
+            list-style-type: decimal;
+            margin: 1em 0;
+            padding-left: 2em;
+          }
+          .material-editor li {
+            margin: 0.25em 0;
+          }
+          .material-editor blockquote {
+            border-left: 4px solid #e5e7eb;
+            padding-left: 1em;
+            margin: 1em 0;
+            color: #6b7280;
+            font-style: italic;
+          }
+          .material-editor p {
+            margin: 0.5em 0;
+          }
+          .material-editor a {
+            color: #2563eb;
+            text-decoration: underline;
+          }
+          .material-editor a:hover {
+            color: #1d4ed8;
+            cursor: pointer;
+          }
+          /* Показываем курсор pointer при Ctrl/Cmd */
+          .material-editor.ctrl-pressed a {
+            cursor: pointer;
+          }
+        `}} />
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          onClick={handleClick}
+          className="material-editor min-h-[60vh] px-6 py-6 text-base leading-relaxed focus:outline-none"
+        />
       </div>
     </div>
   );
@@ -322,13 +640,12 @@ function FloatingToolbar({ top, left, onFormat, onHide }: FloatingToolbarProps) 
     { action: 'heading2', icon: <Heading2 className="h-4 w-4" />, label: 'Заголовок 2' },
     { action: 'list', icon: <List className="h-4 w-4" />, label: 'Маркированный список' },
     { action: 'quote', icon: <Quote className="h-4 w-4" />, label: 'Цитата' },
-    { action: 'link', icon: <LinkIcon className="h-4 w-4" />, label: 'Ссылка' },
-    { action: 'unlink', icon: <Link2Off className="h-4 w-4" />, label: 'Убрать ссылку' }
+    { action: 'link', icon: <LinkIcon className="h-4 w-4" />, label: 'Ссылка' }
   ];
 
   return (
     <div
-      className="absolute z-20 -translate-x-1/2 rounded-full border border-neutral-200 bg-white px-3 py-1 shadow-lg"
+      className="fixed z-50 -translate-x-1/2 rounded-full border border-neutral-200 bg-white px-3 py-1 shadow-lg"
       style={{ top, left }}
       onMouseDown={event => event.preventDefault()}
     >
@@ -361,4 +678,20 @@ function extractYoutubeId(url: string): string | null {
   const regex = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{11})/;
   const match = url.match(regex);
   return match ? match[1] : null;
+}
+
+function extractVkVideoId(url: string): { oid: string; id: string } | null {
+  const regex = /vk(?:video)?\.(?:com|ru)\/(?:video)?(-?\d+)_(\d+)/;
+  const match = url.match(regex);
+  return match ? { oid: match[1], id: match[2] } : null;
+}
+
+function getVideoTitle(url: string, type: 'youtube' | 'vk'): string {
+  if (type === 'youtube') {
+    const videoId = extractYoutubeId(url);
+    return videoId ? `YouTube видео (${videoId})` : 'YouTube видео';
+  } else {
+    const videoId = extractVkVideoId(url);
+    return videoId ? `VK видео (${videoId.oid}_${videoId.id})` : 'VK видео';
+  }
 }
