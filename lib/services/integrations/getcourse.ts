@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { IntegrationConnector, ConnectorTestResult, SyncJobSummary } from './connector';
 import { decryptCredentials } from './credentials';
 import { createAdminServer } from '@/lib/server/supabaseServer';
@@ -27,17 +28,46 @@ type GetCourseUser = {
   fields?: Record<string, unknown>;
 };
 
-async function fetchUsers(credentials: GetCourseCredentials, page = 1): Promise<{ users: GetCourseUser[]; hasMore: boolean }> {
-  const url = new URL('/public/api/users', credentials.baseUrl);
-  url.searchParams.set('key', credentials.apiKey);
-  url.searchParams.set('page', String(page));
-  url.searchParams.set('per_page', '100');
+type FetchUsersResult = {
+  users: GetCourseUser[];
+  hasMore: boolean;
+  totalCount: number | null;
+  pageSize: number | null;
+  pageInfo: Record<string, unknown>;
+  debug: {
+    endpoint: string;
+    raw: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+};
+
+async function fetchUsers(credentials: GetCourseCredentials, page = 1): Promise<FetchUsersResult> {
+  const base = credentials.baseUrl.replace(/\/+$/, '');
+  const url = new URL('/pl/api/users', base);
+
+  const paramsPayload = {
+    selection: {
+      status: 'any',
+      order: 'id',
+      direction: 'asc',
+      page,
+      per_page: 100
+    }
+  };
+
+  const body = new URLSearchParams({
+    key: credentials.apiKey,
+    action: 'list',
+    params: Buffer.from(JSON.stringify(paramsPayload)).toString('base64')
+  });
 
   const response = await fetch(url.toString(), {
-    method: 'GET',
+    method: 'POST',
     headers: {
-      'Accept': 'application/json'
-    }
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: body.toString()
   });
 
   if (!response.ok) {
@@ -46,11 +76,118 @@ async function fetchUsers(credentials: GetCourseCredentials, page = 1): Promise<
   }
 
   const data = await response.json();
-  const users = Array.isArray(data?.users) ? data.users : [];
-  const totalPages = data?.meta?.pagination?.total ?? 1;
-  const hasMore = page < totalPages;
 
-  return { users, hasMore };
+  if (data?.success === false) {
+    const message = typeof data?.error === 'string' ? data.error : typeof data?.message === 'string' ? data.message : 'Unknown API error';
+    throw new Error(`GetCourse API error: ${message}`);
+  }
+
+  const users = extractUsers(data);
+  const pageInfo = extractPagination(data);
+  const { totalCount, pageSize, hasMore } = evaluatePagination(pageInfo, users.length, page);
+
+  return {
+    users,
+    hasMore,
+    totalCount,
+    pageSize,
+    pageInfo,
+    debug: {
+      endpoint: '/pl/api/users',
+      raw: sanitizePayload(data),
+      payload: paramsPayload
+    }
+  };
+}
+
+function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const MAX_STRING_LENGTH = 500;
+
+  const trimString = (value: string) => (value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value);
+
+  const deepSanitize = (value: any): any => {
+    if (value === null || value === undefined) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      return trimString(value);
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.slice(0, 5).map(deepSanitize);
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value).slice(0, 20).map(([key, val]) => [key, deepSanitize(val)] as const);
+      return Object.fromEntries(entries);
+    }
+    return String(value);
+  };
+
+  return deepSanitize(payload) as Record<string, unknown>;
+}
+
+function extractUsers(payload: any): GetCourseUser[] {
+  if (!payload) return [];
+
+  if (Array.isArray(payload.users)) return payload.users as GetCourseUser[];
+  if (Array.isArray(payload.data)) return payload.data as GetCourseUser[];
+  if (Array.isArray(payload.result)) return payload.result as GetCourseUser[];
+  if (Array.isArray(payload.result?.users)) return payload.result.users as GetCourseUser[];
+  if (Array.isArray(payload.data?.users)) return payload.data.users as GetCourseUser[];
+
+  return [];
+}
+
+function extractPagination(payload: any): Record<string, unknown> {
+  if (!payload) return {};
+
+  if (payload.info && typeof payload.info === 'object') return payload.info as Record<string, unknown>;
+  if (payload.meta?.pagination && typeof payload.meta.pagination === 'object') return payload.meta.pagination as Record<string, unknown>;
+  if (payload.pagination && typeof payload.pagination === 'object') return payload.pagination as Record<string, unknown>;
+
+  return {};
+}
+
+function evaluatePagination(
+  pageInfo: Record<string, unknown>,
+  receivedCount: number,
+  currentPage: number
+): { totalCount: number | null; pageSize: number | null; hasMore: boolean } {
+  const total = normalizeNumber(pageInfo.total ?? pageInfo.total_count ?? pageInfo.totalCount ?? pageInfo.count ?? null);
+  const perPage = normalizeNumber(pageInfo.per_page ?? pageInfo.perPage ?? pageInfo.per_page_count ?? pageInfo.limit ?? null);
+  const totalPages = normalizeNumber(pageInfo.total_pages ?? pageInfo.totalPages ?? pageInfo.pages ?? null);
+  const hasMoreExplicit = Boolean(pageInfo.has_more ?? pageInfo.hasMore ?? false);
+
+  if (typeof totalPages === 'number' && totalPages > 0) {
+    return { totalCount: total, pageSize: perPage, hasMore: currentPage < totalPages };
+  }
+
+  if (typeof total === 'number' && typeof perPage === 'number' && perPage > 0) {
+    return { totalCount: total, pageSize: perPage, hasMore: currentPage * perPage < total };
+  }
+
+  if (hasMoreExplicit) {
+    return { totalCount: total, pageSize: perPage ?? receivedCount, hasMore: true };
+  }
+
+  if (typeof perPage === 'number' && perPage > 0) {
+    return { totalCount: total, pageSize: perPage, hasMore: receivedCount >= perPage };
+  }
+
+  return { totalCount: total, pageSize: receivedCount, hasMore: receivedCount > 0 && receivedCount % 100 === 0 };
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 function normalizePhone(phone?: string | null): string | null {
@@ -87,8 +224,13 @@ export class GetCourseConnector implements IntegrationConnector {
     const credentials = options.credentials as GetCourseCredentials;
 
     try {
-      await fetchUsers(credentials, 1);
-      return { success: true };
+      const { totalCount, debug } = await fetchUsers(credentials, 1);
+      const inspected = typeof totalCount === 'number' ? ` Найдено записей: ${totalCount}.` : '';
+      return {
+        success: true,
+        message: `GetCourse API доступна.${inspected}`.trim(),
+        details: { endpoint: debug.endpoint, sample: debug.raw, payload: debug.payload }
+      };
     } catch (error: any) {
       return { success: false, message: error.message };
     }
@@ -117,7 +259,16 @@ export class GetCourseConnector implements IntegrationConnector {
 
     while (hasMore) {
       try {
-        const { users, hasMore: next } = await fetchUsers(credentials, page);
+        const { users, hasMore: next, totalCount, pageSize, pageInfo, debug } = await fetchUsers(credentials, page);
+        if (page === 1) {
+          await createIntegrationJobLog(options.jobId, {
+            level: 'info',
+            message:
+              `Получена страница ${page} из GetCourse` +
+              (typeof totalCount === 'number' ? ` (всего пользователей: ${totalCount})` : ''),
+            context: { page, totalCount, pageSize, pageInfo, endpoint: debug.endpoint, payload: debug.payload }
+          });
+        }
         hasMore = next;
         page += 1;
 

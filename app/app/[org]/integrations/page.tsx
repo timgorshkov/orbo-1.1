@@ -12,7 +12,7 @@ async function loadData(orgId: string) {
   const [{ data: connections }, { data: connectors }] = await Promise.all([
     supabase
       .from('integration_connections')
-      .select('id, status, sync_mode, schedule_cron, last_sync_at, last_status, connector:integration_connectors(code, name, description)')
+    .select('id, status, sync_mode, schedule_cron, last_sync_at, last_status, connector:integration_connectors(code, name, description)')
       .eq('org_id', orgId),
     createClientServer()
       .from('integration_connectors')

@@ -882,11 +882,11 @@ async function fetchParticipantsWithGroups(
   reaggregateOnly = false
 ): Promise<Participant[]> {
   const { data: participantRows, error } = await supabase
-    .from('participants')
+      .from('participants')
     .select('id, full_name, first_name, last_name, username, tg_user_id, identity_id, email, phone, created_at, last_activity_at, activity_score, risk_score, merged_into, source, status, notes')
     .eq('org_id', orgId);
-
-  if (error) {
+    
+    if (error) {
     console.error('Error loading participants:', error);
     throw error;
   }
@@ -1049,16 +1049,16 @@ export default async function MembersPage({ params, searchParams }: { params: { 
                 placeholder="Статус"
                 className="lg:w-48"
               />
-              <div className="flex gap-2">
+          <div className="flex gap-2">
                 <Button type="submit">Применить</Button>
                 <Button type="button" variant="outline" asChild>
                   <Link href={`/app/${params.org}/members`}>Сбросить</Link>
                 </Button>
-              </div>
+          </div>
             </form>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+          <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -1069,8 +1069,8 @@ export default async function MembersPage({ params, searchParams }: { params: { 
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Контакты</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Группы</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Активность</th>
-                  </tr>
-                </thead>
+                </tr>
+              </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredParticipants.map(participant => {
                     const name =
@@ -1087,29 +1087,29 @@ export default async function MembersPage({ params, searchParams }: { params: { 
                             <span className="text-xs text-gray-500">
                               Создан: {new Date(participant.created_at).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                             </span>
-                          </Link>
-                        </td>
+                        </Link>
+                      </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <StatusBadge status={statusLabel} />
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <SourceBadge source={sourceLabel} />
-                        </td>
+                      </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex flex-col">
                             <span>{participant.username ? `@${participant.username}` : '—'}</span>
                             <span className="text-xs text-gray-400">ID: {participant.tg_user_id ?? '—'}</span>
                           </div>
-                        </td>
+                      </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex flex-col">
                             <span>{participant.email || '—'}</span>
                             <span>{participant.phone || '—'}</span>
                           </div>
-                        </td>
+                      </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
                           {participant.group_count || 0}
-                        </td>
+                      </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex flex-col">
                             <span>Score: {participant.activity_score ?? 0}</span>
@@ -1120,13 +1120,13 @@ export default async function MembersPage({ params, searchParams }: { params: { 
                                 : '—'}
                             </span>
                           </div>
-                        </td>
-                      </tr>
+                    </td>
+                  </tr>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+              </tbody>
+            </table>
+          </div>
             {filteredParticipants.length === 0 && (
               <div className="text-center text-sm text-gray-500 py-8">Участники не найдены.</div>
             )}

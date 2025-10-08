@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: { connect
       .from('integration_connections')
       .select('id, credentials_encrypted, config, connector:integration_connectors(*)')
       .eq('org_id', orgId)
-      .eq('connector:integration_connectors.code', params.connector)
+      .eq('connector.code', params.connector)
       .maybeSingle();
 
     if (error) {
