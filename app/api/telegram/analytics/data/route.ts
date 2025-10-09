@@ -1,716 +1,545 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
 
 function pickLatestTimestamp(current: string | null | undefined, incoming: string | null | undefined): string | null {
-  if (!current) {
-    return incoming ?? null;
-  }
+  if (!current) return incoming ?? null
+  if (!incoming) return current ?? null
 
-  if (!incoming) {
-    return current ?? null;
-  }
-
-  const currentTs = new Date(current).getTime();
-  const incomingTs = new Date(incoming).getTime();
+  const currentTs = new Date(current).getTime()
+  const incomingTs = new Date(incoming).getTime()
 
   if (Number.isNaN(currentTs)) {
-    return Number.isNaN(incomingTs) ? null : incoming;
+    return Number.isNaN(incomingTs) ? null : incoming
   }
 
   if (Number.isNaN(incomingTs)) {
-    return current;
+    return current
   }
 
-  return incomingTs >= currentTs ? incoming : current;
+  return incomingTs >= currentTs ? incoming : current
 }
 
 function calculateRiskScore(lastActivity: string | null | undefined, fallback?: number | null): number {
   if (!lastActivity) {
-    return typeof fallback === 'number' ? fallback : 90;
+    return typeof fallback === 'number' ? fallback : 90
   }
 
-  const lastTs = new Date(lastActivity).getTime();
-
+  const lastTs = new Date(lastActivity).getTime()
   if (Number.isNaN(lastTs)) {
-    return typeof fallback === 'number' ? fallback : 90;
+    return typeof fallback === 'number' ? fallback : 90
   }
 
-  const nowTs = Date.now();
-  const diffDays = Math.max(0, Math.floor((nowTs - lastTs) / (1000 * 60 * 60 * 24)));
+  const nowTs = Date.now()
+  const diffDays = Math.max(0, Math.floor((nowTs - lastTs) / (1000 * 60 * 60 * 24)))
 
-  if (diffDays <= 3) {
-    return 5;
-  }
+  if (diffDays <= 3) return 5
+  if (diffDays <= 7) return 15
+  if (diffDays <= 14) return 35
+  if (diffDays <= 30) return 60
+  if (diffDays <= 60) return 80
+  return 95
+}
 
-  if (diffDays <= 7) {
-    return 15;
-  }
+const BOT_USER_IDS = new Set<number>([1087968824])
+const BOT_USERNAMES = new Set<string>(['groupanonymousbot', 'orbo_community_bot', 'orbocommunitybot'])
 
-  if (diffDays <= 14) {
-    return 35;
-  }
+const normalizeUsername = (username?: string | null) => {
+  if (!username) return null
+  const trimmed = username.trim()
+  if (!trimmed) return null
+  return trimmed.startsWith('@') ? trimmed.slice(1).toLowerCase() : trimmed.toLowerCase()
+}
 
-  if (diffDays <= 30) {
-    return 60;
-  }
+type ParticipantAggregate = {
+  tg_user_id: number
+  username: string | null
+  full_name: string | null
+  message_count: number
+  join_count: number
+  leave_count: number
+  last_activity: string | null
+  activity_score: number | null
+  risk_score: number | null
+  from_membership: boolean
+}
 
-  if (diffDays <= 60) {
-    return 80;
-  }
-
-  return 95;
+type DailyMetrics = {
+  date: string
+  message_count: number
+  reply_count: number
+  join_count: number
+  leave_count: number
+  dau: number
 }
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
-    const groupId = searchParams.get('groupId');
-    const chatId = searchParams.get('chatId');
+    const { searchParams } = new URL(request.url)
+    const orgId = searchParams.get('orgId')
+    const chatId = searchParams.get('chatId')
 
     if (!orgId || !chatId) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    console.log('Analytics API request for:', { orgId, groupId, chatId });
+    console.log('Analytics API request for:', { orgId, chatId })
 
-    // Инициализируем Supabase с сервисной ролью для обхода RLS
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 });
+      return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 })
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Получаем базовые метрики
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const participantsMap = new Map<number, ParticipantAggregate>()
+    const usernameToUserId = new Map<string, number>()
 
-    // Получаем метрики из activity_events
-    let { data: activityEvents, error: activityError } = await supabase
-      .from('activity_events')
-      .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
-      .eq('tg_chat_id', chatId)
-      .gte('created_at', sevenDaysAgo.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1000);
+    const addOrUpdateParticipant = (
+      tgUserId: number | null,
+      options: {
+        username?: string | null
+        fullName?: string | null
+        lastActivity?: string | null
+        activityScore?: number | null
+        riskScore?: number | null
+        fromMembership?: boolean
+      } = {}
+    ): ParticipantAggregate | null => {
+      if (tgUserId == null || !Number.isFinite(tgUserId)) {
+        return null
+      }
+      if (BOT_USER_IDS.has(tgUserId)) {
+        return null
+      }
 
-    console.log('Activity events query result:', {
-      count: activityEvents?.length || 0,
-      error: activityError
-    });
+      const normalized = normalizeUsername(options.username)
+      if (normalized && BOT_USERNAMES.has(normalized)) {
+        return null
+      }
 
-    // Если нет данных, возвращаем пустые метрики
-    if (!activityEvents || activityEvents.length === 0) {
-      return NextResponse.json({
-        metrics: {
+      let record = participantsMap.get(tgUserId)
+      if (!record) {
+        record = {
+          tg_user_id: tgUserId,
+          username: null,
+          full_name: null,
           message_count: 0,
-          reply_count: 0,
           join_count: 0,
           leave_count: 0,
-          dau_avg: 0,
-          reply_ratio_avg: 0,
-          days: 0,
-          silent_rate: 0,
-          newcomer_activation: 0,
-          activity_gini: 0,
-          prime_time: [],
-          risk_radar: [],
-          member_count: 0
-        },
-        topUsers: [],
-        dailyMetrics: [],
-        participants: []
-      });
+          last_activity: null,
+          activity_score: null,
+          risk_score: null,
+          from_membership: false
+        }
+        participantsMap.set(tgUserId, record)
+      }
+
+      if (options.username && !record.username) {
+        record.username = options.username
+      }
+      if (normalized) {
+        usernameToUserId.set(normalized, tgUserId)
+      }
+
+      if (options.fullName && !record.full_name) {
+        record.full_name = options.fullName
+      }
+
+      record.last_activity = pickLatestTimestamp(record.last_activity, options.lastActivity ?? null)
+      if (options.activityScore != null) {
+        record.activity_score = options.activityScore
+      }
+      if (options.riskScore != null) {
+        record.risk_score = options.riskScore
+      }
+      if (options.fromMembership) {
+        record.from_membership = true
+      }
+
+      return record
     }
 
-    const processedMessageIds = new Set<string>();
-
-    // Рассчитываем метрики на основе данных activity_events
-    let messageCount = 0;
-    let replyCount = 0;
-    let joinCount = 0;
-    let leaveCount = 0;
-    const usersByDay: Record<string, Set<string>> = {};
-    const participantActivity: Record<string, {
-      count: number;
-      username: string | null;
-      full_name: string | null;
-      tg_user_id?: number;
-      last_activity: string | null;
-      risk_score?: number | null;
-      activity_score?: number | null;
-    }> = {};
-    const dailyMetrics: Record<string, any> = {};
-
-    const botUserIds = new Set([1087968824]);
-    const botUsernames = new Set(['GroupAnonymousBot', 'orbo_community_bot', 'OrboCommunityBot']);
-
-    activityEvents = activityEvents.filter(event => {
-      const tgUserId = event.tg_user_id ?? event.meta?.user?.id ?? event.meta?.from?.id;
-      const username = event.meta?.user?.username || event.meta?.from?.username;
-
-      if (tgUserId != null && botUserIds.has(tgUserId)) {
-        return false;
-      }
-
-      if (typeof username === 'string' && botUsernames.has(username)) {
-        return false;
-      }
-
-      return true;
-    });
-
-    if (!activityEvents || activityEvents.length === 0) {
-      return NextResponse.json({
-        metrics: {
-          message_count: 0,
-          reply_count: 0,
-          join_count: 0,
-          leave_count: 0,
-          dau_avg: 0,
-          reply_ratio_avg: 0,
-          days: 0,
-          silent_rate: 0,
-          newcomer_activation: 0,
-          activity_gini: 0,
-          prime_time: [],
-          risk_radar: [],
-          member_count: 0
-        },
-        topUsers: [],
-        dailyMetrics: [],
-        participants: []
-      });
+    const resolveUserIdFromUsername = (username?: string | null): number | null => {
+      const normalized = normalizeUsername(username)
+      if (!normalized) return null
+      return usernameToUserId.get(normalized) ?? null
     }
 
-    activityEvents.forEach((event) => {
-      const day = new Date(event.created_at).toISOString().split('T')[0];
-
-      // Инициализируем метрики для дня, если еще нет
-      if (!dailyMetrics[day]) {
-        dailyMetrics[day] = {
-          date: day,
-          message_count: 0,
-          reply_count: 0,
-          join_count: 0,
-          leave_count: 0,
-          dau: 0
-        };
-      }
-
-      // Инициализируем множество пользователей для дня, если еще нет
-      if (!usersByDay[day]) {
-        usersByDay[day] = new Set();
-      }
-
-      // Обрабатываем событие в зависимости от типа
-      if (event.event_type === 'message') {
-        const rawNumericUserId =
-          typeof event.tg_user_id === 'number'
-            ? event.tg_user_id
-            : typeof event.meta?.user?.id === 'number'
-              ? event.meta.user.id
-              : typeof event.meta?.from?.id === 'number'
-                ? event.meta.from.id
-                : null;
-
-        const dauKey =
-          rawNumericUserId != null
-            ? String(rawNumericUserId)
-            : event.meta?.user?.username
-              ? `username:${event.meta.user.username}`
-              : event.meta?.from?.username
-                ? `username:${event.meta.from.username}`
-                : `anon:${event.created_at}`;
-
-        usersByDay[day].add(dauKey);
-
-        const uniqueMessageKey = `${event.tg_user_id ?? 'user'}:${event.meta?.message_id ?? event.id ?? event.created_at}`;
-        if (processedMessageIds.has(uniqueMessageKey)) {
-          return;
-        }
-        processedMessageIds.add(uniqueMessageKey);
-
-        messageCount++;
-        dailyMetrics[day].message_count++;
-        
-        if (event.reply_to_message_id) {
-          replyCount++;
-          dailyMetrics[day].reply_count++;
-        }
-        
-        if (rawNumericUserId != null) {
-          const userKey = rawNumericUserId.toString();
-          if (!participantActivity[userKey]) {
-            participantActivity[userKey] = {
-              count: 0,
-              username: null,
-              full_name: null,
-              tg_user_id: rawNumericUserId,
-              last_activity: null
-            };
-          }
-
-          const metaUsername = event.meta?.user?.username || event.meta?.from?.username || event.meta?.username || null;
-          if (metaUsername && !participantActivity[userKey].username) {
-            participantActivity[userKey].username = metaUsername;
-          }
-
-          let metaFullName: string | null = null;
-          if (event.meta?.user?.name) {
-            metaFullName = event.meta.user.name;
-          } else if (event.meta?.from?.name) {
-            metaFullName = event.meta.from.name;
-          } else if (event.meta?.first_name) {
-            metaFullName = `${event.meta.first_name}${event.meta.last_name ? ` ${event.meta.last_name}` : ''}`;
-          }
-
-          if (metaFullName && !participantActivity[userKey].full_name) {
-            participantActivity[userKey].full_name = metaFullName;
-          }
-
-          participantActivity[userKey].count++;
-          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
-        }
-      } else if (event.event_type === 'join') {
-        joinCount++;
-        dailyMetrics[day].join_count++;
-
-        if (event.tg_user_id != null) {
-          const userKey = event.tg_user_id.toString();
-          if (!participantActivity[userKey]) {
-            participantActivity[userKey] = {
-              count: 0,
-              username: null,
-              full_name: null,
-              tg_user_id: event.tg_user_id,
-              last_activity: null
-            };
-          }
-          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
-        }
-      } else if (event.event_type === 'leave') {
-        leaveCount++;
-        dailyMetrics[day].leave_count++;
-
-        if (event.tg_user_id != null) {
-          const userKey = event.tg_user_id.toString();
-          if (!participantActivity[userKey]) {
-            participantActivity[userKey] = {
-              count: 0,
-              username: null,
-              full_name: null,
-              tg_user_id: event.tg_user_id,
-              last_activity: null
-            };
-          }
-          participantActivity[userKey].last_activity = pickLatestTimestamp(participantActivity[userKey].last_activity, event.created_at);
-        }
-      }
-    });
-
-    // Обновляем DAU для каждого дня
-    Object.keys(dailyMetrics).forEach(day => {
-      dailyMetrics[day].dau = usersByDay[day]?.size || 0;
-    });
-
-    // Рассчитываем средний DAU
-    const days = Object.keys(usersByDay).length || 1;
-    let totalActiveUsers = 0;
-    
-    Object.values(usersByDay).forEach(users => {
-      totalActiveUsers += users.size;
-    });
-    
-    const avgDau = Math.max(1, Math.round(totalActiveUsers / days));
-
-    // Рассчитываем коэффициент ответов
-    const replyRatio = messageCount > 0 ? Math.round((replyCount / messageCount) * 100) : 0;
-
-    // Подсчитываем фактическое количество участников группы без ботов
-    let memberCount = 0;
+    // 1) Загружаем актуальных участников группы
     try {
-      const { data: memberRows, error: memberError } = await supabase
+      const { data: membershipRows, error: membershipError } = await supabase
         .from('participant_groups')
-        .select('participants!inner(tg_user_id, username)')
+        .select('participants!inner(tg_user_id, username, full_name, last_activity_at, activity_score, risk_score)')
         .eq('tg_group_id', Number(chatId))
-        .eq('is_active', true);
+        .eq('is_active', true)
 
-      if (memberError) {
-        console.error('Error fetching participant groups for member count:', memberError);
-      } else if (memberRows) {
-        const seen = new Set<number>();
-        memberRows.forEach(row => {
-          const participantsRaw = row?.participants;
+      if (membershipError) {
+        console.error('Error fetching participant memberships for analytics:', membershipError)
+      } else if (membershipRows) {
+        membershipRows.forEach(row => {
+          const participantsRaw = row?.participants
           const participantRecords = Array.isArray(participantsRaw)
             ? participantsRaw
             : participantsRaw
               ? [participantsRaw]
-              : [];
+              : []
 
-          participantRecords.forEach(participant => {
-            if (!participant?.tg_user_id) {
-              return;
+          participantRecords.forEach(member => {
+            if (!member || member.tg_user_id == null) {
+              return
             }
 
-            if (botUserIds.has(participant.tg_user_id)) {
-              return;
-            }
-
-            if (participant.username && botUsernames.has(participant.username)) {
-              return;
-            }
-
-            seen.add(participant.tg_user_id);
-          });
-        });
-        memberCount = seen.size;
+            addOrUpdateParticipant(member.tg_user_id, {
+              username: member.username ?? null,
+              fullName: member.full_name ?? null,
+              lastActivity: member.last_activity_at ?? null,
+              activityScore: member.activity_score ?? null,
+              riskScore: member.risk_score ?? null,
+              fromMembership: true
+            })
+          })
+        })
       }
-    } catch (memberCountException) {
-      console.error('Exception while counting members for analytics:', memberCountException);
+    } catch (membershipException) {
+      console.error('Unexpected error loading participant memberships for analytics:', membershipException)
     }
 
-    // Рассчитываем Silent Rate
-    const activeUsers = Object.values(participantActivity).length;
-    const silentRate = memberCount > 0 ? Math.round(((memberCount - activeUsers) / memberCount) * 100) : 0;
+    // 2) Загружаем события активности (30 дней)
+    const activityWindowDays = 30
+    const activityWindowStart = new Date()
+    activityWindowStart.setDate(activityWindowStart.getDate() - activityWindowDays)
 
-    // Рассчитываем Newcomer Activation
-    // Для простоты считаем, что все пользователи в списке активных - это новички
-    const newcomerActivation = 100; // Заглушка, нужны дополнительные данные для точного расчета
+    const { data: activityEvents, error: activityError } = await supabase
+      .from('activity_events')
+      .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
+      .eq('tg_chat_id', chatId)
+      .gte('created_at', activityWindowStart.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(2000)
 
-    // Рассчитываем Prime Time
-    const hourlyActivity: Record<number, number> = {};
-    
-    activityEvents.forEach(event => {
-      if (event.event_type === 'message') {
-        const hour = new Date(event.created_at).getHours();
-        hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1;
-      }
-    });
-    
-    // Находим среднее количество сообщений в час
-    const hourValues = Object.values(hourlyActivity);
-    const avgHourlyMessages = hourValues.length > 0 
-      ? hourValues.reduce((sum, val) => sum + val, 0) / hourValues.length 
-      : 0;
-    
-    // Формируем Prime Time
-    const primeTime = Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      message_count: hourlyActivity[hour] || 0,
-      is_prime_time: (hourlyActivity[hour] || 0) > avgHourlyMessages
-    }));
+    console.log('Activity events query result:', {
+      count: activityEvents?.length || 0,
+      error: activityError
+    })
 
-    // Рассчитываем Gini коэффициент активности
-    // Упрощенный расчет - отношение стандартного отклонения к среднему
-    const userMessageCounts = Object.values(participantActivity).map(u => u.count);
-    
-    let activityGini = 0;
-    if (userMessageCounts.length > 1) {
-      const mean = userMessageCounts.reduce((sum, count) => sum + count, 0) / userMessageCounts.length;
-      const variance = userMessageCounts.reduce((sum, count) => sum + Math.pow(count - mean, 2), 0) / userMessageCounts.length;
-      const stdDev = Math.sqrt(variance);
-      activityGini = mean > 0 ? stdDev / mean : 0;
-      // Нормализуем до 0-1
-      activityGini = Math.min(1, activityGini);
+    const processedMessageIds = new Set<string>()
+    const usersByDay: Record<string, Set<number>> = {}
+    const dailyMetrics: Record<string, DailyMetrics> = {}
+    const hourlyActivity: Record<number, number> = {}
+
+    let messageCount = 0
+    let replyCount = 0
+    let joinCount = 0
+    let leaveCount = 0
+
+    if (activityEvents) {
+      activityEvents.forEach(event => {
+        const metaUsername = event.meta?.user?.username || event.meta?.from?.username || event.meta?.username || null
+        const metaFullName =
+          event.meta?.user?.name ||
+          event.meta?.from?.name ||
+          (event.meta?.first_name
+            ? `${event.meta.first_name}${event.meta.last_name ? ` ${event.meta.last_name}` : ''}`
+            : null)
+
+        let tgUserId = typeof event.tg_user_id === 'number' ? event.tg_user_id : null
+        if (tgUserId == null) {
+          const metaId =
+            typeof event.meta?.user?.id === 'number'
+              ? event.meta.user.id
+              : typeof event.meta?.from?.id === 'number'
+                ? event.meta.from.id
+                : null
+          if (metaId != null) {
+            tgUserId = metaId
+          }
+        }
+
+        if (tgUserId == null && metaUsername) {
+          tgUserId = resolveUserIdFromUsername(metaUsername)
+        }
+
+        if (tgUserId == null || BOT_USER_IDS.has(tgUserId)) {
+          return
+        }
+
+        const record = addOrUpdateParticipant(tgUserId, {
+          username: metaUsername ?? null,
+          fullName: metaFullName ?? null,
+          lastActivity: event.created_at ?? null
+        })
+
+        if (!record) {
+          return
+        }
+
+        const day = new Date(event.created_at ?? Date.now()).toISOString().split('T')[0]
+
+        if (!dailyMetrics[day]) {
+          dailyMetrics[day] = {
+            date: day,
+            message_count: 0,
+            reply_count: 0,
+            join_count: 0,
+            leave_count: 0,
+            dau: 0
+          }
+        }
+
+        if (!usersByDay[day]) {
+          usersByDay[day] = new Set()
+        }
+
+        if (event.event_type === 'message') {
+          const uniqueMessageKey = `${tgUserId}:${event.meta?.message_id ?? event.id ?? event.created_at}`
+          if (processedMessageIds.has(uniqueMessageKey)) {
+            return
+          }
+          processedMessageIds.add(uniqueMessageKey)
+
+          messageCount++
+          dailyMetrics[day].message_count++
+
+          if (event.reply_to_message_id) {
+            replyCount++
+            dailyMetrics[day].reply_count++
+          }
+
+          record.message_count += 1
+          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
+          usersByDay[day].add(tgUserId)
+
+          const hour = new Date(event.created_at ?? Date.now()).getHours()
+          hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1
+        } else if (event.event_type === 'join') {
+          joinCount++
+          dailyMetrics[day].join_count++
+          record.join_count += 1
+          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
+        } else if (event.event_type === 'leave') {
+          leaveCount++
+          dailyMetrics[day].leave_count++
+          record.leave_count += 1
+          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
+        }
+      })
     }
 
-    // Формируем топ активных пользователей
-    let topUsers = Object.entries(participantActivity)
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 5)
-      .map(([userId, data]) => ({
-        tg_user_id: Number(userId),
-        full_name: data.full_name,
-        username: data.username,
-        message_count: data.count,
-        last_activity: data.last_activity || new Date().toISOString()
-      }));
+    const participantList = Array.from(participantsMap.values()).filter(record => !BOT_USER_IDS.has(record.tg_user_id))
 
-    const maxMessageCount = Math.max(1, ...Object.values(participantActivity).map(u => u.count));
+    // Дополнительное обогащение данными из participants
+    const missingForEnrichment = participantList
+      .filter(record => !record.username || !record.full_name || record.activity_score == null || record.risk_score == null)
+      .map(record => record.tg_user_id)
 
-    let riskRadar = Object.entries(participantActivity)
-      .sort((a, b) => a[1].count - b[1].count)
-      .slice(0, 5)
-      .map(([userId, data]) => ({
-        tg_user_id: parseInt(userId, 10),
-        username: data.username,
-        full_name: data.full_name,
-        risk_score: calculateRiskScore(data.last_activity, data.risk_score ?? Math.round(80 - (data.count / maxMessageCount) * 50)),
-        last_activity: data.last_activity || new Date().toISOString(),
-        message_count: data.count
-      }));
-
-    const missingUserIds: number[] = [];
-    Object.entries(participantActivity).forEach(([userId, data]) => {
-      if (data.tg_user_id == null) {
-        const numericId = Number(userId);
-        if (Number.isFinite(numericId)) {
-          data.tg_user_id = numericId;
-        }
-      }
-
-      if (!data.username) {
-        const numericId = data.tg_user_id ?? Number(userId);
-        if (Number.isFinite(numericId)) {
-          missingUserIds.push(Number(numericId));
-        }
-      }
-    });
-
-    if (missingUserIds.length > 0) {
+    if (missingForEnrichment.length > 0) {
       try {
-        const { data: participantUsernameRows, error: participantUsernameError } = await supabase
+        const { data: participantRows, error: participantError } = await supabase
           .from('participants')
-          .select('tg_user_id, username, full_name, last_activity_at')
+          .select('tg_user_id, username, full_name, last_activity_at, activity_score, risk_score')
           .eq('org_id', orgId)
-          .in('tg_user_id', missingUserIds);
+          .in('tg_user_id', Array.from(new Set(missingForEnrichment)))
 
-        if (participantUsernameError) {
-          console.error('Error fetching participant usernames for analytics:', participantUsernameError);
-        } else if (participantUsernameRows) {
-          participantUsernameRows.forEach(row => {
+        if (participantError) {
+          console.error('Error fetching participants for analytics enrichment:', participantError)
+        } else if (participantRows) {
+          participantRows.forEach(row => {
             if (!row?.tg_user_id) {
-              return;
+              return
             }
-            const key = row.tg_user_id.toString();
-            if (!participantActivity[key]) {
-              participantActivity[key] = {
-                count: 0,
-                username: row.username ?? null,
-                full_name: row.full_name ?? null,
-                tg_user_id: row.tg_user_id ?? undefined,
-                last_activity: null,
-                risk_score: null,
-                activity_score: null
-              };
-            } else {
-              if (!participantActivity[key].username && row.username) {
-                participantActivity[key].username = row.username;
-              }
-              if (!participantActivity[key].full_name && row.full_name) {
-                participantActivity[key].full_name = row.full_name;
-              }
-              if (!participantActivity[key].tg_user_id && row.tg_user_id) {
-                participantActivity[key].tg_user_id = row.tg_user_id;
-              }
-              if (!participantActivity[key].last_activity && row.last_activity_at) {
-                participantActivity[key].last_activity = row.last_activity_at;
+
+            const record = participantsMap.get(row.tg_user_id)
+            if (!record) {
+              return
+            }
+
+            if (row.username && !record.username) {
+              record.username = row.username
+              const normalized = normalizeUsername(row.username)
+              if (normalized) {
+                usernameToUserId.set(normalized, record.tg_user_id)
               }
             }
-          });
+
+            if (row.full_name && !record.full_name) {
+              record.full_name = row.full_name
+            }
+
+            record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
+            if (row.activity_score != null) {
+              record.activity_score = row.activity_score
+            }
+            if (row.risk_score != null) {
+              record.risk_score = row.risk_score
+            }
+          })
         }
-      } catch (participantUsernameException) {
-        console.error('Exception fetching participant usernames for analytics:', participantUsernameException);
+      } catch (participantEnrichmentException) {
+        console.error('Unexpected error enriching participants for analytics:', participantEnrichmentException)
       }
     }
 
-    if (missingUserIds.length > 0) {
+    // Дополнительное обогащение из telegram_identities
+    const stillMissingIdentities = participantList
+      .filter(record => !record.username || !record.full_name)
+      .map(record => record.tg_user_id)
+
+    if (stillMissingIdentities.length > 0) {
       try {
         const { data: identityRows, error: identityError } = await supabase
           .from('telegram_identities')
           .select('tg_user_id, username, first_name, last_name, full_name')
-          .in('tg_user_id', missingUserIds);
+          .in('tg_user_id', Array.from(new Set(stillMissingIdentities)))
 
         if (identityError) {
-          console.error('Error loading telegram identities for analytics:', identityError);
+          console.error('Error fetching telegram identities for analytics:', identityError)
         } else if (identityRows) {
           identityRows.forEach(row => {
             if (!row?.tg_user_id) {
-              return;
+              return
             }
-            const key = row.tg_user_id.toString();
-            if (!participantActivity[key]) {
-              participantActivity[key] = {
-                count: 0,
-                username: row?.username ?? null,
-                full_name:
-                  row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null,
-                tg_user_id: row?.tg_user_id ?? undefined,
-                last_activity: null,
-                risk_score: null,
-                activity_score: null
-              };
-            } else {
-              if (!participantActivity[key].username && row?.username) {
-                participantActivity[key].username = row.username;
-              }
-              if (!participantActivity[key].full_name) {
-                participantActivity[key].full_name =
-                  row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null;
-              }
-              if (!participantActivity[key].tg_user_id && row?.tg_user_id) {
-                participantActivity[key].tg_user_id = row.tg_user_id;
+            const record = participantsMap.get(row.tg_user_id)
+            if (!record) {
+              return
+            }
+
+            if (!record.username && row.username) {
+              record.username = row.username
+              const normalized = normalizeUsername(row.username)
+              if (normalized) {
+                usernameToUserId.set(normalized, record.tg_user_id)
               }
             }
-          });
-        }
-      } catch (identitiesException) {
-        console.error('Exception while loading telegram identities for analytics:', identitiesException);
-      }
-    }
 
-    if (topUsers.length === 0 && Object.keys(participantActivity).length > 0) {
-      topUsers = Object.entries(participantActivity)
-        .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 5)
-        .map(([userId, data]) => ({
-          tg_user_id: Number(userId),
-          full_name: data.full_name,
-          username: data.username,
-          message_count: data.count,
-          last_activity: data.last_activity || new Date().toISOString()
-        }));
-    }
-
-    if (riskRadar.length === 0 && Object.keys(participantActivity).length > 0) {
-      riskRadar = Object.entries(participantActivity)
-        .sort((a, b) => a[1].count - b[1].count)
-        .slice(0, 5)
-        .map(([userId, data]) => ({
-          tg_user_id: parseInt(userId, 10),
-          username: data.username,
-          full_name: data.full_name,
-          risk_score: Math.round(
-            80 -
-              (data.count /
-                Math.max(1, Math.max(...Object.values(participantActivity).map(u => u.count)))) *
-                50
-          ),
-          last_activity: data.last_activity || new Date().toISOString(),
-          message_count: data.count
-        }));
-    }
-
-    const activityUserIds = Array.from(
-      new Set(
-        Object.entries(participantActivity)
-          .map(([userId, data]) => {
-            if (data.tg_user_id == null) {
-              const numericId = Number(userId);
-              if (Number.isFinite(numericId)) {
-                data.tg_user_id = numericId;
-              }
+            if (!record.full_name) {
+              record.full_name = row.full_name || [row.first_name, row.last_name].filter(Boolean).join(' ') || null
             }
-            return data.tg_user_id ?? Number(userId);
           })
-          .filter((id): id is number => typeof id === 'number' && Number.isFinite(id))
-      )
-    );
-
-    if (activityUserIds.length > 0) {
-      try {
-        const { data: identityEnrichmentRows, error: identityEnrichmentError } = await supabase
-          .from('telegram_identities')
-          .select('tg_user_id, username, first_name, last_name, full_name')
-          .in('tg_user_id', activityUserIds);
-
-        if (identityEnrichmentError) {
-          console.error('Error enriching participant identities for analytics:', identityEnrichmentError);
-        } else if (identityEnrichmentRows) {
-          identityEnrichmentRows.forEach(row => {
-            if (!row?.tg_user_id) {
-              return;
-            }
-            const key = row.tg_user_id.toString();
-            const existing = participantActivity[key];
-            if (!existing) {
-              participantActivity[key] = {
-                count: 0,
-                username: row?.username ?? null,
-                full_name: row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null,
-                tg_user_id: row.tg_user_id ?? undefined,
-                last_activity: null,
-                risk_score: null,
-                activity_score: null
-              };
-              return;
-            }
-
-            if (!existing.username && row?.username) {
-              existing.username = row.username;
-            }
-
-            if (!existing.full_name) {
-              existing.full_name = row?.full_name || [row?.first_name, row?.last_name].filter(Boolean).join(' ') || null;
-            }
-
-            if (!existing.tg_user_id && row?.tg_user_id) {
-              existing.tg_user_id = row.tg_user_id;
-            }
-          });
         }
       } catch (identityEnrichmentException) {
-        console.error('Unexpected error enriching participant identities for analytics:', identityEnrichmentException);
+        console.error('Unexpected error enriching identities for analytics:', identityEnrichmentException)
       }
     }
 
-    try {
-      const { data: participantRows, error: participantError } = await supabase
-        .from('participants')
-        .select('tg_user_id, activity_score, risk_score, last_activity_at, username, full_name')
-        .eq('org_id', orgId)
-        .in('tg_user_id', Object.keys(participantActivity).map(Number));
+    const membersTotal = participantList.length
 
-      if (participantError) {
-        console.error('Error loading participant metrics for analytics:', participantError);
-      } else if (participantRows) {
-        participantRows.forEach(row => {
-          if (!row?.tg_user_id) {
-            return;
-          }
+    const activeThreshold = new Date()
+    activeThreshold.setDate(activeThreshold.getDate() - 7)
 
-          const userKey = row.tg_user_id.toString();
-          const existing = participantActivity[userKey];
-          if (!existing) {
-            participantActivity[userKey] = {
-              count: 0,
-              username: row.username ?? null,
-              full_name: row.full_name ?? null,
-              tg_user_id: row.tg_user_id ?? undefined,
-              last_activity: row.last_activity_at ?? null,
-              activity_score: row.activity_score ?? null,
-              risk_score: row.risk_score ?? null
-            };
-            return;
-          }
+    const membersActive = participantList.filter(record => {
+      if (record.message_count > 0) return true
+      if (!record.last_activity) return false
+      return new Date(record.last_activity).getTime() >= activeThreshold.getTime()
+    }).length
 
-          if (!existing.username && row.username) {
-            existing.username = row.username;
-          }
+    const silentRate = membersTotal > 0 ? Math.round(((membersTotal - membersActive) / membersTotal) * 100) : 0
 
-          if (!existing.full_name && row.full_name) {
-            existing.full_name = row.full_name;
-          }
+    const totalDays = Object.keys(usersByDay).length
+    const totalActiveUsers = Object.values(usersByDay).reduce((sum, set) => sum + set.size, 0)
+    const avgDau = totalDays > 0 ? Math.round(totalActiveUsers / totalDays) : 0
 
-          existing.last_activity = pickLatestTimestamp(existing.last_activity, row.last_activity_at ?? null);
-          existing.activity_score = row.activity_score ?? existing.activity_score ?? existing.count;
-          existing.risk_score = row.risk_score ?? existing.risk_score ?? null;
-        });
+    const replyRatio = messageCount > 0 ? Math.round((replyCount / messageCount) * 100) : 0
+
+    const hourValues = Object.values(hourlyActivity)
+    const avgHourlyMessages = hourValues.length > 0 ? hourValues.reduce((sum, val) => sum + val, 0) / hourValues.length : 0
+    const primeTime = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      message_count: hourlyActivity[hour] || 0,
+      is_prime_time: (hourlyActivity[hour] || 0) > avgHourlyMessages
+    }))
+
+    const messageCounts = participantList.map(record => record.message_count)
+    let activityGini = 0
+    if (messageCounts.length > 1) {
+      const mean = messageCounts.reduce((sum, value) => sum + value, 0) / messageCounts.length
+      if (mean > 0) {
+        const variance = messageCounts.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / messageCounts.length
+        const stdDev = Math.sqrt(variance)
+        activityGini = Math.min(1, stdDev / mean)
       }
-    } catch (participantMergeException) {
-      console.error('Unexpected error merging participant metrics for analytics:', participantMergeException);
     }
 
-    // Формируем расширенную информацию для участников
-    const participantList = Object.entries(participantActivity).map(([userId, data]) => ({
-      tg_user_id: Number(userId),
-      username: data.username,
-      full_name: data.full_name,
-      message_count: data.count,
-      last_activity: data.last_activity,
-      risk_score: calculateRiskScore(data.last_activity, data.risk_score ?? null)
-    }));
+    let topUsers = participantList
+      .filter(record => record.message_count > 0)
+      .sort(
+        (a, b) =>
+          b.message_count - a.message_count ||
+          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
+      )
+      .slice(0, 5)
+      .map(record => ({
+        tg_user_id: record.tg_user_id,
+        full_name: record.full_name,
+        username: record.username,
+        message_count: record.message_count,
+        last_activity: record.last_activity || new Date().toISOString()
+      }))
+
+    if (topUsers.length === 0 && participantList.length > 0) {
+      topUsers = participantList
+        .slice()
+        .sort(
+          (a, b) =>
+            b.message_count - a.message_count ||
+            new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
+        )
+        .slice(0, 5)
+        .map(record => ({
+          tg_user_id: record.tg_user_id,
+          full_name: record.full_name,
+          username: record.username,
+          message_count: record.message_count,
+          last_activity: record.last_activity || new Date().toISOString()
+        }))
+    }
+
+    const maxMessageCount = Math.max(1, ...participantList.map(record => record.message_count))
+
+    const riskRadar = participantList
+      .slice()
+      .sort(
+        (a, b) =>
+          a.message_count - b.message_count ||
+          new Date(a.last_activity ?? 0).getTime() - new Date(b.last_activity ?? 0).getTime()
+      )
+      .slice(0, 5)
+      .map(record => ({
+        tg_user_id: record.tg_user_id,
+        username: record.username,
+        full_name: record.full_name,
+        risk_score: calculateRiskScore(
+          record.last_activity,
+          record.risk_score ?? Math.round(80 - (record.message_count / maxMessageCount) * 50)
+        ),
+        last_activity: record.last_activity || new Date().toISOString(),
+        message_count: record.message_count
+      }))
+
+    const newcomerActivation = membersTotal > 0 ? Math.round((membersActive / membersTotal) * 100) : 0
+
+    const participantsResponse = participantList
+      .slice()
+      .sort(
+        (a, b) =>
+          b.message_count - a.message_count ||
+          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
+      )
+      .map(record => ({
+        tg_user_id: record.tg_user_id,
+        username: record.username,
+        full_name: record.full_name,
+        message_count: record.message_count,
+        last_activity: record.last_activity,
+        risk_score: calculateRiskScore(record.last_activity, record.risk_score ?? null)
+      }))
 
     const dailyMetricsArray = Object.values(dailyMetrics)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 5);
+      .slice(0, 5)
 
     return NextResponse.json({
       metrics: {
@@ -720,22 +549,22 @@ export async function GET(request: Request) {
         leave_count: leaveCount,
         dau_avg: avgDau,
         reply_ratio_avg: replyRatio,
-        days,
+        days: totalDays,
         silent_rate: silentRate,
         newcomer_activation: newcomerActivation,
         activity_gini: activityGini,
         prime_time: primeTime,
         risk_radar: riskRadar,
-        member_count: memberCount
+        member_count: membersTotal,
+        member_active_count: membersActive
       },
       topUsers,
       dailyMetrics: dailyMetricsArray,
-      participants: participantList
-    });
-
+      participants: participantsResponse
+    })
   } catch (error: any) {
-    console.error('Error in analytics API:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    console.error('Error in analytics API:', error)
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
 

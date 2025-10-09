@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
+import TabsLayout from './tabs-layout'
 
 
 type TelegramGroup = {
@@ -59,7 +60,8 @@ export default async function TelegramPage({ params }: { params: { org: string }
           <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
         
-        <div className="grid gap-6">
+        <TabsLayout orgId={params.org}>
+          <div className="grid gap-6">
           {/* Карточка подключения */}
           <Card>
             <CardHeader>
@@ -159,7 +161,8 @@ export default async function TelegramPage({ params }: { params: { org: string }
           )}
           
           {/* Статистика */}
-        </div>
+          </div>
+        </TabsLayout>
       </AppShell>
     )
   } catch (error) {

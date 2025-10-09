@@ -18,7 +18,7 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
 
   const { data: org, error } = await admin
     .from('organizations')
-    .select('id, name')
+    .select('id, name, logo_url')
     .eq(isUUID ? 'id' : 'slug', orgIdentifier)
     .single();
 
@@ -30,7 +30,7 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
 
   const tree = await MaterialService.getTree(org.id);
 
-  return { tree, orgId: org.id, orgName: org.name, orgLogoUrl: null };
+  return { tree, orgId: org.id, orgName: org.name, orgLogoUrl: org.logo_url };
 }
 
 export async function fetchMaterialPage(orgIdentifier: string, pageId: string) {

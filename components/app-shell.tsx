@@ -106,8 +106,6 @@ export default function AppShell({
   const nav: NavItem[] = [
     { href: `/app/${orgId}/dashboard`, label: 'Дашборд', icon: '🏠' },
     { href: `/app/${orgId}/events`, label: 'События', icon: '📅' },
-    { href: `/app/${orgId}/telegram`, label: 'Telegram', icon: '💬' },
-    { href: `/app/${orgId}/telegram/analytics`, label: 'Аналитика', icon: '📊' },
     { href: `/app/${orgId}/members`, label: 'Участники', icon: '👥' },
     { href: `/app/${orgId}/materials`, label: 'Материалы', icon: '📁' },
     { href: `/app/${orgId}/integrations`, label: 'Интеграции', icon: '🔗' },
@@ -121,29 +119,59 @@ export default function AppShell({
             <OrganizationSwitcher currentOrgId={orgId} currentOrgName={orgDisplayName || orgName || ''} />
           </div>
         </div>
-        <nav className="px-2 space-y-1 mt-6">
-          {nav.map(item => (
+        <nav className="px-2 space-y-1 mt-6 flex flex-col h-[calc(100vh-5rem)]">
+          <div className="flex-1">
+            {nav.map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={clsx(
+                  "flex items-center px-3 py-2 text-sm rounded-xl",
+                  currentPath === item.href
+                    ? "bg-black text-white"
+                    : "hover:bg-black/5"
+                )}
+              >
+                {item.icon && <span className="mr-2">{item.icon}</span>}
+                {item.label}
+              </Link>
+            ))}
+            
+            {/* Телеграм группы */}
+            <TelegramGroupsNav 
+              groups={groups} 
+              orgId={orgId} 
+              currentPath={currentPath} 
+            />
+          </div>
+          
+          {/* Настройки внизу */}
+          <div className="border-t pt-2 pb-2">
             <Link
-              key={item.href}
-              href={item.href}
+              href={`/app/${orgId}/settings`}
               className={clsx(
                 "flex items-center px-3 py-2 text-sm rounded-xl",
-                currentPath === item.href
+                currentPath === `/app/${orgId}/settings`
                   ? "bg-black text-white"
                   : "hover:bg-black/5"
               )}
             >
-              {item.icon && <span className="mr-2">{item.icon}</span>}
-              {item.label}
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-4 h-4 mr-2"
+              >
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              Настройки
             </Link>
-          ))}
-          
-          {/* Телеграм группы */}
-          <TelegramGroupsNav 
-            groups={groups} 
-            orgId={orgId} 
-            currentPath={currentPath} 
-          />
+          </div>
         </nav>
       </aside>
       <div className="flex-1 ml-64">

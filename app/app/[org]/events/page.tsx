@@ -1,171 +1,91 @@
+import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
 import AppShell from '@/components/app-shell'
+import { createClientServer } from '@/lib/server/supabaseServer'
 import { requireOrgAccess } from '@/lib/orgGuard'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { notFound } from 'next/navigation'
-import Link from 'next/link'
-import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
-
-type Event = {
-  id: string;
-  title: string;
-  description: string | null;
-  starts_at: string;
-  ends_at: string | null;
-  visibility: 'public' | 'members';
-  created_at: string;
-};
+import EventsList from '@/components/events/events-list'
 
 export default async function EventsPage({ params }: { params: { org: string } }) {
-  try {
-    const { supabase } = await requireOrgAccess(params.org)
-    
-    // Получаем список событий организации
+  const supabase = await createClientServer()
+  
+  // Check authentication and org access
+  const { user } = await supabase.auth.getUser().then(res => res.data)
+  if (!user) {
+    redirect('/signin')
+  }
+
+  // Require org access (any member can view)
+  await requireOrgAccess(params.org, ['owner', 'admin', 'member', 'viewer'])
+
+  // Fetch events
     const { data: events, error } = await supabase
       .from('events')
-      .select('*')
+    .select(`
+      *,
+      event_registrations!event_registrations_event_id_fkey(id, status)
+    `)
       .eq('org_id', params.org)
-      .order('starts_at', { ascending: true })
-      .limit(50) as { data: Event[] | null, error: any }
+    .order('event_date', { ascending: true })
     
     if (error) {
       console.error('Error fetching events:', error)
     }
     
-    // Разделяем события на предстоящие и прошедшие
-    const now = new Date()
-    const upcomingEvents = events?.filter(e => new Date(e.starts_at) >= now) || []
-    const pastEvents = events?.filter(e => new Date(e.starts_at) < now) || []
+  // Calculate stats for each event
+  const eventsWithStats = events?.map(event => {
+    const registeredCount = event.event_registrations?.filter(
+      (reg: any) => reg.status === 'registered'
+    ).length || 0
+
+    const availableSpots = event.capacity 
+      ? Math.max(0, event.capacity - registeredCount)
+      : null
+
+    return {
+      ...event,
+      registered_count: registeredCount,
+      available_spots: availableSpots,
+      event_registrations: undefined
+    }
+  }) || []
+
+  // Get user's role in org
+  const { data: membership } = await supabase
+    .from('memberships')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('org_id', params.org)
+    .single()
+
+  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin'
+
+  // Fetch telegram groups for notifications (admin only)
+  let telegramGroups: any[] = []
+  if (isAdmin) {
+    const { data } = await supabase
+      .from('telegram_groups')
+      .select('id, tg_chat_id, title')
+      .eq('org_id', params.org)
+      .eq('bot_status', 'connected')
+      .order('title')
     
-    // Получаем список групп
-    const telegramGroups = await getOrgTelegramGroups(params.org)
-
-
-    return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={telegramGroups || []}>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">События</h1>
-          <div>
-            <Link href={`/app/${params.org}/events/new`}>
-              <Button>+ Создать</Button>
-            </Link>
-          </div>
-        </div>
-        
-        {/* Предстоящие события */}
-        <div className="mb-10">
-          <h2 className="text-lg font-semibold mb-4">Предстоящие</h2>
-          
-          {upcomingEvents.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {upcomingEvents.map(event => (
-                <EventCard key={event.id} event={event} orgId={params.org} />
-              ))}
-            </div>
-          ) : (
-            <Card className="bg-neutral-50 border-dashed">
-              <CardContent className="py-12 text-center">
-                <p className="text-neutral-500">Нет предстоящих событий</p>
-                <div className="mt-4">
-                  <Link href={`/app/${params.org}/events/new`}>
-                    <Button>Создать событие</Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-        
-        {/* Прошедшие события */}
-        {pastEvents.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Прошедшие</h2>
-            
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {pastEvents.map(event => (
-                <EventCard 
-                  key={event.id} 
-                  event={event} 
-                  orgId={params.org} 
-                  isPast={true} 
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </AppShell>
-    )
-  } catch (error) {
-    console.error('Events page error:', error)
-    return notFound()
-  }
-}
-
-function EventCard({ 
-  event, 
-  orgId, 
-  isPast = false 
-}: { 
-  event: Event; 
-  orgId: string; 
-  isPast?: boolean 
-}) {
-  // Форматирование даты для отображения
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('ru', {
-      day: 'numeric',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    telegramGroups = data || []
   }
   
   return (
-    <Card className={isPast ? 'opacity-70' : ''}>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-base">
-            <Link href={`/app/${orgId}/events/${event.id}`} className="hover:underline">
-              {event.title}
-            </Link>
-          </CardTitle>
-          <div className="text-xs rounded-full px-2 py-1 bg-black/5 text-neutral-600">
-            {event.visibility === 'public' ? 'Публичное' : 'Только для участников'}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-sm text-neutral-500 mb-4">
-          {formatDate(event.starts_at)}
-          {event.ends_at && (
-            <>
-              <br />
-              <span className="text-neutral-400">до {formatDate(event.ends_at)}</span>
-            </>
-          )}
+    <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={[]}>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">События</h1>
         </div>
         
-        {event.description && (
-          <p className="text-sm line-clamp-2 text-neutral-600 mb-4">
-            {event.description}
-          </p>
-        )}
-        
-        <div className="flex justify-between items-center">
-          <Button variant="outline" asChild>
-            <Link href={`/app/${orgId}/events/${event.id}`}>
-              Детали
-            </Link>
-          </Button>
-          
-          {!isPast && (
-            <Button variant="ghost" className="text-xs">
-              QR код
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      <Suspense fallback={<div className="text-center py-8">Загрузка...</div>}>
+        <EventsList 
+          events={eventsWithStats} 
+          orgId={params.org}
+          isAdmin={isAdmin}
+          telegramGroups={telegramGroups}
+        />
+      </Suspense>
+    </AppShell>
   )
 }

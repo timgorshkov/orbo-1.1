@@ -1,5 +1,6 @@
 import { createClientServer } from './server/supabaseServer'
 import { cookies } from 'next/headers'
+import { syncOrgAdmins } from './server/syncOrgAdmins'
 
 type OrgRole = 'owner' | 'admin' | 'editor' | 'member' | 'viewer';
 
@@ -14,6 +15,12 @@ export async function requireOrgAccess(orgId: string, cookieStore?: any, allowed
     error: userErr
   } = await supabase.auth.getUser()
   if (userErr || !user) throw new Error('Unauthorized')
+
+  // Sync admin roles from Telegram groups
+  // This runs in background and doesn't block access
+  syncOrgAdmins(orgId).catch(err => {
+    console.error('Background admin sync failed:', err)
+  })
 
   // Проверяем членство в org через RPC
   const { data, error } = await supabase.rpc('is_org_member_rpc', { _org: orgId })

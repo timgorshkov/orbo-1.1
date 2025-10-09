@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/sync-users",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/event-notifications",
+      "schedule": "0 * * * *"
     }
   ],
   "rewrites": [

@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
+import TabsLayout from '../tabs-layout'
 
 export const dynamic = 'force-dynamic';
 
@@ -30,18 +31,20 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
       return (
         <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={[]}>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold">Аналитика Telegram</h1>
+            <h1 className="text-2xl font-semibold">Telegram</h1>
           </div>
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <p className="text-neutral-500">
-                  Нет подключенных групп. Добавьте бота @orbo_community_bot в группу и назначьте администратором.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <TabsLayout orgId={params.org}>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <p className="text-neutral-500">
+                    Нет подключенных групп. Добавьте бота @orbo_community_bot в группу и назначьте администратором.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsLayout>
         </AppShell>
       )
     }
@@ -97,23 +100,41 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
       })
     }
     
-    // Получаем общее количество участников для каждой группы
-    const groupMemberCounts: Record<string, number> = {}
+    const groupAnalytics: Record<string, {
+      member_count: number
+      member_active_count: number
+    }> = {}
 
     for (const group of groups) {
-      const memberCount = group.member_count ?? 0;
-      const chatId = String(group.tg_chat_id);
-      groupMemberCounts[chatId] = memberCount;
-      console.log(`Group ${group.title} (${chatId}): member_count = ${memberCount}`);
+      const chatId = String(group.tg_chat_id)
+      groupAnalytics[chatId] = { member_count: 0, member_active_count: 0 }
+
+      try {
+        const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/telegram/analytics/data?orgId=${params.org}&chatId=${chatId}`
+        const analyticsResponse = await fetch(apiUrl, { cache: 'no-store' })
+        if (analyticsResponse.ok) {
+          const analyticsPayload = await analyticsResponse.json()
+          groupAnalytics[chatId] = {
+            member_count: analyticsPayload?.metrics?.member_count ?? 0,
+            member_active_count: analyticsPayload?.metrics?.member_active_count ?? 0
+          }
+        }
+      } catch (analyticsError) {
+        console.error(`Error loading analytics for group ${group.title} (${chatId})`, analyticsError)
+      }
     }
+
+    const totalMembers = Object.values(groupAnalytics).reduce((sum, info) => sum + info.member_count, 0)
+    const totalActiveMembers = Object.values(groupAnalytics).reduce((sum, info) => sum + info.member_active_count, 0)
 
     return (
       <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={groups}>
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Аналитика Telegram</h1>
+          <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <TabsLayout orgId={params.org}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle>Общая статистика</CardTitle>
@@ -121,12 +142,12 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-sm text-neutral-500">Всего групп</div>
-                  <div className="text-xl font-semibold">{groups.length}</div>
+                  <div className="text-sm text-neutral-500">Активных участников за 7 дней</div>
+                  <div className="text-xl font-semibold">{totalActiveMembers}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-neutral-500">Активных групп</div>
-                  <div className="text-xl font-semibold">{groups.filter(g => g.bot_status === 'connected').length}</div>
+                  <div className="text-sm text-neutral-500">Всего участников</div>
+                  <div className="text-xl font-semibold">{totalMembers}</div>
                 </div>
                 <div>
                   <div className="text-sm text-neutral-500">Всего сообщений за 7 дней</div>
@@ -191,9 +212,15 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <div className="text-sm text-neutral-500">Участников</div>
+                    <div className="text-sm text-neutral-500">Активных участников</div>
                     <div className="text-xl font-semibold">
-                      {groupMemberCounts[String(group.tg_chat_id)] || 0}
+                      {groupAnalytics[String(group.tg_chat_id)]?.member_active_count ?? groupAnalytics[String(group.tg_chat_id)]?.member_count ?? 0}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-neutral-500">Всего участников</div>
+                    <div className="text-xl font-semibold">
+                      {groupAnalytics[String(group.tg_chat_id)]?.member_count ?? 0}
                     </div>
                   </div>
                   <div>
@@ -256,6 +283,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
             </Card>
           ))}
         </div>
+        </TabsLayout>
       </AppShell>
     )
   } catch (error) {

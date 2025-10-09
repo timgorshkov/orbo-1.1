@@ -57,7 +57,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [group, setGroup] = useState<TelegramGroupSettings | null>(null)
+  const [group, setGroup] = useState<any | null>(null)
   const [title, setTitle] = useState('')
   const [welcomeMessage, setWelcomeMessage] = useState('')
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
@@ -67,19 +67,28 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
   
   // Аналитика
   const [metrics, setMetrics] = useState<any[]>([])
-  const [groupMetrics, setGroupMetrics] = useState<GroupMetrics>({
+  const [groupMetrics, setGroupMetrics] = useState({
     message_count: 0,
-    reply_count: 0,
+    dau_avg: 0,
+    reply_ratio_avg: 0,
     join_count: 0,
     leave_count: 0,
-          dau_avg: 0,
-          reply_ratio_avg: 0,
-          days: 0,
-          silent_rate: 0,
-          newcomer_activation: 0,
-          activity_gini: 0,
-          prime_time: Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
-          risk_radar: []
+    member_percent_active: 0,
+    member_active_count: 0,
+    member_total_count: 0,
+    silent_rate: 0,
+    newcomer_activation: 0,
+    activity_gini: 0,
+    prime_time: [] as Array<{ hour: number; message_count: number; is_prime_time: boolean }>,
+    risk_radar: [] as Array<{
+      tg_user_id: number;
+      username: string | null;
+      full_name: string | null;
+      display_name?: string | null;
+      risk_score: number;
+      last_activity: string;
+      message_count: number;
+    }>
   })
 const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; last_activity?: string }>>([])
   const [participants, setParticipants] = useState<Array<{ tg_user_id: number | null; full_name: string | null; username: string | null; last_activity: string | null; risk_score: number | null; message_count: number }>>([])
@@ -162,20 +171,25 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           
           // Обновляем метрики из API
           if (analyticsData.metrics) {
-            setGroupMetrics({
+            const totalMembers = analyticsData.metrics.member_count ?? 0
+            const activeMembers = analyticsData.metrics.member_active_count ?? 0
+
+            setGroupMetrics(prev => ({
+              ...prev,
               message_count: analyticsData.metrics.message_count || 0,
-              reply_count: analyticsData.metrics.reply_count || 0,
+              reply_ratio_avg: analyticsData.metrics.reply_ratio_avg || 0,
+              dau_avg: analyticsData.metrics.dau_avg || 0,
               join_count: analyticsData.metrics.join_count || 0,
               leave_count: analyticsData.metrics.leave_count || 0,
-              dau_avg: analyticsData.metrics.dau_avg || 0,
-              reply_ratio_avg: analyticsData.metrics.reply_ratio_avg || 0,
-              days: analyticsData.metrics.days || 0,
+              member_percent_active: totalMembers > 0 ? Math.round((activeMembers / totalMembers) * 100) : 0,
+              member_active_count: activeMembers,
+              member_total_count: totalMembers,
               silent_rate: analyticsData.metrics.silent_rate || 0,
               newcomer_activation: analyticsData.metrics.newcomer_activation || 0,
               activity_gini: analyticsData.metrics.activity_gini || 0,
-              prime_time: analyticsData.metrics.prime_time || Array.from({ length: 24 }, (_, i) => ({ hour: i, message_count: 0, is_prime_time: false })),
+              prime_time: analyticsData.metrics.prime_time || [],
               risk_radar: analyticsData.metrics.risk_radar || []
-            });
+            }))
           }
           
           // Обновляем топ пользователей из API
@@ -410,7 +424,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         };
         
         console.log('Final metrics to display:', updatedMetrics);
-        setGroupMetrics(updatedMetrics);
+        setGroupMetrics(prev => ({ ...prev, ...updatedMetrics }));
         
         // Если DAU все равно 0, попробуем получить его напрямую из activity_events
         if (aggregatedMetrics.dau_avg === 0) {
@@ -642,8 +656,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                         <CardContent>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <div className="text-sm text-neutral-500">Участников</div>
-                              <div className="text-xl font-semibold">{group?.member_count || 0}</div>
+                              <div className="text-sm text-neutral-500">Активных участников</div>
+                              <div className="text-xl font-semibold">{groupMetrics.member_active_count}</div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-neutral-500">Всего участников</div>
+                              <div className="text-xl font-semibold">{groupMetrics.member_total_count}</div>
                             </div>
                             <div>
                               <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
@@ -684,9 +702,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                             <div>
                               <div className="text-sm text-neutral-500">Активность</div>
                               <div className="text-xl font-semibold">
-                                {group?.member_count && group.member_count > 0 
-                                  ? Math.round((groupMetrics.dau_avg / group.member_count) * 100) 
-                                  : 0}%
+                                {groupMetrics.member_percent_active}%
                               </div>
                             </div>
                           </div>
