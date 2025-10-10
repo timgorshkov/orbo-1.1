@@ -1,4 +1,3 @@
-import AppShell from '@/components/app-shell';
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -9,12 +8,14 @@ export const dynamic = 'force-dynamic';
 async function loadData(orgId: string) {
   const { supabase } = await requireOrgAccess(orgId);
 
+  const supabase2 = await createClientServer();
+  
   const [{ data: connections }, { data: connectors }] = await Promise.all([
     supabase
       .from('integration_connections')
     .select('id, status, sync_mode, schedule_cron, last_sync_at, last_status, connector:integration_connectors(code, name, description)')
       .eq('org_id', orgId),
-    createClientServer()
+    supabase2
       .from('integration_connectors')
       .select('id, code, name, description, category')
   ]);
@@ -47,7 +48,7 @@ export default async function IntegrationsPage({ params }: { params: { org: stri
   });
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/integrations`}>
+    <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Интеграции</h1>
         <p className="text-sm text-neutral-500">Управляйте синхронизацией с внешними системами</p>
@@ -133,7 +134,7 @@ export default async function IntegrationsPage({ params }: { params: { org: stri
           </div>
         </section>
       </div>
-    </AppShell>
+    </div>
   );
 }
 

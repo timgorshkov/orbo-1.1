@@ -30,11 +30,7 @@ export default function CheckGroupsPage({ params }: { params: { org: string } })
   
   // Используем пустой массив для telegramGroups, т.к. AppShell сам загрузит группы
   return (
-    <AppShell 
-      orgId={params.org} 
-      currentPath={`/app/${params.org}/telegram/check-groups`}
-      telegramGroups={[]}
-    >
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Проверка Telegram групп</h1>
       </div>
@@ -59,6 +55,6 @@ export default function CheckGroupsPage({ params }: { params: { org: string } })
           <CheckGroupsForm orgId={params.org} userId={userId || ''} />
         </CardContent>
       </Card>
-    </AppShell>
+    </div>
   )
 }

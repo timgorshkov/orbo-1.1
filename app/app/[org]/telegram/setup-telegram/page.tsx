@@ -33,11 +33,7 @@ export default function SetupTelegramPage({ params }: { params: { org: string } 
   }
   
   return (
-    <AppShell 
-      orgId={params.org} 
-      currentPath={`/app/${params.org}/telegram/setup-telegram`}
-      telegramGroups={[]}
-    >
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Настройка Telegram</h1>
       </div>
@@ -79,6 +75,6 @@ export default function SetupTelegramPage({ params }: { params: { org: string } 
           </form>
         </CardContent>
       </Card>
-    </AppShell>
+    </div>
   )
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -589,7 +588,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
   }
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`} telegramGroups={[]}>
+    <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">
           {group?.title || 'Telegram группа'}
@@ -1048,6 +1047,6 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           )}
         </>
       )}
-    </AppShell>
+    </div>
   )
 }

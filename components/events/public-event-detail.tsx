@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Calendar, MapPin, Users, DollarSign, Globe, Download } from 'lucide-react'
+import { Calendar, MapPin, Users, DollarSign, Globe, Download, X } from 'lucide-react'
+import TelegramLogin, { type TelegramUser } from '@/components/auth/telegram-login'
 
 type Event = {
   id: string
@@ -26,18 +27,21 @@ type Event = {
 type Org = {
   id: string
   name: string
-  slug: string
 }
 
 type Props = {
   event: Event
   org: Org
+  isAuthenticated?: boolean
+  isOrgMember?: boolean
 }
 
-export default function PublicEventDetail({ event, org }: Props) {
+export default function PublicEventDetail({ event, org, isAuthenticated = false, isOrgMember = false }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [isAuthLoading, setIsAuthLoading] = useState(false)
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -52,9 +56,87 @@ export default function PublicEventDetail({ event, org }: Props) {
   }
 
   const handleRegister = () => {
-    // Redirect to sign in with return URL
-    const returnUrl = encodeURIComponent(`/p/${org.slug}/events/${event.id}`)
-    router.push(`/signin?returnUrl=${returnUrl}`)
+    // If user is already authenticated and is org member, register directly
+    if (isAuthenticated && isOrgMember) {
+      handleDirectRegister()
+    } else {
+      // Show Telegram login modal
+      setShowAuthModal(true)
+    }
+  }
+
+  const handleDirectRegister = () => {
+    setError(null)
+    startTransition(async () => {
+      try {
+        const response = await fetch(`/api/events/${event.id}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Не удалось зарегистрироваться')
+        }
+
+        // Success!
+        alert('Вы успешно зарегистрированы на событие!')
+        router.refresh()
+      } catch (err: any) {
+        setError(err.message)
+      }
+    })
+  }
+
+  const handleTelegramAuth = async (user: TelegramUser) => {
+    setIsAuthLoading(true)
+    setError(null)
+
+    try {
+      // Авторизуемся через Telegram
+      const authRes = await fetch('/api/auth/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramData: user,
+          orgId: org.id
+        })
+      })
+
+      const authData = await authRes.json()
+
+      if (!authRes.ok) {
+        throw new Error(authData.error || 'Ошибка авторизации')
+      }
+
+      // Регистрируемся на событие
+      const registerRes = await fetch(`/api/events/${event.id}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      const registerData = await registerRes.json()
+
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || 'Ошибка регистрации')
+      }
+
+      // Успех!
+      alert('Вы успешно зарегистрированы на событие!')
+      
+      // Перенаправляем на magic link для установки сессии
+      if (authData.redirectUrl) {
+        window.location.href = authData.redirectUrl
+      } else {
+        // Или просто перезагружаем страницу
+        window.location.reload()
+      }
+    } catch (err) {
+      console.error('Registration error:', err)
+      setError(err instanceof Error ? err.message : 'Произошла ошибка')
+      setIsAuthLoading(false)
+    }
   }
 
   const handleDownloadICS = () => {
@@ -205,9 +287,11 @@ export default function PublicEventDetail({ event, org }: Props) {
                     >
                       {isPending ? 'Загрузка...' : 'Зарегистрироваться'}
                     </Button>
-                    <p className="text-xs text-center text-neutral-500">
-                      Для регистрации необходимо войти через Telegram
-                    </p>
+                    {!isAuthenticated && (
+                      <p className="text-xs text-center text-neutral-500">
+                        Для регистрации необходимо войти через Telegram
+                      </p>
+                    )}
                   </>
                 )}
 
@@ -237,6 +321,84 @@ export default function PublicEventDetail({ event, org }: Props) {
           <p>Powered by Orbo</p>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+          onClick={() => !isAuthLoading && setShowAuthModal(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-white shadow-xl p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            {!isAuthLoading && (
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="absolute right-4 top-4 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* Title */}
+            <div className="mb-6 text-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Регистрация на событие
+              </h2>
+              <p className="text-gray-600">
+                Войдите через Telegram, чтобы зарегистрироваться
+              </p>
+            </div>
+
+            {/* Telegram Login */}
+            {!isAuthLoading && !error && (
+              <div className="flex justify-center mb-4">
+                <TelegramLogin
+                  botUsername={process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || ''}
+                  onAuth={handleTelegramAuth}
+                  buttonSize="large"
+                  cornerRadius={12}
+                />
+              </div>
+            )}
+
+            {/* Loading */}
+            {isAuthLoading && (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p className="mt-4 text-gray-600">
+                  Авторизация и регистрация...
+                </p>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800 mb-3">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null)
+                    setIsAuthLoading(false)
+                  }}
+                  className="text-sm text-red-600 hover:text-red-800 font-medium"
+                >
+                  Попробовать снова
+                </button>
+              </div>
+            )}
+
+            {/* Info */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-xs text-gray-500 text-center">
+                После авторизации вы будете автоматически зарегистрированы на событие
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

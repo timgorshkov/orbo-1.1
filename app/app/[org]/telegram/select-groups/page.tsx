@@ -38,7 +38,7 @@ export default async function SelectGroupsPage({ params }: { params: { org: stri
   
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`} telegramGroups={telegramGroups || []}>
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Выберите группы для добавления</h1>
         <p className="text-neutral-600">Выберите группы, которые хотите добавить в эту организацию</p>
@@ -54,6 +54,6 @@ export default async function SelectGroupsPage({ params }: { params: { org: stri
           />
         ))}
       </div>
-    </AppShell>
+    </div>
   )
 }

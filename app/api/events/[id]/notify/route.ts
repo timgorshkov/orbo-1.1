@@ -30,7 +30,7 @@ export async function POST(
     // Get event using admin client to bypass RLS
     const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('*, organizations(name, slug)')
+      .select('*, organizations(name)')
       .eq('id', eventId)
       .single()
 
@@ -78,7 +78,7 @@ export async function POST(
     const timeStr = `${event.start_time.substring(0, 5)} - ${event.end_time.substring(0, 5)}`
 
     // Construct public link
-    const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://orbo.app'}/p/${event.organizations.slug}/events/${event.id}`
+    const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://orbo.app'}/p/${event.org_id}/events/${event.id}`
 
     // Construct message
     let message = `📅 <b>${event.title}</b>\n\n`

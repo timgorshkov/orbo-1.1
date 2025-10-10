@@ -41,7 +41,7 @@ type ActivityEventRecord = {
 };
 
 async function requireOrgMembership(orgId: string) {
-  const supabaseClient = createClientServer();
+  const supabaseClient = await createClientServer();
   const { data: authResult, error: authError } = await supabaseClient.auth.getUser();
 
   if (authError || !authResult?.user) {

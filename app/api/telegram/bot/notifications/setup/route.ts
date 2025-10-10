@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const botId = botInfo.result.id
     
     // Проверяем доступ к организации
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const { data: orgData, error: orgError } = await supabase
       .from('organizations')
       .select('id')

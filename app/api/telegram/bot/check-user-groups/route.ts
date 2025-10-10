@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
     
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const telegramService = createTelegramService()
     
     // Получаем список всех чатов, где бот является участником

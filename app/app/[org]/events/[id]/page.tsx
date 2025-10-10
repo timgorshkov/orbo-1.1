@@ -47,12 +47,12 @@ export default async function EventDetailPage({
 
   if (error || !event) {
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={[]}>
+      <div className="p-6">
         <div className="text-center py-8">
           <h2 className="text-xl font-semibold mb-2">Событие не найдено</h2>
           <p className="text-neutral-600">Это событие не существует или было удалено.</p>
         </div>
-      </AppShell>
+      </div>
     )
   }
 
@@ -124,7 +124,7 @@ export default async function EventDetailPage({
   const isEditMode = searchParams.edit === 'true'
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={[]}>
+    <div className="p-6">
       <EventDetail 
         event={eventWithStats}
         orgId={params.org}
@@ -132,7 +132,7 @@ export default async function EventDetailPage({
         isEditMode={isEditMode && isAdmin}
         telegramGroups={telegramGroups}
       />
-    </AppShell>
+    </div>
   )
 }
 

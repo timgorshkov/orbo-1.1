@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     // 1. Получаем сессию через стандартный клиент
-    const regularSupabase = createClientServer()
+    const regularSupabase = await createClientServer()
     const { data: sessionData, error: sessionError } = await regularSupabase.auth.getSession()
     
     // 2. Получаем информацию о пользователе через стандартный клиент

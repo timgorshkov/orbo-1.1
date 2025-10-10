@@ -11,7 +11,7 @@ export async function GET(
   const { org } = params
   
   try {
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const { data, error } = await supabase
       .from('telegram_groups')
       .select('id, title, tg_chat_id')

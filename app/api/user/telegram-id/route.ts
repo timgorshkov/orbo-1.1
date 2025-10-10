@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid Telegram ID' }, { status: 400 })
     }
     
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     
     // Получаем текущего пользователя
     const { data: { user }, error: userError } = await supabase.auth.getUser()

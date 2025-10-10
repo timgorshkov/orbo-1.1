@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {

@@ -285,7 +285,7 @@ export default function SendMessagePage({ params }: { params: { org: string } })
   }
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`}>
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Отправить сообщение</h1>
       </div>
@@ -374,6 +374,6 @@ export default function SendMessagePage({ params }: { params: { org: string } })
           </div>
         </CardContent>
       </Card>
-    </AppShell>
+    </div>
   )
 }

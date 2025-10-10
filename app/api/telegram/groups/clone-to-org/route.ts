@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
     
     // Получаем текущего пользователя
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {

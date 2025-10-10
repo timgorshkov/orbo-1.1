@@ -1,7 +1,5 @@
-import AppShell from '@/components/app-shell'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { notFound } from 'next/navigation'
-import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
@@ -68,17 +66,10 @@ export default async function OrganizationSettingsPage({ params }: { params: { o
       })
     )
 
-    // Get telegram groups for navigation
-    const telegramGroups = await getOrgTelegramGroups(params.org)
-
     return (
-      <AppShell 
-        orgId={params.org} 
-        currentPath={`/app/${params.org}/settings`}
-        telegramGroups={telegramGroups || []}
-      >
+      <div className="p-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Настройки организации</h1>
+          <h1 className="text-2xl font-semibold">Настройки пространства</h1>
           <p className="text-neutral-600 mt-1">
             Управление основными настройками и командой
           </p>
@@ -98,7 +89,7 @@ export default async function OrganizationSettingsPage({ params }: { params: { o
             userRole={membership.role as 'owner' | 'admin'}
           />
         </div>
-      </AppShell>
+      </div>
     )
   } catch (error) {
     console.error('Settings page error:', error)

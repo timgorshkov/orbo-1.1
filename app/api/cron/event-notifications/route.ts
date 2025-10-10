@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 
+// Force dynamic rendering for cron endpoints
+export const dynamic = 'force-dynamic'
+
 // GET /api/cron/event-notifications - Send scheduled event notifications
 // This endpoint should be called by a cron job (e.g., Vercel Cron, every hour)
 export async function GET(request: NextRequest) {

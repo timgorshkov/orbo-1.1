@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download } from 'lucide-react'
+import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon } from 'lucide-react'
 import EventForm from './event-form'
 
 type Event = {
@@ -56,6 +56,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
   const [selectedGroups, setSelectedGroups] = useState<number[]>([])
   const [notifyError, setNotifyError] = useState<string | null>(null)
   const [notifySuccess, setNotifySuccess] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -117,6 +118,17 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
 
   const handleDownloadICS = () => {
     window.open(`/api/events/${event.id}/ics`, '_blank')
+  }
+
+  const handleCopyPublicLink = async () => {
+    const publicUrl = `${window.location.origin}/p/${orgId}/events/${event.id}`
+    try {
+      await navigator.clipboard.writeText(publicUrl)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy link:', err)
+    }
   }
 
   const handleSendNotification = () => {
@@ -204,12 +216,22 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
         </div>
         {isAdmin && (
           <div className="flex gap-2">
+            {event.is_public && event.status === 'published' && (
+              <Button
+                variant="outline"
+                onClick={handleCopyPublicLink}
+              >
+                <LinkIcon className="w-4 h-4 mr-2" />
+                {linkCopied ? 'Скопировано!' : 'Скопировать ссылку'}
+              </Button>
+            )}
             {telegramGroups.length > 0 && event.status === 'published' && (
               <Button
                 variant="outline"
                 onClick={() => setShowNotifyDialog(true)}
               >
-                Отправить в Telegram
+                <Share2 className="w-4 h-4 mr-2" />
+                Поделиться в группах
               </Button>
             )}
             <Button
@@ -225,7 +247,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
 
       {notifySuccess && (
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
-          Уведомления успешно отправлены в выбранные группы
+          Событие успешно опубликовано в выбранных группах
         </div>
       )}
 
@@ -494,14 +516,14 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
         )}
       </Tabs>
 
-      {/* Telegram Notification Dialog */}
+      {/* Share Event Dialog */}
       {showNotifyDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Отправить уведомление в Telegram</h3>
+            <h3 className="text-lg font-semibold mb-4">Поделиться событием</h3>
             
             <p className="text-sm text-neutral-600 mb-4">
-              Выберите группы, в которые хотите отправить уведомление о событии:
+              Выберите группы, в которые хотите отправить анонс события:
             </p>
 
             <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">

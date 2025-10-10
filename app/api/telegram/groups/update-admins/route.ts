@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     
     console.log(`Updating admin rights for org: ${orgId}`);
     
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {

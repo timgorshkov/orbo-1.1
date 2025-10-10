@@ -210,7 +210,7 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
   const emptyGroups = [] as any[];
   
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/account`} telegramGroups={emptyGroups}>
+    <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">
           Настройка Telegram аккаунта
@@ -462,6 +462,6 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
           )}
         </div>
       )}
-    </AppShell>
+    </div>
   )
 }

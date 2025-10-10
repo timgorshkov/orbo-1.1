@@ -8,7 +8,7 @@ export default async function NewParticipantPage({ params }: { params: { org: st
   }
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/participants/new`} telegramGroups={[]}>
+    <div className="p-6">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Добавить участника</h1>
@@ -19,7 +19,7 @@ export default async function NewParticipantPage({ params }: { params: { org: st
 
         <NewParticipantForm orgId={params.org} />
       </div>
-    </AppShell>
+    </div>
   );
 }
 

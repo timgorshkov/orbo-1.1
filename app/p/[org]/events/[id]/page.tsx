@@ -1,15 +1,16 @@
 import { redirect } from 'next/navigation'
-import { createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer'
 import PublicEventDetail from '@/components/events/public-event-detail'
 
 export default async function PublicEventPage({ params }: { params: { org: string; id: string } }) {
   const supabase = await createAdminServer()
+  const clientSupabase = await createClientServer()
 
   // Get organization
   const { data: org, error: orgError } = await supabase
     .from('organizations')
-    .select('id, name, slug')
-    .or(`id.eq.${params.org},slug.eq.${params.org}`)
+    .select('id, name')
+    .eq('id', params.org)
     .single()
 
   if (orgError || !org) {
@@ -45,13 +46,44 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     )
   }
 
-  // Check if event is public
-  if (!event.is_public) {
+  // Check access rights
+  const { data: { user } } = await clientSupabase.auth.getUser()
+  
+  let isOrgMember = false
+  if (user) {
+    // Check if user is a member of this organization
+    // by checking if their Telegram account is linked to any participant in this org
+    const { data: telegramAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
+      .eq('user_id', user.id)
+      .eq('org_id', org.id)
+      .single()
+    
+    if (telegramAccount) {
+      const { data: participant } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', org.id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .single()
+      
+      isOrgMember = !!participant
+    }
+  }
+  
+  // If event is NOT public and user is NOT a member, show access denied
+  if (!event.is_public && !isOrgMember) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Доступ ограничен</h1>
-          <p className="text-neutral-600">Это событие доступно только участникам организации.</p>
+          <p className="text-neutral-600 mb-4">Это событие доступно только участникам пространства.</p>
+          {!user && (
+            <p className="text-sm text-neutral-500">
+              Войдите через Telegram, если вы участник группы.
+            </p>
+          )}
         </div>
       </div>
     )
@@ -89,6 +121,8 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     <PublicEventDetail 
       event={eventWithStats}
       org={org}
+      isAuthenticated={!!user}
+      isOrgMember={isOrgMember}
     />
   )
 }

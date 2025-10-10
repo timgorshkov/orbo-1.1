@@ -17,13 +17,13 @@ export default async function NewEventPage({ params }: { params: { org: string }
   await requireOrgAccess(params.org, ['owner', 'admin'])
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={[]}>
+    <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Создать событие</h1>
       </div>
 
       <EventForm orgId={params.org} mode="create" />
-    </AppShell>
+    </div>
   )
 }
 

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid chat ID' }, { status: 400 })
     }
     
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const telegramService = createTelegramService()
     
     // Проверяем доступ к группе

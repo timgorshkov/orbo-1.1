@@ -2,7 +2,7 @@ import { createClientServer } from './server/supabaseServer'
 import { SupabaseClient } from '@supabase/supabase-js'
 
 export async function getOrgInfo(orgId: string) {
-  const supabase = createClientServer()
+  const supabase = await createClientServer()
   
   // Получаем информацию об организации
   const { data, error } = await supabase

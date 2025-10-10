@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     // Проверяем авторизацию (должен быть админ)
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {

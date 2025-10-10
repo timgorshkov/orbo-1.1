@@ -1,4 +1,3 @@
-import AppShell from '@/components/app-shell'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,7 +10,6 @@ import { notFound } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import TabsLayout from './tabs-layout'
 
 
@@ -49,13 +47,12 @@ export default async function TelegramPage({ params }: { params: { org: string }
     const memberCount = count || 0
 
       
-    const supabase2 = createClientServer()
+    const supabase2 = await createClientServer()
     // Получаем список групп
-    const telegramGroups = await getOrgTelegramGroups(params.org)
-
+    
     
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram`} telegramGroups={telegramGroups || []}>
+      <div className="p-6">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
@@ -163,7 +160,7 @@ export default async function TelegramPage({ params }: { params: { org: string }
           {/* Статистика */}
           </div>
         </TabsLayout>
-      </AppShell>
+      </div>
     )
   } catch (error) {
     console.error('Telegram page error:', error)

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     
     // Обрабатываем только сообщения от пользователей к боту
     if (body?.message && body.message.chat?.type === 'private') {

@@ -39,12 +39,14 @@ export interface ParticipantRecord {
   last_name?: string | null;
   email: string | null;
   phone: string | null;
+  photo_url: string | null;
   created_at: string;
   last_activity_at: string | null;
   activity_score: number | null;
   risk_score: number | null;
   merged_into: string | null;
   traits_cache: Record<string, any> | null;
+  custom_attributes?: Record<string, any> | null;
   source?: string | null;
   status?: string | null;
   notes?: string | null;

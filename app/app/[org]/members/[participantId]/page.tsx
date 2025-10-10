@@ -1,42 +1,67 @@
-import { notFound } from 'next/navigation';
-import AppShell from '@/components/app-shell';
-import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
-import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';
-import ParticipantDetailTabs from '@/components/members/participant-detail-tabs';
+import { notFound, redirect } from 'next/navigation'
+import { createClientServer } from '@/lib/server/supabaseServer'
+import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
+import { getParticipantDetail } from '@/lib/server/getParticipantDetail'
+import ParticipantDetailTabs from '@/components/members/participant-detail-tabs'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
 
-export default async function ParticipantPage({ params }: { params: { org: string; participantId: string } }) {
-  const orgId = params.org;
-  const participantId = params.participantId;
+export default async function ParticipantPage({ 
+  params 
+}: { 
+  params: Promise<{ org: string; participantId: string }> 
+}) {
+  const { org: orgId, participantId } = await params
+  const supabase = await createClientServer()
 
-  const [detail, telegramGroups] = await Promise.all([
-    getParticipantDetail(orgId, participantId),
-    getOrgTelegramGroups(orgId)
-  ]);
+  // Check authentication
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (!detail) {
-    return notFound();
+  if (!user) {
+    redirect('/signin')
   }
 
-  return (
-    <AppShell
-      orgId={orgId}
-      currentPath={`/app/${orgId}/members/${participantId}`}
-      telegramGroups={telegramGroups || []}
-    >
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">
-            {detail.participant.full_name || detail.participant.username || 'Участник без имени'}
-          </h1>
-          {detail.participant.username && (
-            <p className="text-sm text-neutral-500">@{detail.participant.username}</p>
-          )}
-        </div>
-      </div>
+  // Get user role
+  const role = await getUserRoleInOrg(user.id, orgId)
+  if (role === 'guest') {
+    redirect('/orgs')
+  }
 
-      <ParticipantDetailTabs orgId={orgId} initialDetail={detail} />
-    </AppShell>
-  );
+  const isAdmin = role === 'owner' || role === 'admin'
+
+  // Check if viewing own profile
+  const detail = await getParticipantDetail(orgId, participantId)
+  
+  if (!detail) {
+    return notFound()
+  }
+
+  // Check if user can edit (admin or own profile via telegram)
+  let isOwnProfile = false
+  if (detail.participant.tg_user_id) {
+    const { data: telegramAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('user_id')
+      .eq('telegram_user_id', detail.participant.tg_user_id)
+      .eq('org_id', orgId)
+      .single()
+    
+    isOwnProfile = telegramAccount?.user_id === user.id
+  }
+
+  const canEdit = isAdmin || isOwnProfile
+
+  return (
+    <div className="p-6">
+      <ParticipantDetailTabs 
+        orgId={orgId} 
+        initialDetail={detail}
+        isAdmin={isAdmin}
+        canEdit={canEdit}
+        currentUserId={user.id}
+      />
+    </div>
+  )
 }

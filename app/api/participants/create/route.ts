@@ -7,7 +7,7 @@ import { logParticipantAudit } from '@/lib/server/participants/audit';
 const supabaseAdmin = createAdminServer();
 
 async function ensureOrgAccess(orgId: string) {
-  const supabase = createClientServer();
+  const supabase = await createClientServer();
   const { data: authResult } = await supabase.auth.getUser();
 
   if (!authResult?.user) {

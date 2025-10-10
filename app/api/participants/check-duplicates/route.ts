@@ -3,7 +3,7 @@ import { participantMatcher } from '@/lib/services/participants/matcher';
 import { createClientServer } from '@/lib/server/supabaseServer';
 
 async function ensureOrgAccess(orgId: string) {
-  const supabase = createClientServer();
+  const supabase = await createClientServer();
   const { data: authResult } = await supabase.auth.getUser();
 
   if (!authResult?.user) {

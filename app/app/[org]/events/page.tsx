@@ -1,36 +1,48 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import AppShell from '@/components/app-shell'
 import { createClientServer } from '@/lib/server/supabaseServer'
-import { requireOrgAccess } from '@/lib/orgGuard'
+import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import EventsList from '@/components/events/events-list'
 
-export default async function EventsPage({ params }: { params: { org: string } }) {
+export default async function EventsPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org: orgId } = await params
   const supabase = await createClientServer()
   
-  // Check authentication and org access
-  const { user } = await supabase.auth.getUser().then(res => res.data)
+  // Check authentication
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    redirect('/signin')
+    redirect(`/login?redirect=/app/${orgId}/events`)
   }
 
-  // Require org access (any member can view)
-  await requireOrgAccess(params.org, ['owner', 'admin', 'member', 'viewer'])
+  // Get user role
+  const role = await getUserRoleInOrg(user.id, orgId)
+  if (role === 'guest') {
+    redirect('/orgs')
+  }
 
-  // Fetch events
-    const { data: events, error } = await supabase
-      .from('events')
+  const isAdmin = role === 'owner' || role === 'admin'
+
+  // Fetch all events (admins see all, members see published only)
+  let eventsQuery = supabase
+    .from('events')
     .select(`
       *,
       event_registrations!event_registrations_event_id_fkey(id, status)
     `)
-      .eq('org_id', params.org)
+    .eq('org_id', orgId)
     .order('event_date', { ascending: true })
-    
-    if (error) {
-      console.error('Error fetching events:', error)
-    }
-    
+
+  if (!isAdmin) {
+    // Members see only published events
+    eventsQuery = eventsQuery.eq('status', 'published')
+  }
+
+  const { data: events, error } = await eventsQuery
+  
+  if (error) {
+    console.error('Error fetching events:', error)
+  }
+  
   // Calculate stats for each event
   const eventsWithStats = events?.map(event => {
     const registeredCount = event.event_registrations?.filter(
@@ -49,23 +61,13 @@ export default async function EventsPage({ params }: { params: { org: string } }
     }
   }) || []
 
-  // Get user's role in org
-  const { data: membership } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', params.org)
-    .single()
-
-  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin'
-
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
   if (isAdmin) {
     const { data } = await supabase
       .from('telegram_groups')
       .select('id, tg_chat_id, title')
-      .eq('org_id', params.org)
+      .eq('org_id', orgId)
       .eq('bot_status', 'connected')
       .order('title')
     
@@ -73,19 +75,21 @@ export default async function EventsPage({ params }: { params: { org: string } }
   }
   
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/events`} telegramGroups={[]}>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">События</h1>
+    <div className="p-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">События</h1>
         </div>
         
-      <Suspense fallback={<div className="text-center py-8">Загрузка...</div>}>
-        <EventsList 
-          events={eventsWithStats} 
-          orgId={params.org}
-          isAdmin={isAdmin}
-          telegramGroups={telegramGroups}
-        />
-      </Suspense>
-    </AppShell>
+        <Suspense fallback={<div className="text-center py-8">Загрузка...</div>}>
+          <EventsList 
+            events={eventsWithStats}
+            orgId={orgId}
+            isAdmin={isAdmin}
+            telegramGroups={telegramGroups}
+          />
+        </Suspense>
+      </div>
+    </div>
   )
 }

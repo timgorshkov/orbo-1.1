@@ -9,7 +9,7 @@ export async function requireOrgAccess(orgId: string, cookieStore?: any, allowed
   // Если cookies переданы, используем их, иначе получаем из headers
   const cookiesObj = cookieStore || cookies();
   
-  const supabase = createClientServer()
+  const supabase = await createClientServer()
   const {
     data: { user },
     error: userErr

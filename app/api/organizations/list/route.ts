@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {

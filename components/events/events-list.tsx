@@ -34,28 +34,30 @@ type Props = {
 
 export default function EventsList({ events, orgId, isAdmin, telegramGroups }: Props) {
   const router = useRouter()
+  // Default filter: 'all' for everyone
   const [statusFilter, setStatusFilter] = useState<string>('all')
+
+  // Calculate event categories
+  const now = new Date()
+  const upcomingEvents = events.filter(
+    e => e.status === 'published' && new Date(e.event_date) >= now
+  )
+  const pastEvents = events.filter(
+    e => e.status === 'completed' || (e.status === 'published' && new Date(e.event_date) < now)
+  )
+  const draftEvents = events.filter(e => e.status === 'draft')
 
   // Filter events by status
   const filteredEvents = events.filter(event => {
     if (statusFilter === 'all') return true
     if (statusFilter === 'upcoming') {
-      return event.status === 'published' && new Date(event.event_date) >= new Date()
+      return event.status === 'published' && new Date(event.event_date) >= now
     }
     if (statusFilter === 'past') {
-      return event.status === 'completed' || (event.status === 'published' && new Date(event.event_date) < new Date())
+      return event.status === 'completed' || (event.status === 'published' && new Date(event.event_date) < now)
     }
     return event.status === statusFilter
   })
-
-  // Group events by status
-  const upcomingEvents = filteredEvents.filter(
-    e => e.status === 'published' && new Date(e.event_date) >= new Date()
-  )
-  const draftEvents = filteredEvents.filter(e => e.status === 'draft')
-  const pastEvents = filteredEvents.filter(
-    e => e.status === 'completed' || (e.status === 'published' && new Date(e.event_date) < new Date())
-  )
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -157,7 +159,7 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
               ) : (
                 <>
                   <Lock className="w-4 h-4 mr-2" />
-                  <span>Для участников организации</span>
+                  <span>Для участников пространства</span>
                 </>
               )}
             </div>

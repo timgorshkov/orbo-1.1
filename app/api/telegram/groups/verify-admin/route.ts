@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {

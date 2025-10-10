@@ -1,10 +1,8 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
-import AppShell from '@/components/app-shell'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import '../../../globals.css'
 import { getOrgInfoWithClient } from '@/lib/getOrgInfo'
-import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import WelcomeBlock from '@/components/dashboard/welcome-block'
 import OnboardingChecklist from '@/components/dashboard/onboarding-checklist'
 import ActivityChart from '@/components/dashboard/activity-chart'
@@ -30,7 +28,6 @@ export default async function Dashboard({ params }: { params: { org: string } })
     
     // Получаем информацию об организации
     const orgInfo = await getOrgInfoWithClient(supabase, params.org)
-    const telegramGroups = await getOrgTelegramGroups(params.org)
 
     // Получаем данные дашборда через API
     const cookieStore = cookies()
@@ -52,17 +49,11 @@ export default async function Dashboard({ params }: { params: { org: string } })
     const dashboardData = await dashboardRes.json()
     
     return (
-      <AppShell 
-        orgId={params.org} 
-        currentPath={`/app/${params.org}/dashboard`} 
-        telegramGroups={telegramGroups || []} 
-        orgName={orgInfo?.name}
-      >
-        <div className="space-y-6">
+      <div className="p-6 space-y-6">
           {/* Onboarding Flow */}
           {dashboardData.isOnboarding && (
             <>
-              <WelcomeBlock orgName={orgInfo?.name || 'Организация'} />
+              <WelcomeBlock orgName={orgInfo?.name || 'Пространство'} />
               
               <OnboardingChecklist 
                 orgId={params.org}
@@ -101,8 +92,7 @@ export default async function Dashboard({ params }: { params: { org: string } })
               </div>
             </>
           )}
-        </div>
-      </AppShell>
+      </div>
     )
   } catch (error) {
     console.error('Dashboard error:', error)

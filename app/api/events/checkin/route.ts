@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const jwtSecret = process.env.JWT_SECRET!
   const hash = crypto.createHash('sha256').update(token + jwtSecret).digest('hex')
   
-  const supabase = createClientServer()
+  const supabase = await createClientServer()
 
   try {
     // Находим регистрацию по токену

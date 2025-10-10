@@ -26,7 +26,7 @@ function safeErrorJson(error: any): string {
 export async function POST(request: Request) {
   try {
     // Получаем текущего пользователя
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {

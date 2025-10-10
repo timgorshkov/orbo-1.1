@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { logParticipantAudit } from '@/lib/server/participants/audit';
 
 async function ensureOrgAccess(orgId: string) {
-  const supabase = createClientServer();
+  const supabase = await createClientServer();
   const { data: { user }, error } = await supabase.auth.getUser();
 
   if (error || !user) {

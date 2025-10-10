@@ -8,7 +8,7 @@ export async function GET() {
   const startTime = Date.now()
   try {
     // Проверка подключения к Supabase
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const { data, error } = await supabase.from('organizations').select('count').limit(1)
     
     if (error) {

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     )
 
     // Сначала получаем пользователя из стандартного клиента с куками
-    const regularSupabase = createClientServer()
+    const regularSupabase = await createClientServer()
     const { data: { user: regularUser }, error: regularUserError } = await regularSupabase.auth.getUser()
     
     console.log('User data from regular client:', regularUser ? `User ID: ${regularUser.id}` : 'No user')

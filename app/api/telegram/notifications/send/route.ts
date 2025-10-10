@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
     
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     
     // Получаем токен бота уведомлений для организации
     const { data: botData } = await supabase

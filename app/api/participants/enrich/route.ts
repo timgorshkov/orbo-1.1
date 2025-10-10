@@ -4,7 +4,7 @@ import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import { logParticipantAudit } from '@/lib/server/participants/audit';
 
 async function ensureOrgAccess(orgId: string) {
-  const supabase = createClientServer();
+  const supabase = await createClientServer();
   const { data: authResult, error } = await supabase.auth.getUser();
 
   if (error || !authResult?.user) {

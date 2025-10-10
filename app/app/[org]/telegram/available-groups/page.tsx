@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -173,7 +172,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
   }
   
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/available-groups`}>
+    <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">
           Доступные Telegram группы
@@ -254,6 +253,6 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           </p>
         </div>
       )}
-    </AppShell>
+    </div>
   )
 }

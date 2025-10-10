@@ -17,7 +17,7 @@ export async function GET(
 
     console.log(`Fetching groups for org: ${orgId}`);
 
-    const supabase = createClientServer();
+    const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {

@@ -29,7 +29,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     
     if (!groups || groups.length === 0) {
       return (
-        <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={[]}>
+        <div className="p-6">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold">Telegram</h1>
           </div>
@@ -45,7 +45,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
               </CardContent>
             </Card>
           </TabsLayout>
-        </AppShell>
+        </div>
       )
     }
     
@@ -128,7 +128,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
     const totalActiveMembers = Object.values(groupAnalytics).reduce((sum, info) => sum + info.member_active_count, 0)
 
     return (
-      <AppShell orgId={params.org} currentPath={`/app/${params.org}/telegram/analytics`} telegramGroups={groups}>
+      <div className="p-6">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
@@ -284,7 +284,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
           ))}
         </div>
         </TabsLayout>
-      </AppShell>
+      </div>
     )
   } catch (error) {
     console.error('Telegram analytics page error:', error)

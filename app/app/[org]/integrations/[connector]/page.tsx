@@ -54,7 +54,7 @@ export default async function IntegrationDetailsPage({ params }: { params: { org
   }
 
   return (
-    <AppShell orgId={params.org} currentPath={`/app/${params.org}/integrations`}>
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">{connector.name}</h1>
@@ -118,7 +118,7 @@ export default async function IntegrationDetailsPage({ params }: { params: { org
           logs={logs}
         />
       </div>
-    </AppShell>
+    </div>
   );
 }
 

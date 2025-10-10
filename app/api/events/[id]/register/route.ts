@@ -9,6 +9,7 @@ export async function POST(
   try {
     const eventId = params.id
     const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
     // Check authentication
     const { data: { user } } = await supabase.auth.getUser()
@@ -49,47 +50,43 @@ export async function POST(
       }
     }
 
-    // Find or create participant
-    // First, try to find via telegram identity
-    const { data: telegramIdentity } = await supabase
-      .from('telegram_identities')
-      .select('*')
+    // Find existing participant via user_telegram_accounts
+    // First, get telegram account linked to this user
+    const { data: telegramAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
       .eq('user_id', user.id)
+      .eq('org_id', event.org_id)
       .maybeSingle()
 
     let participant = null
 
-    // Try to find participant by tg_user_id if we have telegram identity
-    if (telegramIdentity?.tg_user_id) {
-      const { data: foundParticipant, error: findError } = await supabase
+    // Try to find participant by telegram_user_id
+    if (telegramAccount?.telegram_user_id) {
+      const { data: foundParticipant } = await adminSupabase
         .from('participants')
         .select('id')
         .eq('org_id', event.org_id)
-        .eq('tg_user_id', telegramIdentity.tg_user_id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
         .maybeSingle()
-
-      if (findError) {
-        console.error('Error fetching participant by tg_user_id:', findError)
-        return NextResponse.json(
-          { error: 'Error fetching participant data' },
-          { status: 500 }
-        )
-      }
 
       participant = foundParticipant
     }
 
-    // If participant doesn't exist, create one using admin client to bypass RLS
+    // If participant still not found, this is an edge case
+    // Only create if no participant exists for this user in this org
     if (!participant) {
-      const adminSupabase = createAdminServer()
+      console.log(`Creating new participant for user ${user.id} in org ${event.org_id}`)
+      
       const { data: newParticipant, error: createError } = await adminSupabase
         .from('participants')
         .insert({
           org_id: event.org_id,
-          tg_user_id: telegramIdentity?.tg_user_id || null,
-          username: telegramIdentity?.username || null,
-          full_name: telegramIdentity?.full_name || user.email || 'Unknown',
-          source: 'event'
+          tg_user_id: telegramAccount?.telegram_user_id || null,
+          full_name: user.email || 'Unknown',
+          email: user.email,
+          source: 'event',
+          participant_status: 'event_attendee'
         })
         .select('id')
         .single()
@@ -122,7 +119,6 @@ export async function POST(
       }
       
       // Reactivate cancelled registration using admin client
-      const adminSupabase = createAdminServer()
       const { data: registration, error: updateError } = await adminSupabase
         .from('event_registrations')
         .update({ 
@@ -142,7 +138,6 @@ export async function POST(
     }
 
     // Create new registration using admin client to bypass RLS
-    const adminSupabase = createAdminServer()
     const { data: registration, error: registrationError } = await adminSupabase
       .from('event_registrations')
       .insert({
@@ -180,6 +175,7 @@ export async function DELETE(
   try {
     const eventId = params.id
     const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
     // Check authentication
     const { data: { user } } = await supabase.auth.getUser()
@@ -198,30 +194,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Find participant via telegram identity
-    const { data: telegramIdentity } = await supabase
-      .from('telegram_identities')
-      .select('*')
+    // Find participant via user_telegram_accounts
+    const { data: telegramAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
       .eq('user_id', user.id)
+      .eq('org_id', event.org_id)
       .maybeSingle()
 
     let participant = null
 
-    if (telegramIdentity?.tg_user_id) {
-      const { data: foundParticipant, error: findError } = await supabase
+    if (telegramAccount?.telegram_user_id) {
+      const { data: foundParticipant } = await adminSupabase
         .from('participants')
         .select('id')
         .eq('org_id', event.org_id)
-        .eq('tg_user_id', telegramIdentity.tg_user_id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
         .maybeSingle()
-
-      if (findError) {
-        console.error('Error fetching participant:', findError)
-        return NextResponse.json(
-          { error: 'Error fetching participant data' },
-          { status: 500 }
-        )
-      }
 
       participant = foundParticipant
     }
@@ -234,7 +223,6 @@ export async function DELETE(
     }
 
     // Cancel registration using admin client
-    const adminSupabase = createAdminServer()
     const { error: cancelError } = await adminSupabase
       .from('event_registrations')
       .update({ status: 'cancelled' })

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const supabase = createClientServer()
+    const supabase = await createClientServer()
     const startTime = Date.now()
     const results = {
       processed: 0,

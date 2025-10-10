@@ -16,8 +16,6 @@ interface TelegramGroupsNavProps {
 }
 
 export default function TelegramGroupsNav({ groups, orgId, currentPath }: TelegramGroupsNavProps) {
-  if (!groups || groups.length === 0) return null;
-  
   const isSettingsActive = currentPath?.startsWith(`/app/${orgId}/telegram`)
   
   return (
@@ -51,7 +49,7 @@ export default function TelegramGroupsNav({ groups, orgId, currentPath }: Telegr
           </svg>
         </Link>
       </div>
-      {groups.map(group => (
+      {groups && groups.length > 0 && groups.map(group => (
         <Link
           key={`group-${group.id}`}
           href={`/app/${orgId}/telegram/groups/${group.id}`}
