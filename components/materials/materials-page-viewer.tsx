@@ -129,18 +129,6 @@ export function MaterialsPageViewer({
   return (
     <div className="flex h-full">
       <aside className="w-72 shrink-0 border-r border-neutral-200 bg-white">
-        <div className="px-4 py-4 border-b border-neutral-200 flex items-center gap-3">
-          {orgLogoUrl ? (
-            <img src={orgLogoUrl} alt={orgName ?? 'Организация'} className="h-12 w-12 rounded-lg object-cover" />
-          ) : (
-            <div className="h-12 w-12 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-600 font-semibold text-lg">
-              {(orgName ?? 'OR')[0]?.toUpperCase()}
-            </div>
-          )}
-          <div className="flex-1">
-            <div className="text-base font-semibold text-neutral-900">{orgName ?? 'Организация'}</div>
-          </div>
-        </div>
         <div className="p-3">
           <MaterialsTree
             orgId={orgId}
@@ -148,25 +136,12 @@ export function MaterialsPageViewer({
             selectedId={selectedId}
             onSelect={handleSelect}
             onTreeChange={setTree}
+            onSearchOpen={() => setIsSearchOpen(true)}
           />
         </div>
       </aside>
       <main className="flex-1 overflow-hidden bg-neutral-50">
-        <div className="h-full p-6 space-y-4">
-          <div className="flex items-center justify-end">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-              <Input
-                value={searchValue}
-                onChange={event => setSearchValue(event.target.value)}
-                onFocus={() => setIsSearchOpen(true)}
-                placeholder="Поиск материалов"
-                className="w-64 rounded-full pl-9"
-              />
-              {isSearching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-neutral-400" />}
-            </div>
-          </div>
-
+        <div className="h-full p-6">
           {selectedId && page ? (
             readOnly ? (
               <article className="mx-auto max-w-3xl rounded-xl border border-neutral-200 bg-white p-10 shadow-sm">

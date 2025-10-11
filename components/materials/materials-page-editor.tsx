@@ -32,8 +32,9 @@ turndown.addRule('embeds', {
   },
   replacement: (_content, node: any) => {
     const url = node.dataset.url || '';
+    const title = node.dataset.title || '';
     const type = node.dataset.embed || 'embed';
-    return `\n\n[${type}:${url}]\n\n`;
+    return `\n\n[${type}:${url}:${title}]\n\n`;
   }
 });
 
@@ -43,14 +44,27 @@ function markdownToHtml(markdown: string): string {
   let processed = markdown ?? '';
   const embeds: string[] = [];
   
-  // Заменяем YouTube embed на placeholder
-  processed = processed.replace(/\[youtube:(https?:\/\/[^\]]+)\]/g, (_, url) => {
-    console.log('Found YouTube embed:', url);
+  // Заменяем YouTube embed на placeholder (новый формат с заголовком)
+  processed = processed.replace(/\[youtube:(https?:\/\/[^:]+):([^\]]+)\]/g, (_, url, title) => {
+    console.log('Found YouTube embed:', url, 'Title:', title);
     const videoId = extractYoutubeId(url);
-    const title = getVideoTitle(url, 'youtube');
-    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50" data-embed="youtube" data-url="${url}" contenteditable="false">
-      <img src="${videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : ''}" alt="YouTube видео" class="block h-48 w-full object-cover" />
-      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700">
+    
+    let iframeHtml = '';
+    if (videoId) {
+      iframeHtml = `<div class="relative w-full" style="padding-bottom: 56.25%;">
+        <iframe 
+          src="https://www.youtube.com/embed/${videoId}" 
+          frameborder="0" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          allowfullscreen
+          class="absolute top-0 left-0 w-full h-full"
+        ></iframe>
+      </div>`;
+    }
+    
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="youtube" data-url="${url}" data-title="${title}" contenteditable="false">
+      ${iframeHtml}
+      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50">
         <span class="font-medium">${title}</span>
         <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
       </div>
@@ -59,30 +73,28 @@ function markdownToHtml(markdown: string): string {
     return `<!--EMBED_${embeds.length - 1}-->`;
   });
   
-  // Заменяем VK embed на placeholder
-  processed = processed.replace(/\[vk:(https?:\/\/[^\]]+)\]/g, (_, url) => {
-    console.log('Found VK embed:', url);
+  // Заменяем VK embed на placeholder (новый формат с заголовком)
+  processed = processed.replace(/\[vk:(https?:\/\/[^:]+):([^\]]+)\]/g, (_, url, title) => {
+    console.log('Found VK embed:', url, 'Title:', title);
     const videoId = extractVkVideoId(url);
     console.log('VK video ID:', videoId);
-    const title = getVideoTitle(url, 'vk');
     
-    // Пытаемся получить обложку через VK API
-    let thumbnailHtml = '';
+    let iframeHtml = '';
     if (videoId) {
-      thumbnailHtml = `<img src="https://vk.com/video_ext.php?oid=${videoId.oid}&id=${videoId.id}&thumb=1" 
-        alt="VK видео" 
-        class="block h-48 w-full object-cover" 
-        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />`;
+      iframeHtml = `<div class="relative w-full" style="padding-bottom: 56.25%;">
+        <iframe 
+          src="https://vk.com/video_ext.php?oid=${videoId.oid}&id=${videoId.id}&hd=2" 
+          frameborder="0" 
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock" 
+          allowfullscreen
+          class="absolute top-0 left-0 w-full h-full"
+        ></iframe>
+      </div>`;
     }
     
-    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50" data-embed="vk" data-url="${url}" contenteditable="false">
-      ${thumbnailHtml}
-      <div class="h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center" style="${videoId ? 'display: none;' : ''}">
-        <svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
-        </svg>
-      </div>
-      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700">
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="vk" data-url="${url}" data-title="${title}" contenteditable="false">
+      ${iframeHtml}
+      <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50">
         <span class="font-medium">${title}</span>
         <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
       </div>
@@ -408,72 +420,67 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
         return;
       }
 
+      const title = prompt('Введите заголовок видео');
+      if (!title) {
+        console.log('No title, aborting');
+        return;
+      }
+
       const container = document.createElement('div');
-      container.className = 'my-4 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50';
+      container.className = 'my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm';
       container.setAttribute('data-embed', type);
       container.setAttribute('data-url', url);
+      container.setAttribute('data-title', title);
       container.contentEditable = 'false';
 
       if (type === 'youtube') {
         const videoId = extractYoutubeId(url);
         console.log('YouTube video ID:', videoId);
-        const title = getVideoTitle(url, 'youtube');
         
-        const thumb = document.createElement('img');
-        thumb.src = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : '';
-        thumb.alt = 'YouTube видео';
-        thumb.className = 'block h-48 w-full object-cover';
-        container.appendChild(thumb);
+        if (videoId) {
+          // Встраиваем YouTube iframe
+          const iframeWrapper = document.createElement('div');
+          iframeWrapper.className = 'relative w-full';
+          iframeWrapper.style.paddingBottom = '56.25%'; // 16:9 aspect ratio
+          iframeWrapper.innerHTML = `<iframe 
+            src="https://www.youtube.com/embed/${videoId}" 
+            frameborder="0" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+            allowfullscreen
+            class="absolute top-0 left-0 w-full h-full"
+          ></iframe>`;
+          container.appendChild(iframeWrapper);
+        }
         
         const overlay = document.createElement('div');
-        overlay.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700';
+        overlay.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50';
         overlay.innerHTML = `<span class="font-medium">${title}</span><a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>`;
         container.appendChild(overlay);
       } else {
         console.log('Creating VK embed...');
         const vkVideoId = extractVkVideoId(url);
         console.log('VK video ID:', vkVideoId);
-        const title = getVideoTitle(url, 'vk');
         
-        // Пытаемся добавить обложку
         if (vkVideoId) {
-          const thumb = document.createElement('img');
-          thumb.src = `https://vk.com/video_ext.php?oid=${vkVideoId.oid}&id=${vkVideoId.id}&thumb=1`;
-          thumb.alt = 'VK видео';
-          thumb.className = 'block h-48 w-full object-cover';
-          
-          // Fallback на иконку, если обложка не загрузится
-          const iconDiv = document.createElement('div');
-          iconDiv.className = 'h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center';
-          iconDiv.style.display = 'none';
-          iconDiv.innerHTML = `<svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
-          </svg>`;
-          
-          thumb.onerror = () => {
-            thumb.style.display = 'none';
-            iconDiv.style.display = 'flex';
-          };
-          
-          container.appendChild(thumb);
-          container.appendChild(iconDiv);
-          console.log('VK thumbnail and fallback icon added');
-        } else {
-          // Если не удалось извлечь ID, показываем только иконку
-          const iconDiv = document.createElement('div');
-          iconDiv.className = 'h-48 w-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center';
-          iconDiv.innerHTML = `<svg class="w-16 h-16 text-white" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.15 14.44c-.28.36-.78.36-1.24.36h-1.47c-.66 0-.86-.53-2.04-1.71-1.03-1.03-1.49-1.17-1.75-1.17-.36 0-.46.1-.46.58v1.56c0 .42-.13.67-1.24.67-1.85 0-3.91-1.12-5.36-3.21-2.18-3.04-2.78-5.33-2.78-5.8 0-.26.1-.5.58-.5h1.47c.43 0 .59.2.76.66.85 2.37 2.27 4.45 2.85 4.45.22 0 .32-.1.32-.65v-2.52c-.07-1.11-.65-1.21-.65-1.6 0-.21.17-.42.44-.42h2.31c.36 0 .49.2.49.63v3.41c0 .36.16.49.26.49.22 0 .4-.13.81-.54 1.24-1.39 2.13-3.54 2.13-3.54.12-.26.32-.5.75-.5h1.47c.53 0 .65.27.53.63-.21.98-2.25 3.93-2.25 3.93-.18.29-.25.42 0 .75.18.24.78.76 1.18 1.22.73.82 1.29 1.51 1.44 1.99.15.48-.11.72-.59.72z"/>
-          </svg>`;
-          container.appendChild(iconDiv);
-          console.log('VK icon added (no video ID)');
+          // Встраиваем VK iframe
+          const iframeWrapper = document.createElement('div');
+          iframeWrapper.className = 'relative w-full';
+          iframeWrapper.style.paddingBottom = '56.25%'; // 16:9 aspect ratio
+          iframeWrapper.innerHTML = `<iframe 
+            src="https://vk.com/video_ext.php?oid=${vkVideoId.oid}&id=${vkVideoId.id}&hd=2" 
+            frameborder="0" 
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock" 
+            allowfullscreen
+            class="absolute top-0 left-0 w-full h-full"
+          ></iframe>`;
+          container.appendChild(iframeWrapper);
         }
         
-        const body = document.createElement('div');
-        body.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700';
-        body.innerHTML = `<span class="font-medium">${title}</span><a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>`;
-        container.appendChild(body);
-        console.log('VK body added');
+        const overlay = document.createElement('div');
+        overlay.className = 'flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50';
+        overlay.innerHTML = `<span class="font-medium">${title}</span><a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>`;
+        container.appendChild(overlay);
+        console.log('VK embed added');
       }
 
       console.log('Container HTML:', container.outerHTML.substring(0, 300));
@@ -515,7 +522,7 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
   }, [focusEditor, synchronizeMarkdown]);
 
   return (
-    <div className="relative h-full overflow-hidden bg-white">
+    <div className="relative h-full flex flex-col bg-white">
       {toolbar.visible && (
         <FloatingToolbar
           top={toolbar.top}
@@ -524,7 +531,7 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           onHide={() => setToolbar(prev => ({ ...prev, visible: false }))}
         />
       )}
-      <div className="border-b border-neutral-200 px-6 py-6 flex items-center justify-between sticky top-0 bg-white z-10">
+      <div className="border-b border-neutral-200 px-6 py-6 flex items-center justify-between sticky top-0 bg-white z-10 shrink-0">
         <input
           type="text"
           value={title}
@@ -539,7 +546,7 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           </Button>
         </div>
       </div>
-      <div className="flex items-center gap-2 border-b border-neutral-100 bg-neutral-50 px-6 py-2 text-xs text-neutral-500">
+      <div className="flex items-center gap-2 border-b border-neutral-100 bg-neutral-50 px-6 py-2 text-xs text-neutral-500 shrink-0">
         <button
           className="flex items-center gap-1 rounded border border-dashed border-neutral-300 px-2 py-1 hover:border-neutral-500"
           onClick={() => insertEmbed('youtube')}
@@ -555,7 +562,7 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           Видео VK
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <style dangerouslySetInnerHTML={{__html: `
           .material-editor h1 {
             font-size: 2em;

@@ -52,161 +52,66 @@ export async function POST(request: Request) {
     }
 
     const chatIdStr = String(group.tg_chat_id);
+    
+    console.log(`Removing group ${groupId} (chat_id: ${chatIdStr}) from org ${orgId}`)
 
-    let mappingStatus: string | null | undefined = null;
-    let mappingExists = false;
+    // Проверяем, существует ли mapping в org_telegram_groups
+    const { data: existingMapping, error: mappingError } = await supabaseService
+      .from('org_telegram_groups')
+      .select('org_id, tg_chat_id')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', chatIdStr)
+      .maybeSingle();
 
-    let statusColumnAvailable = true;
-    let mappingHandledViaDelete = false;
-
-    try {
-      const { data: mappingData, error: mappingError } = await supabaseService
-        .from('org_telegram_groups')
-        .select('status')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', group.tg_chat_id)
-        .maybeSingle();
-
-      if (mappingError) {
-        if (mappingError.code === '42703') {
-          statusColumnAvailable = false;
-          const { data: fallbackMapping, error: fallbackError } = await supabaseService
-            .from('org_telegram_groups')
-            .select('org_id, tg_chat_id')
-            .eq('org_id', orgId)
-            .eq('tg_chat_id', group.tg_chat_id)
-            .maybeSingle();
-
-          if (!fallbackError && fallbackMapping) {
-            mappingExists = true;
-            mappingStatus = 'active';
-          }
-        } else if (mappingError.code === '42P01') {
-          console.warn('org_telegram_groups table not found when removing group; treating as legacy link');
-          mappingExists = group.org_id === orgId;
-          mappingStatus = mappingExists ? 'active' : null;
-        } else {
-          console.error('Error fetching group mapping:', mappingError);
-          return NextResponse.json({ error: 'Failed to fetch group mapping' }, { status: 500 });
-        }
-      } else if (mappingData) {
-        mappingExists = true;
-        mappingStatus = mappingData.status ?? null;
-      }
-    } catch (mappingException: any) {
-      console.error('Unexpected error fetching group mapping:', mappingException);
-      return NextResponse.json({ error: 'Failed to fetch group mapping' }, { status: 500 });
+    if (mappingError) {
+      console.error('Error checking existing mapping:', mappingError);
+      return NextResponse.json({ error: 'Failed to check group mapping' }, { status: 500 });
     }
 
-    if (!mappingExists) {
-      // Если нет записи в mapping, проверим legacy-связь через org_id
-      if (group.org_id === orgId) {
-        mappingExists = true;
-        mappingStatus = 'active';
-      } else {
-        return NextResponse.json({ error: 'Group is not linked to this organization' }, { status: 400 });
-      }
+    if (!existingMapping) {
+      console.log('No mapping found in org_telegram_groups for this org and group')
+      return NextResponse.json({ error: 'Group is not linked to this organization' }, { status: 400 });
     }
 
-    if (mappingStatus === 'archived') {
-      return NextResponse.json({ error: 'Group is already archived for this organization' }, { status: 400 });
+    console.log('Found existing mapping, proceeding with deletion')
+
+    // Удаляем запись из org_telegram_groups
+    const { error: deleteError } = await supabaseService
+      .from('org_telegram_groups')
+      .delete()
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', chatIdStr);
+
+    if (deleteError) {
+      console.error('Error deleting org_telegram_groups mapping:', deleteError);
+      return NextResponse.json({ error: 'Failed to remove group from organization' }, { status: 500 });
     }
 
-    const now = new Date().toISOString();
+    console.log('Successfully deleted mapping from org_telegram_groups')
 
-    try {
-      const { error: updateError } = await supabaseService
-        .from('org_telegram_groups')
-        .update({ status: 'archived', archived_at: now, archived_reason: 'manual_remove' })
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', group.tg_chat_id);
+    // Проверяем, есть ли другие организации, использующие эту группу
+    const { data: otherMappings, error: otherMappingsError } = await supabaseService
+      .from('org_telegram_groups')
+      .select('org_id')
+      .eq('tg_chat_id', chatIdStr);
 
-      if (updateError) {
-        throw updateError;
-      }
-    } catch (updateError: any) {
-      if (updateError?.code === '42P01') {
-        console.warn('org_telegram_groups table missing; falling back to legacy deletion');
-        await supabaseService
+    if (otherMappingsError) {
+      console.error('Error checking other mappings:', otherMappingsError);
+    } else {
+      console.log(`Found ${otherMappings?.length || 0} other organizations using this group`)
+      
+      // Если группа больше не используется другими организациями, обнуляем org_id (legacy)
+      if (!otherMappings || otherMappings.length === 0) {
+        console.log('No other orgs use this group, clearing org_id in telegram_groups')
+        const { error: legacyUpdateError } = await supabaseService
           .from('telegram_groups')
-          .update({
-            org_id: null,
-            is_archived: true,
-            archived_at: now,
-            archived_reason: 'manual_remove'
-          })
+          .update({ org_id: null })
           .eq('id', groupId);
-
-        return NextResponse.json({ success: true, legacy: true });
-      }
-
-      console.warn('Failed to update group mapping to archived, attempting delete fallback:', updateError);
-
-      if (updateError?.code === '42703') {
-        console.warn('org_telegram_groups.status column missing; deleting mapping instead');
-        statusColumnAvailable = false;
-      }
-
-      try {
-        await supabaseService
-          .from('org_telegram_groups')
-          .delete()
-          .eq('org_id', orgId)
-          .eq('tg_chat_id', group.tg_chat_id);
-        mappingHandledViaDelete = true;
-      } catch (deleteFallbackError: any) {
-        if (deleteFallbackError?.code === '42P01') {
-          console.warn('org_telegram_groups table missing during delete fallback; treating as legacy removal');
-          mappingHandledViaDelete = true;
-        } else if (deleteFallbackError?.code === '42703') {
-          console.warn('org_telegram_groups.status column missing during delete fallback');
-          statusColumnAvailable = false;
-          mappingHandledViaDelete = true;
+        
+        if (legacyUpdateError) {
+          console.error('Error clearing org_id in telegram_groups:', legacyUpdateError);
         } else {
-          console.error('Delete fallback for group mapping failed:', deleteFallbackError);
-          return NextResponse.json({ error: 'Failed to archive group mapping' }, { status: 500 });
-        }
-      }
-    }
-
-    let count: number | null = null;
-    if (!mappingHandledViaDelete && statusColumnAvailable) {
-      const { count: activeCount, error: activeCountError } = await supabaseService
-        .from('org_telegram_groups')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active')
-        .eq('tg_chat_id', group.tg_chat_id);
-
-      if (activeCountError) {
-        console.error('Error counting active mappings for chat', chatIdStr, activeCountError);
-        count = null;
-      } else {
-        count = activeCount ?? 0;
-      }
-    }
-
-    if (mappingHandledViaDelete || !statusColumnAvailable || !count || count === 0) {
-      await supabaseService
-        .from('telegram_groups')
-        .update({
-          is_archived: true,
-          archived_at: now,
-          archived_reason: 'manual_remove'
-        })
-        .eq('id', groupId);
-
-      try {
-        await supabaseService
-          .from('org_telegram_groups')
-          .delete()
-          .eq('tg_chat_id', group.tg_chat_id);
-      } catch (deleteError: any) {
-        if (deleteError?.code === '42P01') {
-          console.warn('org_telegram_groups table not found during cleanup delete');
-        } else if (deleteError?.code === '42703') {
-          console.warn('org_telegram_groups.status column missing during cleanup delete');
-        } else {
-          console.error('Error cleaning up org_telegram_groups after removal:', deleteError);
+          console.log('Successfully cleared org_id in telegram_groups')
         }
       }
     }

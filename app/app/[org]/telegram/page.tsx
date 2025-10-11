@@ -4,11 +4,10 @@ import { Button } from '@/components/ui/button'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { AddGroupManuallyForm } from './form-components'
-import { addGroupManually, deleteGroup } from './actions'
+import { addGroupManually } from './actions'
 import AddVerifiedGroup from './add-verified-group'
+import { DeleteGroupButton } from './delete-group-button'
 import { notFound } from 'next/navigation'
-import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import TabsLayout from './tabs-layout'
 
@@ -139,24 +138,11 @@ export default async function TelegramPage({ params }: { params: { org: string }
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <form action={async (formData) => {
-                              const id = group.id;
-                              const orgId = params.org;
-                              
-                              // Создаем FormData для вызова серверного актиона
-                              formData.append('org', orgId);
-                              formData.append('groupId', id.toString());
-                              
-                              // Вызов серверного актиона
-                              await deleteGroup(formData);
-                            }}>
-                              <button 
-                                type="submit" 
-                                className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
-                              >
-                                Удалить
-                              </button>
-                            </form>
+                            <DeleteGroupButton
+                              groupId={group.id}
+                              groupTitle={group.title}
+                              orgId={params.org}
+                            />
                             {group.bot_status === 'pending' && (
                               <Link href={`/app/${params.org}/telegram/groups/${group.id}`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-black/10 hover:bg-black/5">
                                 Управление группой

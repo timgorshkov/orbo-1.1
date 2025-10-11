@@ -18,7 +18,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { MaterialTreeNode } from '@/lib/server/materials/service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
+import { ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Plus, Search } from 'lucide-react';
 
 const MAX_DEPTH = 3;
 
@@ -37,9 +37,10 @@ type MaterialsTreeProps = {
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
   onTreeChange?: (tree: MaterialTreeNode[]) => void;
+  onSearchOpen?: () => void;
 };
 
-export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange }: MaterialsTreeProps) {
+export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange, onSearchOpen }: MaterialsTreeProps) {
   const [tree, setTree] = useState<MaterialTreeNode[]>(initialTree);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialTree.map(node => node.id)));
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -294,15 +295,26 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
       <div className="overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold">Материалы</h2>
-          <Button
-            variant="outline"
-            className="h-7 w-7 p-0"
-            onClick={() => handleCreate(null)}
-            disabled={pendingId === 'root'}
-            aria-label="Добавить корневую страницу"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              className="h-7 w-7 !p-0"
+              onClick={() => onSearchOpen?.()}
+              aria-label="Поиск материалов"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              className="h-7 px-2 gap-1"
+              onClick={() => handleCreate(null)}
+              disabled={pendingId === 'root'}
+              aria-label="Добавить корневую страницу"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="text-xs">Добавить</span>
+            </Button>
+          </div>
         </div>
         <TreeList
           tree={tree}

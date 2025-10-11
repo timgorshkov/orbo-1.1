@@ -1,14 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 
 export function RemoveGroupButton({ groupId, orgId, onRemoved }: { groupId: number; orgId: string; onRemoved?: () => void }) {
+  const router = useRouter()
   const [removing, setRemoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const removeGroup = async () => {
     if (removing) return
+    
+    if (!confirm('Вы уверены, что хотите удалить эту группу из организации?')) {
+      return
+    }
+    
     setRemoving(true)
     setError(null)
     try {
@@ -25,13 +32,22 @@ export function RemoveGroupButton({ groupId, orgId, onRemoved }: { groupId: numb
         throw new Error(data.error || 'Не удалось удалить группу')
       }
 
+      console.log(`Group ${groupId} removed successfully, refreshing...`)
+      
       if (onRemoved) {
         onRemoved()
       }
+      
+      // Принудительно обновляем страницу для перезагрузки групп
+      router.refresh()
+      
+      // Дополнительно перенаправляем на страницу телеграм настроек с timestamp для гарантии обновления
+      setTimeout(() => {
+        window.location.href = `/app/${orgId}/telegram?t=${Date.now()}`
+      }, 500)
     } catch (e: any) {
       console.error('Error removing group:', e)
       setError(e.message || 'Не удалось удалить группу')
-    } finally {
       setRemoving(false)
     }
   }

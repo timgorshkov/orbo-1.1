@@ -2,6 +2,7 @@
 
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 
 interface TelegramUpdate {
   message?: {
@@ -80,62 +81,71 @@ export async function deleteGroup(formData: FormData) {
   
   if (!groupId || isNaN(groupId)) {
     console.error('Invalid group ID')
-    return
+    return { error: 'Invalid group ID' }
   }
   
   try {
     const { supabase } = await requireOrgAccess(org)
+    const adminSupabase = createAdminServer()
     
-    // Получаем группу и её tg_chat_id
-    const { data: existingGroup } = await supabase
+    console.log(`Deleting group ${groupId} from organization ${org}`)
+    
+    // Получаем группу и её tg_chat_id используя admin client
+    const { data: existingGroup, error: fetchError } = await adminSupabase
       .from('telegram_groups')
       .select('id, tg_chat_id, org_id')
       .eq('id', groupId)
       .single()
     
-    if (!existingGroup) {
-      console.error('Group not found')
-      return
+    if (fetchError || !existingGroup) {
+      console.error('Group not found:', fetchError)
+      return { error: 'Group not found' }
     }
     
-    // Удаляем связь из org_telegram_groups
-    const { error: deleteError } = await supabase
+    const tgChatIdStr = String(existingGroup.tg_chat_id)
+    console.log(`Deleting mapping for org ${org}, tg_chat_id ${tgChatIdStr}`)
+    
+    // Удаляем связь из org_telegram_groups используя admin client
+    const { error: deleteError } = await adminSupabase
       .from('org_telegram_groups')
       .delete()
       .eq('org_id', org)
-      .eq('tg_chat_id', existingGroup.tg_chat_id)
+      .eq('tg_chat_id', tgChatIdStr)
     
     if (deleteError) {
       console.error('Error deleting org-group link:', deleteError)
-      throw deleteError
+      return { error: 'Failed to delete group mapping: ' + deleteError.message }
     }
     
+    console.log(`Successfully deleted mapping for group ${groupId} from organization ${org}`)
+    
     // Проверяем, используется ли эта группа другими организациями
-    const { data: otherLinks, error: checkError } = await supabase
+    const { data: otherLinks, error: checkError } = await adminSupabase
       .from('org_telegram_groups')
       .select('org_id')
-      .eq('tg_chat_id', existingGroup.tg_chat_id)
+      .eq('tg_chat_id', tgChatIdStr)
       .limit(1)
     
     if (checkError) {
       console.error('Error checking other org links:', checkError)
     }
     
-    // Если группа была связана только с этой организацией, убираем org_id
+    // Если группа была связана только с этой организацией, убираем org_id (legacy)
     if (!otherLinks || otherLinks.length === 0) {
       if (existingGroup.org_id === org) {
-        await supabase
+        await adminSupabase
           .from('telegram_groups')
           .update({ org_id: null })
           .eq('id', groupId)
+        console.log(`Cleared org_id for group ${groupId}`)
       }
     }
     
-    console.log(`Removed group ${groupId} from organization ${org}`)
-    return
-  } catch (error) {
+    console.log(`Group ${groupId} removed from organization ${org}`)
+    return { success: true }
+  } catch (error: any) {
     console.error('Error deleting group:', error)
-    return
+    return { error: error.message || 'Failed to delete group' }
   }
 }
 

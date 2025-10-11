@@ -54,19 +54,67 @@ export async function POST(
       )
     }
 
-    // Get telegram groups using admin client
-    const { data: groups, error: groupsError } = await adminSupabase
-      .from('telegram_groups')
-      .select('*')
-      .in('id', groupIds)
+    // Get telegram groups using admin client and org_telegram_groups
+    // First, get tg_chat_ids from org_telegram_groups for this org
+    const { data: orgGroupLinks, error: linksError } = await adminSupabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
       .eq('org_id', event.org_id)
 
-    if (groupsError || !groups || groups.length === 0) {
+    if (linksError) {
+      console.error('Error fetching org group links:', linksError)
       return NextResponse.json(
-        { error: 'No valid groups found' },
+        { error: 'Failed to fetch organization groups' },
+        { status: 500 }
+      )
+    }
+
+    const orgChatIds = (orgGroupLinks || []).map(link => String(link.tg_chat_id))
+    
+    console.log('Organization chat IDs:', orgChatIds)
+    console.log('Requested group IDs:', groupIds)
+    
+    if (orgChatIds.length === 0) {
+      return NextResponse.json(
+        { error: 'No groups found for this organization' },
         { status: 404 }
       )
     }
+
+    // Get full group info for requested groups that belong to this org
+    // Convert tg_chat_id to string for comparison
+    const { data: allGroups, error: allGroupsError } = await adminSupabase
+      .from('telegram_groups')
+      .select('*')
+      .in('id', groupIds)
+    
+    if (allGroupsError) {
+      console.error('Error fetching all groups:', allGroupsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch groups' },
+        { status: 500 }
+      )
+    }
+    
+    // Filter groups that belong to this org
+    const groups = (allGroups || []).filter(group => 
+      orgChatIds.includes(String(group.tg_chat_id))
+    )
+    
+    console.log(`Filtered ${groups.length} groups from ${allGroups?.length || 0} total`)
+
+    if (!groups || groups.length === 0) {
+      console.error('No valid groups found after filtering')
+      console.log('Requested groupIds:', groupIds)
+      console.log('Org chat IDs:', orgChatIds)
+      console.log('All groups tg_chat_ids:', (allGroups || []).map(g => String(g.tg_chat_id)))
+      return NextResponse.json(
+        { error: 'No valid groups found for this organization' },
+        { status: 404 }
+      )
+    }
+    
+    console.log(`Found ${groups.length} valid groups for event notification:`, groups.map(g => ({ id: g.id, title: g.title })))
 
     // Format date and time
     const eventDate = new Date(event.event_date)

@@ -111,14 +111,32 @@ export default async function EventDetailPage({
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
   if (isAdmin) {
-    const { data } = await supabase
-      .from('telegram_groups')
-      .select('id, tg_chat_id, title')
+    // Загружаем группы через org_telegram_groups (new many-to-many schema)
+    const { data: orgGroupsData } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups!inner (
+          id,
+          tg_chat_id,
+          title,
+          bot_status
+        )
+      `)
       .eq('org_id', params.org)
-      .eq('bot_status', 'connected')
-      .order('title')
     
-    telegramGroups = data || []
+    if (orgGroupsData) {
+      // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
+      telegramGroups = (orgGroupsData as any[])
+        .map((item: any) => item.telegram_groups)
+        .filter((group: any) => group !== null && group.bot_status === 'connected')
+        .sort((a: any, b: any) => {
+          const titleA = a.title || ''
+          const titleB = b.title || ''
+          return titleA.localeCompare(titleB)
+        })
+    }
+    
+    console.log(`Loaded ${telegramGroups.length} connected telegram groups for event sharing`)
   }
 
   const isEditMode = searchParams.edit === 'true'
