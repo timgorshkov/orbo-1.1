@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ interface FieldState {
   full_name: string
   email: string
   phone: string
+  bio: string
   notes: string
   custom_attributes: Record<string, any>
 }
@@ -29,7 +30,8 @@ export default function ParticipantProfileCard({
   orgId, 
   detail, 
   onDetailUpdate,
-  canEdit
+  canEdit,
+  isAdmin
 }: ParticipantProfileCardProps) {
   const participant = detail.participant
   const [editing, setEditing] = useState(false)
@@ -38,10 +40,16 @@ export default function ParticipantProfileCard({
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState(participant.photo_url)
   
+  // ✅ Синхронизируем currentPhotoUrl с participant.photo_url при изменении
+  useEffect(() => {
+    setCurrentPhotoUrl(participant.photo_url)
+  }, [participant.photo_url])
+  
   const [fields, setFields] = useState<FieldState>({
     full_name: participant.full_name || '',
     email: participant.email || '',
     phone: participant.phone || '',
+    bio: participant.bio || '',
     notes: participant.notes || '',
     custom_attributes: participant.custom_attributes || {}
   })
@@ -121,6 +129,7 @@ export default function ParticipantProfileCard({
           full_name: fields.full_name,
           email: fields.email,
           phone: fields.phone,
+          bio: fields.bio,
           notes: fields.notes,
           custom_attributes: fields.custom_attributes
         })
@@ -149,6 +158,7 @@ export default function ParticipantProfileCard({
       full_name: participant.full_name || '',
       email: participant.email || '',
       phone: participant.phone || '',
+      bio: participant.bio || '',
       notes: participant.notes || '',
       custom_attributes: participant.custom_attributes || {}
     })
@@ -256,6 +266,28 @@ export default function ParticipantProfileCard({
             </div>
           )}
 
+          {/* Bio (краткое описание) */}
+          {editing ? (
+            <div>
+              <label className="text-sm font-medium text-gray-700">Краткое описание</label>
+              <Input
+                value={fields.bio}
+                onChange={e => handleChange('bio', e.target.value)}
+                disabled={pending}
+                className="mt-1"
+                placeholder="Должность, интересы, специализация (до 60 символов)"
+                maxLength={60}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                {fields.bio.length}/60 символов
+              </p>
+            </div>
+          ) : participant.bio ? (
+            <div>
+              <p className="text-lg text-gray-600">{participant.bio}</p>
+            </div>
+          ) : null}
+
           {/* Contact Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Telegram */}
@@ -348,7 +380,27 @@ export default function ParticipantProfileCard({
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Дополнительная информация</h3>
             
-            {Object.keys(fields.custom_attributes).length === 0 && !editing ? (
+            {/* Regular Traits from database (excluding merged) */}
+            {detail.traits && detail.traits.filter(t => t.source !== 'merge').length > 0 && (
+              <div className="space-y-2 mb-4">
+                {detail.traits.filter(t => t.source !== 'merge').map((trait) => (
+                  <div 
+                    key={trait.id} 
+                    className="flex items-start gap-3 p-3 rounded-lg bg-gray-50"
+                  >
+                    <div className="flex-1">
+                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        {trait.trait_key}
+                      </div>
+                      <div className="text-sm text-gray-900 mt-1">{trait.trait_value}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Custom attributes from JSON field */}
+            {Object.keys(fields.custom_attributes).length === 0 && (!detail.traits || detail.traits.filter(t => t.source !== 'merge').length === 0) && !editing ? (
               <p className="text-sm text-gray-500 italic">Нет дополнительных характеристик</p>
             ) : (
               <div className="space-y-2">
@@ -439,8 +491,8 @@ export default function ParticipantProfileCard({
             </div>
           )}
 
-          {/* Groups */}
-          {detail.groups.length > 0 && (
+          {/* Groups - только для админа или самого участника */}
+          {(isAdmin || canEdit) && detail.groups.length > 0 && (
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Telegram группы</h3>
               <div className="space-y-2">
@@ -464,6 +516,36 @@ export default function ParticipantProfileCard({
                     >
                       {group.is_active ? 'Активен' : 'Неактивен'}
                     </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Merged Traits - только для администраторов */}
+          {isAdmin && detail.traits && detail.traits.filter(t => t.source === 'merge').length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">История объединений</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Значения полей из объединенных дубликатов профилей
+              </p>
+              <div className="space-y-2">
+                {detail.traits.filter(t => t.source === 'merge').map((trait) => (
+                  <div 
+                    key={trait.id} 
+                    className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="flex-1">
+                      <div className="text-xs text-gray-500 uppercase tracking-wide">
+                        {trait.trait_key}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">{trait.trait_value}</div>
+                      {trait.metadata && trait.metadata.conflict_with && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Конфликтовало с: {trait.metadata.conflict_with}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

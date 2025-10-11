@@ -341,11 +341,49 @@ export async function GET(request: Request) {
 
         for (const right of adminRights) {
           const chatKey = String(right.tg_chat_id);
-          const group = groupByChatId.get(chatKey);
+          let group = groupByChatId.get(chatKey);
 
+          // Если группа не найдена в telegram_groups, но пользователь админ,
+          // создаём базовую запись (группа могла быть удалена из организации)
           if (!group) {
-            console.log(`Group data missing for admin right ${right.id}`);
-            continue;
+            console.log(`Group data missing for admin right ${right.id}, creating placeholder`);
+            
+            // Пытаемся создать запись в telegram_groups
+            try {
+              const { data: newGroup, error: createError } = await supabaseService
+                .from('telegram_groups')
+                .insert({
+                  tg_chat_id: right.tg_chat_id,
+                  title: `Group ${right.tg_chat_id}`,
+                  bot_status: 'connected',
+                  org_id: null // Не привязываем к организации
+                })
+                .select()
+                .single();
+              
+              if (createError) {
+                // Возможно, группа уже существует, пытаемся получить
+                const { data: existingGroupData } = await supabaseService
+                  .from('telegram_groups')
+                  .select('*')
+                  .eq('tg_chat_id', right.tg_chat_id)
+                  .single();
+                
+                if (existingGroupData) {
+                  group = existingGroupData;
+                  groupByChatId.set(chatKey, group);
+                } else {
+                  console.error('Failed to create or fetch group:', createError);
+                  continue;
+                }
+              } else {
+                group = newGroup;
+                groupByChatId.set(chatKey, group);
+              }
+            } catch (createGroupError: any) {
+              console.error('Error creating group record:', safeErrorJson(createGroupError));
+              continue;
+            }
           }
 
           const groupAny = group as any;
@@ -375,10 +413,24 @@ export async function GET(request: Request) {
             is_owner: right.is_owner
           };
 
+          // Детальное логирование для отладки
+          console.log(`Group ${groupAny.tg_chat_id} (${groupAny.title}):`, {
+            isLinkedToOrg,
+            botHasAdminRights,
+            bot_status: groupAny.bot_status,
+            org_id: groupAny.org_id,
+            mappedOrgIds: Array.from(mappedOrgIds),
+            currentOrgId: orgId,
+            willBeInExisting: isLinkedToOrg && botHasAdminRights,
+            willBeInAvailable: !isLinkedToOrg && botHasAdminRights
+          });
+
           if (isLinkedToOrg && botHasAdminRights) {
             existingGroups.push(normalizedGroup);
           } else if (botHasAdminRights) {
             availableGroups.push(normalizedGroup);
+          } else {
+            console.log(`Group ${groupAny.tg_chat_id} skipped: botHasAdminRights=${botHasAdminRights}`);
           }
         }
 

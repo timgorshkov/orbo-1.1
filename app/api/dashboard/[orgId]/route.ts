@@ -38,11 +38,17 @@ export async function GET(
       .eq('is_verified', true)
       .single()
 
-    const { count: groupsCount } = await adminSupabase
-      .from('telegram_groups')
-      .select('*', { count: 'exact', head: true })
+    // Get groups count through org_telegram_groups
+    const { data: orgGroupsForCount } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups!inner(bot_status)
+      `)
       .eq('org_id', orgId)
-      .eq('bot_status', 'connected')
+    
+    const groupsCount = orgGroupsForCount?.filter(
+      (item: any) => item.telegram_groups?.bot_status === 'connected'
+    ).length || 0
 
     const { count: materialsCount } = await adminSupabase
       .from('materials')
@@ -83,25 +89,39 @@ export async function GET(
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
     fourteenDaysAgo.setHours(0, 0, 0, 0)
 
-    // Get all telegram groups for this org
-    const { data: orgGroups } = await adminSupabase
-      .from('telegram_groups')
-      .select('tg_chat_id')
+    // Get all telegram groups for this org through org_telegram_groups
+    const { data: orgGroupsData } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        tg_chat_id,
+        telegram_groups!inner(tg_chat_id)
+      `)
       .eq('org_id', orgId)
 
-    const chatIds = orgGroups?.map(g => String(g.tg_chat_id)) || []
+    const chatIds = orgGroupsData?.map(g => String(g.tg_chat_id)) || []
+    
+    console.log(`Dashboard: Found ${chatIds.length} groups for org ${orgId}`, chatIds)
 
     // Get activity events from activity_events table (only if there are groups)
     let activityData = null
     if (chatIds.length > 0) {
+      console.log(`Dashboard: Fetching activity since ${fourteenDaysAgo.toISOString()} for chats:`, chatIds)
       const result = await adminSupabase
         .from('activity_events')
-        .select('created_at, event_type')
+        .select('created_at, event_type, tg_chat_id')
         .in('tg_chat_id', chatIds)
         .eq('event_type', 'message')
         .gte('created_at', fourteenDaysAgo.toISOString())
         .order('created_at')
+      
+      console.log(`Dashboard: Found ${result.data?.length || 0} activity events, error:`, result.error)
+      if (result.data && result.data.length > 0) {
+        console.log(`Dashboard: Sample events:`, result.data.slice(0, 3))
+      }
+      
       activityData = result.data
+    } else {
+      console.log('Dashboard: No groups found, skipping activity fetch')
     }
 
     // Aggregate by day
@@ -126,6 +146,9 @@ export async function GET(
       date,
       messages: activityByDay[date] || 0
     }))
+    
+    console.log(`Dashboard: Activity chart generated:`, activityChart.slice(0, 5), '...')
+    console.log(`Dashboard: Total messages in chart:`, activityChart.reduce((sum, day) => sum + day.messages, 0))
 
     // 4. Attention zones (only for non-onboarding users)
     let attentionZones = {

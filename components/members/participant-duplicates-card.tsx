@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,10 @@ type DuplicateEntry = (ParticipantDetailResult['duplicates'][number] & {
 });
 
 export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdate }: ParticipantDuplicatesCardProps) {
-  const initialDuplicates = detail.duplicates || [];
+  // Фильтруем текущего участника из начальных дубликатов
+  const currentParticipantId = detail.requestedParticipantId;
+  const initialDuplicates = (detail.duplicates || []).filter(dup => dup.id !== currentParticipantId);
+  
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<DuplicateEntry[]>(initialDuplicates);
@@ -51,6 +54,7 @@ const filteredSuggestions = useMemo(() => {
         },
         body: JSON.stringify({
           orgId,
+          currentParticipantId,
           email: detail.participant.email,
           phone: detail.participant.phone,
           username: detail.participant.username,
@@ -91,7 +95,12 @@ const filteredSuggestions = useMemo(() => {
     } finally {
       setChecking(false);
     }
-  }, [detail.participant, orgId]);
+  }, [detail.participant, orgId, currentParticipantId]);
+
+  // Автоматически обновляем список при монтировании компонента
+  useEffect(() => {
+    handleFreshCheck();
+  }, [handleFreshCheck]);
 
   const handleMerge = async () => {
     if (!selectedId) {
@@ -110,7 +119,8 @@ const filteredSuggestions = useMemo(() => {
         body: JSON.stringify({
           orgId,
           action: 'mergeDuplicates',
-          targetId: selectedId
+          targetId: detail.requestedParticipantId, // ✅ Текущий профиль = canonical (target)
+          duplicateId: selectedId // ✅ Выбранный дубликат = source (будет объединен в target)
         })
       });
 
@@ -120,6 +130,30 @@ const filteredSuggestions = useMemo(() => {
       }
 
       const data = await response.json();
+      
+      // Показываем информацию о результатах объединения
+      if (data?.merge_result) {
+        const result = data.merge_result;
+        let message = 'Профили успешно объединены!\n\n';
+        
+        if (result.merged_fields && result.merged_fields.length > 0) {
+          message += `Заполнено полей: ${result.merged_fields.length}\n`;
+          result.merged_fields.forEach((field: any) => {
+            message += `  • ${field.field}: ${field.value}\n`;
+          });
+        }
+        
+        if (result.conflicts && result.conflicts.length > 0) {
+          message += `\nКонфликтующих значений: ${result.conflicts.length}\n`;
+          message += 'Они сохранены в характеристиках:\n';
+          result.conflicts.forEach((conflict: any) => {
+            message += `  • ${conflict.field}: "${conflict.duplicate_value}" → сохранено как "${conflict.saved_as}"\n`;
+          });
+        }
+        
+        alert(message);
+      }
+      
       if (data?.detail && onDetailUpdate) {
         onDetailUpdate(data.detail);
       }

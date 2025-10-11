@@ -24,7 +24,6 @@ export async function POST(
     const formData = await req.formData()
     const file = formData.get('file') as File
     const orgId = formData.get('orgId') as string
-    const cropData = formData.get('crop') as string
 
     if (!file || !orgId) {
       return NextResponse.json({ error: 'Missing file or orgId' }, { status: 400 })
@@ -64,27 +63,16 @@ export async function POST(
 
     // Convert file to buffer
     const bytes = await file.arrayBuffer()
-    let buffer = Buffer.from(bytes)
+    const buffer = Buffer.from(bytes)
 
     // Process image with sharp
-    let image = sharp(buffer)
-
-    // Apply crop if provided
-    if (cropData) {
-      const crop = JSON.parse(cropData)
-      // crop format: { x, y, width, height } in pixels
-      image = image.extract({
-        left: Math.round(crop.x),
-        top: Math.round(crop.y),
-        width: Math.round(crop.width),
-        height: Math.round(crop.height),
+    // ✅ Автоматическая обрезка по центру до квадрата и изменение размера
+    const processedBuffer = await sharp(buffer)
+      .resize(400, 400, { 
+        fit: 'cover', // Обрезает по центру, сохраняя пропорции
+        position: 'center' // Центрирование
       })
-    }
-
-    // Resize to 400x400 and convert to WebP for optimization
-    const processedBuffer = await image
-      .resize(400, 400, { fit: 'cover' })
-      .webp({ quality: 85 })
+      .webp({ quality: 90 }) // Увеличена качество для лучшей четкости
       .toBuffer()
 
     // Delete old photo if exists

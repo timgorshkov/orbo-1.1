@@ -24,6 +24,7 @@ export type MatchCandidate = {
   tg_user_id: number | null;
   source?: string | null;
   status?: string | null;
+  merged_into?: string | null;
   match_score: number;
   reasons: string[];
 };
@@ -65,6 +66,8 @@ export class ParticipantMatcher {
     const username = intent.username?.trim()?.replace(/^@/, '') || null;
     const tgUserId = intent.tg_user_id ?? null;
     const fullName = buildFullName(intent.first_name, intent.last_name, intent.full_name);
+    
+    console.log('Finding matches for:', { orgId: intent.orgId, email, phone, username, tgUserId, fullName });
 
     const reasonsById = new Map<string, string[]>();
     const scoresById = new Map<string, number>();
@@ -89,6 +92,7 @@ export class ParticipantMatcher {
         tg_user_id: participant.tg_user_id,
         source: participant.source,
         status: participant.status,
+        merged_into: participant.merged_into,
         match_score: 0,
         reasons: []
       });
@@ -104,14 +108,16 @@ export class ParticipantMatcher {
 
       const query = this.supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status')
-        .eq('org_id', intent.orgId);
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
+        .eq('org_id', intent.orgId)
+        .is('merged_into', null); // Исключаем уже объединенных участников
 
       if (filters.length > 0) {
         query.or(filters.join(','));
       }
 
       const { data: exactMatches } = (await query) as PostgrestSingleResponse<any[]>;
+      console.log('Exact matches found:', exactMatches?.length || 0);
       (exactMatches || []).forEach(row => {
         if (email && row.email === email) addReason(row, 'Точный e-mail', 60);
         if (phone && row.phone === phone) addReason(row, 'Точный телефон', 65);
@@ -132,21 +138,26 @@ export class ParticipantMatcher {
 
       const { data: fuzzyMatches } = (await this.supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status')
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
         .eq('org_id', intent.orgId)
+        .is('merged_into', null) // Исключаем уже объединенных участников
         .or(nameFilters.join(','))) as PostgrestSingleResponse<any[]>;
 
+      console.log('Fuzzy matches found:', fuzzyMatches?.length || 0);
       (fuzzyMatches || []).forEach(row => {
         addReason(row, 'Похожее имя', 20);
       });
     }
 
-    return Array.from(candidateMap.values()).map(candidate => ({
+    const results = Array.from(candidateMap.values()).map(candidate => ({
       ...candidate,
       match_score: Math.min(100, scoresById.get(candidate.id) ?? 0),
       reasons: reasonsById.get(candidate.id) ?? []
     }))
       .sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    
+    console.log('Total matches returned:', results.length);
+    return results;
   }
 }
 

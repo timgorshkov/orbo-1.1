@@ -10,6 +10,7 @@ interface Participant {
   tg_user_id: string | null
   email: string | null
   photo_url: string | null
+  bio: string | null
 }
 
 interface MemberCardProps {
@@ -21,9 +22,6 @@ export default function MemberCard({ participant }: MemberCardProps) {
   const orgId = params?.org as string
 
   const displayName = participant.full_name || participant.tg_username || 'Без имени'
-  const username = participant.tg_username
-    ? `@${participant.tg_username}`
-    : participant.email || ''
 
   // Placeholder для фото
   const initials = displayName
@@ -52,13 +50,15 @@ export default function MemberCard({ participant }: MemberCardProps) {
       )}
 
       {/* Имя */}
-      <h3 className="mb-1 text-center text-lg font-semibold text-gray-900 group-hover:text-blue-600">
+      <h3 className="mb-2 text-center text-lg font-semibold text-gray-900 group-hover:text-blue-600">
         {displayName}
       </h3>
 
-      {/* Username или email */}
-      {username && (
-        <p className="text-sm text-gray-500">{username}</p>
+      {/* Краткое описание (bio) */}
+      {participant.bio && (
+        <p className="text-sm text-center text-gray-600 line-clamp-2">
+          {participant.bio}
+        </p>
       )}
     </Link>
   )

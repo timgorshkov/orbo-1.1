@@ -86,26 +86,52 @@ export async function deleteGroup(formData: FormData) {
   try {
     const { supabase } = await requireOrgAccess(org)
     
-    // Проверяем, существует ли группа и принадлежит ли она организации
+    // Получаем группу и её tg_chat_id
     const { data: existingGroup } = await supabase
       .from('telegram_groups')
-      .select('id')
+      .select('id, tg_chat_id, org_id')
       .eq('id', groupId)
-      .eq('org_id', org)
       .single()
     
     if (!existingGroup) {
-      console.error('Group not found or not belongs to organization')
+      console.error('Group not found')
       return
     }
     
-    // Удаляем группу
-    await supabase
-      .from('telegram_groups')
+    // Удаляем связь из org_telegram_groups
+    const { error: deleteError } = await supabase
+      .from('org_telegram_groups')
       .delete()
-      .eq('id', groupId)
+      .eq('org_id', org)
+      .eq('tg_chat_id', existingGroup.tg_chat_id)
     
-    console.log(`Deleted group ID: ${groupId}`)
+    if (deleteError) {
+      console.error('Error deleting org-group link:', deleteError)
+      throw deleteError
+    }
+    
+    // Проверяем, используется ли эта группа другими организациями
+    const { data: otherLinks, error: checkError } = await supabase
+      .from('org_telegram_groups')
+      .select('org_id')
+      .eq('tg_chat_id', existingGroup.tg_chat_id)
+      .limit(1)
+    
+    if (checkError) {
+      console.error('Error checking other org links:', checkError)
+    }
+    
+    // Если группа была связана только с этой организацией, убираем org_id
+    if (!otherLinks || otherLinks.length === 0) {
+      if (existingGroup.org_id === org) {
+        await supabase
+          .from('telegram_groups')
+          .update({ org_id: null })
+          .eq('id', groupId)
+      }
+    }
+    
+    console.log(`Removed group ${groupId} from organization ${org}`)
     return
   } catch (error) {
     console.error('Error deleting group:', error)

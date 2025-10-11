@@ -140,9 +140,11 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
   
   const addGroupToOrg = async (groupId: string) => {
     setAddingGroup(groupId)
+    setError(null)
     
     try {
-      const res = await fetch('/api/telegram/groups/clone-to-org', {
+      console.log(`Adding group ${groupId} to org ${params.org}`)
+      const res = await fetch('/api/telegram/groups/add-to-org', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -153,16 +155,28 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         })
       })
       
+      const data = await res.json()
+      console.log('Add group response:', data)
+      
       if (!res.ok) {
-        const data = await res.json()
         throw new Error(data.error || 'Failed to add group to organization')
       }
       
-      // Обновляем список доступных групп
+      console.log(`Successfully added group ${groupId}. Refreshing page...`)
+      
+      // Обновляем список доступных групп (удаляем добавленную группу)
       setAvailableGroups(availableGroups.filter(group => group.id !== groupId))
       
+      // Обновляем данные на странице
+      router.refresh()
+      
+      // Показываем сообщение об успехе
+      alert('Группа успешно добавлена в организацию!')
+      
       // Перенаправляем на страницу Telegram
-      router.push(`/app/${params.org}/telegram`)
+      setTimeout(() => {
+        router.push(`/app/${params.org}/telegram`)
+      }, 500)
     } catch (e: any) {
       console.error('Error adding group to organization:', e)
       setError(e.message || 'Failed to add group to organization')

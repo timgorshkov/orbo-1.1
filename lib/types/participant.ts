@@ -40,6 +40,7 @@ export interface ParticipantRecord {
   email: string | null;
   phone: string | null;
   photo_url: string | null;
+  bio: string | null;
   created_at: string;
   last_activity_at: string | null;
   activity_score: number | null;

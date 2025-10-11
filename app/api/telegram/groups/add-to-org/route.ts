@@ -54,6 +54,10 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
     
+    // Приводим tg_chat_id к строке для совместимости с БД
+    const tgChatIdStr = String(group.tg_chat_id);
+    console.log(`Group tg_chat_id: ${tgChatIdStr} (original type: ${typeof group.tg_chat_id})`);
+    
     // Проверяем, что пользователь является администратором группы
     // Получаем все верифицированные Telegram аккаунты пользователя
     const { data: telegramAccounts, error: accountsError } = await supabaseService
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
     const { data: adminRights, error: adminError } = await supabaseService
       .from('telegram_group_admins')
       .select('*')
-      .eq('tg_chat_id', group.tg_chat_id)
+      .eq('tg_chat_id', tgChatIdStr)
       .eq('tg_user_id', activeAccount.telegram_user_id)
       .eq('is_admin', true)
       .single();
@@ -107,33 +111,57 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    console.log(`Checking existing mapping for org ${orgId}, group tg_chat_id: ${tgChatIdStr}`);
+
+    // Проверяем существование записи (без `status`, так как этот столбец может не существовать)
     const { data: existingMapping, error: mappingCheckError } = await supabaseService
       .from('org_telegram_groups')
-      .select('status')
+      .select('org_id, tg_chat_id, created_at')
       .eq('org_id', orgId)
-      .eq('tg_chat_id', group.tg_chat_id)
+      .eq('tg_chat_id', tgChatIdStr)
       .maybeSingle();
 
-    if (mappingCheckError && mappingCheckError.code !== '42P01') {
-      console.error('Error checking group mapping:', mappingCheckError);
-      return NextResponse.json({ error: 'Failed to check existing group mapping' }, { status: 500 });
+    if (mappingCheckError) {
+      console.error('Error checking group mapping:', {
+        code: mappingCheckError.code,
+        message: mappingCheckError.message,
+        details: mappingCheckError.details,
+        hint: mappingCheckError.hint,
+        tg_chat_id: tgChatIdStr,
+        tg_chat_id_type: typeof tgChatIdStr
+      });
+      
+      // Код 42P01 означает, что таблица не существует - это нормально для старых установок
+      if (mappingCheckError.code !== '42P01') {
+        return NextResponse.json({ 
+          error: 'Failed to check existing group mapping',
+          details: mappingCheckError.message 
+        }, { status: 500 });
+      }
+      
+      console.log('org_telegram_groups table not found, will use legacy fallback');
     }
 
     try {
-      if (existingMapping && existingMapping.status === 'archived') {
-        await supabaseService
-          .from('org_telegram_groups')
-          .update({ status: 'active', archived_at: null, created_by: user.id })
-          .eq('org_id', orgId)
-          .eq('tg_chat_id', group.tg_chat_id);
+      if (existingMapping) {
+        console.log(`Mapping already exists for group ${tgChatIdStr} in org ${orgId}, created at: ${existingMapping.created_at}`);
+        // Группа уже добавлена - возвращаем успех
+        return NextResponse.json({
+          success: true,
+          message: 'Group already linked to this organization',
+          groupId: group.id,
+          tgChatId: tgChatIdStr
+        });
       } else {
+        console.log(`Creating new mapping for group ${tgChatIdStr} in org ${orgId}`);
+        // Не указываем status - если столбец существует, он будет использовать default 'active'
+        // Если столбца нет, вставка пройдет успешно без него
         await supabaseService
           .from('org_telegram_groups')
           .insert({
             org_id: orgId,
-            tg_chat_id: group.tg_chat_id,
-            created_by: user.id,
-            status: 'active'
+            tg_chat_id: tgChatIdStr,
+            created_by: user.id
           });
       }
     } catch (linkError: any) {
@@ -162,15 +190,20 @@ export async function POST(request: Request) {
         });
       } else {
         console.error('Error creating group mapping:', linkError);
-        return NextResponse.json({ error: 'Failed to link group to organization' }, { status: 500 });
+        return NextResponse.json({ 
+          error: 'Failed to link group to organization',
+          details: linkError.message || String(linkError)
+        }, { status: 500 });
       }
     }
 
-    console.log(`Successfully linked group ${group.tg_chat_id} to org ${orgId}`);
+    console.log(`Successfully linked group ${tgChatIdStr} to org ${orgId}`);
 
     return NextResponse.json({
       success: true,
-      message: 'Group linked to organization'
+      message: 'Group linked to organization',
+      groupId: group.id,
+      tgChatId: tgChatIdStr
     });
   } catch (error: any) {
     console.error('Error in add-to-org:', error);

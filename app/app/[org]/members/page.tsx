@@ -33,12 +33,13 @@ export default async function MembersPage({ params, searchParams }: {
   // Use admin client to bypass RLS for fetching participants
   const adminSupabase = createAdminServer()
   
-  // Fetch participants (excluding 'excluded' status)
-  const { data: participants, error } = await adminSupabase
+  // Fetch participants (excluding 'excluded' status and merged participants)
+  const { data: participants, error} = await adminSupabase
     .from('participants')
     .select('*')
     .eq('org_id', orgId)
     .neq('participant_status', 'excluded')
+    .is('merged_into', null) // ✅ Исключаем объединенных участников
     .order('full_name', { ascending: true, nullsFirst: false })
 
   if (error) {

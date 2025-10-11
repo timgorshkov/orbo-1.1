@@ -78,13 +78,38 @@ export default async function OrgLayout({
   // Получаем Telegram-группы для админов
   let telegramGroups: any[] = []
   if (role === 'owner' || role === 'admin') {
-    const { data: groups } = await adminSupabase
-      .from('telegram_groups')
-      .select('id, tg_chat_id, title, bot_status')
+    console.log('Fetching telegram groups for org:', org.id)
+    
+    // Загружаем группы через org_telegram_groups (новая схема many-to-many)
+    const { data: orgGroups, error: groupsError } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups (
+          id,
+          tg_chat_id,
+          title,
+          bot_status
+        )
+      `)
       .eq('org_id', org.id)
-      .order('title', { ascending: true })
-
-    telegramGroups = groups || []
+    
+    console.log('orgGroups:', orgGroups, 'error:', groupsError)
+    
+    if (orgGroups && !groupsError) {
+      // Извлекаем telegram_groups из результата JOIN
+      telegramGroups = orgGroups
+        .map(item => item.telegram_groups)
+        .filter(group => group !== null)
+        .sort((a: any, b: any) => {
+          const titleA = a.title || ''
+          const titleB = b.title || ''
+          return titleA.localeCompare(titleB)
+        })
+      
+      console.log('Loaded telegram groups:', telegramGroups.length)
+    } else {
+      console.log('No telegram groups found or error occurred')
+    }
   }
 
   console.log('=== OrgLayout SUCCESS ===')

@@ -12,6 +12,7 @@ interface Participant {
   tg_username: string | null
   tg_user_id: string | null
   email: string | null
+  bio: string | null
   custom_attributes: any
   participant_status: string
   photo_url: string | null
@@ -46,11 +47,13 @@ export default function MembersView({
       const fullName = (p.full_name || '').toLowerCase()
       const username = (p.tg_username || '').toLowerCase()
       const email = (p.email || '').toLowerCase()
+      const bio = (p.bio || '').toLowerCase()
 
       return (
         fullName.includes(query) ||
         username.includes(query) ||
-        email.includes(query)
+        email.includes(query) ||
+        bio.includes(query)
       )
     })
   }, [participants, searchQuery])
@@ -64,7 +67,7 @@ export default function MembersView({
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Поиск по имени, email, @username..."
+            placeholder="Поиск по имени, описанию, email, @username..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

@@ -17,6 +17,7 @@ interface Participant {
   tg_username: string | null
   tg_user_id: string | null
   email: string | null
+  bio: string | null
   custom_attributes: any
   participant_status: string
   photo_url: string | null

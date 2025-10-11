@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { X, Upload, Trash2 } from 'lucide-react'
 
@@ -22,16 +22,26 @@ export default function PhotoUploadModal({
   onPhotoUpdate,
 }: PhotoUploadModalProps) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
-  const [crop, setCrop] = useState({ x: 0, y: 0, width: 0, height: 0 })
-  const [isDragging, setIsDragging] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const imageRef = useRef<HTMLImageElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      // Проверка типа файла
+      if (!file.type.startsWith('image/')) {
+        alert('Пожалуйста, выберите изображение')
+        return
+      }
+      
+      // Проверка размера (макс 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 10 МБ')
+        return
+      }
+      
+      setSelectedFile(file)
       const reader = new FileReader()
       reader.onload = () => {
         setSelectedImage(reader.result as string)
@@ -40,101 +50,18 @@ export default function PhotoUploadModal({
     }
   }
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!imageRef.current) return
-    
-    const rect = imageRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    setIsDragging(true)
-    setCrop({ x, y, width: 0, height: 0 })
-  }
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !imageRef.current) return
-    
-    const rect = imageRef.current.getBoundingClientRect()
-    const currentX = e.clientX - rect.left
-    const currentY = e.clientY - rect.top
-    
-    const width = currentX - crop.x
-    const height = currentY - crop.y
-    const size = Math.min(Math.abs(width), Math.abs(height))
-    
-    setCrop({
-      x: width < 0 ? currentX : crop.x,
-      y: height < 0 ? currentY : crop.y,
-      width: size,
-      height: size,
-    })
-  }
-
-  const handleMouseUp = () => {
-    setIsDragging(false)
-  }
-
-  const getCroppedImage = useCallback(async (): Promise<Blob | null> => {
-    if (!imageRef.current || !canvasRef.current || !selectedImage) return null
-
-    const image = imageRef.current
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    
-    if (!ctx) return null
-
-    const scaleX = image.naturalWidth / image.width
-    const scaleY = image.naturalHeight / image.height
-
-    canvas.width = crop.width * scaleX
-    canvas.height = crop.height * scaleY
-
-    ctx.drawImage(
-      image,
-      crop.x * scaleX,
-      crop.y * scaleY,
-      crop.width * scaleX,
-      crop.height * scaleY,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    )
-
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        resolve(blob)
-      }, 'image/jpeg', 0.95)
-    })
-  }, [selectedImage, crop])
-
   const handleUpload = async () => {
-    if (!selectedImage || crop.width === 0) {
-      alert('Пожалуйста, выберите область для обрезки')
+    if (!selectedFile) {
+      alert('Пожалуйста, выберите изображение')
       return
     }
 
     setUploading(true)
 
     try {
-      const croppedBlob = await getCroppedImage()
-      
-      if (!croppedBlob) {
-        throw new Error('Failed to crop image')
-      }
-
       const formData = new FormData()
-      formData.append('file', croppedBlob, 'photo.jpg')
+      formData.append('file', selectedFile)
       formData.append('orgId', orgId)
-      formData.append(
-        'crop',
-        JSON.stringify({
-          x: crop.x,
-          y: crop.y,
-          width: crop.width,
-          height: crop.height,
-        })
-      )
 
       const response = await fetch(`/api/participants/${participantId}/photo`, {
         method: 'POST',
@@ -148,6 +75,8 @@ export default function PhotoUploadModal({
 
       const data = await response.json()
       onPhotoUpdate(data.photo_url)
+      setSelectedImage(null)
+      setSelectedFile(null)
       onClose()
     } catch (error: any) {
       console.error('Upload error:', error)
@@ -177,6 +106,8 @@ export default function PhotoUploadModal({
       }
 
       onPhotoUpdate(null)
+      setSelectedImage(null)
+      setSelectedFile(null)
       onClose()
     } catch (error: any) {
       console.error('Delete error:', error)
@@ -190,7 +121,7 @@ export default function PhotoUploadModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+      <div className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Загрузить фотографию</h2>
@@ -223,38 +154,24 @@ export default function PhotoUploadModal({
                   Выберите изображение
                 </span>
               </button>
+              <p className="mt-2 text-center text-sm text-gray-500">
+                Изображение будет автоматически обрезано по центру
+              </p>
             </div>
           ) : (
             <div>
-              <p className="mb-2 text-sm text-gray-600">
-                Выделите квадратную область для обрезки (нажмите и перетащите):
+              <p className="mb-2 text-sm text-gray-600 text-center">
+                Предпросмотр:
               </p>
-              <div
-                className="relative inline-block cursor-crosshair"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-              >
-                <img
-                  ref={imageRef}
-                  src={selectedImage}
-                  alt="Preview"
-                  className="max-h-96 max-w-full"
-                />
-                {crop.width > 0 && (
-                  <div
-                    className="absolute border-2 border-blue-500 bg-blue-500/20"
-                    style={{
-                      left: crop.x,
-                      top: crop.y,
-                      width: crop.width,
-                      height: crop.height,
-                    }}
+              <div className="flex justify-center">
+                <div className="relative w-48 h-48 overflow-hidden rounded-full border-4 border-gray-200">
+                  <img
+                    src={selectedImage}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
                   />
-                )}
+                </div>
               </div>
-              <canvas ref={canvasRef} className="hidden" />
             </div>
           )}
         </div>
@@ -270,7 +187,7 @@ export default function PhotoUploadModal({
                 className="gap-2 text-red-600 hover:text-red-800"
               >
                 <Trash2 className="h-4 w-4" />
-                Удалить текущее фото
+                Удалить фото
               </Button>
             )}
           </div>
@@ -278,7 +195,10 @@ export default function PhotoUploadModal({
             {selectedImage && (
               <Button
                 variant="outline"
-                onClick={() => setSelectedImage(null)}
+                onClick={() => {
+                  setSelectedImage(null)
+                  setSelectedFile(null)
+                }}
                 disabled={uploading}
               >
                 Выбрать другое
@@ -288,7 +208,7 @@ export default function PhotoUploadModal({
               Отмена
             </Button>
             {selectedImage && (
-              <Button onClick={handleUpload} disabled={uploading || crop.width === 0}>
+              <Button onClick={handleUpload} disabled={uploading}>
                 {uploading ? 'Загрузка...' : 'Сохранить'}
               </Button>
             )}
@@ -298,4 +218,3 @@ export default function PhotoUploadModal({
     </div>
   )
 }
-

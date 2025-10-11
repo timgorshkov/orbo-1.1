@@ -28,6 +28,7 @@ export async function POST(request: Request) {
   try {
     const payload = await request.json();
     const orgId = payload?.orgId as string | undefined;
+    const currentParticipantId = payload?.currentParticipantId as string | undefined;
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
@@ -49,7 +50,12 @@ export async function POST(request: Request) {
       last_name: payload?.last_name
     });
 
-    return NextResponse.json({ matches });
+    // Исключаем текущего участника из результатов
+    const filteredMatches = currentParticipantId 
+      ? matches.filter(match => match.id !== currentParticipantId)
+      : matches;
+
+    return NextResponse.json({ matches: filteredMatches });
   } catch (error: any) {
     console.error('Error checking participant duplicates:', error);
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });

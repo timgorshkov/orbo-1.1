@@ -27,12 +27,32 @@ export default async function TelegramPage({ params }: { params: { org: string }
   try {
     const { supabase } = await requireOrgAccess(params.org)
     
-    // Получаем список подключенных групп
-    const { data: groups, error } = await supabase
-      .from('telegram_groups')
-      .select('*')
+    // Получаем список подключенных групп через org_telegram_groups
+    const { data: orgGroupsData, error: orgGroupsError } = await supabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups!inner (
+          id,
+          tg_chat_id,
+          title,
+          invite_link,
+          bot_status,
+          last_sync_at
+        )
+      `)
       .eq('org_id', params.org)
-      .order('id') as { data: TelegramGroup[] | null, error: any }
+    
+    let groups: TelegramGroup[] | null = null
+    let error = orgGroupsError
+    
+    if (orgGroupsData && !orgGroupsError) {
+      // Извлекаем telegram_groups из результата JOIN
+      // Supabase возвращает связанную запись как объект (не массив) для foreign key
+      groups = (orgGroupsData as any[])
+        .map((item: any) => item.telegram_groups as TelegramGroup)
+        .filter((group: TelegramGroup | null): group is TelegramGroup => group !== null)
+        .sort((a, b) => (a.id || 0) - (b.id || 0)) as TelegramGroup[]
+    }
     
     if (error) {
       console.error('Error fetching telegram groups:', error)
