@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation'
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer'
+import { cookies } from 'next/headers'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import PublicEventDetail from '@/components/events/public-event-detail'
+import AccessDeniedWithAuth from '@/components/events/access-denied-with-auth'
 
 export default async function PublicEventPage({ params }: { params: { org: string; id: string } }) {
-  const supabase = await createAdminServer()
-  const clientSupabase = await createClientServer()
+  const supabase = createAdminServer()
 
   // Get organization
   const { data: org, error: orgError } = await supabase
@@ -46,19 +47,48 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     )
   }
 
-  // Check access rights
-  const { data: { user } } = await clientSupabase.auth.getUser()
+  // Check access rights by reading cookies directly (without modification)
+  // This prevents "Cookies can only be modified in a Server Action" error
+  const cookieStore = await cookies()
+  
+  // Try to find Supabase auth token in cookies
+  let userId: string | null = null
+  
+  // Check for auth token (Next.js + Supabase can store it in different formats)
+  const allCookies = cookieStore.getAll()
+  const authCookie = allCookies.find(c => 
+    c.name.includes('auth-token') || 
+    c.name === 'sb-access-token' ||
+    c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
+  )
+  
+  if (authCookie?.value) {
+    try {
+      // Try to parse as JSON first (Supabase v2 format)
+      const authData = JSON.parse(authCookie.value)
+      userId = authData?.user?.id || authData?.access_token ? 
+        JSON.parse(Buffer.from(authData.access_token.split('.')[1], 'base64').toString()).sub : null
+    } catch {
+      try {
+        // Try as JWT token directly
+        const payload = JSON.parse(Buffer.from(authCookie.value.split('.')[1], 'base64').toString())
+        userId = payload.sub
+      } catch (err) {
+        console.error('Error decoding auth cookie:', err)
+      }
+    }
+  }
   
   let isOrgMember = false
-  if (user) {
+  
+  if (userId) {
     // Check if user is a member of this organization
-    // by checking if their Telegram account is linked to any participant in this org
     const { data: telegramAccount } = await supabase
       .from('user_telegram_accounts')
       .select('telegram_user_id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('org_id', org.id)
-      .single()
+      .maybeSingle()
     
     if (telegramAccount) {
       const { data: participant } = await supabase
@@ -66,26 +96,21 @@ export default async function PublicEventPage({ params }: { params: { org: strin
         .select('id')
         .eq('org_id', org.id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
-        .single()
+        .maybeSingle()
       
       isOrgMember = !!participant
     }
   }
   
-  // If event is NOT public and user is NOT a member, show access denied
+  // If event is NOT public and user is NOT a member, show access denied with auth option
   if (!event.is_public && !isOrgMember) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Доступ ограничен</h1>
-          <p className="text-neutral-600 mb-4">Это событие доступно только участникам пространства.</p>
-          {!user && (
-            <p className="text-sm text-neutral-500">
-              Войдите через Telegram, если вы участник группы.
-            </p>
-          )}
-        </div>
-      </div>
+      <AccessDeniedWithAuth
+        orgId={org.id}
+        orgName={org.name}
+        eventId={params.id}
+        isAuthenticated={!!userId}
+      />
     )
   }
 
@@ -121,7 +146,7 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     <PublicEventDetail 
       event={eventWithStats}
       org={org}
-      isAuthenticated={!!user}
+      isAuthenticated={!!userId}
       isOrgMember={isOrgMember}
     />
   )

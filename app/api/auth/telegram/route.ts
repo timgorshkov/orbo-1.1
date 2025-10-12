@@ -195,10 +195,68 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
 
       if (!existingParticipant) {
-        return NextResponse.json({
-          error: 'No access to this organization. Please use an invite link.',
-          needsInvite: true
-        }, { status: 403 })
+        // Participant не найден, проверяем участие в группах организации
+        console.log(`Participant not found for tg_user_id ${tgUserId} in org ${targetOrgId}, checking group membership...`)
+        
+        // 1. Получаем список tg_chat_id групп организации
+        const { data: orgGroups } = await supabaseAdmin
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', targetOrgId)
+        
+        const orgChatIds = (orgGroups || []).map(g => String(g.tg_chat_id))
+        console.log(`Found ${orgChatIds.length} groups for org ${targetOrgId}`)
+        
+        if (orgChatIds.length === 0) {
+          return NextResponse.json({
+            error: 'No access to this organization. Please use an invite link.',
+            needsInvite: true
+          }, { status: 403 })
+        }
+        
+        // 2. Проверяем активность пользователя в этих группах
+        const { data: userActivity } = await supabaseAdmin
+          .from('telegram_activity_events')
+          .select('tg_chat_id, from_user_id, from_username, from_first_name, from_last_name')
+          .eq('from_user_id', tgUserId)
+          .in('tg_chat_id', orgChatIds)
+          .order('event_time', { ascending: false })
+          .limit(1)
+        
+        console.log(`Found ${userActivity?.length || 0} activity records for user ${tgUserId}`)
+        
+        if (!userActivity || userActivity.length === 0) {
+          // Нет активности в группах организации
+          return NextResponse.json({
+            error: 'Вы не являетесь участником ни одной из групп этого пространства. Используйте ссылку-приглашение или вступите в одну из групп.',
+            needsInvite: true
+          }, { status: 403 })
+        }
+        
+        // 3. Пользователь есть в группах! Создаём participant
+        const activityRecord = userActivity[0]
+        console.log(`Creating participant for user ${tgUserId} based on activity in group ${activityRecord.tg_chat_id}`)
+        
+        const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
+        
+        const { error: participantError } = await supabaseAdmin
+          .from('participants')
+          .insert({
+            org_id: targetOrgId,
+            tg_user_id: tgUserId,
+            username: username || activityRecord.from_username,
+            full_name: fullName,
+            photo_url: photoUrl,
+            participant_status: 'participant',
+            source: 'telegram_group'
+          })
+        
+        if (participantError) {
+          console.error('Error creating participant:', participantError)
+          // Если ошибка - возможно уже существует, продолжаем
+        } else {
+          console.log(`Successfully created participant for user ${tgUserId}`)
+        }
       }
     }
 
