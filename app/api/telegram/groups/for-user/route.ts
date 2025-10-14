@@ -101,7 +101,7 @@ export async function GET(request: Request) {
         console.log('SQL query for telegram_group_admins:');
         console.log(`SELECT * FROM telegram_group_admins WHERE tg_user_id = '${activeAccount.telegram_user_id}' AND is_admin = true`);
         
-        // Сначала получаем все записи из telegram_group_admins без JOIN
+        // Получаем записи из telegram_group_admins
         const { data: adminRights, error: adminRightsError } = await supabaseService
           .from('telegram_group_admins')
           .select('*')

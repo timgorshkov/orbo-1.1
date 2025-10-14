@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { X, AlertCircle } from 'lucide-react'
-import TelegramLogin, { type TelegramUser } from '@/components/auth/telegram-login'
+import TelegramBotAuth from '@/components/auth/telegram-bot-auth'
 
 type Props = {
   orgId: string
@@ -12,51 +12,32 @@ type Props = {
 }
 
 export default function AccessDeniedWithAuth({ orgId, orgName, eventId, isAuthenticated }: Props) {
-  const [isAuthLoading, setIsAuthLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
   // Проверяем наличие bot username
   const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
   const isBotConfigured = Boolean(botUsername && botUsername.trim().length > 0)
 
-  const handleTelegramAuth = async (user: TelegramUser) => {
-    setIsAuthLoading(true)
-    setError(null)
-
+  const handleLogout = async () => {
     try {
-      console.log('Authenticating via Telegram...', user)
-      
-      // Авторизуемся через Telegram
-      const authRes = await fetch('/api/auth/telegram', {
+      console.log('[AccessDenied] Logging out...')
+      const res = await fetch('/api/auth/logout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          telegramData: user,
-          orgId: orgId
+          returnUrl: `/p/${orgId}/events/${eventId}`
         })
       })
 
-      const authData = await authRes.json()
-
-      if (!authRes.ok) {
-        throw new Error(authData.error || 'Ошибка авторизации')
-      }
-
-      console.log('Authentication successful, redirecting...', authData)
-
-      // Перенаправляем на magic link для установки сессии
-      if (authData.redirectUrl) {
-        // Сохраняем URL события в localStorage для редиректа после авторизации
-        localStorage.setItem('post_auth_redirect', `/p/${orgId}/events/${eventId}`)
-        window.location.href = authData.redirectUrl
-      } else {
-        // Или просто перезагружаем страницу
+      if (res.ok) {
+        console.log('[AccessDenied] Logout successful, reloading page')
+        // Перезагружаем страницу для применения logout
         window.location.reload()
+      } else {
+        throw new Error('Failed to logout')
       }
     } catch (err) {
-      console.error('Authentication error:', err)
-      setError(err instanceof Error ? err.message : 'Произошла ошибка')
-      setIsAuthLoading(false)
+      console.error('[AccessDenied] Logout error:', err)
+      // Fallback: просто перезагружаем
+      window.location.reload()
     }
   }
 
@@ -84,7 +65,7 @@ export default function AccessDeniedWithAuth({ orgId, orgName, eventId, isAuthen
             </p>
           </div>
 
-          {!isAuthenticated && !isAuthLoading && !error && (
+          {!isAuthenticated && (
             <>
               {!isBotConfigured ? (
                 // Ошибка конфигурации
@@ -109,50 +90,17 @@ export default function AccessDeniedWithAuth({ orgId, orgName, eventId, isAuthen
                     </p>
                   </div>
 
-                  {/* Telegram Login */}
-                  <div className="flex justify-center mb-6">
-                    <TelegramLogin
-                      botUsername={botUsername!}
-                      onAuth={handleTelegramAuth}
-                      buttonSize="large"
-                      cornerRadius={12}
+                  {/* Telegram Bot Auth */}
+                  <div className="mb-6">
+                    <TelegramBotAuth
+                      orgId={orgId}
+                      eventId={eventId}
+                      redirectUrl={`/p/${orgId}/events/${eventId}`}
                     />
-                  </div>
-
-                  <div className="pt-6 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 text-center">
-                      После авторизации мы проверим ваше участие в группах и предоставим доступ к событию
-                    </p>
                   </div>
                 </>
               )}
             </>
-          )}
-
-          {/* Loading */}
-          {isAuthLoading && (
-            <div className="text-center py-8">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-              <p className="mt-4 text-gray-600">
-                Проверяем ваше участие в группах...
-              </p>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800 mb-3">{error}</p>
-              <button
-                onClick={() => {
-                  setError(null)
-                  setIsAuthLoading(false)
-                }}
-                className="text-sm text-red-600 hover:text-red-800 font-medium"
-              >
-                Попробовать снова
-              </button>
-            </div>
           )}
 
           {isAuthenticated && (
@@ -160,12 +108,20 @@ export default function AccessDeniedWithAuth({ orgId, orgName, eventId, isAuthen
               <p className="text-gray-600 mb-4">
                 Вы авторизованы, но не являетесь участником этого пространства
               </p>
-              <a
-                href="/orgs"
-                className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Вернуться к организациям
-              </a>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleLogout}
+                  className="w-full px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Выйти и войти через Telegram
+                </button>
+                <a
+                  href="/orgs"
+                  className="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Вернуться к организациям
+                </a>
+              </div>
             </div>
           )}
         </div>

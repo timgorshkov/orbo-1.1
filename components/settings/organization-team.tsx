@@ -13,6 +13,7 @@ interface TeamMember {
   telegram_username: string | null
   tg_user_id: number | null
   created_at: string
+  has_verified_telegram?: boolean
   metadata: {
     telegram_groups?: number[]
     telegram_group_titles?: string[]
@@ -106,7 +107,7 @@ export default function OrganizationTeam({
                     <div className="text-sm text-neutral-600 mt-1">{owner.email}</div>
                   )}
                   
-                  {owner.telegram_username && (
+                  {owner.has_verified_telegram && owner.telegram_username && (
                     <div className="flex items-center gap-2 mt-2">
                       <svg
                         className="w-4 h-4 text-blue-500"
@@ -116,10 +117,11 @@ export default function OrganizationTeam({
                         <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z" />
                       </svg>
                       <span className="text-sm text-neutral-600">@{owner.telegram_username}</span>
+                      <span className="text-xs text-green-600">✓ Подтвержден</span>
                     </div>
                   )}
                   
-                  {!owner.telegram_username && (
+                  {!owner.has_verified_telegram && (
                     <div className="text-sm text-amber-600 mt-2">
                       ⚠️ Telegram не привязан
                     </div>
@@ -154,7 +156,7 @@ export default function OrganizationTeam({
                         <div className="text-sm text-neutral-600 mt-1">{admin.email}</div>
                       )}
                       
-                      {admin.telegram_username && (
+                      {admin.has_verified_telegram && admin.telegram_username && (
                         <div className="flex items-center gap-2 mt-2">
                           <svg
                             className="w-4 h-4 text-blue-500"
@@ -164,6 +166,7 @@ export default function OrganizationTeam({
                             <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z" />
                           </svg>
                           <span className="text-sm text-neutral-600">@{admin.telegram_username}</span>
+                          <span className="text-xs text-green-600">✓ Подтвержден</span>
                         </div>
                       )}
                       
@@ -185,7 +188,7 @@ export default function OrganizationTeam({
                         </div>
                       )}
                       
-                      {!admin.telegram_username && (
+                      {!admin.has_verified_telegram && (
                         <div className="text-sm text-amber-600 mt-2">
                           ⚠️ Telegram не привязан
                         </div>

@@ -160,6 +160,32 @@ export async function POST(request: Request) {
       }
     }
 
+    // ✅ НОВОЕ: Добавляем ВСЕ группы, где есть активность бота (включая новые группы)
+    try {
+      console.log('Scanning telegram_activity_events for new groups...');
+      const { data: activityGroups } = await supabaseService
+        .from('telegram_activity_events')
+        .select('tg_chat_id')
+        .not('tg_chat_id', 'is', null)
+        .order('event_time', { ascending: false })
+        .limit(1000); // Последние 1000 событий
+      
+      const uniqueChatIds = new Set<string>();
+      activityGroups?.forEach(record => {
+        if (record?.tg_chat_id !== undefined && record?.tg_chat_id !== null) {
+          uniqueChatIds.add(String(record.tg_chat_id));
+        }
+      });
+      
+      console.log(`Found ${uniqueChatIds.size} unique groups in activity events`);
+      
+      // Добавляем в кандидаты
+      uniqueChatIds.forEach(chatId => candidateChatIds.add(chatId));
+    } catch (activityError) {
+      console.error('Error scanning activity events:', activityError);
+      // Не критично, продолжаем
+    }
+
     if (candidateChatIds.size === 0) {
       return NextResponse.json({
         success: true,
@@ -170,93 +196,18 @@ export async function POST(request: Request) {
     }
 
     const normalizedChatIds = Array.from(candidateChatIds);
-    const fetchGroupsBatch = async (ids: string[], includeArchived = false) => {
-      if (!ids.length) {
-        return { data: [] as any[], error: null };
-      }
-
-      try {
-        const query = supabaseService
-          .from('telegram_groups')
-          .select('*')
-          .in('tg_chat_id', ids);
-
-        if (!includeArchived) {
-          query.eq('is_archived', false);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          if (error.code === '42703') {
-            const { data: fallbackData } = await supabaseService
-              .from('telegram_groups')
-              .select('*')
-              .in('tg_chat_id', ids);
-
-            return {
-              data: (fallbackData || []).filter(group => includeArchived || group?.is_archived !== true),
-              error: null
-            };
-          }
-
-          return { data: [] as any[], error };
-        }
-
-        return {
-          data: (data || []).filter(group => includeArchived || group?.is_archived !== true),
-          error: null
-        };
-      } catch (batchError: any) {
-        return { data: [] as any[], error: batchError };
-      }
-    };
-
-    let { data: targetGroups, error: targetGroupsError } = await fetchGroupsBatch(normalizedChatIds);
-
-    if (targetGroupsError) {
-      const fallbackResult = await fetchGroupsBatch(normalizedChatIds, true);
-      targetGroups = fallbackResult.data;
-      targetGroupsError = fallbackResult.error;
-    }
-
-    if (targetGroupsError) {
-      return NextResponse.json({
-        error: 'Failed to fetch groups',
-        details: safeErrorJson(targetGroupsError)
-      }, { status: 500 });
-    }
-
-    if (!targetGroups || targetGroups.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: 'No accessible groups found for admin rights update',
-        updatedGroups: [],
-        warnings: []
-      });
-    }
+    console.log(`Checking admin rights for ${normalizedChatIds.length} chats`);
 
     const telegramService = new TelegramService('main');
     const updatedGroups: any[] = [];
     const warnings: string[] = [];
 
-    for (const group of targetGroups) {
-      const chatIdRaw = group?.tg_chat_id;
-
-      if (chatIdRaw === undefined || chatIdRaw === null) {
-        warnings.push('Encountered group without tg_chat_id, skipping');
-        continue;
-      }
-
-      const chatId = Number(chatIdRaw);
+    // ✅ Проверяем ВСЕ chat_id напрямую, даже если группы нет в telegram_groups
+    for (const chatIdStr of normalizedChatIds) {
+      const chatId = Number(chatIdStr);
 
       if (Number.isNaN(chatId)) {
-        warnings.push(`Cannot parse chat id ${chatIdRaw} for group ${group?.title || 'Unnamed'}, skipping`);
-        continue;
-      }
-
-      if (group?.bot_status && !['connected', 'active'].includes(group.bot_status)) {
-        warnings.push(`Bot is not admin in chat ${chatIdRaw} (status: ${group.bot_status}), skipping admin check`);
+        warnings.push(`Cannot parse chat id ${chatIdStr}, skipping`);
         continue;
       }
 
@@ -264,7 +215,7 @@ export async function POST(request: Request) {
         const adminInfo = await telegramService.getChatMember(chatId, activeAccount.telegram_user_id);
 
         if (!adminInfo?.ok) {
-          warnings.push(`Failed to fetch admin info for chat ${chatIdRaw}: ${adminInfo?.description || 'Unknown error'}`);
+          warnings.push(`Failed to fetch admin info for chat ${chatId}: ${adminInfo?.description || 'Unknown error'}`);
           continue;
         }
 
@@ -274,7 +225,7 @@ export async function POST(request: Request) {
         const isOwner = memberStatus === 'creator';
 
         const upsertPayload: Record<string, any> = {
-          tg_chat_id: chatIdRaw,
+          tg_chat_id: chatId,
           tg_user_id: activeAccount.telegram_user_id,
           user_telegram_account_id: activeAccount.id,
           is_owner: isOwner,
@@ -307,26 +258,24 @@ export async function POST(request: Request) {
           .upsert(upsertPayload, { onConflict: 'tg_chat_id,tg_user_id' });
 
         if (adminUpsertError) {
-          warnings.push(`Failed to save admin info for chat ${chatIdRaw}: ${adminUpsertError.message || adminUpsertError.code}`);
+          warnings.push(`Failed to save admin info for chat ${chatId}: ${adminUpsertError.message || adminUpsertError.code}`);
           continue;
         }
 
         updatedGroups.push({
-          id: group.id,
-          tg_chat_id: chatIdRaw,
-          title: group.title,
+          tg_chat_id: chatId,
           is_admin: isAdmin,
           is_owner: isOwner,
           status: memberStatus
         });
       } catch (groupError: any) {
-        warnings.push(`Error processing chat ${chatIdRaw}: ${groupError?.message || groupError?.code || 'Unknown error'}`);
+        warnings.push(`Error processing chat ${chatId}: ${groupError?.message || groupError?.code || 'Unknown error'}`);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Checked admin rights for ${targetGroups.length} groups`,
+      message: `Checked admin rights for ${normalizedChatIds.length} chats`,
       updatedGroups,
       warnings
     });

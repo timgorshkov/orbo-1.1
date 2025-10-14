@@ -44,15 +44,26 @@ export default async function OrganizationSettingsPage({ params }: { params: { o
       console.error('Error fetching team:', teamError)
     }
 
-    // Get group details for each admin
+    // Get group details and Telegram account status for each admin
     const teamWithGroups = await Promise.all(
       (team || []).map(async (member: any) => {
+        // Check if user has verified Telegram account for this org
+        const { data: telegramAccount } = await adminSupabase
+          .from('user_telegram_accounts')
+          .select('telegram_username, is_verified')
+          .eq('user_id', member.user_id)
+          .eq('org_id', params.org)
+          .eq('is_verified', true)
+          .maybeSingle()
+        
         if (member.role === 'admin' && member.role_source === 'telegram_admin') {
           const groupIds = member.metadata?.telegram_groups || []
           const groupTitles = member.metadata?.telegram_group_titles || []
           
           return {
             ...member,
+            telegram_username: telegramAccount?.telegram_username || member.telegram_username,
+            has_verified_telegram: !!telegramAccount,
             admin_groups: groupIds.map((id: number, index: number) => ({
               id,
               title: groupTitles[index] || `Group ${id}`
@@ -61,6 +72,8 @@ export default async function OrganizationSettingsPage({ params }: { params: { o
         }
         return {
           ...member,
+          telegram_username: telegramAccount?.telegram_username || member.telegram_username,
+          has_verified_telegram: !!telegramAccount,
           admin_groups: []
         }
       })

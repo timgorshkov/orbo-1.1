@@ -41,6 +41,10 @@
     {
       "path": "/api/cron/event-notifications",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/check-webhook",
+      "schedule": "*/30 * * * *"
     }
   ],
   "rewrites": [

@@ -158,11 +158,28 @@ export async function POST(req: NextRequest) {
             full_name: `${firstName}${lastName ? ' ' + lastName : ''}`,
             photo_url: photoUrl,
             participant_status: invite.access_type === 'full' ? 'participant' : 'event_attendee',
-            source: 'invite'
+            source: 'invite',
+            user_id: userId // ✅ Добавляем user_id для связи
           }, {
             onConflict: 'org_id,tg_user_id',
             ignoreDuplicates: false
           })
+        
+        // ✅ Создаём membership для участников с полным доступом
+        if (invite.access_type === 'full') {
+          await supabaseAdmin
+            .from('memberships')
+            .upsert({
+              org_id: invite.org_id,
+              user_id: userId,
+              role: 'member',
+              role_source: 'invite'
+            }, {
+              onConflict: 'org_id,user_id',
+              ignoreDuplicates: false
+            })
+          console.log(`Created membership for user ${userId} via invite`)
+        }
 
         // Увеличиваем счётчик использований
         await supabaseAdmin
@@ -248,7 +265,8 @@ export async function POST(req: NextRequest) {
             full_name: fullName,
             photo_url: photoUrl,
             participant_status: 'participant',
-            source: 'telegram_group'
+            source: 'telegram_group',
+            user_id: userId // ✅ Добавляем user_id для связи с auth.users
           })
         
         if (participantError) {
@@ -256,6 +274,25 @@ export async function POST(req: NextRequest) {
           // Если ошибка - возможно уже существует, продолжаем
         } else {
           console.log(`Successfully created participant for user ${tgUserId}`)
+          
+          // ✅ Создаём membership с role='member' для доступа в организацию
+          const { error: membershipError } = await supabaseAdmin
+            .from('memberships')
+            .upsert({
+              org_id: targetOrgId,
+              user_id: userId,
+              role: 'member',
+              role_source: 'telegram_group'
+            }, {
+              onConflict: 'org_id,user_id',
+              ignoreDuplicates: true
+            })
+          
+          if (membershipError) {
+            console.error('Error creating membership:', membershipError)
+          } else {
+            console.log(`Successfully created membership for user ${userId} in org ${targetOrgId}`)
+          }
         }
       }
     }

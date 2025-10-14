@@ -82,25 +82,45 @@ export default async function PublicEventPage({ params }: { params: { org: strin
   let isOrgMember = false
   
   if (userId) {
+    console.log(`[PublicEventPage] Checking membership for userId: ${userId}, orgId: ${org.id}`)
+    
     // Check if user is a member of this organization
-    const { data: telegramAccount } = await supabase
+    const { data: telegramAccount, error: taError } = await supabase
       .from('user_telegram_accounts')
       .select('telegram_user_id')
       .eq('user_id', userId)
       .eq('org_id', org.id)
       .maybeSingle()
     
+    console.log(`[PublicEventPage] telegramAccount:`, telegramAccount, 'error:', taError)
+    
     if (telegramAccount) {
-      const { data: participant } = await supabase
+      const { data: participant, error: pError } = await supabase
         .from('participants')
         .select('id')
         .eq('org_id', org.id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
         .maybeSingle()
       
+      console.log(`[PublicEventPage] participant:`, participant, 'error:', pError)
+      
       isOrgMember = !!participant
+    } else {
+      // Try to find participant by user_id directly (backup check)
+      console.log(`[PublicEventPage] No telegram account found, checking participants directly`)
+      const { data: directParticipant } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', org.id)
+        .eq('user_id', userId)
+        .maybeSingle()
+      
+      console.log(`[PublicEventPage] directParticipant:`, directParticipant)
+      isOrgMember = !!directParticipant
     }
   }
+  
+  console.log(`[PublicEventPage] Final isOrgMember: ${isOrgMember}`)
   
   // If event is NOT public and user is NOT a member, show access denied with auth option
   if (!event.is_public && !isOrgMember) {
