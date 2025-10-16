@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="orboGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00A6FF;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0088FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B3FF2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Speech bubble shape -->
+  <path d="M256 32C141.3 32 48 125.3 48 240c0 56.2 22.3 107.2 58.6 144.6C103 389.4 96 394 80 416c-8 11-2 27 11 31 39.7 12 89.3 8 120-8 15.4 3.4 31.4 5 48 5 114.7 0 208-93.3 208-208S370.7 32 256 32z" 
+        fill="url(#orboGradient)"/>
+  
+  <!-- Inner "O" circle (white) -->
+  <circle cx="256" cy="220" r="90" fill="white"/>
+  
+  <!-- Inner "O" hole -->
+  <circle cx="256" cy="220" r="50" fill="url(#orboGradient)"/>
+</svg>
+
