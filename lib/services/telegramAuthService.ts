@@ -282,17 +282,21 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
 
         // Создаём/обновляем участника
         try {
-          // Сначала проверяем, существует ли participant
+          // Сначала проверяем, существует ли participant по tg_user_id
           let participantId: string | null = null
           
+          console.log('[Auth Service] Searching for participant by tg_user_id:', telegramUserId)
+          
           const existingParticipants = await supabaseFetch(
-            `participants?org_id=eq.${targetOrgId}&user_id=eq.${userId}&select=id`
+            `participants?org_id=eq.${targetOrgId}&tg_user_id=eq.${telegramUserId}&is(merged_into,null)&select=id`
           )
           
           if (Array.isArray(existingParticipants) && existingParticipants.length > 0) {
             participantId = existingParticipants[0].id
             console.log('[Auth Service] Participant already exists:', participantId)
           } else {
+            console.log('[Auth Service] No participant found, creating new one')
+            
             // Создаем нового participant
             const newParticipants = await supabaseFetch('participants', {
               method: 'POST',
@@ -301,12 +305,14 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
               },
               body: JSON.stringify({
                 org_id: targetOrgId,
-                user_id: userId,
                 full_name: `${firstName || ''} ${lastName || ''}`.trim() || telegramUsername || `User ${telegramUserId}`,
-                tg_user_id: String(telegramUserId),
+                tg_user_id: telegramUserId,
                 username: telegramUsername,
+                first_name: firstName,
+                last_name: lastName,
                 participant_status: 'participant',
-                source: 'telegram'
+                source: 'telegram',
+                status: 'active'
               })
             })
             

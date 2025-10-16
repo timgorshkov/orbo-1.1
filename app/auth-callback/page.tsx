@@ -70,10 +70,9 @@ export default function AuthCallback() {
             console.log('No organizations, redirecting to create...')
             setTimeout(() => router.push('/orgs/new'), 500)
           } else {
-            // Есть организации → dashboard первой
-            const firstOrg = orgs[0].organizations as any
-            console.log('Has organizations, redirecting to dashboard of:', firstOrg?.id)
-            setTimeout(() => router.push(`/app/${firstOrg?.id}/dashboard`), 500)
+            // Есть организации → список для выбора
+            console.log(`Has ${orgs.length} organizations, redirecting to list...`)
+            setTimeout(() => router.push('/orgs'), 500)
           }
         } else {
           setError('Не удалось получить сессию пользователя')

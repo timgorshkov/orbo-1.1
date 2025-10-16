@@ -95,12 +95,6 @@ export default async function OrganizationsPage() {
 
   console.log('User:', user.id, 'Organizations:', organizations.length)
 
-  // Если организация одна - сразу редиректим
-  if (organizations.length === 1) {
-    console.log('Redirecting to single org:', organizations[0].org_id)
-    redirect(`/app/${organizations[0].org_id}`)
-  }
-
   // Если организаций нет - предлагаем создать
   if (organizations.length === 0) {
     return (

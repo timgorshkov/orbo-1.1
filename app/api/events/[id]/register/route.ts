@@ -54,7 +54,7 @@ export async function POST(
     // First, get telegram account linked to this user
     const { data: telegramAccount } = await supabase
       .from('user_telegram_accounts')
-      .select('telegram_user_id')
+      .select('telegram_user_id, telegram_username')
       .eq('user_id', user.id)
       .eq('org_id', event.org_id)
       .maybeSingle()
@@ -74,8 +74,41 @@ export async function POST(
       participant = foundParticipant
     }
 
-    // If participant still not found, this is an edge case
-    // Only create if no participant exists for this user in this org
+    // NEW: If not found by telegram_user_id, try finding by email
+    // This prevents creating duplicate participants for users without confirmed Telegram
+    if (!participant && user.email) {
+      console.log(`Searching participant by email: ${user.email}`)
+      
+      const { data: foundByEmail } = await adminSupabase
+        .from('participants')
+        .select('id, tg_user_id')
+        .eq('org_id', event.org_id)
+        .eq('email', user.email)
+        .is('merged_into', null)
+        .maybeSingle()
+
+      if (foundByEmail) {
+        console.log(`Found existing participant by email: ${foundByEmail.id}`)
+        participant = foundByEmail
+
+        // If we found participant by email AND user now has confirmed Telegram,
+        // update the participant with telegram_user_id
+        if (telegramAccount?.telegram_user_id && !foundByEmail.tg_user_id) {
+          console.log(`Linking telegram_user_id ${telegramAccount.telegram_user_id} to participant ${foundByEmail.id}`)
+          
+          await adminSupabase
+            .from('participants')
+            .update({ 
+              tg_user_id: telegramAccount.telegram_user_id,
+              username: telegramAccount.telegram_username
+            })
+            .eq('id', foundByEmail.id)
+        }
+      }
+    }
+
+    // If participant still not found, create a new one
+    // This should only happen for first-time event registration
     if (!participant) {
       console.log(`Creating new participant for user ${user.id} in org ${event.org_id}`)
       
@@ -84,6 +117,7 @@ export async function POST(
         .insert({
           org_id: event.org_id,
           tg_user_id: telegramAccount?.telegram_user_id || null,
+          username: telegramAccount?.telegram_username || null,
           full_name: user.email || 'Unknown',
           email: user.email,
           source: 'event',
@@ -94,13 +128,36 @@ export async function POST(
 
       if (createError) {
         console.error('Error creating participant:', createError)
-        return NextResponse.json(
-          { error: 'Error creating participant' },
-          { status: 500 }
-        )
+        
+        // Handle duplicate email case (race condition or unique constraint)
+        if (createError.code === '23505') {
+          // Try to find the participant that was just created
+          const { data: existingByEmail } = await adminSupabase
+            .from('participants')
+            .select('id')
+            .eq('org_id', event.org_id)
+            .eq('email', user.email)
+            .is('merged_into', null)
+            .maybeSingle()
+          
+          if (existingByEmail) {
+            console.log(`Using participant created in race condition: ${existingByEmail.id}`)
+            participant = existingByEmail
+          } else {
+            return NextResponse.json(
+              { error: 'Error creating participant' },
+              { status: 500 }
+            )
+          }
+        } else {
+          return NextResponse.json(
+            { error: 'Error creating participant' },
+            { status: 500 }
+          )
+        }
+      } else {
+        participant = newParticipant
       }
-
-      participant = newParticipant
     }
 
     // Check if already registered
@@ -218,13 +275,14 @@ export async function DELETE(
     // Find participant via user_telegram_accounts
     const { data: telegramAccount } = await supabase
       .from('user_telegram_accounts')
-      .select('telegram_user_id')
+      .select('telegram_user_id, telegram_username')
       .eq('user_id', user.id)
       .eq('org_id', event.org_id)
       .maybeSingle()
 
     let participant = null
 
+    // Try to find participant by telegram_user_id
     if (telegramAccount?.telegram_user_id) {
       const { data: foundParticipant } = await adminSupabase
         .from('participants')
@@ -235,6 +293,19 @@ export async function DELETE(
         .maybeSingle()
 
       participant = foundParticipant
+    }
+
+    // Also try to find by email if not found by telegram
+    if (!participant && user.email) {
+      const { data: foundByEmail } = await adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('email', user.email)
+        .is('merged_into', null)
+        .maybeSingle()
+
+      participant = foundByEmail
     }
 
     if (!participant) {
