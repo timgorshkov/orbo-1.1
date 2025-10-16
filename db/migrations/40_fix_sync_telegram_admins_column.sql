@@ -14,12 +14,12 @@ SECURITY DEFINER
 AS $$
 BEGIN
   -- Получаем все Telegram группы для организации
-  -- ИСПРАВЛЕНО: используем правильную колонку tg_group_id вместо telegram_group_id
+  -- ИСПРАВЛЕНО: используем правильную колонку tg_chat_id вместо telegram_group_id
   RETURN QUERY
   WITH org_groups AS (
     SELECT tg.id as group_id, otg.org_id
     FROM telegram_groups tg
-    INNER JOIN org_telegram_groups otg ON otg.tg_group_id = tg.id
+    INNER JOIN org_telegram_groups otg ON otg.tg_chat_id = tg.tg_chat_id
     WHERE otg.org_id = p_org_id
   ),
   telegram_admins_in_org AS (

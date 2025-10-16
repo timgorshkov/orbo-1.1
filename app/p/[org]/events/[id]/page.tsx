@@ -166,10 +166,59 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     ? Math.max(0, event.capacity - registeredCount)
     : null
 
+  // Check if current user is registered
+  let isUserRegistered = false
+  let participant = null
+  
+  if (userId) {
+    // Find participant via user_telegram_accounts
+    const { data: telegramAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
+      .eq('user_id', userId)
+      .eq('org_id', org.id)
+      .maybeSingle()
+
+    if (telegramAccount?.telegram_user_id) {
+      const { data: foundParticipant } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', org.id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
+        .maybeSingle()
+      
+      participant = foundParticipant
+    } else {
+      // Fallback: try finding by email (fetch user to get email)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) {
+        const { data: foundByEmail } = await supabase
+          .from('participants')
+          .select('id')
+          .eq('org_id', org.id)
+          .eq('email', user.email)
+          .is('merged_into', null)
+          .maybeSingle()
+        
+        participant = foundByEmail
+      }
+    }
+
+    if (participant) {
+      isUserRegistered = event.event_registrations?.some(
+        (reg: any) => 
+          reg.participants?.id === participant.id && 
+          reg.status === 'registered'
+      ) || false
+    }
+  }
+
   const eventWithStats = {
     ...event,
     registered_count: registeredCount,
     available_spots: availableSpots,
+    is_user_registered: isUserRegistered,
     event_registrations: undefined
   }
 

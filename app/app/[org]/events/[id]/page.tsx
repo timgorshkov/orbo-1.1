@@ -77,23 +77,36 @@ export default async function EventDetailPage({
   const isAdmin = membership?.role === 'owner' || membership?.role === 'admin'
 
   // Check if current user is registered
-  // Find participant via telegram identity
-  const { data: telegramIdentity } = await supabase
-    .from('telegram_identities')
-    .select('tg_user_id')
+  // Find participant via user_telegram_accounts
+  const { data: telegramAccount } = await supabase
+    .from('user_telegram_accounts')
+    .select('telegram_user_id')
     .eq('user_id', user.id)
+    .eq('org_id', params.org)
     .maybeSingle()
 
   let participant = null
-  if (telegramIdentity?.tg_user_id) {
-    const { data: foundParticipant } = await supabase
+  if (telegramAccount?.telegram_user_id) {
+    const { data: foundParticipant } = await adminSupabase
       .from('participants')
       .select('id')
       .eq('org_id', event.org_id)
-      .eq('tg_user_id', telegramIdentity.tg_user_id)
+      .eq('tg_user_id', telegramAccount.telegram_user_id)
+      .is('merged_into', null)
       .maybeSingle()
     
     participant = foundParticipant
+  } else if (user.email) {
+    // Fallback: try finding by email
+    const { data: foundByEmail } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', event.org_id)
+      .eq('email', user.email)
+      .is('merged_into', null)
+      .maybeSingle()
+    
+    participant = foundByEmail
   }
 
   const isUserRegistered = participant && event.event_registrations?.some(

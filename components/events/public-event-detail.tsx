@@ -21,6 +21,7 @@ type Event = {
   capacity: number | null
   registered_count: number
   available_spots: number | null
+  is_user_registered?: boolean
 }
 
 type Org = {
@@ -39,6 +40,7 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [isRegistered, setIsRegistered] = useState(event.is_user_registered || false)
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -68,7 +70,29 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
         }
 
         // Success!
-        alert('Вы успешно зарегистрированы на событие!')
+        setIsRegistered(true)
+        router.refresh()
+      } catch (err: any) {
+        setError(err.message)
+      }
+    })
+  }
+
+  const handleUnregister = () => {
+    setError(null)
+    startTransition(async () => {
+      try {
+        const response = await fetch(`/api/events/${event.id}/register`, {
+          method: 'DELETE'
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Не удалось отменить регистрацию')
+        }
+
+        setIsRegistered(false)
         router.refresh()
       } catch (err: any) {
         setError(err.message)
@@ -202,45 +226,76 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
             {/* Registration */}
             <Card>
               <CardContent className="pt-6 space-y-3">
-                {event.available_spots === 0 ? (
-                  <div className="text-center py-4">
-                    <div className="text-red-600 font-medium mb-1">
-                      Мест нет
-                    </div>
-                    <div className="text-sm text-neutral-600">
-                      Все места заняты
-                    </div>
-                  </div>
-                ) : (
+                {isRegistered ? (
                   <>
-                    {event.available_spots && event.available_spots <= 5 && (
-                      <div className="text-center text-sm text-amber-600 mb-2">
-                        Осталось всего {event.available_spots} мест!
+                    <div className="text-center py-2">
+                      <div className="text-green-600 font-medium mb-1">
+                        ✓ Вы зарегистрированы
                       </div>
-                    )}
+                      <div className="text-sm text-neutral-600">
+                        Мы напомним вам о событии
+                      </div>
+                    </div>
                     <Button
+                      variant="outline"
                       className="w-full"
-                      onClick={handleRegister}
+                      onClick={handleDownloadICS}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Добавить в календарь
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleUnregister}
                       disabled={isPending}
                     >
-                      {isPending ? 'Загрузка...' : 'Зарегистрироваться'}
+                      {isPending ? 'Отмена...' : 'Отменить регистрацию'}
                     </Button>
-                    {!isAuthenticated && (
-                      <p className="text-xs text-center text-neutral-500">
-                        Для регистрации необходимо войти через Telegram
-                      </p>
+                  </>
+                ) : (
+                  <>
+                    {event.available_spots === 0 ? (
+                      <div className="text-center py-4">
+                        <div className="text-red-600 font-medium mb-1">
+                          Мест нет
+                        </div>
+                        <div className="text-sm text-neutral-600">
+                          Все места заняты
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {event.available_spots && event.available_spots <= 5 && (
+                          <div className="text-center text-sm text-amber-600 mb-2">
+                            Осталось всего {event.available_spots} мест!
+                          </div>
+                        )}
+                        <Button
+                          className="w-full"
+                          onClick={handleRegister}
+                          disabled={isPending || !isAuthenticated}
+                        >
+                          {isPending ? 'Регистрация...' : 'Зарегистрироваться'}
+                        </Button>
+                        {!isAuthenticated && (
+                          <p className="text-xs text-center text-neutral-500">
+                            <a href="/signin" className="text-blue-600 hover:underline">Войдите</a>, чтобы зарегистрироваться
+                          </p>
+                        )}
+                      </>
                     )}
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleDownloadICS}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Добавить в календарь
+                    </Button>
                   </>
                 )}
-
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleDownloadICS}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Добавить в календарь
-                </Button>
 
                 {error && (
                   <div className="text-sm text-red-500 text-center">
