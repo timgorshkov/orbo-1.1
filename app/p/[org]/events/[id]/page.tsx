@@ -168,7 +168,7 @@ export default async function PublicEventPage({ params }: { params: { org: strin
 
   // Check if current user is registered
   let isUserRegistered = false
-  let participant = null
+  let participant: { id: string } | null = null
   
   if (userId) {
     // Find participant via user_telegram_accounts
@@ -208,7 +208,7 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     if (participant) {
       isUserRegistered = event.event_registrations?.some(
         (reg: any) => 
-          reg.participants?.id === participant.id && 
+          reg.participants?.id === participant?.id && 
           reg.status === 'registered'
       ) || false
     }

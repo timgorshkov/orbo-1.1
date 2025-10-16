@@ -85,7 +85,7 @@ export default async function EventDetailPage({
     .eq('org_id', params.org)
     .maybeSingle()
 
-  let participant = null
+  let participant: { id: string } | null = null
   if (telegramAccount?.telegram_user_id) {
     const { data: foundParticipant } = await adminSupabase
       .from('participants')
