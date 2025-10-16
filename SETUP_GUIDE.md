@@ -42,7 +42,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 # App URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000  # для dev
-# NEXT_PUBLIC_APP_URL=https://yourapp.com  # для prod
+# NEXT_PUBLIC_APP_URL=https://app.orbo.ru  # для prod
 
 # Telegram Bot
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name  # БЕЗ @
@@ -133,7 +133,7 @@ npm run dev
 
 ### Обязательно перед продакшеном:
 1. [ ] Настроить реальный домен в BotFather
-2. [ ] Обновить NEXT_PUBLIC_APP_URL на продакшен URL
+2. [ ] Обновить NEXT_PUBLIC_APP_URL на продакшен URL (https://app.orbo.ru)
 3. [ ] Сгенерировать secure TELEGRAM_WEBHOOK_SECRET
 4. [ ] Протестировать на всех устройствах (Desktop, iOS, Android)
 5. [ ] Настроить мониторинг использования приглашений

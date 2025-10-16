@@ -43,16 +43,20 @@ export default function SetupTelegramPage({ params }: { params: { org: string } 
           <CardTitle>Подключите ваш аккаунт Telegram</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-neutral-600">
-            Чтобы определить ваши группы, нам нужно знать ваш ID Telegram.
-          </p>
-          
-          <ol className="space-y-3 text-sm text-neutral-600 list-decimal pl-5">
-            <li>Перейдите к боту <a href="https://t.me/userinfobot" className="text-blue-600" target="_blank">@userinfobot</a> в Telegram</li>
-            <li>Нажмите "Start" или отправьте любое сообщение</li>
-            <li>Бот вернет ваш ID, скопируйте его</li>
-            <li>Вставьте ID в поле ниже</li>
-          </ol>
+          <div className="bg-blue-50 p-4 rounded-lg mb-4">
+            <p className="font-medium text-blue-900 mb-2">Как получить ваш Telegram User ID:</p>
+            <ol className="space-y-2 text-sm text-blue-800 list-decimal pl-5">
+              <li>
+                <strong>Запустите бота:</strong> откройте <a href="https://t.me/orbo_assistant_bot" className="text-blue-600 hover:underline font-medium" target="_blank" rel="noopener noreferrer">@orbo_assistant_bot</a> в Telegram
+              </li>
+              <li>Нажмите <code className="bg-blue-100 px-1 rounded">/start</code></li>
+              <li>Бот автоматически отправит вам ваш User ID</li>
+              <li>Скопируйте ID и вставьте в поле ниже</li>
+            </ol>
+            <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+              💡 <strong>Важно:</strong> Сначала запустите бота, чтобы он мог отправлять вам коды верификации!
+            </div>
+          </div>
           
           <form onSubmit={saveTelegramId}>
             <div className="space-y-2">

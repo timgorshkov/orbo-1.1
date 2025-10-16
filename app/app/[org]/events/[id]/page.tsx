@@ -33,11 +33,12 @@ export default async function EventDetailPage({
         id,
         status,
         registered_at,
-        participants(
+        participants!inner(
           id,
           full_name,
           username,
-          tg_user_id
+          tg_user_id,
+          merged_into
         )
       )
     `)
@@ -56,9 +57,9 @@ export default async function EventDetailPage({
     )
   }
 
-  // Calculate stats
+  // Calculate stats (exclude merged participants)
   const registeredCount = event.event_registrations?.filter(
-    (reg: any) => reg.status === 'registered'
+    (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
   ).length || 0
 
   const availableSpots = event.capacity

@@ -30,7 +30,11 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     .from('events')
     .select(`
       *,
-      event_registrations!event_registrations_event_id_fkey(id, status)
+      event_registrations!event_registrations_event_id_fkey(
+        id, 
+        status,
+        participants!inner(merged_into)
+      )
     `)
     .eq('id', params.id)
     .eq('org_id', org.id)
@@ -95,32 +99,39 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     console.log(`[PublicEventPage] telegramAccount:`, telegramAccount, 'error:', taError)
     
     if (telegramAccount) {
-      const { data: participant, error: pError } = await supabase
+      const { data: participants, error: pError } = await supabase
         .from('participants')
         .select('id')
         .eq('org_id', org.id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
-        .maybeSingle()
+        .is('merged_into', null) // Exclude merged participants
+        .limit(1)
       
-      console.log(`[PublicEventPage] participant:`, participant, 'error:', pError)
+      console.log(`[PublicEventPage] participants:`, participants, 'error:', pError)
       
-      isOrgMember = !!participant
+      isOrgMember = !!(participants && participants.length > 0)
     } else {
       // Try to find participant by user_id directly (backup check)
       console.log(`[PublicEventPage] No telegram account found, checking participants directly`)
-      const { data: directParticipant } = await supabase
+      const { data: directParticipants } = await supabase
         .from('participants')
         .select('id')
         .eq('org_id', org.id)
         .eq('user_id', userId)
-        .maybeSingle()
+        .is('merged_into', null) // Exclude merged participants
+        .limit(1)
       
-      console.log(`[PublicEventPage] directParticipant:`, directParticipant)
-      isOrgMember = !!directParticipant
+      console.log(`[PublicEventPage] directParticipants:`, directParticipants)
+      isOrgMember = !!(directParticipants && directParticipants.length > 0)
     }
   }
   
   console.log(`[PublicEventPage] Final isOrgMember: ${isOrgMember}`)
+  
+  // If user is authenticated and is org member, redirect to internal page with navigation
+  if (userId && isOrgMember) {
+    redirect(`/app/${org.id}/events/${params.id}`)
+  }
   
   // If event is NOT public and user is NOT a member, show access denied with auth option
   if (!event.is_public && !isOrgMember) {
@@ -146,9 +157,9 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     )
   }
 
-  // Calculate stats
+  // Calculate stats (exclude merged participants)
   const registeredCount = event.event_registrations?.filter(
-    (reg: any) => reg.status === 'registered'
+    (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
   ).length || 0
 
   const availableSpots = event.capacity

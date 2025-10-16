@@ -35,6 +35,7 @@ type Event = {
       full_name: string | null
       username: string | null
       tg_user_id: number | null
+      merged_into: string | null
     }
   }>
 }
@@ -178,7 +179,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
   }
 
   const participants = event.event_registrations
-    ?.filter(reg => reg.status === 'registered')
+    ?.filter(reg => reg.status === 'registered' && reg.participants?.merged_into === null)
     .sort((a, b) => new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime())
     || []
 

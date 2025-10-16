@@ -54,7 +54,7 @@ db/migrations/19_events.sql
 CRON_SECRET=your-random-secret-key-here
 
 # URL приложения (для генерации ссылок в уведомлениях)
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+NEXT_PUBLIC_APP_URL=https://app.orbo.ru
 
 # Telegram Bot Token (уже должен быть настроен)
 TELEGRAM_BOT_TOKEN=your-bot-token-here

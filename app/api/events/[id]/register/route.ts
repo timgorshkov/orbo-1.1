@@ -61,13 +61,14 @@ export async function POST(
 
     let participant = null
 
-    // Try to find participant by telegram_user_id
+    // Try to find participant by telegram_user_id (only canonical, not merged)
     if (telegramAccount?.telegram_user_id) {
       const { data: foundParticipant } = await adminSupabase
         .from('participants')
         .select('id')
         .eq('org_id', event.org_id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
         .maybeSingle()
 
       participant = foundParticipant
@@ -151,6 +152,26 @@ export async function POST(
 
     if (registrationError) {
       console.error('Error creating registration:', registrationError)
+      
+      // Handle duplicate key error gracefully
+      if (registrationError.code === '23505') {
+        // User is already registered (race condition)
+        const { data: existingReg } = await adminSupabase
+          .from('event_registrations')
+          .select('*')
+          .eq('event_id', eventId)
+          .eq('participant_id', participant.id)
+          .single()
+        
+        return NextResponse.json(
+          { 
+            registration: existingReg,
+            message: 'Already registered' 
+          },
+          { status: 200 }
+        )
+      }
+      
       return NextResponse.json(
         { error: registrationError.message },
         { status: 500 }
@@ -210,6 +231,7 @@ export async function DELETE(
         .select('id')
         .eq('org_id', event.org_id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
         .maybeSingle()
 
       participant = foundParticipant

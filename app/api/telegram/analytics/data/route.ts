@@ -383,47 +383,50 @@ export async function GET(request: Request) {
       }
     }
 
-    // Дополнительное обогащение из telegram_identities
-    const stillMissingIdentities = participantList
-      .filter(record => !record.username || !record.full_name)
-      .map(record => record.tg_user_id)
+    // Дополнительное обогащение из telegram_identities (если таблица существует)
+    // Примечание: telegram_identities может не существовать в текущей схеме БД
+    // Закомментировано до создания таблицы или можно получить данные из participants
+    // const stillMissingIdentities = participantList
+    //   .filter(record => !record.username || !record.full_name)
+    //   .map(record => record.tg_user_id)
 
-    if (stillMissingIdentities.length > 0) {
-      try {
-        const { data: identityRows, error: identityError } = await supabase
-          .from('telegram_identities')
-          .select('tg_user_id, username, first_name, last_name, full_name')
-          .in('tg_user_id', Array.from(new Set(stillMissingIdentities)))
+    // if (stillMissingIdentities.length > 0) {
+    //   try {
+    //     const { data: identityRows, error: identityError } = await supabase
+    //       .from('telegram_identities')
+    //       .select('tg_user_id, username, first_name, last_name')
+    //       .in('tg_user_id', Array.from(new Set(stillMissingIdentities)))
 
-        if (identityError) {
-          console.error('Error fetching telegram identities for analytics:', identityError)
-        } else if (identityRows) {
-          identityRows.forEach(row => {
-            if (!row?.tg_user_id) {
-              return
-            }
-            const record = participantsMap.get(row.tg_user_id)
-            if (!record) {
-              return
-            }
+    //     if (identityError) {
+    //       console.error('Error fetching telegram identities for analytics:', identityError)
+    //     } else if (identityRows) {
+    //       identityRows.forEach(row => {
+    //         if (!row?.tg_user_id) {
+    //           return
+    //         }
+    //         const record = participantsMap.get(row.tg_user_id)
+    //         if (!record) {
+    //           return
+    //         }
 
-            if (!record.username && row.username) {
-              record.username = row.username
-              const normalized = normalizeUsername(row.username)
-              if (normalized) {
-                usernameToUserId.set(normalized, record.tg_user_id)
-              }
-            }
+    //         if (!record.username && row.username) {
+    //           record.username = row.username
+    //           const normalized = normalizeUsername(row.username)
+    //           if (normalized) {
+    //             usernameToUserId.set(normalized, record.tg_user_id)
+    //           }
+    //         }
 
-            if (!record.full_name) {
-              record.full_name = row.full_name || [row.first_name, row.last_name].filter(Boolean).join(' ') || null
-            }
-          })
-        }
-      } catch (identityEnrichmentException) {
-        console.error('Unexpected error enriching identities for analytics:', identityEnrichmentException)
-      }
-    }
+    //         if (!record.full_name) {
+    //           const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ') || null
+    //           record.full_name = fullName
+    //         }
+    //       })
+    //     }
+    //   } catch (identityEnrichmentException) {
+    //     console.error('Unexpected error enriching identities for analytics:', identityEnrichmentException)
+    //   }
+    // }
 
     const membersTotal = participantList.length
 

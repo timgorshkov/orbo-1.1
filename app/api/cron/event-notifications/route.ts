@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     // Fetch published events that need notifications
     const { data: events, error: eventsError } = await supabase
       .from('events')
-      .select('*, organizations(name, slug)')
+      .select('*, organizations(name)')
       .eq('status', 'published')
       .gte('event_date', now.toISOString().split('T')[0])
 
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       })
       const timeStr = `${event.start_time.substring(0, 5)} - ${event.end_time.substring(0, 5)}`
 
-      const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://orbo.app'}/p/${event.organizations.slug}/events/${event.id}`
+      const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://orbo.app'}/p/${event.org_id}/events/${event.id}`
 
       let message = ''
       if (notificationType === 'day_before') {

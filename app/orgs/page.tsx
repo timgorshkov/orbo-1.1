@@ -33,7 +33,7 @@ export default async function OrganizationsPage() {
     console.error('Error fetching memberships:', error)
   }
 
-  const organizations = memberships?.map(m => {
+  let organizations = memberships?.map(m => {
     const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
     return {
       org_id: m.org_id,
@@ -42,6 +42,56 @@ export default async function OrganizationsPage() {
       role: m.role
     };
   }) || []
+
+  // Дополнительно: находим организации, где пользователь участник через Telegram
+  const { data: telegramAccounts } = await adminSupabase
+    .from('user_telegram_accounts')
+    .select('org_id, telegram_user_id')
+    .eq('user_id', user.id)
+
+  if (telegramAccounts && telegramAccounts.length > 0) {
+    for (const ta of telegramAccounts) {
+      // Проверяем, есть ли уже эта организация в списке
+      if (!organizations.find(o => o.org_id === ta.org_id)) {
+        // Проверяем, есть ли участник в этой организации
+        const { data: participant } = await adminSupabase
+          .from('participants')
+          .select('id')
+          .eq('org_id', ta.org_id)
+          .eq('tg_user_id', ta.telegram_user_id)
+          .is('merged_into', null)
+          .maybeSingle()
+
+        if (participant) {
+          // Получаем инфо об организации
+          const { data: orgData } = await adminSupabase
+            .from('organizations')
+            .select('id, name, logo_url')
+            .eq('id', ta.org_id)
+            .single()
+
+          if (orgData) {
+            organizations.push({
+              org_id: orgData.id,
+              org_name: orgData.name || 'Без названия',
+              logo_url: orgData.logo_url || null,
+              role: 'member'
+            })
+
+            // Автоматически создаём membership для будущих визитов
+            await adminSupabase
+              .from('memberships')
+              .insert({
+                user_id: user.id,
+                org_id: orgData.id,
+                role: 'member'
+              })
+              // Игнорируем duplicate key error (если membership уже существует)
+          }
+        }
+      }
+    }
+  }
 
   console.log('User:', user.id, 'Organizations:', organizations.length)
 
@@ -60,22 +110,20 @@ export default async function OrganizationsPage() {
             Добро пожаловать!
           </h1>
           <p className="mb-6 text-gray-600">
-            У вас пока нет пространств. Создайте новое или привяжите Telegram-аккаунт,
-            чтобы получить доступ к пространствам, где вы являетесь участником.
+            У вас пока нет пространств. Создайте своё первое пространство для управления сообществом.
           </p>
           <div className="space-y-3">
             <Link
-              href="/app/new"
+              href="/orgs/new"
               className="block w-full rounded-lg bg-blue-600 px-4 py-3 text-center font-medium text-white hover:bg-blue-700"
             >
               Создать пространство
             </Link>
-            <Link
-              href="/login/telegram"
-              className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-center font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Войти через Telegram
-            </Link>
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-900">
+                <strong>Совет:</strong> После создания пространства вы сможете привязать свой Telegram-аккаунт и добавить группы в настройках.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -218,7 +266,7 @@ export default async function OrganizationsPage() {
         {/* Кнопка создания новой организации */}
         <div className="mt-8">
           <Link
-            href="/app/new"
+            href="/orgs/new"
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <span className="text-lg">+</span>

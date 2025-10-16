@@ -21,9 +21,18 @@ export default async function OrgLayout({
   // Проверяем авторизацию
   const {
     data: { user },
+    error: userError
   } = await supabase.auth.getUser()
 
-  console.log('user:', user?.id)
+  console.log('user:', user?.id, 'error:', userError)
+
+  // Debug: проверяем cookies
+  const { cookies: cookieFn } = await import('next/headers')
+  const cookieStore = await cookieFn()
+  const allCookies = cookieStore.getAll()
+  console.log('All cookies count:', allCookies.length)
+  const authCookies = allCookies.filter(c => c.name.includes('auth'))
+  console.log('Auth cookies:', authCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
 
   if (!user) {
     console.log('No user, redirecting to signin')

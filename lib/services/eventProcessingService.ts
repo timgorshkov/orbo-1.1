@@ -690,8 +690,16 @@ export class EventProcessingService {
    * Обрабатывает обычное сообщение пользователя
    */
   private async processUserMessage(message: TelegramMessage, orgId: string): Promise<void> {
+    console.log('[EventProcessing] ===== PROCESSING USER MESSAGE =====');
+    console.log('[EventProcessing] OrgId:', orgId);
+    console.log('[EventProcessing] Message ID:', message.message_id);
+    console.log('[EventProcessing] Chat ID:', message.chat.id);
+    console.log('[EventProcessing] From:', message.from?.username || message.from?.id);
 
-    if (!message.from) return;
+    if (!message.from) {
+      console.log('[EventProcessing] No message.from, skipping');
+      return;
+    }
   
     const chatId = message.chat.id;
     const userId = message.from.id;
@@ -700,14 +708,16 @@ export class EventProcessingService {
     const threadTitle = this.extractThreadTitle(message);
 
     if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot') {
-      console.log('Skipping user message for GroupAnonymousBot');
+      console.log('[EventProcessing] Skipping user message for GroupAnonymousBot');
       return;
     }
 
     if (message.from.is_bot) {
-      console.log('Skipping user message for bot user', message.from.username || userId);
+      console.log('[EventProcessing] Skipping user message for bot user', message.from.username || userId);
       return;
     }
+
+    console.log('[EventProcessing] User message is valid, proceeding...');
 
     const username = message.from.username;
     const fullName = `${message.from.first_name} ${message.from.last_name || ''}`.trim();
@@ -855,86 +865,90 @@ export class EventProcessingService {
         }
       });
 
-      console.log('Inserting activity event with data:', {
+      console.log('[EventProcessing] ===== INSERTING ACTIVITY EVENT =====');
+      console.log('[EventProcessing] Inserting activity event with data:', {
         org_id: orgId,
         event_type: 'message',
         tg_chat_id: chatId,
-        message_id: message.message_id
+        message_id: message.message_id,
+        tg_user_id: userId
       });
       
-      // Минимальный набор полей для вставки
+      // Минимальный набор полей для вставки (без thread_title для совместимости)
       const baseEventData = {
         org_id: orgId,
         event_type: 'message',
         tg_user_id: userId,
         tg_chat_id: chatId,
+        message_id: message.message_id,
         message_thread_id: messageThreadId,
-        thread_title: threadTitle,
+        reply_to_message_id: message.reply_to_message?.message_id || null,
+        has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+        chars_count: message.text?.length || 0,
+        links_count: linksCount,
+        mentions_count: mentionsCount,
         meta: {
           user: {
             username: username,
             name: fullName
           },
           message_length: message.text?.length || 0,
-          links_count: linksCount,
-          mentions_count: mentionsCount,
-          has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
           message_id: message.message_id,
-          message_thread_id: messageThreadId,
-          thread_title: threadTitle,
-          is_topic_message: (message as any)?.is_topic_message ?? false,
-          forum_topic_created: (message as any)?.forum_topic_created ?? null,
-          forum_topic_edited: (message as any)?.forum_topic_edited ?? null
+          is_topic_message: (message as any)?.is_topic_message ?? false
         }
       };
       
+      console.log('[EventProcessing] Attempting insert to activity_events...');
       // Пробуем добавить дополнительные поля, если они существуют в таблице
       try {
         // Сначала пробуем вставить только базовые поля
         const { error } = await this.supabase.from('activity_events').insert(baseEventData);
         
         if (error) {
-          console.error('Error inserting activity event with base data:', error);
+          console.error('[EventProcessing] ❌ Error inserting activity event with base data:', error);
           throw error;
         } else {
-          console.log('Activity event recorded successfully with base data');
+          console.log('[EventProcessing] ✅ Activity event recorded successfully with base data');
         }
       } catch (baseError) {
-        console.error('Error in base insert, trying with minimal fields:', baseError);
+        console.error('[EventProcessing] ❌ Error in base insert, trying with minimal fields:', baseError);
         
-        // Если не получилось, пробуем с минимальным набором полей
+        // Если не получилось, пробуем с минимальным набором полей (только обязательные поля из миграции)
         const minimalEventData = {
           org_id: orgId,
           event_type: 'message',
           tg_user_id: userId,
           tg_chat_id: chatId,
-          message_thread_id: messageThreadId,
-          thread_title: threadTitle,
+          message_id: message.message_id,
           meta: {
             message_id: message.message_id,
             user: {
               username: username,
               name: fullName
-            },
-            message_thread_id: messageThreadId,
-            thread_title: threadTitle
+            }
           }
         };
         
+        console.log('[EventProcessing] Attempting minimal insert to activity_events...');
         try {
           const { error: minimalError } = await this.supabase.from('activity_events').insert(minimalEventData);
           
           if (minimalError) {
-            console.error('Error inserting activity event with minimal data:', minimalError);
+            console.error('[EventProcessing] ❌ Error inserting activity event with minimal data:', minimalError);
           } else {
-            console.log('Activity event recorded successfully with minimal data');
+            console.log('[EventProcessing] ✅ Activity event recorded successfully with minimal data');
           }
         } catch (minimalInsertError) {
-          console.error('Fatal error inserting activity event:', minimalInsertError);
+          console.error('[EventProcessing] ❌ Fatal error inserting activity event:', minimalInsertError);
         }
       }
     } catch (error) {
-      console.error('Exception in activity event insert:', error);
+      console.error('[EventProcessing] ❌ Exception in activity event insert:', error);
+    }
+    
+    // Сохраняем текст сообщения (если есть)
+    if (message.text && message.text.trim().length > 0) {
+      await this.saveMessageText(message, orgId, participantId);
     }
     
     try {
@@ -1631,6 +1645,73 @@ export class EventProcessingService {
     if (error) {
       console.error('Failed to write global activity event:', error);
     }
+  }
+
+  /**
+   * Сохраняет текст сообщения в таблицу participant_messages для последующего анализа
+   */
+  private async saveMessageText(
+    message: TelegramMessage, 
+    orgId: string, 
+    participantId: string | null
+  ): Promise<void> {
+    try {
+      const messageText = message.text?.trim() || null;
+      if (!messageText || messageText.length === 0) {
+        return;
+      }
+
+      console.log('[EventProcessing] Saving message text, length:', messageText.length);
+
+      const mediaType = this.detectMediaType(message);
+      const wordsCount = messageText.split(/\s+/).filter(w => w.length > 0).length;
+
+      const { error } = await this.supabase
+        .from('participant_messages')
+        .insert({
+          org_id: orgId,
+          participant_id: participantId,
+          tg_user_id: message.from?.id,
+          tg_chat_id: message.chat.id,
+          message_id: message.message_id,
+          message_text: messageText,
+          message_thread_id: (message as any)?.message_thread_id || null,
+          reply_to_message_id: message.reply_to_message?.message_id || null,
+          has_media: !!(message.photo || message.video || message.document || message.audio || message.voice || (message as any).sticker),
+          media_type: mediaType,
+          chars_count: messageText.length,
+          words_count: wordsCount,
+          sent_at: new Date(message.date * 1000).toISOString()
+        });
+
+      if (error) {
+        // Игнорируем ошибки duplicate key (сообщение уже сохранено)
+        if (error.code === '23505') {
+          console.log('[EventProcessing] Message already saved, skipping');
+        } else {
+          console.error('[EventProcessing] ❌ Error saving message text:', error);
+        }
+      } else {
+        console.log('[EventProcessing] ✅ Message text saved successfully');
+      }
+    } catch (error) {
+      console.error('[EventProcessing] ❌ Exception saving message text:', error);
+    }
+  }
+
+  /**
+   * Определяет тип медиа в сообщении
+   */
+  private detectMediaType(message: TelegramMessage): string | null {
+    if (message.photo) return 'photo';
+    if (message.video) return 'video';
+    if (message.document) return 'document';
+    if (message.audio) return 'audio';
+    if (message.voice) return 'voice';
+    if ((message as any).sticker) return 'sticker';
+    if ((message as any).animation) return 'animation';
+    if ((message as any).video_note) return 'video_note';
+    return null;
   }
 }
 

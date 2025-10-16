@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import TelegramLogin, { type TelegramUser } from '@/components/auth/telegram-login'
+import TelegramBotAuth from '@/components/auth/telegram-bot-auth'
 
 interface JoinPageClientProps {
   orgId: string
@@ -39,41 +38,6 @@ export default function JoinPageClient({
   accessType,
   description
 }: JoinPageClientProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleTelegramAuth = async (user: TelegramUser) => {
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const res = await fetch('/api/auth/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegramData: user,
-          orgId,
-          inviteToken: token
-        })
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Ошибка авторизации')
-      }
-
-      if (data.success && data.redirectUrl) {
-        // Используем magic link для установки сессии
-        window.location.href = data.redirectUrl
-      }
-    } catch (err) {
-      console.error('Auth error:', err)
-      setError(err instanceof Error ? err.message : 'Произошла ошибка при авторизации')
-      setIsLoading(false)
-    }
-  }
-
   const accessInfo = ACCESS_TYPE_LABELS[accessType] || ACCESS_TYPE_LABELS.full
 
   return (
@@ -114,43 +78,16 @@ export default function JoinPageClient({
           </p>
         </div>
 
-        {/* Telegram Login */}
-        {!isLoading && !error && (
-          <div className="flex justify-center mb-4">
-            <TelegramLogin
-              botUsername={process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || ''}
-              onAuth={handleTelegramAuth}
-              buttonSize="large"
-              cornerRadius={12}
-            />
-          </div>
-        )}
-
-        {/* Loading */}
-        {isLoading && (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Авторизация...</p>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="mt-2 text-sm text-red-600 hover:text-red-800 font-medium"
-            >
-              Попробовать снова
-            </button>
-          </div>
-        )}
+        {/* Telegram Bot Auth */}
+        <TelegramBotAuth
+          orgId={orgId}
+          redirectUrl={`/app/${orgId}/dashboard`}
+        />
 
         {/* Футер */}
         <div className="mt-6 pt-6 border-t border-gray-200">
           <p className="text-xs text-gray-500 text-center">
-            Нажимая "Войти через Telegram", вы соглашаетесь на обработку ваших данных
+            Используя Telegram для входа, вы соглашаетесь на обработку ваших данных
           </p>
         </div>
       </div>

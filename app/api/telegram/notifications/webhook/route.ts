@@ -5,9 +5,32 @@ import { createTelegramService } from '@/lib/services/telegramService'
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  console.log('[Notifications Bot Webhook] ==================== WEBHOOK RECEIVED ====================');
+  
   // Проверяем секретный токен
   const secret = process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET
-  if (req.headers.get('x-telegram-bot-api-secret-token') !== secret) {
+  const receivedSecret = req.headers.get('x-telegram-bot-api-secret-token')
+  const usingDedicatedSecret = !!process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET
+  
+  console.log('[Notifications Bot Webhook] Secret token check:', {
+    endpoint: '/api/telegram/notifications/webhook',
+    botType: 'NOTIFICATIONS',
+    usingDedicatedSecret,
+    secretSource: usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET (fallback)',
+    hasSecret: !!secret,
+    receivedMatches: receivedSecret === secret,
+    secretLength: secret?.length,
+    receivedSecretLength: receivedSecret?.length
+  });
+  
+  if (receivedSecret !== secret) {
+    console.error('[Notifications Bot Webhook] ❌ Unauthorized - secret token mismatch');
+    console.error('[Notifications Bot Webhook] Endpoint: /api/telegram/notifications/webhook (NOTIFICATIONS BOT)');
+    console.error('[Notifications Bot Webhook] Using dedicated secret:', usingDedicatedSecret);
+    console.error('[Notifications Bot Webhook] Secret source:', usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET');
+    console.error('[Notifications Bot Webhook] Expected secret length:', secret?.length);
+    console.error('[Notifications Bot Webhook] Received secret length:', receivedSecret?.length);
+    console.error('[Notifications Bot Webhook] To fix: Reset webhook using /api/telegram/admin/reset-webhook with botType=notifications');
     return NextResponse.json({ ok: false }, { status: 401 })
   }
 

@@ -39,16 +39,42 @@ export default function AuthCallback() {
         }
         
         if (data && data.session) {
-          console.log('Authenticated, redirecting to app...')
+          console.log('Authenticated, checking organizations...')
+          
+          // Получаем организации пользователя
+          const { data: orgs, error: orgsError } = await supabase
+            .from('memberships')
+            .select('org_id, organizations(id)')
+            .eq('user_id', data.session.user.id)
+          
+          if (orgsError) {
+            console.error('Error fetching organizations:', orgsError)
+            // Fallback - редиректим на /orgs
+            setTimeout(() => router.push('/orgs'), 500)
+            return
+          }
+          
+          console.log(`Found ${orgs?.length || 0} organizations`)
           
           // Сохраняем информацию о сессии для отладки
           localStorage.setItem('debug_session', JSON.stringify({
             userId: data.session.user.id,
             email: data.session.user.email,
+            orgsCount: orgs?.length || 0,
             timestamp: new Date().toISOString()
           }));
           
-          setTimeout(() => router.push('/app'), 500)
+          // Умный редирект
+          if (!orgs || orgs.length === 0) {
+            // Нет организаций → создание новой
+            console.log('No organizations, redirecting to create...')
+            setTimeout(() => router.push('/orgs/new'), 500)
+          } else {
+            // Есть организации → dashboard первой
+            const firstOrg = orgs[0].organizations as any
+            console.log('Has organizations, redirecting to dashboard of:', firstOrg?.id)
+            setTimeout(() => router.push(`/app/${firstOrg?.id}/dashboard`), 500)
+          }
         } else {
           setError('Не удалось получить сессию пользователя')
         }

@@ -57,11 +57,11 @@
 ## Настройка редиректов при аутентификации
 
 1. Перейдите в раздел "Authentication" -> "URL Configuration"
-2. Добавьте в поле "Site URL" адрес вашего сайта (например: `https://your-app.vercel.app`)
+2. Добавьте в поле "Site URL": `https://app.orbo.ru`
 3. Добавьте в "Redirect URLs" следующие адреса:
-   - `https://your-app.vercel.app/`
-   - `https://your-app.vercel.app/app`
-   - `http://localhost:3000/` (для локальной разработки)
+   - `https://app.orbo.ru/**`
+   - `https://app.orbo.ru/auth-callback`
+   - `http://localhost:3000/**` (для локальной разработки)
    
 ## Дополнительные настройки для деплоя на Vercel
 
@@ -72,7 +72,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-key
 JWT_SECRET=your-secret-key
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+NEXT_PUBLIC_APP_URL=https://app.orbo.ru
 ```
 
 Не забудьте заменить значения на реальные данные из вашего проекта Supabase.
@@ -85,7 +85,7 @@ NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
    ```
    TELEGRAM_BOT_TOKEN=your-bot-token
    TELEGRAM_WEBHOOK_SECRET=your-secret-token
-   TELEGRAM_WEBHOOK_URL=https://your-app.vercel.app/api/telegram/webhook
+   TELEGRAM_WEBHOOK_URL=https://app.orbo.ru/api/telegram/webhook
    ```
 4. После деплоя настройте webhook для бота:
    ```

@@ -15,7 +15,7 @@ export async function GET(
       .from('events')
       .select(`
         *,
-        organizations(id, name, slug),
+        organizations(id, name),
         event_registrations!event_registrations_event_id_fkey(
           id,
           status,

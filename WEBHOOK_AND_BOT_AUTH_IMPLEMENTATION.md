@@ -433,7 +433,7 @@ NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_username
 CRON_SECRET=random_secret_string_here
 
 # Остальные переменные (должны быть установлены)
-NEXT_PUBLIC_APP_URL=https://your-app.com
+NEXT_PUBLIC_APP_URL=https://app.orbo.ru
 NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ```

@@ -27,7 +27,7 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 {
   "ok": true,
   "result": {
-    "url": "https://your-domain.vercel.app/api/telegram/webhook",
+    "url": "https://app.orbo.ru/api/telegram/webhook",
     "has_custom_certificate": false,
     "pending_update_count": 0,
     "max_connections": 40
@@ -54,7 +54,7 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 ### Вариант A: Через curl
 
 ```bash
-curl -F "url=https://your-domain.vercel.app/api/telegram/webhook" \
+curl -F "url=https://app.orbo.ru/api/telegram/webhook" \
      -F "secret_token=YOUR_WEBHOOK_SECRET" \
      -F "max_connections=40" \
      -F "drop_pending_updates=false" \
@@ -65,12 +65,12 @@ curl -F "url=https://your-domain.vercel.app/api/telegram/webhook" \
 
 Откройте в браузере:
 ```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-domain.vercel.app/api/telegram/webhook&secret_token=YOUR_WEBHOOK_SECRET
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://app.orbo.ru/api/telegram/webhook&secret_token=YOUR_WEBHOOK_SECRET
 ```
 
 **Важно:**
 - Замените `<YOUR_BOT_TOKEN>` на токен бота
-- Замените `your-domain.vercel.app` на ваш домен
+- Замените `app.orbo.ru` на ваш домен (если используете другой)
 - `YOUR_WEBHOOK_SECRET` должен совпадать с `TELEGRAM_WEBHOOK_SECRET` в `.env`
 
 **Успешный ответ:**
@@ -153,11 +153,11 @@ WHERE bot_status = 'connected';
 **Решение:**
 ```bash
 # 1. Проверить доступность endpoint
-curl https://your-domain.vercel.app/api/telegram/webhook
+curl https://app.orbo.ru/api/telegram/webhook
 
 # 2. Удалить и заново установить webhook
 curl "https://api.telegram.org/bot<BOT_TOKEN>/deleteWebhook?drop_pending_updates=true"
-curl -F "url=https://your-domain.vercel.app/api/telegram/webhook" \
+curl -F "url=https://app.orbo.ru/api/telegram/webhook" \
      -F "secret_token=YOUR_SECRET" \
      "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook"
 

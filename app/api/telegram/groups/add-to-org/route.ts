@@ -3,6 +3,141 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Копирует участников Telegram-группы в новую организацию
+ */
+async function copyGroupParticipantsToOrg(
+  supabase: any,
+  tgChatId: string,
+  targetOrgId: string
+) {
+  console.log(`[CopyParticipants] Starting copy for group ${tgChatId} to org ${targetOrgId}`);
+
+  // 1. Получаем всех участников группы из participant_groups
+  const { data: groupParticipants, error: pgError } = await supabase
+    .from('participant_groups')
+    .select(`
+      participant_id,
+      participants!inner (
+        id,
+        tg_user_id,
+        full_name,
+        username,
+        phone,
+        email,
+        photo_url,
+        source,
+        participant_status,
+        custom_attributes,
+        bio
+      )
+    `)
+    .eq('tg_group_id', tgChatId);
+
+  if (pgError) {
+    console.error('[CopyParticipants] Error fetching group participants:', pgError);
+    return;
+  }
+
+  if (!groupParticipants || groupParticipants.length === 0) {
+    console.log('[CopyParticipants] No participants found in this group');
+    return;
+  }
+
+  console.log(`[CopyParticipants] Found ${groupParticipants.length} participants in group`);
+
+  let created = 0;
+  let skipped = 0;
+
+  // 2. Для каждого участника проверяем/создаем запись в новой организации
+  for (const gp of groupParticipants) {
+    const participant = gp.participants;
+
+    if (!participant || !participant.tg_user_id) {
+      console.log('[CopyParticipants] Skipping participant without tg_user_id');
+      skipped++;
+      continue;
+    }
+
+    // Проверяем, есть ли уже participant в целевой организации с таким tg_user_id
+    const { data: existing } = await supabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', targetOrgId)
+      .eq('tg_user_id', participant.tg_user_id)
+      .is('merged_into', null)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[CopyParticipants] Participant ${participant.tg_user_id} already exists in org`);
+      
+      // Проверяем, есть ли связь в participant_groups
+      const { data: existingPG } = await supabase
+        .from('participant_groups')
+        .select('id')
+        .eq('participant_id', existing.id)
+        .eq('tg_group_id', tgChatId)
+        .maybeSingle();
+
+      if (!existingPG) {
+        // Добавляем связь
+        await supabase
+          .from('participant_groups')
+          .insert({
+            participant_id: existing.id,
+            tg_group_id: tgChatId
+          });
+        console.log(`[CopyParticipants] Added participant_groups link for ${participant.tg_user_id}`);
+      }
+      
+      skipped++;
+      continue;
+    }
+
+    // Создаем нового participant для целевой организации
+    const { data: newParticipant, error: insertError } = await supabase
+      .from('participants')
+      .insert({
+        org_id: targetOrgId,
+        tg_user_id: participant.tg_user_id,
+        full_name: participant.full_name,
+        username: participant.username,
+        phone: participant.phone,
+        email: participant.email,
+        photo_url: participant.photo_url,
+        source: 'telegram_group',
+        participant_status: participant.participant_status || 'participant',
+        custom_attributes: participant.custom_attributes || {},
+        bio: participant.bio
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      console.error(`[CopyParticipants] Error creating participant ${participant.tg_user_id}:`, insertError);
+      continue;
+    }
+
+    // Создаем связь participant_groups для новой организации
+    const { error: pgLinkError } = await supabase
+      .from('participant_groups')
+      .insert({
+        participant_id: newParticipant.id,
+        tg_group_id: tgChatId
+      });
+
+    if (pgLinkError) {
+      console.error(`[CopyParticipants] Error linking participant to group:`, pgLinkError);
+      // Не прерываем, продолжаем с другими
+    }
+
+    created++;
+    console.log(`[CopyParticipants] Created participant ${participant.tg_user_id} for org ${targetOrgId}`);
+  }
+
+  console.log(`[CopyParticipants] Completed: ${created} created, ${skipped} skipped`);
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -198,6 +333,9 @@ export async function POST(request: Request) {
     }
 
     console.log(`Successfully linked group ${tgChatIdStr} to org ${orgId}`);
+
+    // Копируем участников группы в новую организацию
+    await copyGroupParticipantsToOrg(supabaseService, tgChatIdStr, orgId);
 
     return NextResponse.json({
       success: true,

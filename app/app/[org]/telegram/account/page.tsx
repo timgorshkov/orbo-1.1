@@ -24,7 +24,7 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
   const [saving, setSaving] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [telegramAccount, setTelegramAccount] = useState<TelegramAccount | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | React.ReactNode | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
@@ -97,7 +97,20 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
 
       if (!response.ok) {
         if (data.code === 'BOT_BLOCKED') {
-          setError('Пожалуйста, сначала запустите диалог с @orbo_assistant_bot в Telegram')
+          setError(
+            <span>
+              Пожалуйста, сначала запустите диалог с{' '}
+              <a 
+                href="https://t.me/orbo_assistant_bot" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-red-700 hover:underline font-medium"
+              >
+                @orbo_assistant_bot
+              </a>
+              {' '}в Telegram
+            </span>
+          )
         } else {
           throw new Error(data.error || 'Failed to save telegram account')
         }
@@ -158,12 +171,29 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
     }
   }
 
-  const getTelegramUserId = () => {
-    return `Чтобы узнать ваш Telegram User ID:
-1. Откройте @userinfobot в Telegram
-2. Отправьте команду /start
-3. Бот покажет ваш User ID (числовой идентификатор)
-4. Скопируйте этот ID и введите в поле ниже`
+  const getTelegramUserIdInstructions = () => {
+    return (
+      <div>
+        <p className="font-medium mb-2">Как получить ваш Telegram User ID:</p>
+        <ol className="list-decimal pl-5 space-y-2">
+          <li>
+            <strong>Запустите бота:</strong> откройте <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">@orbo_assistant_bot</a> в Telegram и нажмите <code className="bg-blue-100 px-1 rounded">/start</code>
+          </li>
+          <li>
+            <strong>Получите ID:</strong> бот автоматически отправит вам ваш Telegram User ID
+          </li>
+          <li>
+            <strong>Скопируйте:</strong> нажмите на ID в сообщении бота, чтобы скопировать его
+          </li>
+          <li>
+            <strong>Вставьте:</strong> вставьте ID в поле ниже и сохраните
+          </li>
+        </ol>
+        <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+          💡 <strong>Важно:</strong> Сначала запустите бота, иначе код верификации не сможет быть доставлен!
+        </div>
+      </div>
+    )
   }
   
   // Функция для синхронизации групп
@@ -265,6 +295,44 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
             </Card>
           )}
 
+          {/* Форма для верификации кода - показываем сначала, если аккаунт не верифицирован */}
+          {telegramAccount && !telegramAccount.is_verified && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Подтверждение аккаунта</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-amber-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-amber-900 mb-2">Подтвердите ваш аккаунт</h3>
+                  <div className="text-sm text-amber-800">
+                    <ol className="list-decimal pl-5 space-y-1">
+                      <li>Откройте <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-amber-900 hover:underline font-medium">@orbo_assistant_bot</a> в Telegram</li>
+                      <li>Нажмите /start если еще не сделали этого</li>
+                      <li>Вы должны получить код верификации</li>
+                      <li>Введите код в поле ниже</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm text-neutral-600 block mb-2">
+                    Код верификации
+                  </label>
+                  <Input
+                    value={verificationCode}
+                    onChange={e => setVerificationCode(e.target.value.toUpperCase())}
+                    placeholder="Введите код из Telegram"
+                    maxLength={8}
+                  />
+                </div>
+
+                <Button onClick={handleVerifyCode} disabled={verifying}>
+                  {verifying ? 'Проверка...' : 'Подтвердить код'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Форма для добавления/изменения Telegram ID */}
           <Card>
             <CardHeader>
@@ -275,8 +343,8 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
             <CardContent className="space-y-4">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h3 className="font-medium text-blue-900 mb-2">Как узнать Telegram User ID?</h3>
-                <div className="text-sm text-blue-800 whitespace-pre-line">
-                  {getTelegramUserId()}
+                <div className="text-sm text-blue-800">
+                  {getTelegramUserIdInstructions()}
                 </div>
               </div>
 
@@ -332,42 +400,6 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
               </Button>
             </CardContent>
           </Card>
-
-          {/* Форма для верификации кода */}
-          {telegramAccount && !telegramAccount.is_verified && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Подтверждение аккаунта</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-amber-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-amber-900 mb-2">Подтвердите ваш аккаунт</h3>
-                  <div className="text-sm text-amber-800">
-                    1. Откройте @orbo_assistant_bot в Telegram<br/>
-                    2. Нажмите /start если еще не сделали этого<br/>
-                    3. Вы должны получить код верификации<br/>
-                    4. Введите код в поле ниже
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Код верификации
-                  </label>
-                  <Input
-                    value={verificationCode}
-                    onChange={e => setVerificationCode(e.target.value.toUpperCase())}
-                    placeholder="Введите код из Telegram"
-                    maxLength={8}
-                  />
-                </div>
-
-                <Button onClick={handleVerifyCode} disabled={verifying}>
-                  {verifying ? 'Проверка...' : 'Подтвердить код'}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Сообщения об ошибках и успехе */}
           {error && (

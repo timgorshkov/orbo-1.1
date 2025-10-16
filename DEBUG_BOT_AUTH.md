@@ -268,7 +268,7 @@
 ### Проблема 1: `NEXT_PUBLIC_APP_URL` не установлен
 **Решение:** Добавьте в Vercel Environment Variables:
 ```
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+NEXT_PUBLIC_APP_URL=https://app.orbo.ru
 ```
 
 ### Проблема 2: Webhook приходит с задержкой

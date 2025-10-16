@@ -111,7 +111,7 @@ const isBotConfigured = Boolean(botUsername && botUsername.trim().length > 0)
 
 ### 3. Тестирование авторизации
 
-1. Откройте ссылку на событие: `https://orbo-1-1.vercel.app/p/[org]/events/[id]`
+1. Откройте ссылку на событие: `https://app.orbo.ru/p/[org]/events/[id]`
 2. Должна появиться кнопка **"Log in with Telegram"** (синяя)
 3. Нажмите на кнопку
 4. Авторизуйтесь через Telegram
@@ -140,7 +140,7 @@ const isBotConfigured = Boolean(botUsername && botUsername.trim().length > 0)
 
 1. Отправьте команду `/setdomain` в [@BotFather](https://t.me/BotFather)
 2. Выберите бота `@orbo_community_bot`
-3. Введите домен: `orbo-1-1.vercel.app` (без https://)
+3. Введите домен: `app.orbo.ru` (без https://)
 
 **Для локальной разработки**:
 - Telegram не поддерживает `localhost` для Login Widget
@@ -199,7 +199,7 @@ NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=orbo_community_bot
 **Решение**:
 1. Отправьте `/setdomain` в @BotFather
 2. Выберите бота
-3. Введите домен Vercel: `orbo-1-1.vercel.app`
+3. Введите домен: `app.orbo.ru`
 
 ### Ошибка: "Invalid Telegram authentication"
 

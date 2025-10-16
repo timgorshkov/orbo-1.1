@@ -73,9 +73,9 @@ Orbo - это платформа для управления Telegram-сообщ
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_WEBHOOK_SECRET`
-   - `TELEGRAM_WEBHOOK_URL` (https://your-app.vercel.app/api/telegram/webhook)
+   - `TELEGRAM_WEBHOOK_URL` (https://app.orbo.ru/api/telegram/webhook)
    - `JWT_SECRET`
-   - `NEXT_PUBLIC_APP_URL` (https://your-app.vercel.app)
+   - `NEXT_PUBLIC_APP_URL` (https://app.orbo.ru)
 
 3. Деплой проекта:
    - Vercel автоматически задеплоит проект при каждом пуше в ветку main
@@ -104,7 +104,7 @@ Orbo - это платформа для управления Telegram-сообщ
 
 ## Мониторинг и обслуживание
 
-- Проверка здоровья системы: `https://your-app.vercel.app/healthz`
+- Проверка здоровья системы: `https://app.orbo.ru/healthz`
 - Логи: доступны в Vercel Dashboard
 - База данных: управление через Supabase Dashboard
 

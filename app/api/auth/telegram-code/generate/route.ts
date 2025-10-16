@@ -24,7 +24,7 @@ const supabaseAdmin = createClient(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { orgId, eventId, redirectUrl } = body
+    const { orgId, eventId, redirectUrl, inviteToken } = body
 
     // Генерируем уникальный код (6 символов: буквы и цифры)
     let code: string = ''

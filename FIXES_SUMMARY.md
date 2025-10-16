@@ -1520,7 +1520,7 @@ const isBotConfigured = Boolean(botUsername && botUsername.trim().length > 0)
 
 **Обязательно**:
 ```
-/setdomain → выбрать бота → ввести: orbo-1-1.vercel.app
+/setdomain → выбрать бота → ввести: app.orbo.ru
 ```
 
 **Без этого**:

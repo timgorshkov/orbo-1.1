@@ -143,7 +143,7 @@ NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name
 TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 
 # App URL
-NEXT_PUBLIC_APP_URL=https://yourapp.com
+NEXT_PUBLIC_APP_URL=https://app.orbo.ru
 ```
 
 ### 2. Настройка бота в BotFather

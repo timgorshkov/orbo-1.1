@@ -56,7 +56,17 @@ async function supabaseFetch(endpoint: string, options: RequestInit = {}) {
     }
     
     console.log(`[Supabase Fetch] Reading JSON...`)
-    const data = await response.json()
+    
+    // Проверяем, есть ли тело ответа
+    const text = await response.text()
+    console.log(`[Supabase Fetch] Response text length:`, text.length)
+    
+    if (!text || text.length === 0) {
+      console.log(`[Supabase Fetch] Empty response body`)
+      return []
+    }
+    
+    const data = JSON.parse(text)
     console.log(`[Supabase Fetch] Data received:`, Array.isArray(data) ? `${data.length} items` : 'object')
     
     return data
@@ -190,19 +200,17 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
 
     console.log(`[Auth Service] ✅ Code is valid`)
 
-    // 3. Помечаем код как использованный
-    console.log(`[Auth Service] Step 3: Marking code as used`)
+    // 3. Связываем код с Telegram пользователем (не помечаем как использованный - это сделает endpoint)
+    console.log(`[Auth Service] Step 3: Linking code to telegram user`)
     try {
       await supabaseFetch(`telegram_auth_codes?id=eq.${authCode.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          is_used: true,
-          used_at: new Date().toISOString(),
           telegram_user_id: telegramUserId,
           telegram_username: telegramUsername
         })
       })
-      console.log(`[Auth Service] ✅ Code marked as used`)
+      console.log(`[Auth Service] ✅ Code linked to telegram user`)
     } catch (updateError) {
       console.error('[Auth Service] ❌ Error updating code:', updateError)
       // Продолжаем даже при ошибке
@@ -274,38 +282,67 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
 
         // Создаём/обновляем участника
         try {
-          const participant = await supabaseFetch('participants', {
-            method: 'POST',
-            headers: {
-              'Prefer': 'resolution=merge-duplicates,return=representation'
-            },
-            body: JSON.stringify({
-              org_id: targetOrgId,
-              user_id: userId,
-              full_name: `${firstName || ''} ${lastName || ''}`.trim() || telegramUsername || `User ${telegramUserId}`,
-              tg_user_id: String(telegramUserId),
-              username: telegramUsername,
-              participant_status: 'participant',
-              source: 'telegram',
-              first_seen_at: new Date().toISOString()
-            })
-          })
-
-          if (participant) {
-            // Регистрируем на событие
-            await supabaseFetch('event_registrations', {
+          // Сначала проверяем, существует ли participant
+          let participantId: string | null = null
+          
+          const existingParticipants = await supabaseFetch(
+            `participants?org_id=eq.${targetOrgId}&user_id=eq.${userId}&select=id`
+          )
+          
+          if (Array.isArray(existingParticipants) && existingParticipants.length > 0) {
+            participantId = existingParticipants[0].id
+            console.log('[Auth Service] Participant already exists:', participantId)
+          } else {
+            // Создаем нового participant
+            const newParticipants = await supabaseFetch('participants', {
               method: 'POST',
               headers: {
-                'Prefer': 'resolution=merge-duplicates'
+                'Prefer': 'return=representation'
               },
               body: JSON.stringify({
-                event_id: authCode.event_id,
-                participant_id: participant.id,
-                registered_at: new Date().toISOString()
+                org_id: targetOrgId,
+                user_id: userId,
+                full_name: `${firstName || ''} ${lastName || ''}`.trim() || telegramUsername || `User ${telegramUserId}`,
+                tg_user_id: String(telegramUserId),
+                username: telegramUsername,
+                participant_status: 'participant',
+                source: 'telegram'
               })
             })
+            
+            const newParticipant = Array.isArray(newParticipants) && newParticipants.length > 0 ? newParticipants[0] : newParticipants
+            participantId = newParticipant?.id
+            console.log('[Auth Service] Participant created:', participantId)
+          }
+          
+          console.log('[Auth Service] Participant ID:', participantId)
 
-            console.log(`[Auth Service] ✅ Registered user for event`)
+          if (participantId) {
+            // Проверяем, зарегистрирован ли уже на событие
+            try {
+              const existingRegistration = await supabaseFetch(
+                `event_registrations?event_id=eq.${authCode.event_id}&participant_id=eq.${participantId}&select=id`
+              )
+              
+              if (!Array.isArray(existingRegistration) || existingRegistration.length === 0) {
+                // Регистрируем на событие
+                await supabaseFetch('event_registrations', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    event_id: authCode.event_id,
+                    participant_id: participantId,
+                    registered_at: new Date().toISOString()
+                  })
+                })
+                console.log(`[Auth Service] ✅ Registered user for event`)
+              } else {
+                console.log(`[Auth Service] ✅ User already registered for event`)
+              }
+            } catch (regError) {
+              console.error(`[Auth Service] Event registration error:`, regError instanceof Error ? regError.message : String(regError))
+            }
+          } else {
+            console.error('[Auth Service] ❌ Participant ID is missing')
           }
         } catch (err) {
           console.error('[Auth Service] Error registering participant:', err)
@@ -317,22 +354,40 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
     if (targetOrgId) {
       console.log(`[Auth Service] Step 6: Upserting telegram account for org ${targetOrgId}`)
       try {
-        await supabaseFetch('user_telegram_accounts', {
-          method: 'POST',
-          headers: {
-            'Prefer': 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            org_id: targetOrgId,
-            telegram_user_id: telegramUserId,
-            telegram_username: telegramUsername,
-            telegram_first_name: firstName,
-            telegram_last_name: lastName,
-            is_verified: true,
-            verified_at: new Date().toISOString()
+        // Проверяем существование записи
+        const existing = await supabaseFetch(
+          `user_telegram_accounts?user_id=eq.${userId}&org_id=eq.${targetOrgId}&select=user_id`
+        )
+        
+        if (Array.isArray(existing) && existing.length > 0) {
+          // Обновляем существующую запись
+          await supabaseFetch(`user_telegram_accounts?user_id=eq.${userId}&org_id=eq.${targetOrgId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              telegram_user_id: telegramUserId,
+              telegram_username: telegramUsername,
+              telegram_first_name: firstName,
+              telegram_last_name: lastName,
+              is_verified: true,
+              verified_at: new Date().toISOString()
+            })
           })
-        })
+        } else {
+          // Создаем новую запись
+          await supabaseFetch('user_telegram_accounts', {
+            method: 'POST',
+            body: JSON.stringify({
+              user_id: userId,
+              org_id: targetOrgId,
+              telegram_user_id: telegramUserId,
+              telegram_username: telegramUsername,
+              telegram_first_name: firstName,
+              telegram_last_name: lastName,
+              is_verified: true,
+              verified_at: new Date().toISOString()
+            })
+          })
+        }
         
         console.log(`[Auth Service] ✅ Telegram account linked`)
       } catch (err) {
@@ -340,32 +395,29 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       }
     }
 
-    // 7. Создаём сессию для пользователя
-    console.log(`[Auth Service] Step 7: Creating session`)
-    const email = `telegram_${telegramUserId}@orbo.temp`
-    const { data: session, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
-      options: {
-        redirectTo: redirectUrl
-      }
-    })
+    // 7. Создаём ссылку для авторизации через наш endpoint
+    console.log(`[Auth Service] Step 7: Creating auth link for user ${userId}`)
+    
+    // Формируем полный URL для редиректа
+    const fullRedirectUrl = redirectUrl.startsWith('http') 
+      ? redirectUrl 
+      : `${process.env.NEXT_PUBLIC_APP_URL}${redirectUrl}`
+    
+    console.log(`[Auth Service] Redirect URL: ${fullRedirectUrl}`)
+    
+    // Формируем ссылку на наш собственный endpoint авторизации
+    const authUrl = new URL('/auth/telegram', process.env.NEXT_PUBLIC_APP_URL!)
+    authUrl.searchParams.set('code', code)
+    authUrl.searchParams.set('redirect', fullRedirectUrl)
+    
+    const sessionUrl = authUrl.toString()
 
-    if (sessionError || !session) {
-      console.error('[Auth Service] ❌ Error creating session:', sessionError)
-      return { 
-        success: false, 
-        error: 'Failed to create session',
-        errorCode: 'SESSION_ERROR'
-      }
-    }
-
-    console.log(`[Auth Service] ✅ Session created`)
+    console.log(`[Auth Service] ✅ Auth URL created: ${sessionUrl}`)
     console.log(`[Auth Service] ==================== SUCCESS ====================`)
 
     return {
       success: true,
-      sessionUrl: session.properties.action_link,
+      sessionUrl,
       redirectUrl,
       userId,
       orgId: targetOrgId || undefined

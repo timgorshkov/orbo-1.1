@@ -4,7 +4,7 @@
 
 При попытке сохранить характеристики в профиле участника возникала ошибка:
 ```
-PUT https://orbo-1-1.vercel.app/api/participants/[id] 500 (Internal Server Error)
+PUT https://app.orbo.ru/api/participants/[id] 500 (Internal Server Error)
 ```
 
 ## Причина
