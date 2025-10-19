@@ -531,47 +531,60 @@ export class EventProcessingService {
       });
       
       try {
-        const identityId = await this.ensureIdentity(member);
-
         const { data: participant } = await this.supabase
           .from('participants')
-          .select('id, merged_into, identity_id, first_name, last_name, full_name, username, status, source')
+          .select('id, merged_into, first_name, last_name, full_name, username, status, source')
           .eq('tg_user_id', member.id)
           .eq('org_id', orgId)
+          .is('merged_into', null) // Игнорируем объединённых участников
           .maybeSingle() as { data: ParticipantRow | null };
 
         let participantId: string | null = null;
 
-        // Если нет, создаем запись
+        // Если нет, создаем запись через UPSERT
         if (!participant) {
           const nowIso = new Date().toISOString();
           const fullNameCandidate = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
 
           const { data: newParticipant, error } = await this.supabase
             .from('participants')
-            .insert({
+            .upsert({
               org_id: orgId,
               tg_user_id: member.id,
               username: member.username ?? null,
               first_name: member.first_name ?? null,
               last_name: member.last_name ?? null,
               full_name: fullNameCandidate || member.username || null,
-              identity_id: identityId,
-              merged_into: null,
               last_activity_at: nowIso,
               source: 'telegram',
               status: 'active',
               updated_at: nowIso
+            }, {
+              onConflict: 'org_id,tg_user_id',
+              ignoreDuplicates: false
             })
             .select('id')
             .single();
           
           if (error) {
-            console.error('Error creating participant:', error);
-            continue;
+            console.error('Error upserting participant:', error);
+            // Fallback: попытаться получить существующего участника
+            const { data: existingParticipant } = await this.supabase
+              .from('participants')
+              .select('id, merged_into')
+              .eq('tg_user_id', member.id)
+              .eq('org_id', orgId)
+              .is('merged_into', null)
+              .maybeSingle() as { data: ParticipantRow | null };
+            
+            if (existingParticipant) {
+              participantId = existingParticipant.merged_into || existingParticipant.id;
+            } else {
+              continue;
+            }
+          } else {
+            participantId = newParticipant?.id;
           }
-          
-          participantId = newParticipant?.id;
         } else {
           const patch: Record<string, any> = {};
           const fullNameCandidate = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
@@ -733,51 +746,64 @@ export class EventProcessingService {
       }
     }
     
-    let identityId: string | null = null;
     let participantRecord: ParticipantRow | null = null;
     let participantId: string | null = null;
 
     // Проверяем, есть ли пользователь в таблице participants
     try {
-      identityId = await this.ensureIdentity(message.from);
-
-      const { data: participant } = await this.supabase
+      const { data: participant} = await this.supabase
         .from('participants')
-        .select('id, merged_into, identity_id, first_name, last_name, full_name, username, status, source')
+        .select('id, merged_into, first_name, last_name, full_name, username, status, source')
         .eq('tg_user_id', userId)
         .eq('org_id', orgId)
+        .is('merged_into', null) // Игнорируем объединённых участников
         .maybeSingle() as { data: ParticipantRow | null };
 
       participantRecord = participant;
       
-      // Если участника нет, создаем его
+      // Если участника нет, создаем его через UPSERT
       if (!participant) {
-        console.log(`Creating new participant for user ${username} (${userId}) in org ${orgId}`);
+        console.log(`Creating/updating participant for user ${username} (${userId}) in org ${orgId}`);
         
         const nowIso = new Date().toISOString();
-        const { data: newParticipant, error } = await this.supabase
+        const { data: upsertedParticipant, error } = await this.supabase
           .from('participants')
-          .insert({
+          .upsert({
             org_id: orgId,
             tg_user_id: userId,
             username: username ?? null,
             first_name: message.from.first_name ?? null,
             last_name: message.from.last_name ?? null,
             full_name: fullName || username || (userId ? `User ${userId}` : null),
-            identity_id: identityId,
             last_activity_at: nowIso,
             source: 'telegram',
             status: 'active',
             updated_at: nowIso
+          }, {
+            onConflict: 'org_id,tg_user_id',
+            ignoreDuplicates: false
           })
           .select('id')
           .single();
         
         if (error) {
-          console.error('Error creating participant from message:', error);
+          console.error('Error upserting participant from message:', error);
+          // Fallback: попытаться получить существующего участника
+          const { data: existingParticipant } = await this.supabase
+            .from('participants')
+            .select('id, merged_into')
+            .eq('tg_user_id', userId)
+            .eq('org_id', orgId)
+            .is('merged_into', null)
+            .maybeSingle() as { data: ParticipantRow | null };
+          
+          if (existingParticipant) {
+            participantId = existingParticipant.merged_into || existingParticipant.id;
+            console.log(`Using existing participant with ID ${participantId}`);
+          }
         } else {
-          participantId = newParticipant.id;
-          console.log(`Created new participant with ID ${participantId}`);
+          participantId = upsertedParticipant.id;
+          console.log(`Upserted participant with ID ${participantId}`);
         }
       } else {
         participantId = participant.merged_into || participant.id;
@@ -835,11 +861,9 @@ export class EventProcessingService {
     
     // Записываем событие сообщения
     try {
-      const effectiveIdentityId = identityId || (participantRecord?.identity_id ?? null);
-
       await this.writeGlobalActivityEvent({
         tg_chat_id: chatId,
-        identity_id: effectiveIdentityId,
+        identity_id: null,
         tg_user_id: userId,
         event_type: 'message',
         created_at: new Date().toISOString(),
@@ -954,8 +978,7 @@ export class EventProcessingService {
     try {
       // Обновляем время последней активности пользователя
       const patch: Record<string, any> = {
-        last_activity_at: new Date().toISOString(),
-        identity_id: identityId || participantRecord?.identity_id || null
+        last_activity_at: new Date().toISOString()
       };
 
       const from = message.from;
@@ -1014,11 +1037,9 @@ export class EventProcessingService {
 
     if (Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) {
       for (const member of message.new_chat_members) {
-        const identityId = await this.ensureIdentity(member);
-
         await this.writeGlobalActivityEvent({
           tg_chat_id: chatId,
-          identity_id: identityId,
+          identity_id: null,
           tg_user_id: member.id,
           event_type: 'join',
           created_at: createdAt,
@@ -1048,11 +1069,10 @@ export class EventProcessingService {
 
     if (message.left_chat_member) {
       const member = message.left_chat_member;
-      const identityId = await this.ensureIdentity(member);
 
       await this.writeGlobalActivityEvent({
         tg_chat_id: chatId,
-        identity_id: identityId,
+        identity_id: null,
         tg_user_id: member.id,
         event_type: 'leave',
         created_at: createdAt,
@@ -1107,12 +1127,11 @@ export class EventProcessingService {
       : null;
     const threadTitle = this.extractThreadTitle(message);
 
-    const identityId = await this.ensureIdentity(fromUser);
     const fullName = `${fromUser.first_name ?? ''} ${fromUser.last_name ?? ''}`.trim() || null;
 
     await this.writeGlobalActivityEvent({
       tg_chat_id: chatId,
-      identity_id: identityId,
+      identity_id: null,
       tg_user_id: fromUser.id,
       event_type: 'message',
       created_at: createdAt,
@@ -1544,69 +1563,9 @@ export class EventProcessingService {
   }
 
   private async ensureIdentity(user: any): Promise<string | null> {
-    if (!user?.id) {
-      return null;
-    }
-
-    const tgUserId = Number(user.id);
-    if (!Number.isFinite(tgUserId)) {
-      return null;
-    }
-
-    const username = user.username || null;
-    const firstName = user.first_name || null;
-    const lastName = user.last_name || null;
-    const fullName = [firstName, lastName].filter(Boolean).join(' ') || null;
-
-        const { data: existingIdentity } = await this.supabase
-      .from('telegram_identities')
-      .select('id, username, full_name, first_name, last_name')
-      .eq('tg_user_id', tgUserId)
-      .maybeSingle();
-
-    if (existingIdentity) {
-      const patch: Record<string, any> = {};
-      if (username && username !== existingIdentity.username) {
-        patch.username = username;
-      }
-      if (fullName && fullName !== existingIdentity.full_name) {
-        patch.full_name = fullName;
-      }
-      if (firstName && firstName !== existingIdentity.first_name) {
-        patch.first_name = firstName;
-      }
-      if (lastName && lastName !== existingIdentity.last_name) {
-        patch.last_name = lastName;
-      }
-      if (Object.keys(patch).length > 0) {
-        patch.updated_at = new Date().toISOString();
-        await this.supabase
-          .from('telegram_identities')
-          .update(patch)
-          .eq('tg_user_id', tgUserId);
-      }
-      return existingIdentity.id;
-    }
-
-    const { data: newIdentity, error } = await this.supabase
-      .from('telegram_identities')
-      .insert({
-        tg_user_id: tgUserId,
-        username,
-        first_name: firstName,
-        last_name: lastName,
-        full_name: fullName,
-        raw: user
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      console.error('Failed to create telegram identity:', error);
-      return null;
-    }
-
-    return newIdentity?.id ?? null;
+    // DEPRECATED: telegram_identities table was removed in migration 42
+    // This method is kept for backward compatibility but always returns null
+    return null;
   }
 
   private async writeGlobalActivityEvent(payload: {
@@ -1621,30 +1580,10 @@ export class EventProcessingService {
     thread_title?: string | null;
     meta?: Record<string, any>;
   }): Promise<void> {
-    if (!payload.identity_id) {
-      return;
-    }
-
-    const insertPayload = {
-      tg_chat_id: payload.tg_chat_id,
-      identity_id: payload.identity_id,
-      tg_user_id: payload.tg_user_id,
-      event_type: payload.event_type,
-      created_at: payload.created_at,
-      message_id: payload.message_id ?? null,
-      reply_to_message_id: payload.reply_to_message_id ?? null,
-      message_thread_id: payload.message_thread_id ?? null,
-      thread_title: payload.thread_title ?? null,
-      meta: payload.meta ?? null
-    };
-
-    const { error } = await this.supabase
-      .from('telegram_activity_events')
-      .insert(insertPayload);
-
-    if (error) {
-      console.error('Failed to write global activity event:', error);
-    }
+    // DEPRECATED: telegram_activity_events and telegram_identities tables were removed in migration 42
+    // This method is kept for backward compatibility but does nothing
+    // All activity tracking is now handled through the activity_events table
+    return;
   }
 
   /**

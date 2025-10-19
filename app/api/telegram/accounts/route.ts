@@ -59,6 +59,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Пытаемся автоматически получить информацию о пользователе через Telegram API
+    let fetchedUsername = telegramUsername;
+    let fetchedFirstName = telegramFirstName;
+    let fetchedLastName = telegramLastName;
+    
+    try {
+      const { TelegramService } = await import('@/lib/services/telegramService');
+      const notificationsBot = new TelegramService('notifications');
+      
+      // Получаем информацию о пользователе из Telegram
+      const chatInfo = await notificationsBot.getChat(telegramUserId);
+      
+      if (chatInfo.ok && chatInfo.result) {
+        fetchedUsername = chatInfo.result.username || telegramUsername;
+        fetchedFirstName = chatInfo.result.first_name || telegramFirstName;
+        fetchedLastName = chatInfo.result.last_name || telegramLastName;
+        console.log(`Fetched user info from Telegram: @${fetchedUsername}`);
+      }
+    } catch (error) {
+      console.log('Could not fetch user info from Telegram, using provided values:', error);
+    }
+    
     // Генерируем код верификации
     const verificationCode = Math.random().toString(36).substring(2, 10).toUpperCase();
     const expiresAt = new Date();
@@ -71,9 +93,9 @@ export async function POST(request: Request) {
         user_id: user.id,
         org_id: orgId,
         telegram_user_id: telegramUserId,
-        telegram_username: telegramUsername,
-        telegram_first_name: telegramFirstName,
-        telegram_last_name: telegramLastName,
+        telegram_username: fetchedUsername,
+        telegram_first_name: fetchedFirstName,
+        telegram_last_name: fetchedLastName,
         is_verified: false,
         verification_code: verificationCode,
         verification_expires_at: expiresAt.toISOString(),

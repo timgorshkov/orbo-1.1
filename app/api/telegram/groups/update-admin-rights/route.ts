@@ -161,13 +161,14 @@ export async function POST(request: Request) {
     }
 
     // ✅ НОВОЕ: Добавляем ВСЕ группы, где есть активность бота (включая новые группы)
+    // Используем activity_events вместо удалённой таблицы telegram_activity_events
     try {
-      console.log('Scanning telegram_activity_events for new groups...');
+      console.log('Scanning activity_events for new groups...');
       const { data: activityGroups } = await supabaseService
-        .from('telegram_activity_events')
+        .from('activity_events')
         .select('tg_chat_id')
         .not('tg_chat_id', 'is', null)
-        .order('event_time', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1000); // Последние 1000 событий
       
       const uniqueChatIds = new Set<string>();
@@ -230,6 +231,7 @@ export async function POST(request: Request) {
           user_telegram_account_id: activeAccount.id,
           is_owner: isOwner,
           is_admin: isAdmin,
+          custom_title: member.custom_title || null,
           verified_at: new Date().toISOString(),
           expires_at: isAdmin
             ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -244,7 +246,9 @@ export async function POST(request: Request) {
           'can_promote_members',
           'can_change_info',
           'can_invite_users',
-          'can_pin_messages'
+          'can_pin_messages',
+          'can_post_messages',
+          'can_edit_messages'
         ];
 
         optionalFields.forEach(field => {
@@ -276,6 +280,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: `Checked admin rights for ${normalizedChatIds.length} chats`,
+      updated: updatedGroups.length,
+      total: normalizedChatIds.length,
       updatedGroups,
       warnings
     });

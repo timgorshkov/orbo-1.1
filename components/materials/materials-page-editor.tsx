@@ -14,6 +14,7 @@ export type MaterialsPageEditorProps = {
   initialContent: string;
   onUnsavedChanges?: (hasChanges: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  onSave?: (pageId: string, newTitle: string) => void;
 };
 
 type FormattingAction = 'bold' | 'italic' | 'heading1' | 'heading2' | 'list' | 'quote' | 'link' | 'unlink';
@@ -45,8 +46,9 @@ function markdownToHtml(markdown: string): string {
   const embeds: string[] = [];
   
   // Заменяем YouTube embed на placeholder (новый формат с заголовком)
-  processed = processed.replace(/\[youtube:(https?:\/\/[^:]+):([^\]]+)\]/g, (_, url, title) => {
+  processed = processed.replace(/\[youtube:(https?:\/\/[^:]+):([^\]]*)\]/g, (_, url, title) => {
     console.log('Found YouTube embed:', url, 'Title:', title);
+    const finalTitle = title && title.trim() !== '' ? title : 'YouTube видео';
     const videoId = extractYoutubeId(url);
     
     let iframeHtml = '';
@@ -62,10 +64,10 @@ function markdownToHtml(markdown: string): string {
       </div>`;
     }
     
-    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="youtube" data-url="${url}" data-title="${title}" contenteditable="false">
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="youtube" data-url="${url}" data-title="${finalTitle}" contenteditable="false">
       ${iframeHtml}
       <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50">
-        <span class="font-medium">${title}</span>
+        <span class="font-medium">${finalTitle}</span>
         <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
       </div>
     </div>`;
@@ -74,8 +76,9 @@ function markdownToHtml(markdown: string): string {
   });
   
   // Заменяем VK embed на placeholder (новый формат с заголовком)
-  processed = processed.replace(/\[vk:(https?:\/\/[^:]+):([^\]]+)\]/g, (_, url, title) => {
+  processed = processed.replace(/\[vk:(https?:\/\/[^:]+):([^\]]*)\]/g, (_, url, title) => {
     console.log('Found VK embed:', url, 'Title:', title);
+    const finalTitle = title && title.trim() !== '' ? title : 'VK видео';
     const videoId = extractVkVideoId(url);
     console.log('VK video ID:', videoId);
     
@@ -92,10 +95,10 @@ function markdownToHtml(markdown: string): string {
       </div>`;
     }
     
-    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="vk" data-url="${url}" data-title="${title}" contenteditable="false">
+    const embedHtml = `<div class="my-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm" data-embed="vk" data-url="${url}" data-title="${finalTitle}" contenteditable="false">
       ${iframeHtml}
       <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50">
-        <span class="font-medium">${title}</span>
+        <span class="font-medium">${finalTitle}</span>
         <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
       </div>
     </div>`;
@@ -138,7 +141,7 @@ function markdownToHtml(markdown: string): string {
   return html;
 }
 
-export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent, onUnsavedChanges, saveRef }: MaterialsPageEditorProps) {
+export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent, onUnsavedChanges, saveRef, onSave }: MaterialsPageEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [contentMd, setContentMd] = useState(initialContent);
   const [isSaving, setIsSaving] = useState(false);
@@ -214,12 +217,13 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
       setLastSaved(new Date().toLocaleTimeString('ru-RU'));
       setHasUnsavedChanges(false);
       onUnsavedChanges?.(false);
+      onSave?.(pageId, title);
     } catch (error) {
       console.error(error);
     } finally {
       setIsSaving(false);
     }
-  }, [orgId, pageId, title, contentMd, onUnsavedChanges]);
+  }, [orgId, pageId, title, contentMd, onUnsavedChanges, onSave]);
 
   useEffect(() => {
     if (saveRef) {
@@ -420,10 +424,10 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
         return;
       }
 
-      const title = prompt('Введите заголовок видео');
-      if (!title) {
-        console.log('No title, aborting');
-        return;
+      let title = prompt('Введите заголовок видео');
+      if (!title || title.trim() === '') {
+        console.log('No title provided, using default');
+        title = type === 'youtube' ? 'YouTube видео' : 'VK видео';
       }
 
       const container = document.createElement('div');

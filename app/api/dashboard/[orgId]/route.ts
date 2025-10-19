@@ -102,45 +102,47 @@ export async function GET(
     
     console.log(`Dashboard: Found ${chatIds.length} groups for org ${orgId}`, chatIds)
 
-    // Get activity events from activity_events table (only if there are groups)
-    let activityData = null
-    if (chatIds.length > 0) {
-      console.log(`Dashboard: Fetching activity since ${fourteenDaysAgo.toISOString()} for chats:`, chatIds)
-      const result = await adminSupabase
-        .from('activity_events')
-        .select('created_at, event_type, tg_chat_id')
-        .in('tg_chat_id', chatIds)
-        .eq('event_type', 'message')
-        .gte('created_at', fourteenDaysAgo.toISOString())
-        .order('created_at')
-      
-      console.log(`Dashboard: Found ${result.data?.length || 0} activity events, error:`, result.error)
-      if (result.data && result.data.length > 0) {
-        console.log(`Dashboard: Sample events:`, result.data.slice(0, 3))
-      }
-      
-      activityData = result.data
-    } else {
-      console.log('Dashboard: No groups found, skipping activity fetch')
-    }
-
-    // Aggregate by day
-    const activityByDay: Record<string, number> = {}
+    // Get activity from group_metrics (aggregated daily metrics per group)
+    // Используем ту же логику, что и на странице группы - берём данные из group_metrics
     const last14Days = []
     for (let i = 13; i >= 0; i--) {
       const date = new Date()
       date.setDate(date.getDate() - i)
-      const dateKey = date.toISOString().split('T')[0]
-      activityByDay[dateKey] = 0
-      last14Days.push(dateKey)
+      last14Days.push(date.toISOString().split('T')[0])
     }
-
-    activityData?.forEach(event => {
-      const dateKey = event.created_at.split('T')[0]
-      if (activityByDay[dateKey] !== undefined) {
-        activityByDay[dateKey]++
-      }
+    
+    const activityByDay: Record<string, number> = {}
+    last14Days.forEach(date => {
+      activityByDay[date] = 0
     })
+    
+    if (chatIds.length > 0) {
+      const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split('T')[0]
+      console.log(`Dashboard: Fetching group_metrics since ${fourteenDaysAgoStr} for chats:`, chatIds)
+      
+      const { data: metricsData, error: metricsError } = await adminSupabase
+        .from('group_metrics')
+        .select('date, message_count, tg_chat_id, org_id')
+        .in('tg_chat_id', chatIds)
+        .eq('org_id', orgId)  // Фильтруем по организации чтобы избежать дублей
+        .gte('date', fourteenDaysAgoStr)
+        .order('date')
+      
+      console.log(`Dashboard: Found ${metricsData?.length || 0} group_metrics entries, error:`, metricsError)
+      if (metricsData && metricsData.length > 0) {
+        console.log(`Dashboard: Sample metrics:`, metricsData.slice(0, 3))
+      }
+      
+      // Агрегируем по дням (суммируем по всем группам)
+      metricsData?.forEach(metric => {
+        const dateKey = metric.date
+        if (activityByDay[dateKey] !== undefined) {
+          activityByDay[dateKey] += metric.message_count || 0
+        }
+      })
+    } else {
+      console.log('Dashboard: No groups found, skipping activity fetch')
+    }
 
     const activityChart = last14Days.map(date => ({
       date,

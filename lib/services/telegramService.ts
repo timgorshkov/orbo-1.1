@@ -199,6 +199,47 @@ async getChatMember(chatId: number, userId: number) {
   }
 
   /**
+   * Получение фотографий профиля пользователя
+   */
+  async getUserProfilePhotos(userId: number, offset: number = 0, limit: number = 1) {
+    return this.callApi('getUserProfilePhotos', {
+      user_id: userId,
+      offset,
+      limit
+    });
+  }
+
+  /**
+   * Получение информации о файле для скачивания
+   */
+  async getFile(fileId: string) {
+    return this.callApi('getFile', {
+      file_id: fileId
+    });
+  }
+
+  /**
+   * Получение URL для скачивания файла
+   */
+  getFileUrl(filePath: string): string {
+    return `https://api.telegram.org/file/bot${this.token}/${filePath}`;
+  }
+
+  /**
+   * Скачивание и возврат буфера файла
+   */
+  async downloadFile(filePath: string): Promise<ArrayBuffer> {
+    const url = this.getFileUrl(filePath);
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
+  }
+
+  /**
    * Общий метод для вызова Telegram API
    */
   private async callApi(method: string, params: any = {}) {

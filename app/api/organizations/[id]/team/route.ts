@@ -34,8 +34,6 @@ export async function GET(
       .from('organization_admins')
       .select('*')
       .eq('org_id', orgId)
-      .order('role', { ascending: false }) // owner first, then admins
-      .order('created_at', { ascending: true })
 
     if (error) {
       console.error('Error fetching team:', error)
@@ -45,28 +43,46 @@ export async function GET(
       )
     }
 
-    // For each admin, get the groups they admin
-    const teamWithGroups = await Promise.all(
-      (team || []).map(async (member) => {
-        if (member.role === 'admin' && member.role_source === 'telegram_admin') {
-          // Get group details from metadata
-          const groupIds = member.metadata?.telegram_groups || []
-          const groupTitles = member.metadata?.telegram_group_titles || []
+    console.log(`[Team API] Found ${team?.length || 0} team members for org ${orgId}`)
+
+    // For each admin, parse the groups they admin
+    const teamWithGroups = (team || []).map((member: any) => {
+      let admin_groups: Array<{ id: number; title: string }> = []
+      
+      if (member.role === 'admin' && member.role_source === 'telegram_admin') {
+        // Parse group IDs and titles from view columns
+        try {
+          const groupIds = member.telegram_group_ids || []
+          const groupTitles = member.telegram_group_titles || []
           
-          return {
-            ...member,
-            admin_groups: groupIds.map((id: number, index: number) => ({
-              id,
-              title: groupTitles[index] || `Group ${id}`
-            }))
-          }
+          admin_groups = groupIds.map((id: number, index: number) => ({
+            id,
+            title: groupTitles[index] || `Group ${id}`
+          }))
+        } catch (e) {
+          console.error('Error parsing group data:', e)
         }
-        return {
-          ...member,
-          admin_groups: []
-        }
-      })
-    )
+      }
+      
+      return {
+        user_id: member.user_id,
+        role: member.role,
+        role_source: member.role_source,
+        email: member.email,
+        email_confirmed: member.email_confirmed,
+        full_name: member.full_name,
+        telegram_username: member.telegram_username,
+        tg_user_id: member.tg_user_id,
+        has_verified_telegram: member.has_verified_telegram,
+        is_shadow_profile: member.is_shadow_profile,
+        created_at: member.created_at,
+        last_synced_at: member.last_synced_at,
+        admin_groups,
+        metadata: member.metadata
+      }
+    })
+
+    console.log(`[Team API] Processed team with ${teamWithGroups.filter((m: any) => m.role === 'admin').length} admins`)
 
     return NextResponse.json({
       success: true,

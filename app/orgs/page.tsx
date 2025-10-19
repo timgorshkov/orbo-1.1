@@ -3,19 +3,27 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import Link from 'next/link'
 
 export default async function OrganizationsPage() {
+  console.log('[Orgs Page] Loading organizations page...')
+  
   const supabase = await createClientServer()
   const {
     data: { user },
+    error
   } = await supabase.auth.getUser()
+  
+  console.log('[Orgs Page] User check:', { hasUser: !!user, hasError: !!error })
 
   if (!user) {
-    redirect('/login')
+    console.log('[Orgs Page] No user found, redirecting to /signin')
+    redirect('/signin')
   }
+  
+  console.log('[Orgs Page] User authenticated:', user.id)
 
   // Используем admin client для получения всех memberships пользователя
   const adminSupabase = createAdminServer()
   
-  const { data: memberships, error } = await adminSupabase
+  const { data: memberships, error: membershipsError } = await adminSupabase
     .from('memberships')
     .select(`
       role,
@@ -29,8 +37,8 @@ export default async function OrganizationsPage() {
     .eq('user_id', user.id)
     .order('role', { ascending: true })
 
-  if (error) {
-    console.error('Error fetching memberships:', error)
+  if (membershipsError) {
+    console.error('Error fetching memberships:', membershipsError)
   }
 
   let organizations = memberships?.map(m => {

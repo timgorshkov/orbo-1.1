@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { RemoveGroupButton } from '@/components/telegram-group-actions'
+import { AdminBadge } from '@/components/admin-badge'
 
 type TelegramGroupSettings = {
   id: number;
@@ -90,7 +91,17 @@ export default function TelegramGroupPage({ params }: { params: { org: string, g
     }>
   })
 const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; last_activity?: string }>>([])
-  const [participants, setParticipants] = useState<Array<{ tg_user_id: number | null; full_name: string | null; username: string | null; last_activity: string | null; risk_score: number | null; message_count: number }>>([])
+  const [participants, setParticipants] = useState<Array<{ 
+    tg_user_id: number | null; 
+    full_name: string | null; 
+    username: string | null; 
+    last_activity: string | null; 
+    risk_score: number | null; 
+    message_count: number;
+    is_owner?: boolean;
+    is_admin?: boolean;
+    custom_title?: string | null;
+  }>>([])
   const [loadingAnalytics, setLoadingAnalytics] = useState(true)
 
   useEffect(() => {
@@ -871,6 +882,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                             <tr>
                               <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Участник</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Username</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Роль</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Последняя активность</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Сообщений за 7 дней</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Риск оттока</th>
@@ -888,6 +900,15 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                                   </td>
                                   <td className="px-4 py-3 text-sm text-neutral-500">
                                     {participant.username ? `@${participant.username}` : '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <AdminBadge 
+                                      isOwner={participant.is_owner}
+                                      isAdmin={participant.is_admin}
+                                      customTitle={participant.custom_title}
+                                      size="sm"
+                                      showLabel={true}
+                                    />
                                   </td>
                                   <td className="px-4 py-3 text-sm text-neutral-500">
                                     {participant.last_activity ? new Date(participant.last_activity).toLocaleString('ru') : '—'}

@@ -83,7 +83,7 @@ export default async function TelegramPage({ params }: { params: { org: string }
             <CardHeader>
               <CardTitle>Подключение Telegram-группы</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div className="text-sm text-neutral-600 space-y-3">
                 <p>
                   <strong className="font-medium">1)</strong> Пригласите бота в вашу группу и назначьте администратором.
@@ -92,20 +92,31 @@ export default async function TelegramPage({ params }: { params: { org: string }
                   @orbo_community_bot
                 </p>
                 <p>
-                  <strong className="font-medium">2)</strong> Нажмите «Проверить статус», чтобы начать синхронизацию участников и событий.
+                  <strong className="font-medium">2)</strong> Нажмите «Доступные группы», чтобы увидеть список групп, в которых вы являетесь администратором, и подключить их к организации.
                 </p>
               </div>
               
-              <div className="flex gap-2 mt-4 flex-wrap">
-                <Link href={`/app/${params.org}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-black text-white hover:bg-black/85">
-                  Настроить Telegram аккаунт
-                </Link>
+              <div className="flex gap-2 flex-wrap">
                 <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
                   Доступные группы
                 </Link>
               </div>
-
-               <AddVerifiedGroup orgId={params.org} />
+              
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium text-neutral-700 mb-4">
+                  Альтернативный способ: добавление по Chat ID
+                </h3>
+                <AddVerifiedGroup orgId={params.org} />
+              </div>
+              
+              <div className="border-t pt-4">
+                <Link href={`/app/${params.org}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
+                  Настроить Telegram-аккаунт
+                </Link>
+                <p className="mt-2 text-xs text-neutral-500 text-center">
+                  Необходимо для получения списка ваших групп
+                </p>
+              </div>
 
 
 

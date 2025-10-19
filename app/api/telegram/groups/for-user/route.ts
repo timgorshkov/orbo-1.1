@@ -401,12 +401,28 @@ export async function GET(request: Request) {
           const isLinkedToOrg = mappedOrgIds.has(orgId);
           const botHasAdminRights = groupAny.bot_status === 'connected' || groupAny.bot_status === 'active';
 
+          // Считаем реальное количество участников с учётом объединений
+          let actualMemberCount = groupAny.member_count || 0;
+          try {
+            const { count: memberCount } = await supabaseService
+              .from('participant_groups')
+              .select('*', { count: 'exact', head: true })
+              .eq('tg_group_id', groupAny.tg_chat_id)
+              .eq('is_active', true);
+            
+            if (memberCount !== null) {
+              actualMemberCount = memberCount;
+            }
+          } catch (countError) {
+            console.error(`Error counting members for group ${groupAny.tg_chat_id}:`, countError);
+          }
+
           const normalizedGroup = {
             id: groupAny.id,
             tg_chat_id: groupAny.tg_chat_id,
             title: groupAny.title || 'Unnamed Group',
             bot_status: groupAny.bot_status,
-            member_count: groupAny.member_count || 0,
+            member_count: actualMemberCount,
             mapped_org_ids: Array.from(mappedOrgIds),
             org_id: groupAny.org_id,
             is_admin: right.is_admin,

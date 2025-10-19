@@ -524,6 +524,24 @@ export async function GET(request: Request) {
 
     const newcomerActivation = membersTotal > 0 ? Math.round((membersActive / membersTotal) * 100) : 0
 
+    // Fetch admin information for participants
+    const { data: adminData } = await supabase
+      .from('telegram_group_admins')
+      .select('tg_user_id, is_owner, is_admin, custom_title')
+      .eq('tg_chat_id', parseInt(chatId))
+      .gt('expires_at', new Date().toISOString())
+
+    const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
+    if (adminData) {
+      for (const admin of adminData) {
+        adminMap.set(admin.tg_user_id, {
+          isOwner: admin.is_owner || false,
+          isAdmin: admin.is_admin || false,
+          customTitle: admin.custom_title || null
+        })
+      }
+    }
+
     const participantsResponse = participantList
       .slice()
       .sort(
@@ -531,14 +549,20 @@ export async function GET(request: Request) {
           b.message_count - a.message_count ||
           new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
       )
-      .map(record => ({
-        tg_user_id: record.tg_user_id,
-        username: record.username,
-        full_name: record.full_name,
-        message_count: record.message_count,
-        last_activity: record.last_activity,
-        risk_score: calculateRiskScore(record.last_activity, record.risk_score ?? null)
-      }))
+      .map(record => {
+        const adminInfo = adminMap.get(record.tg_user_id)
+        return {
+          tg_user_id: record.tg_user_id,
+          username: record.username,
+          full_name: record.full_name,
+          message_count: record.message_count,
+          last_activity: record.last_activity,
+          risk_score: calculateRiskScore(record.last_activity, record.risk_score ?? null),
+          is_owner: adminInfo?.isOwner || false,
+          is_admin: adminInfo?.isAdmin || false,
+          custom_title: adminInfo?.customTitle || null
+        }
+      })
 
     const dailyMetricsArray = Object.values(dailyMetrics)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())

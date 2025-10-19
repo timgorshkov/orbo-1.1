@@ -58,9 +58,12 @@ function buildFullName(first?: string | null, last?: string | null, fallback?: s
 }
 
 export class ParticipantMatcher {
-  private readonly supabase = createAdminServer();
+  private getSupabase() {
+    return createAdminServer();
+  }
 
   async findMatches(intent: MatchIntent): Promise<MatchCandidate[]> {
+    const supabase = this.getSupabase();
     const email = normalizeEmail(intent.email);
     const phone = normalizePhone(intent.phone);
     const username = intent.username?.trim()?.replace(/^@/, '') || null;
@@ -106,7 +109,7 @@ export class ParticipantMatcher {
       if (username) filters.push(`username.eq.${username}`);
       if (tgUserId) filters.push(`tg_user_id.eq.${tgUserId}`);
 
-      const query = this.supabase
+      const query = supabase
         .from('participants')
         .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
         .eq('org_id', intent.orgId)
@@ -136,7 +139,7 @@ export class ParticipantMatcher {
 
       const nameFilters = nameTerms.map(term => `full_name.ilike.%${term}%`);
 
-      const { data: fuzzyMatches } = (await this.supabase
+      const { data: fuzzyMatches } = (await supabase
         .from('participants')
         .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
         .eq('org_id', intent.orgId)

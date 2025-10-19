@@ -33,11 +33,12 @@ export async function POST(request: Request) {
     
     const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Получаем все верифицированные аккаунты для организации
+    // Получаем верифицированные аккаунты текущего пользователя (не ограничиваем по org_id)
+    console.log(`Fetching verified Telegram accounts for user ${user.id}...`);
     const { data: accounts, error: accountsError } = await supabaseService
       .from('user_telegram_accounts')
       .select('*')
-      .eq('org_id', orgId)
+      .eq('user_id', user.id)
       .eq('is_verified', true);
       
     if (accountsError) {
@@ -49,36 +50,70 @@ export async function POST(request: Request) {
     }
     
     if (!accounts || accounts.length === 0) {
+      console.log(`No verified Telegram accounts found for user ${user.id}`);
       return NextResponse.json({ 
-        message: 'No verified Telegram accounts found for this organization',
-        updated: 0
+        message: 'No verified Telegram accounts found for this user',
+        updated: 0,
+        total: 0
       });
     }
     
-    console.log(`Found ${accounts.length} verified accounts for org ${orgId}`);
+    console.log(`Found ${accounts.length} verified account(s) for user ${user.id}:`, accounts.map(a => ({ id: a.id, telegram_user_id: a.telegram_user_id, org_id: a.org_id })));
     
-    // Получаем все группы для организации
-    const { data: groups, error: groupsError } = await supabaseService
-      .from('telegram_groups')
-      .select('*')
+    // Получаем все группы для организации через org_telegram_groups
+    console.log(`Fetching groups for org ${orgId}...`);
+    const { data: orgGroups, error: orgGroupsError } = await supabaseService
+      .from('org_telegram_groups')
+      .select(`
+        tg_chat_id,
+        telegram_groups!inner(*)
+      `)
       .eq('org_id', orgId);
-      
-    if (groupsError) {
-      console.error('Error fetching groups:', groupsError);
+    
+    if (orgGroupsError) {
+      console.error('Error fetching org groups:', orgGroupsError);
       return NextResponse.json({ 
         error: 'Failed to fetch groups',
-        details: groupsError
+        details: orgGroupsError
       }, { status: 500 });
     }
     
-    if (!groups || groups.length === 0) {
+    const groups = orgGroups?.map((og: any) => ({
+      ...og.telegram_groups,
+      tg_chat_id: og.tg_chat_id
+    })) || [];
+    
+    // Fallback: пытаемся получить группы напрямую из telegram_groups
+    if (groups.length === 0) {
+      console.log('No groups found via org_telegram_groups, trying direct query...');
+      const { data: directGroups, error: groupsError } = await supabaseService
+        .from('telegram_groups')
+        .select('*')
+        .eq('org_id', orgId);
+      
+      if (groupsError) {
+        console.error('Error fetching groups:', groupsError);
+        return NextResponse.json({ 
+          error: 'Failed to fetch groups',
+          details: groupsError
+        }, { status: 500 });
+      }
+      
+      if (directGroups && directGroups.length > 0) {
+        groups.push(...directGroups);
+      }
+    }
+    
+    if (groups.length === 0) {
+      console.log(`No Telegram groups found for org ${orgId}`);
       return NextResponse.json({ 
         message: 'No Telegram groups found for this organization',
-        updated: 0
+        updated: 0,
+        total: 0
       });
     }
     
-    console.log(`Found ${groups.length} groups for org ${orgId}`);
+    console.log(`Found ${groups.length} group(s) for org ${orgId}:`, groups.map(g => ({ id: g.id, title: g.title, tg_chat_id: g.tg_chat_id })));
     
     // Инициализируем Telegram сервис
     const telegramService = new TelegramService('main');
@@ -133,6 +168,7 @@ export async function POST(request: Request) {
               user_telegram_account_id: account.id,
               is_owner: isOwner,
               is_admin: isAdmin,
+              custom_title: member.custom_title || null,
               can_manage_chat: member.can_manage_chat || false,
               can_delete_messages: member.can_delete_messages || false,
               can_manage_video_chats: member.can_manage_video_chats || false,
@@ -141,6 +177,8 @@ export async function POST(request: Request) {
               can_change_info: member.can_change_info || false,
               can_invite_users: member.can_invite_users || false,
               can_pin_messages: member.can_pin_messages || false,
+              can_post_messages: member.can_post_messages || false,
+              can_edit_messages: member.can_edit_messages || false,
               verified_at: new Date().toISOString(),
               expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 дней
             }, {
@@ -196,11 +234,23 @@ export async function POST(request: Request) {
       }
     }
     
+    // Вызываем функцию синхронизации админов для создания/обновления memberships
+    console.log(`Calling sync_telegram_admins for org ${orgId}...`);
+    const { data: syncResult, error: syncError } = await supabaseService
+      .rpc('sync_telegram_admins', { p_org_id: orgId });
+    
+    if (syncError) {
+      console.error('Error syncing telegram admins:', syncError);
+    } else {
+      console.log(`Sync result:`, syncResult);
+    }
+    
     return NextResponse.json({
       success: true,
       message: `Updated admin rights for ${updatedCount} user-group pairs`,
       updated: updatedCount,
       total: accounts.length * groups.length,
+      syncResult: syncResult || null,
       results
     });
   } catch (error: any) {

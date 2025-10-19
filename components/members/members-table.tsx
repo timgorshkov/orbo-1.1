@@ -10,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { AdminBadge } from '@/components/admin-badge'
+import { ParticipantAvatar } from './participant-avatar'
 
 interface Participant {
   id: string
@@ -22,6 +24,9 @@ interface Participant {
   participant_status: string
   photo_url: string | null
   created_at?: string
+  is_owner?: boolean
+  is_admin?: boolean
+  custom_title?: string | null
 }
 
 interface MembersTableProps {
@@ -84,6 +89,7 @@ export default function MembersTable({ participants }: MembersTableProps) {
             <TableHead className="w-[300px]">Участник</TableHead>
             <TableHead>Telegram</TableHead>
             <TableHead>Email</TableHead>
+            <TableHead>Роль</TableHead>
             <TableHead>Статус</TableHead>
             <TableHead className="text-right">Добавлен</TableHead>
           </TableRow>
@@ -98,17 +104,13 @@ export default function MembersTable({ participants }: MembersTableProps) {
               {/* Участник (Фото + Имя) */}
               <TableCell>
                 <div className="flex items-center gap-3">
-                  {participant.photo_url ? (
-                    <img
-                      src={participant.photo_url}
-                      alt={participant.full_name || 'User'}
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200">
-                      <User className="h-5 w-5 text-gray-500" />
-                    </div>
-                  )}
+                  <ParticipantAvatar
+                    participantId={participant.id}
+                    photoUrl={participant.photo_url}
+                    tgUserId={participant.tg_user_id}
+                    displayName={participant.full_name || 'Без имени'}
+                    size="md"
+                  />
                   <div>
                     <div className="font-medium text-gray-900">
                       {participant.full_name || 'Без имени'}
@@ -154,6 +156,17 @@ export default function MembersTable({ participants }: MembersTableProps) {
                 ) : (
                   <span className="text-gray-400">—</span>
                 )}
+              </TableCell>
+
+              {/* Роль (Admin/Owner badge) */}
+              <TableCell>
+                <AdminBadge 
+                  isOwner={participant.is_owner}
+                  isAdmin={participant.is_admin}
+                  customTitle={participant.custom_title}
+                  size="sm"
+                  showLabel={false}
+                />
               </TableCell>
 
               {/* Статус */}

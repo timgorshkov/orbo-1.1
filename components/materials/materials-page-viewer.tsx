@@ -87,6 +87,25 @@ export function MaterialsPageViewer({
     }
   }, [orgId]);
 
+  const handlePageSave = useCallback((pageId: string, newTitle: string) => {
+    // Обновляем дерево, чтобы отразить новое название
+    const updateTreeTitles = (nodes: MaterialTreeNode[]): MaterialTreeNode[] => {
+      return nodes.map(node => {
+        if (node.id === pageId) {
+          return { ...node, title: newTitle };
+        }
+        if (node.children) {
+          return { ...node, children: updateTreeTitles(node.children) };
+        }
+        return node;
+      });
+    };
+    setTree(prevTree => updateTreeTitles(prevTree));
+    
+    // Также обновляем локальное состояние страницы
+    setPage(prevPage => prevPage ? { ...prevPage, title: newTitle } : null);
+  }, []);
+
   useEffect(() => {
     if (selectedId) {
       loadPage(selectedId);
@@ -158,6 +177,7 @@ export function MaterialsPageViewer({
                 initialContent={page.contentMd}
                 onUnsavedChanges={setHasUnsavedChanges}
                 saveRef={saveRef}
+                onSave={handlePageSave}
               />
             )
           ) : isLoading ? (

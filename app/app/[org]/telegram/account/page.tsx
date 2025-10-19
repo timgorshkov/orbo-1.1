@@ -31,9 +31,6 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
   
   // Форма для добавления Telegram ID
   const [telegramUserId, setTelegramUserId] = useState('')
-  const [telegramUsername, setTelegramUsername] = useState('')
-  const [telegramFirstName, setTelegramFirstName] = useState('')
-  const [telegramLastName, setTelegramLastName] = useState('')
   
   // Форма для верификации
   const [verificationCode, setVerificationCode] = useState('')
@@ -56,9 +53,6 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
       
       if (data.telegramAccount) {
         setTelegramUserId(data.telegramAccount.telegram_user_id.toString())
-        setTelegramUsername(data.telegramAccount.telegram_username || '')
-        setTelegramFirstName(data.telegramAccount.telegram_first_name || '')
-        setTelegramLastName(data.telegramAccount.telegram_last_name || '')
       }
     } catch (e: any) {
       console.error('Error fetching telegram account:', e)
@@ -86,10 +80,7 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
         },
         body: JSON.stringify({
           orgId: params.org,
-          telegramUserId: parseInt(telegramUserId),
-          telegramUsername: telegramUsername || null,
-          telegramFirstName: telegramFirstName || null,
-          telegramLastName: telegramLastName || null
+          telegramUserId: parseInt(telegramUserId)
         }),
       })
 
@@ -359,40 +350,9 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
                   placeholder="Например: 123456789"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="text-sm text-neutral-600 block mb-2">
-                  Username (необязательно)
-                </label>
-                <Input
-                  value={telegramUsername}
-                  onChange={e => setTelegramUsername(e.target.value)}
-                  placeholder="Например: johndoe (без @)"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Имя (необязательно)
-                  </label>
-                  <Input
-                    value={telegramFirstName}
-                    onChange={e => setTelegramFirstName(e.target.value)}
-                    placeholder="Ваше имя"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-neutral-600 block mb-2">
-                    Фамилия (необязательно)
-                  </label>
-                  <Input
-                    value={telegramLastName}
-                    onChange={e => setTelegramLastName(e.target.value)}
-                    placeholder="Ваша фамилия"
-                  />
-                </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  ℹ️ Username, имя и фамилия будут автоматически загружены из вашего Telegram-профиля
+                </p>
               </div>
 
               <Button onClick={handleSaveTelegramId} disabled={saving}>

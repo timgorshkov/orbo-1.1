@@ -4,8 +4,6 @@ import { participantMatcher } from '@/lib/services/participants/matcher';
 import { PostgrestSingleResponse } from '@supabase/supabase-js';
 import { logParticipantAudit } from '@/lib/server/participants/audit';
 
-const supabaseAdmin = createAdminServer();
-
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
   const { data: authResult } = await supabase.auth.getUser();
@@ -50,6 +48,8 @@ function normalizeEmail(email?: string | null): string | null {
 
 export async function POST(request: Request) {
   try {
+    const supabaseAdmin = createAdminServer();
+    
     const payload = await request.json();
     const orgId = payload?.orgId as string | undefined;
 
