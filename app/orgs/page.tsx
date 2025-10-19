@@ -1,24 +1,43 @@
 import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 
 export default async function OrganizationsPage() {
-  console.log('[Orgs Page] Loading organizations page...')
-  
-  const supabase = await createClientServer()
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser()
-  
-  console.log('[Orgs Page] User check:', { hasUser: !!user, hasError: !!error })
+  try {
+    const supabase = await createClientServer()
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser()
 
-  if (!user) {
-    console.log('[Orgs Page] No user found, redirecting to /signin')
-    redirect('/signin')
-  }
-  
-  console.log('[Orgs Page] User authenticated:', user.id)
+    // Если есть ошибка auth (невалидный токен и т.д.)
+    if (error) {
+      // Если токен невалидный - очищаем сессию
+      if (error.message?.includes('missing sub claim') || 
+          error.message?.includes('invalid claim') ||
+          error.status === 403) {
+        console.log('[Orgs Page] Invalid auth token detected, clearing session');
+        
+        const cookieStore = await cookies();
+        const allCookies = cookieStore.getAll();
+        allCookies.forEach(cookie => {
+          if (cookie.name.includes('supabase') || 
+              cookie.name.includes('auth-token') ||
+              cookie.name.includes('sb-')) {
+            cookieStore.delete(cookie.name);
+          }
+        });
+      } else {
+        console.log('[Orgs Page] Auth error:', error.message);
+      }
+      
+      redirect('/signin');
+    }
+
+    if (!user) {
+      redirect('/signin')
+    }
 
   // Используем admin client для получения всех memberships пользователя
   const adminSupabase = createAdminServer()
@@ -278,4 +297,14 @@ export default async function OrganizationsPage() {
       </div>
     </div>
   )
+  } catch (error: any) {
+    // NEXT_REDIRECT не является ошибкой - это нормальное поведение Next.js
+    if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+      throw error;
+    }
+    
+    // Реальная неожиданная ошибка
+    console.error('[Orgs Page] Unexpected error:', error);
+    redirect('/signin');
+  }
 }

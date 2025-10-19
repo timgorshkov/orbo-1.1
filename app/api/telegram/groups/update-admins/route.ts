@@ -118,44 +118,39 @@ export async function POST(request: Request) {
     // Инициализируем Telegram сервис
     const telegramService = new TelegramService('main');
     
-    // Для каждого аккаунта и группы проверяем права администратора
+    // Получаем ВСЕХ администраторов для каждой группы
     let updatedCount = 0;
     const results = [];
     
-    for (const account of accounts) {
-      for (const group of groups) {
-        try {
-          console.log(`Checking admin rights for user ${account.telegram_user_id} in group ${group.tg_chat_id} (${group.title})`);
+    for (const group of groups) {
+      try {
+        console.log(`Fetching all administrators for group ${group.tg_chat_id} (${group.title})`);
+        
+        // Получаем ВСЕХ администраторов группы
+        const adminsResponse = await telegramService.getChatAdministrators(Number(group.tg_chat_id));
+        
+        if (!adminsResponse.ok) {
+          console.error(`Failed to get administrators for group ${group.tg_chat_id}:`, adminsResponse.description);
+          results.push({
+            group_id: group.id,
+            status: 'error',
+            message: adminsResponse.description || 'Failed to get administrators'
+          });
+          continue;
+        }
+        
+        const administrators = adminsResponse.result || [];
+        console.log(`Found ${administrators.length} administrators in group ${group.tg_chat_id} (${group.title})`);
+        
+        // Обрабатываем каждого администратора
+        for (const admin of administrators) {
+          const memberStatus = admin?.status;
+          const isAdmin = memberStatus === 'administrator' || memberStatus === 'creator';
+          const isOwner = memberStatus === 'creator';
+          const userId = admin?.user?.id;
           
-          // Проверяем права администратора
-          const adminInfo = await telegramService.getChatMember(
-            Number(group.tg_chat_id), 
-            Number(account.telegram_user_id)
-          );
-          
-          if (!adminInfo.ok) {
-            console.error(`Failed to get admin info:`, adminInfo);
-            results.push({
-              account_id: account.id,
-              group_id: group.id,
-              status: 'error',
-              message: adminInfo.description || 'Failed to get admin info'
-            });
-            continue;
-          }
-          
-          const member = adminInfo.result;
-          const isAdmin = member.status === 'administrator' || member.status === 'creator';
-          const isOwner = member.status === 'creator';
-          
-          if (!isAdmin) {
-            console.log(`User ${account.telegram_user_id} is not admin in group ${group.tg_chat_id} (${group.title})`);
-            results.push({
-              account_id: account.id,
-              group_id: group.id,
-              status: 'not_admin',
-              message: `User is not admin (status: ${member.status})`
-            });
+          if (!userId) {
+            console.warn(`Administrator without user ID in group ${group.tg_chat_id}, skipping`);
             continue;
           }
           
@@ -164,21 +159,21 @@ export async function POST(request: Request) {
             .from('telegram_group_admins')
             .upsert({
               tg_chat_id: Number(group.tg_chat_id),
-              tg_user_id: Number(account.telegram_user_id),
-              user_telegram_account_id: account.id,
+              tg_user_id: userId,
+              user_telegram_account_id: null, // Будет заполнено через sync_telegram_admins
               is_owner: isOwner,
               is_admin: isAdmin,
-              custom_title: member.custom_title || null,
-              can_manage_chat: member.can_manage_chat || false,
-              can_delete_messages: member.can_delete_messages || false,
-              can_manage_video_chats: member.can_manage_video_chats || false,
-              can_restrict_members: member.can_restrict_members || false,
-              can_promote_members: member.can_promote_members || false,
-              can_change_info: member.can_change_info || false,
-              can_invite_users: member.can_invite_users || false,
-              can_pin_messages: member.can_pin_messages || false,
-              can_post_messages: member.can_post_messages || false,
-              can_edit_messages: member.can_edit_messages || false,
+              custom_title: admin.custom_title || null,
+              can_manage_chat: admin.can_manage_chat || false,
+              can_delete_messages: admin.can_delete_messages || false,
+              can_manage_video_chats: admin.can_manage_video_chats || false,
+              can_restrict_members: admin.can_restrict_members || false,
+              can_promote_members: admin.can_promote_members || false,
+              can_change_info: admin.can_change_info || false,
+              can_invite_users: admin.can_invite_users || false,
+              can_pin_messages: admin.can_pin_messages || false,
+              can_post_messages: admin.can_post_messages || false,
+              can_edit_messages: admin.can_edit_messages || false,
               verified_at: new Date().toISOString(),
               expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 дней
             }, {
@@ -186,51 +181,51 @@ export async function POST(request: Request) {
             });
             
           if (adminError) {
-            console.error(`Error updating admin rights:`, adminError);
+            console.error(`Error updating admin rights for user ${userId} in group ${group.tg_chat_id}:`, adminError);
             results.push({
-              account_id: account.id,
               group_id: group.id,
+              user_id: userId,
               status: 'error',
               message: adminError.message || 'Failed to update admin rights'
             });
             continue;
           }
           
-          // Обновляем verified_by_user_id в telegram_groups, если не установлено
-          if (!group.verified_by_user_id) {
-            const { error: updateError } = await supabaseService
-              .from('telegram_groups')
-              .update({
-                verified_by_user_id: account.user_id,
-                verification_status: 'verified',
-                last_verification_at: new Date().toISOString()
-              })
-              .eq('id', group.id);
-              
-            if (updateError) {
-              console.error(`Error updating group verification:`, updateError);
-            }
-          }
-          
           updatedCount++;
           results.push({
-            account_id: account.id,
             group_id: group.id,
+            user_id: userId,
             status: 'success',
             is_owner: isOwner,
-            is_admin: isAdmin
+            is_admin: isAdmin,
+            username: admin.user?.username || null
           });
           
-          console.log(`Updated admin rights for user ${account.telegram_user_id} in group ${group.tg_chat_id} (${group.title})`);
-        } catch (error: any) {
-          console.error(`Error processing admin rights:`, error);
-          results.push({
-            account_id: account.id,
-            group_id: group.id,
-            status: 'error',
-            message: error.message || 'Unknown error'
-          });
+          console.log(`✅ Saved admin ${userId} (${admin.user?.username || admin.user?.first_name}) for group ${group.tg_chat_id} (${group.title})`);
         }
+        
+        // Обновляем verified_by_user_id в telegram_groups, если не установлено
+        if (!group.verified_by_user_id && accounts.length > 0) {
+          const { error: updateError } = await supabaseService
+            .from('telegram_groups')
+            .update({
+              verified_by_user_id: accounts[0].user_id,
+              verification_status: 'verified',
+              last_verification_at: new Date().toISOString()
+            })
+            .eq('id', group.id);
+            
+          if (updateError) {
+            console.error(`Error updating group verification:`, updateError);
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error processing group ${group.tg_chat_id}:`, error);
+        results.push({
+          group_id: group.id,
+          status: 'error',
+          message: error.message || 'Unknown error'
+        });
       }
     }
     
@@ -247,9 +242,9 @@ export async function POST(request: Request) {
     
     return NextResponse.json({
       success: true,
-      message: `Updated admin rights for ${updatedCount} user-group pairs`,
+      message: `Updated admin rights for ${updatedCount} administrators across ${groups.length} groups`,
       updated: updatedCount,
-      total: accounts.length * groups.length,
+      total: updatedCount,
       syncResult: syncResult || null,
       results
     });

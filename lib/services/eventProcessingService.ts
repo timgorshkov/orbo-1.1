@@ -15,7 +15,7 @@ type ParticipantRow = {
   full_name?: string | null;
   username?: string | null;
   source?: string | null;
-  status?: string | null;
+  participant_status?: string | null;
 };
 
 export class EventProcessingService {
@@ -533,7 +533,7 @@ export class EventProcessingService {
       try {
         const { data: participant } = await this.supabase
           .from('participants')
-          .select('id, merged_into, first_name, last_name, full_name, username, status, source')
+          .select('id, merged_into, first_name, last_name, full_name, username, participant_status, source')
           .eq('tg_user_id', member.id)
           .eq('org_id', orgId)
           .is('merged_into', null) // Игнорируем объединённых участников
@@ -555,10 +555,8 @@ export class EventProcessingService {
               first_name: member.first_name ?? null,
               last_name: member.last_name ?? null,
               full_name: fullNameCandidate || member.username || null,
-              last_activity_at: nowIso,
-              source: 'telegram',
-              status: 'active',
-              updated_at: nowIso
+              source: 'telegram_group',
+              participant_status: 'participant'
             }, {
               onConflict: 'org_id,tg_user_id',
               ignoreDuplicates: false
@@ -602,10 +600,7 @@ export class EventProcessingService {
             patch.username = member.username;
           }
           if (!participant.source || participant.source === 'unknown') {
-            patch.source = 'telegram';
-          }
-          if (!participant.status || participant.status === 'inactive') {
-            patch.status = 'active';
+            patch.source = 'telegram_group';
           }
 
           if (Object.keys(patch).length > 0) {
@@ -775,10 +770,8 @@ export class EventProcessingService {
             first_name: message.from.first_name ?? null,
             last_name: message.from.last_name ?? null,
             full_name: fullName || username || (userId ? `User ${userId}` : null),
-            last_activity_at: nowIso,
-            source: 'telegram',
-            status: 'active',
-            updated_at: nowIso
+            source: 'telegram_group',
+            participant_status: 'participant' // ✅ Исправлено имя колонки
           }, {
             onConflict: 'org_id,tg_user_id',
             ignoreDuplicates: false
@@ -997,10 +990,7 @@ export class EventProcessingService {
           patch.full_name = fullNameCandidate;
         }
         if (!participantRecord.source || participantRecord.source === 'unknown') {
-          patch.source = 'telegram';
-        }
-        if (!participantRecord.status || participantRecord.status === 'inactive') {
-          patch.status = 'active';
+          patch.source = 'telegram_group';
         }
       }
 

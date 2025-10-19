@@ -197,6 +197,26 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
     console.log(`Syncing groups for organization ID: ${params.org}`)
     
     try {
+      // Шаг 1: Обновляем права администраторов для всех групп
+      console.log('Step 1: Updating admin rights...')
+      const adminResponse = await fetch('/api/telegram/groups/update-admins', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ orgId: params.org })
+      });
+      
+      const adminData = await adminResponse.json();
+      
+      if (!adminResponse.ok) {
+        throw new Error(adminData.error || 'Failed to update admin rights');
+      }
+      
+      console.log(`Admin rights updated: ${adminData.updated} administrators`);
+      
+      // Шаг 2: Синхронизируем группы
+      console.log('Step 2: Syncing groups...')
       const response = await fetch('/api/telegram/groups/sync', {
         method: 'POST',
         headers: {
@@ -213,7 +233,7 @@ export default function TelegramAccountPage({ params }: { params: { org: string 
         throw new Error(data.error || 'Failed to sync groups')
       }
       
-      setSyncResult(`Успешно синхронизировано ${data.groups?.length || 0} групп`)
+      setSyncResult(`Успешно обновлено ${adminData.updated} администраторов и синхронизировано ${data.groups?.length || 0} групп`)
       
       // Перенаправляем пользователя на страницу Telegram после небольшой задержки
       setTimeout(() => {

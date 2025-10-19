@@ -13,8 +13,10 @@ import {
   ChevronLeft, 
   ChevronRight,
   ChevronDown,
-  Building2
+  Building2,
+  User as UserIcon
 } from 'lucide-react'
+import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -39,6 +41,14 @@ interface CollapsibleSidebarProps {
   orgLogoUrl: string | null
   role: UserRole
   telegramGroups?: any[]
+  userProfile?: {
+    id: string
+    email: string | null
+    displayName: string
+    photoUrl: string | null
+    tgUserId: string | null
+    participantId: string | null
+  }
 }
 
 export default function CollapsibleSidebar({
@@ -47,6 +57,7 @@ export default function CollapsibleSidebar({
   orgLogoUrl,
   role,
   telegramGroups = [],
+  userProfile,
 }: CollapsibleSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -173,29 +184,25 @@ export default function CollapsibleSidebar({
             </Link>
           )}
           
-          <button
-            onClick={async () => {
-              if (confirm('Вы уверены, что хотите выйти?')) {
-                try {
-                  await fetch('/api/auth/logout', { 
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
-                  })
-                  window.location.href = '/signin'
-                } catch (error) {
-                  console.error('Logout error:', error)
-                  window.location.href = '/signin'
-                }
-              }
-            }}
+          <Link
+            href={`/app/${orgId}/profile`}
             className="flex h-12 w-full items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
-            title="Выйти"
+            title={userProfile ? `Профиль - ${userProfile.displayName}` : 'Профиль'}
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-          </button>
+            {userProfile ? (
+              <div className="flex items-center justify-center w-10 h-10">
+                <ParticipantAvatar
+                  participantId={userProfile.participantId || userProfile.id}
+                  photoUrl={userProfile.photoUrl}
+                  tgUserId={userProfile.tgUserId}
+                  displayName={userProfile.displayName}
+                  size="sm"
+                />
+              </div>
+            ) : (
+              <UserIcon className="h-5 w-5" />
+            )}
+          </Link>
           
           <button
             onClick={toggleSidebar}
@@ -298,29 +305,37 @@ export default function CollapsibleSidebar({
           </Link>
         )}
 
-        <button
-          onClick={async () => {
-            if (confirm('Вы уверены, что хотите выйти?')) {
-              try {
-                await fetch('/api/auth/logout', { 
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({})
-                })
-                window.location.href = '/signin'
-              } catch (error) {
-                console.error('Logout error:', error)
-                window.location.href = '/signin'
-              }
-            }
-          }}
+        <Link
+          href={`/app/${orgId}/profile`}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
         >
-          <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          <span>Выйти</span>
-        </button>
+          {userProfile ? (
+            <>
+              <ParticipantAvatar
+                participantId={userProfile.participantId || userProfile.id}
+                photoUrl={userProfile.photoUrl}
+                tgUserId={userProfile.tgUserId}
+                displayName={userProfile.displayName}
+                size="sm"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {userProfile.displayName}
+                </div>
+                {userProfile.email && (
+                  <div className="text-xs text-gray-500 truncate">
+                    {userProfile.email}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <UserIcon className="h-5 w-5 flex-shrink-0" />
+              <span>Профиль</span>
+            </>
+          )}
+        </Link>
 
         <button
           onClick={toggleSidebar}

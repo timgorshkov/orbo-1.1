@@ -203,7 +203,13 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       )}
       
       {loading ? (
-        <div className="text-center py-8">Загрузка...</div>
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-neutral-600 font-medium mb-2">Сканирование Telegram групп...</p>
+          <p className="text-sm text-neutral-500">
+            Проверяем ваши права администратора через Telegram Bot API
+          </p>
+        </div>
       ) : availableGroups.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {availableGroups.map(group => (
@@ -258,13 +264,48 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           ))}
         </div>
       ) : (
-        <div className="text-center py-8">
-          <p className="text-neutral-600 mb-4">
-            У вас нет доступных Telegram групп, которые можно добавить в эту организацию.
-          </p>
-          <p className="text-sm text-neutral-500">
-            Чтобы добавить группу, вы должны быть администратором группы, и бот @orbo_community_bot должен быть добавлен в группу с правами администратора.
-          </p>
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl">📢</div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-blue-900 mb-3">
+                  Нет доступных групп?
+                </h3>
+                <p className="text-blue-800 mb-4">
+                  Чтобы система обнаружила ваши группы, где добавлен <strong>@orbo_community_bot</strong>:
+                </p>
+                <ol className="list-decimal list-inside space-y-2 text-blue-800 mb-4">
+                  <li>Откройте группу в Telegram</li>
+                  <li>Отправьте любое сообщение (например: <code className="bg-blue-100 px-2 py-1 rounded">/start</code>)</li>
+                  <li>Обновите эту страницу через 5-10 секунд</li>
+                </ol>
+                <div className="bg-blue-100 rounded p-3 text-sm text-blue-900">
+                  <strong>Важно:</strong> Вы должны быть администратором группы, и бот должен быть добавлен с правами администратора.
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-neutral-900 mb-3">
+              Альтернативный способ: добавление по Chat ID
+            </h3>
+            <p className="text-neutral-600 mb-4">
+              Если вы знаете Chat ID группы, можете добавить её вручную на{' '}
+              <Button 
+                variant="ghost" 
+                className="p-0 h-auto font-normal text-blue-600 hover:text-blue-700 underline"
+                onClick={() => router.push(`/app/${params.org}/telegram`)}
+              >
+                странице Telegram настроек
+              </Button>
+              .
+            </p>
+            <p className="text-sm text-neutral-500">
+              Чтобы узнать Chat ID группы, добавьте в неё бота <strong>@getidsbot</strong>, напишите любое сообщение, и бот покажет ID.
+            </p>
+          </div>
         </div>
       )}
     </div>

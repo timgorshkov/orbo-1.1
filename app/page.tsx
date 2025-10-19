@@ -1,29 +1,51 @@
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { cookies } from 'next/headers';
 
 export default async function Home() {
   try {
     const supabase = await createClientServer();
     const { data: { user }, error } = await supabase.auth.getUser();
     
-    console.log('[Root Page] User check:', { hasUser: !!user, hasError: !!error });
-    
+    // Если есть ошибка auth (невалидный токен, отсутствующий пользователь и т.д.)
     if (error) {
-      console.error('[Root Page] Auth error:', error);
+      // Если токен невалидный - очищаем сессию
+      if (error.message?.includes('missing sub claim') || 
+          error.message?.includes('invalid claim') ||
+          error.status === 403) {
+        console.log('[Root Page] Invalid auth token detected, clearing session');
+        
+        // Очищаем все Supabase cookies
+        const cookieStore = await cookies();
+        const allCookies = cookieStore.getAll();
+        allCookies.forEach(cookie => {
+          if (cookie.name.includes('supabase') || 
+              cookie.name.includes('auth-token') ||
+              cookie.name.includes('sb-')) {
+            cookieStore.delete(cookie.name);
+          }
+        });
+      } else {
+        console.log('[Root Page] Auth error (non-critical):', error.message);
+      }
+      
       redirect('/signin');
     }
     
     if (!user) {
-      console.log('[Root Page] No user, redirecting to signin');
       redirect('/signin');
     }
     
     // Пользователь авторизован, отправляем на страницу выбора организации
-    console.log('[Root Page] User authenticated, redirecting to /orgs');
     redirect('/orgs');
-  } catch (error) {
+  } catch (error: any) {
+    // NEXT_REDIRECT не является ошибкой - это нормальное поведение Next.js
+    if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+      throw error; // Пробрасываем дальше
+    }
+    
+    // Реальная неожиданная ошибка
     console.error('[Root Page] Unexpected error:', error);
-    // В случае ошибки отправляем на страницу логина
     redirect('/signin');
   }
 }

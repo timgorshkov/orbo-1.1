@@ -121,6 +121,61 @@ export default async function OrgLayout({
     }
   }
 
+  // Получаем данные профиля пользователя для отображения в меню
+  console.log('Fetching user profile data for sidebar...')
+  
+  let userProfile: {
+    id: string
+    email: string | null
+    displayName: string
+    photoUrl: string | null
+    tgUserId: string | null
+    participantId: string | null
+  } | undefined
+
+  try {
+    // Получаем Telegram аккаунт пользователя для этой организации
+    const { data: telegramAccount } = await adminSupabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id, telegram_username, telegram_first_name')
+      .eq('user_id', user.id)
+      .eq('org_id', org.id)
+      .maybeSingle()
+
+    // Получаем профиль участника если есть Telegram
+    let participant = null
+    if (telegramAccount?.telegram_user_id) {
+      const { data: participantData } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, photo_url, tg_user_id')
+        .eq('org_id', org.id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
+        .maybeSingle()
+      
+      participant = participantData
+    }
+
+    const displayName = participant?.full_name ||
+                       telegramAccount?.telegram_first_name ||
+                       user.email?.split('@')[0] ||
+                       'Пользователь'
+
+    userProfile = {
+      id: user.id,
+      email: user.email || null,
+      displayName,
+      photoUrl: participant?.photo_url || null,
+      tgUserId: telegramAccount?.telegram_user_id?.toString() || null,
+      participantId: participant?.id || null
+    }
+
+    console.log('User profile loaded:', { displayName, hasPhoto: !!participant?.photo_url })
+  } catch (profileError) {
+    console.error('Error loading user profile:', profileError)
+    // Continue without profile - sidebar will show fallback
+  }
+
   console.log('=== OrgLayout SUCCESS ===')
 
   return (
@@ -131,6 +186,7 @@ export default async function OrgLayout({
         orgLogoUrl={org.logo_url}
         role={role}
         telegramGroups={telegramGroups}
+        userProfile={userProfile}
       />
       <main className="flex-1 overflow-y-auto bg-neutral-50">
         {children}

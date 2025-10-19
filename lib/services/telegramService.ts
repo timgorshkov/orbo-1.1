@@ -46,6 +46,26 @@ export class TelegramService {
   }
 
   /**
+   * Установка webhook с расширенными параметрами
+   */
+  async setWebhookAdvanced(params: {
+    url: string;
+    secret_token?: string;
+    allowed_updates?: string[];
+    drop_pending_updates?: boolean;
+    max_connections?: number;
+  }) {
+    return this.callApi('setWebhook', params);
+  }
+
+  /**
+   * Получение информации о webhook
+   */
+  async getWebhookInfo() {
+    return this.callApi('getWebhookInfo', {});
+  }
+
+  /**
    * Получение информации о боте
    */
   async getMe() {
@@ -95,6 +115,15 @@ async getChatMember(chatId: number, userId: number) {
     user_id: userId
   });
 }
+
+  /**
+   * Получение списка всех администраторов группы
+   */
+  async getChatAdministrators(chatId: number) {
+    return this.callApi('getChatAdministrators', {
+      chat_id: chatId
+    });
+  }
 
   /**
    * Создание ссылки-приглашения для группы

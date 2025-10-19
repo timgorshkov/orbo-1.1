@@ -203,7 +203,7 @@ export async function POST(request: Request) {
     const updatedGroups: any[] = [];
     const warnings: string[] = [];
 
-    // ✅ Проверяем ВСЕ chat_id напрямую, даже если группы нет в telegram_groups
+    // ✅ Получаем ВСЕХ администраторов для каждой группы
     for (const chatIdStr of normalizedChatIds) {
       const chatId = Number(chatIdStr);
 
@@ -213,68 +213,99 @@ export async function POST(request: Request) {
       }
 
       try {
-        const adminInfo = await telegramService.getChatMember(chatId, activeAccount.telegram_user_id);
+        // Получаем ВСЕХ администраторов группы
+        console.log(`Fetching all administrators for chat ${chatId}`);
+        const adminsResponse = await telegramService.getChatAdministrators(chatId);
 
-        if (!adminInfo?.ok) {
-          warnings.push(`Failed to fetch admin info for chat ${chatId}: ${adminInfo?.description || 'Unknown error'}`);
+        if (!adminsResponse?.ok) {
+          warnings.push(`Failed to fetch administrators for chat ${chatId}: ${adminsResponse?.description || 'Unknown error'}`);
           continue;
         }
 
-        const member = adminInfo.result;
-        const memberStatus = member?.status;
-        const isAdmin = memberStatus === 'administrator' || memberStatus === 'creator';
-        const isOwner = memberStatus === 'creator';
+        const administrators = adminsResponse.result || [];
+        console.log(`Found ${administrators.length} administrators in chat ${chatId}`);
 
-        const upsertPayload: Record<string, any> = {
-          tg_chat_id: chatId,
-          tg_user_id: activeAccount.telegram_user_id,
-          user_telegram_account_id: activeAccount.id,
-          is_owner: isOwner,
-          is_admin: isAdmin,
-          custom_title: member.custom_title || null,
-          verified_at: new Date().toISOString(),
-          expires_at: isAdmin
-            ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-            : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-        };
+        // Обрабатываем каждого администратора
+        for (const admin of administrators) {
+          const memberStatus = admin?.status;
+          const isAdmin = memberStatus === 'administrator' || memberStatus === 'creator';
+          const isOwner = memberStatus === 'creator';
+          const userId = admin?.user?.id;
 
-        const optionalFields = [
-          'can_manage_chat',
-          'can_delete_messages',
-          'can_manage_video_chats',
-          'can_restrict_members',
-          'can_promote_members',
-          'can_change_info',
-          'can_invite_users',
-          'can_pin_messages',
-          'can_post_messages',
-          'can_edit_messages'
-        ];
-
-        optionalFields.forEach(field => {
-          if (Object.prototype.hasOwnProperty.call(member, field)) {
-            upsertPayload[field] = member[field] ?? false;
+          if (!userId) {
+            console.warn(`Administrator without user ID in chat ${chatId}, skipping`);
+            continue;
           }
-        });
 
-        const { error: adminUpsertError } = await supabaseService
-          .from('telegram_group_admins')
-          .upsert(upsertPayload, { onConflict: 'tg_chat_id,tg_user_id' });
+          const upsertPayload: Record<string, any> = {
+            tg_chat_id: chatId,
+            tg_user_id: userId,
+            user_telegram_account_id: null, // Будет заполнено через sync_telegram_admins
+            is_owner: isOwner,
+            is_admin: isAdmin,
+            custom_title: admin.custom_title || null,
+            verified_at: new Date().toISOString(),
+            expires_at: isAdmin
+              ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+              : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+          };
 
-        if (adminUpsertError) {
-          warnings.push(`Failed to save admin info for chat ${chatId}: ${adminUpsertError.message || adminUpsertError.code}`);
-          continue;
+          const optionalFields = [
+            'can_manage_chat',
+            'can_delete_messages',
+            'can_manage_video_chats',
+            'can_restrict_members',
+            'can_promote_members',
+            'can_change_info',
+            'can_invite_users',
+            'can_pin_messages',
+            'can_post_messages',
+            'can_edit_messages'
+          ];
+
+          optionalFields.forEach(field => {
+            if (Object.prototype.hasOwnProperty.call(admin, field)) {
+              upsertPayload[field] = admin[field] ?? false;
+            }
+          });
+
+          const { error: adminUpsertError } = await supabaseService
+            .from('telegram_group_admins')
+            .upsert(upsertPayload, { onConflict: 'tg_chat_id,tg_user_id' });
+
+          if (adminUpsertError) {
+            warnings.push(`Failed to save admin ${userId} for chat ${chatId}: ${adminUpsertError.message || adminUpsertError.code}`);
+            continue;
+          }
+
+          console.log(`✅ Saved admin ${userId} (${admin.user?.username || admin.user?.first_name}) for chat ${chatId}`);
         }
 
         updatedGroups.push({
           tg_chat_id: chatId,
-          is_admin: isAdmin,
-          is_owner: isOwner,
-          status: memberStatus
+          admins_count: administrators.length
         });
       } catch (groupError: any) {
         warnings.push(`Error processing chat ${chatId}: ${groupError?.message || groupError?.code || 'Unknown error'}`);
       }
+    }
+    
+    // После обновления всех админов, вызываем sync_telegram_admins для создания memberships
+    console.log('Calling sync_telegram_admins to create memberships...');
+    try {
+      const { error: syncError } = await supabaseService.rpc('sync_telegram_admins', {
+        p_org_id: orgId
+      });
+      
+      if (syncError) {
+        console.error('Error syncing telegram admins:', syncError);
+        warnings.push(`Failed to sync memberships: ${syncError.message}`);
+      } else {
+        console.log('✅ Successfully synced telegram admins to memberships');
+      }
+    } catch (syncErr: any) {
+      console.error('Error calling sync_telegram_admins:', syncErr);
+      warnings.push(`Failed to call sync function: ${syncErr.message || 'Unknown error'}`);
     }
 
     return NextResponse.json({

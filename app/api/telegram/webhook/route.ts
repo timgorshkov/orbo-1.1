@@ -110,6 +110,7 @@ async function processWebhookInBackground(body: any) {
         
         if (existingGroup && existingGroup.length > 0) {
           // Обновляем существующую группу
+          console.log('[Webhook] Step 1c: Updating existing group:', existingGroup[0].id);
           await supabaseServiceRole
             .from('telegram_groups')
             .update({
@@ -120,25 +121,20 @@ async function processWebhookInBackground(body: any) {
             })
             .eq('id', existingGroup[0].id);
         } else {
-          // Получаем первую организацию для новой группы
-          const { data: orgs } = await supabaseServiceRole
-            .from('organizations')
-            .select('id')
-            .limit(1);
-          
-          if (orgs && orgs.length > 0) {
-            // Вставляем новую группу
-            await supabaseServiceRole
-              .from('telegram_groups')
-              .insert({
-                org_id: orgs[0].id,
-                tg_chat_id: String(chatId),
-                title: title,
-                bot_status: 'connected',
-                analytics_enabled: true,
-                last_sync_at: new Date().toISOString()
-              });
-          }
+          // Создаём новую группу БЕЗ привязки к организации
+          // Группа будет добавлена в организацию вручную через UI
+          console.log('[Webhook] Step 1c: Creating new group WITHOUT org_id');
+          await supabaseServiceRole
+            .from('telegram_groups')
+            .insert({
+              org_id: null, // ✅ НЕ привязываем к организации автоматически!
+              tg_chat_id: String(chatId),
+              title: title,
+              bot_status: 'connected',
+              analytics_enabled: false, // Аналитика будет включена при добавлении в организацию
+              last_sync_at: new Date().toISOString()
+            });
+          console.log('[Webhook] Step 1d: New group created, waiting for manual assignment to organization');
         }
       } catch (error) {
         console.error('[Webhook] Error processing group:', error);
@@ -149,13 +145,28 @@ async function processWebhookInBackground(body: any) {
     
     console.log('[Webhook] Step 2: Checking if EventProcessingService needed');
     
-    // Обрабатываем событие через eventProcessingService (только для групповых чатов)
-    if (body.message?.chat?.type !== 'private') {
-      console.log('[Webhook] Step 2a: Running EventProcessingService for group chat');
-      const eventProcessingService = createEventProcessingService();
-      eventProcessingService.setSupabaseClient(supabaseServiceRole);
-      await eventProcessingService.processUpdate(body);
-      console.log('[Webhook] Step 2b: EventProcessingService completed');
+    // Обрабатываем событие ТОЛЬКО для групп, добавленных в организацию
+    if (body.message?.chat?.type !== 'private' && body.message?.chat?.id) {
+      const chatId = body.message.chat.id;
+      
+      // Проверяем, добавлена ли группа в какую-либо организацию
+      console.log('[Webhook] Step 2a: Checking if group is assigned to any organization');
+      const { data: orgMapping } = await supabaseServiceRole
+        .from('org_telegram_groups')
+        .select('org_id')
+        .filter('tg_chat_id::text', 'eq', String(chatId))
+        .limit(1);
+      
+      if (orgMapping && orgMapping.length > 0) {
+        console.log('[Webhook] Step 2b: ✅ Group is assigned to organization, processing events');
+        const eventProcessingService = createEventProcessingService();
+        eventProcessingService.setSupabaseClient(supabaseServiceRole);
+        await eventProcessingService.processUpdate(body);
+        console.log('[Webhook] Step 2c: EventProcessingService completed');
+      } else {
+        console.log('[Webhook] Step 2b: ⏭️  Group is NOT assigned to any organization, skipping event processing');
+        console.log('[Webhook] Step 2c: Group will appear in "Available Groups" for admins to add manually');
+      }
     } else {
       console.log('[Webhook] Step 2a: Skipping EventProcessingService (private chat)');
     }
