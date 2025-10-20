@@ -47,8 +47,7 @@ type ProfileData = {
     phone: string | null
     custom_attributes: any
     tg_user_id: string | null
-    tg_username: string | null
-    status: string
+    participant_status: string
     source: string | null
     last_activity_at: string | null
   } | null
@@ -70,8 +69,33 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
   const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     full_name: '',
-    bio: ''
+    bio: '',
+    phone: '',
+    custom_attributes: {} as Record<string, any>
   })
+  
+  // Custom attributes as array (to avoid losing focus when editing keys)
+  const [customAttributesArray, setCustomAttributesArray] = useState<Array<{ id: string; key: string; value: string }>>([])
+  
+  // Convert custom_attributes object to array for editing
+  const attributesToArray = (attrs: Record<string, any>) => {
+    return Object.entries(attrs).map(([key, value]) => ({
+      id: `attr_${Date.now()}_${Math.random()}`,
+      key,
+      value: String(value)
+    }))
+  }
+  
+  // Convert array back to object for saving
+  const arrayToAttributes = (arr: Array<{ id: string; key: string; value: string }>) => {
+    const result: Record<string, any> = {}
+    arr.forEach(({ key, value }) => {
+      if (key.trim()) { // Only add non-empty keys
+        result[key] = value
+      }
+    })
+    return result
+  }
 
   // Telegram linking state
   const [showTelegramForm, setShowTelegramForm] = useState(false)
@@ -109,11 +133,28 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
       setProfile(data.profile)
       
       // Initialize edit form
+      console.log('[Profile Page] Profile loaded:', {
+        hasParticipant: !!data.profile.participant,
+        participantData: data.profile.participant
+      })
+      
       if (data.profile.participant) {
+        const attrs = data.profile.participant.custom_attributes || {}
         setEditForm({
           full_name: data.profile.participant.full_name || '',
-          bio: data.profile.participant.bio || ''
+          bio: data.profile.participant.bio || '',
+          phone: data.profile.participant.phone || '',
+          custom_attributes: attrs
         })
+        setCustomAttributesArray(attributesToArray(attrs))
+        console.log('[Profile Page] Edit form initialized:', {
+          full_name: data.profile.participant.full_name || '',
+          bio: data.profile.participant.bio || '',
+          phone: data.profile.participant.phone || '',
+          custom_attributes: attrs
+        })
+      } else {
+        console.warn('[Profile Page] No participant data found in profile')
       }
     } catch (e: any) {
       console.error('Error fetching profile:', e)
@@ -127,10 +168,16 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
     setSaving(true)
     setError(null)
     try {
+      // Convert array back to object for saving
+      const dataToSave = {
+        ...editForm,
+        custom_attributes: arrayToAttributes(customAttributesArray)
+      }
+      
       const response = await fetch(`/api/user/profile?orgId=${params.org}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(dataToSave)
       })
 
       const data = await response.json()
@@ -537,7 +584,26 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
               </div>
               {!profile.membership.is_shadow_profile && !isEditing && (
                 <Button
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => {
+                    // Инициализируем форму при переходе в режим редактирования
+                    if (profile.participant) {
+                      const attrs = profile.participant.custom_attributes || {}
+                      setEditForm({
+                        full_name: profile.participant.full_name || '',
+                        bio: profile.participant.bio || '',
+                        phone: profile.participant.phone || '',
+                        custom_attributes: attrs
+                      })
+                      setCustomAttributesArray(attributesToArray(attrs))
+                      console.log('[Profile Page] Edit mode activated, form initialized:', {
+                        full_name: profile.participant.full_name || '',
+                        bio: profile.participant.bio || '',
+                        phone: profile.participant.phone || '',
+                        custom_attributes: attrs
+                      })
+                    }
+                    setIsEditing(true)
+                  }}
                   variant="outline"
                   size="sm"
                 >
@@ -563,6 +629,17 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Телефон
+                  </label>
+                  <Input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    placeholder="+7 (999) 123-45-67"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Описание
                   </label>
                   <textarea
@@ -572,6 +649,73 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                   />
                 </div>
+                
+                {/* Custom Attributes */}
+                <div className="border-t pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Дополнительные атрибуты
+                  </label>
+                  <div className="space-y-2">
+                    {customAttributesArray.map((attr) => (
+                      <div key={attr.id} className="flex gap-2">
+                        <Input
+                          type="text"
+                          value={attr.key}
+                          onChange={(e) => {
+                            setCustomAttributesArray(
+                              customAttributesArray.map(a => 
+                                a.id === attr.id ? { ...a, key: e.target.value } : a
+                              )
+                            )
+                          }}
+                          placeholder="например, город"
+                          className="flex-1"
+                        />
+                        <Input
+                          type="text"
+                          value={attr.value}
+                          onChange={(e) => {
+                            setCustomAttributesArray(
+                              customAttributesArray.map(a => 
+                                a.id === attr.id ? { ...a, value: e.target.value } : a
+                              )
+                            )
+                          }}
+                          placeholder="Значение"
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCustomAttributesArray(
+                              customAttributesArray.filter(a => a.id !== attr.id)
+                            )
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setCustomAttributesArray([
+                          ...customAttributesArray,
+                          {
+                            id: `attr_${Date.now()}_${Math.random()}`,
+                            key: '',
+                            value: ''
+                          }
+                        ])
+                      }}
+                    >
+                      + Добавить атрибут
+                    </Button>
+                  </div>
+                </div>
+                
                 <div className="flex gap-2">
                   <Button onClick={handleSaveProfile} disabled={saving}>
                     <Save className="h-4 w-4 mr-2" />
@@ -582,10 +726,14 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
                       setIsEditing(false)
                       // Reset form
                       if (profile.participant) {
+                        const attrs = profile.participant.custom_attributes || {}
                         setEditForm({
                           full_name: profile.participant.full_name || '',
-                          bio: profile.participant.bio || ''
+                          bio: profile.participant.bio || '',
+                          phone: profile.participant.phone || '',
+                          custom_attributes: attrs
                         })
+                        setCustomAttributesArray(attributesToArray(attrs))
                       }
                     }}
                     variant="outline"
@@ -597,15 +745,70 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Основная информация - ВСЕГДА показываем */}
+                {profile.participant && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Основная информация</h3>
+                    <div className="space-y-2">
+                      {/* Полное имя */}
+                      {profile.participant.full_name && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span className="text-gray-600">Имя:</span>
+                          <span className="font-medium text-gray-900">{profile.participant.full_name}</span>
+                        </div>
+                      )}
+                      
+                      {/* Telegram username */}
+                      {profile.participant.username && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <MessageSquare className="h-4 w-4 text-gray-400" />
+                          <span className="text-gray-600">Telegram:</span>
+                          <span className="font-medium text-gray-900">@{profile.participant.username}</span>
+                        </div>
+                      )}
+                      
+                      {/* Telegram ID */}
+                      {profile.participant.tg_user_id && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Telegram ID:</span>
+                          <span className="font-medium text-gray-900">{profile.participant.tg_user_id}</span>
+                        </div>
+                      )}
+                      
+                      {/* Имя и Фамилия (если есть) */}
+                      {(profile.participant.first_name || profile.participant.last_name) && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Полное имя (Telegram):</span>
+                          <span className="font-medium text-gray-900">
+                            {[profile.participant.first_name, profile.participant.last_name].filter(Boolean).join(' ')}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Последняя активность */}
+                      {profile.participant.last_activity_at && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Последняя активность:</span>
+                          <span className="font-medium text-gray-900">
+                            {new Date(profile.participant.last_activity_at).toLocaleString('ru')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Bio */}
                 {profile.participant?.bio && (
-                  <div>
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">О себе</h3>
                     <p className="text-sm text-gray-600">{profile.participant.bio}</p>
                   </div>
                 )}
 
                 {/* Contact Information */}
-                {(profile.participant?.email || profile.participant?.phone || profile.participant?.username) && (
+                {(profile.participant?.email || profile.participant?.phone) && (
                   <div className="border-t pt-4">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Контактная информация</h3>
                     <div className="space-y-2">
@@ -621,48 +824,6 @@ export default function ProfilePage({ params }: { params: { org: string } }) {
                           <span className="text-gray-400">📞</span>
                           <span className="text-gray-600">Телефон:</span>
                           <span className="font-medium text-gray-900">{profile.participant.phone}</span>
-                        </div>
-                      )}
-                      {profile.participant.username && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600">Username:</span>
-                          <span className="font-medium text-gray-900">@{profile.participant.username}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Additional participant info */}
-                {(profile.participant?.first_name || profile.participant?.last_name) && (
-                  <div className="border-t pt-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Дополнительная информация</h3>
-                    <div className="space-y-2">
-                      {profile.participant.first_name && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Имя:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.first_name}</span>
-                        </div>
-                      )}
-                      {profile.participant.last_name && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Фамилия:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.last_name}</span>
-                        </div>
-                      )}
-                      {profile.participant.source && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Источник:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.source}</span>
-                        </div>
-                      )}
-                      {profile.participant.last_activity_at && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Последняя активность:</span>
-                          <span className="font-medium text-gray-900">
-                            {new Date(profile.participant.last_activity_at).toLocaleString('ru')}
-                          </span>
                         </div>
                       )}
                     </div>

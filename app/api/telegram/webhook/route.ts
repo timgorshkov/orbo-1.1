@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createEventProcessingService } from '@/lib/services/eventProcessingService'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
+import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,13 @@ export async function POST(req: NextRequest) {
     console.error('[Main Bot Webhook] Expected secret (TELEGRAM_WEBHOOK_SECRET) length:', secret?.length);
     console.error('[Main Bot Webhook] Received secret length:', receivedSecret?.length);
     console.error('[Main Bot Webhook] This suggests the webhook was set with a different secret');
-    console.error('[Main Bot Webhook] To fix: Reset webhook using /api/telegram/admin/reset-webhook');
+    
+    // 🔧 Автоматическое восстановление webhook
+    console.log('[Main Bot Webhook] 🔧 Attempting automatic webhook recovery...');
+    webhookRecoveryService.recoverWebhook('main', 'secret_token_mismatch').catch(err => {
+      console.error('[Main Bot Webhook] Recovery failed:', err);
+    });
+    
     return NextResponse.json({ ok: false }, { status: 401 })
   }
 

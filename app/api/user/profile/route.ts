@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log(`[Profile API] Fetching profile for user ${user.id} in org ${orgId}`);
+    console.log(`[Profile API] ========== PROFILE REQUEST START ==========`);
+    console.log(`[Profile API] User ID: ${user.id}`);
+    console.log(`[Profile API] Org ID: ${orgId}`);
+    console.log(`[Profile API] Email: ${user.email}`);
 
     // Используем admin client для полного доступа
     const adminSupabase = createAdminServer();
@@ -62,40 +65,142 @@ export async function GET(request: NextRequest) {
     const isShadowProfile = membership.metadata?.shadow_profile === true;
 
     // 3. Telegram аккаунт для организации
-    const { data: telegramAccount } = await adminSupabase
+    console.log(`[Profile API] Step 3: Looking for telegram account (user_id=${user.id}, org_id=${orgId})`);
+    const { data: telegramAccount, error: telegramError } = await adminSupabase
       .from('user_telegram_accounts')
       .select('*')
       .eq('user_id', user.id)
       .eq('org_id', orgId)
       .maybeSingle();
+    
+    if (telegramError) {
+      console.error('[Profile API] Error fetching telegram account:', telegramError);
+    }
+    
+    console.log(`[Profile API] Telegram account found: ${!!telegramAccount}`);
+    if (telegramAccount) {
+      console.log(`[Profile API] Telegram account details:`, {
+        id: telegramAccount.id,
+        telegram_user_id: telegramAccount.telegram_user_id,
+        telegram_username: telegramAccount.telegram_username,
+        is_verified: telegramAccount.is_verified
+      });
+    }
 
     // 4. Профиль участника (если есть)
     let participant = null;
     
     // Сначала пробуем найти по telegram_user_id (если есть привязанный Telegram)
     if (telegramAccount?.telegram_user_id) {
-      const { data: participantData } = await adminSupabase
+      console.log(`[Profile API] Step 4a: Looking for participant by tg_user_id`);
+      console.log(`[Profile API] Query params:`, {
+        org_id: orgId,
+        tg_user_id: telegramAccount.telegram_user_id,
+        merged_into: 'IS NULL'
+      });
+      
+      const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, tg_username, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
         .eq('org_id', orgId)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
         .is('merged_into', null)
         .maybeSingle();
       
+      if (participantError) {
+        console.error('[Profile API] ❌ Error fetching participant by tg_user_id:', participantError);
+      } else {
+        console.log(`[Profile API] Participant found by tg_user_id: ${!!participantData}`);
+        if (participantData) {
+          console.log('[Profile API] ✅ Participant data:', {
+            id: participantData.id,
+            full_name: participantData.full_name,
+            tg_user_id: participantData.tg_user_id,
+            user_id: '(not selected but should match)'
+          });
+        } else {
+          console.warn('[Profile API] ⚠️ No participant found with tg_user_id:', telegramAccount.telegram_user_id);
+        }
+      }
+      
       participant = participantData;
+    } else {
+      console.log('[Profile API] Step 4a: Skipping tg_user_id lookup (no telegram account)');
     }
     
     // Если не нашли по telegram_user_id, пробуем найти по user_id (для shadow профилей)
     if (!participant) {
-      const { data: participantData } = await adminSupabase
+      console.log(`[Profile API] Step 4b: Looking for participant by user_id`);
+      console.log(`[Profile API] Query params:`, {
+        org_id: orgId,
+        user_id: user.id,
+        merged_into: 'IS NULL'
+      });
+      
+      const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, tg_username, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
         .eq('org_id', orgId)
         .eq('user_id', user.id)
         .is('merged_into', null)
         .maybeSingle();
       
+      if (participantError) {
+        console.error('[Profile API] ❌ Error fetching participant by user_id:', participantError);
+      } else {
+        console.log(`[Profile API] Participant found by user_id: ${!!participantData}`);
+        if (participantData) {
+          console.log('[Profile API] ✅ Participant data:', {
+            id: participantData.id,
+            full_name: participantData.full_name,
+            username: participantData.username,
+            tg_user_id: participantData.tg_user_id
+          });
+        } else {
+          console.warn('[Profile API] ⚠️ No participant found with user_id:', user.id);
+        }
+      }
+      
       participant = participantData;
+    }
+
+    // 4b. Если participant не найден, создаём его автоматически (для владельцев и админов)
+    if (!participant && (membership.role === 'owner' || membership.role === 'admin')) {
+      console.log('[Profile API] Participant not found, creating new participant for user');
+      
+      // Определяем данные для создания participant
+      const tgUserId = telegramAccount?.telegram_user_id || null;
+      const username = telegramAccount?.telegram_username || null;
+      const firstName = telegramAccount?.telegram_first_name || null;
+      const lastName = telegramAccount?.telegram_last_name || null;
+      const fullName = [firstName, lastName].filter(Boolean).join(' ') || authUser.email || 'Пользователь';
+      
+      try {
+        const { data: newParticipant, error: createError } = await adminSupabase
+          .from('participants')
+          .insert({
+            org_id: orgId,
+            user_id: user.id,
+            tg_user_id: tgUserId,
+            username: username,
+            first_name: firstName,
+            last_name: lastName,
+            full_name: fullName,
+            source: telegramAccount ? 'telegram_admin' : 'manual',
+            participant_status: membership.role === 'owner' ? 'owner' : 'admin'
+          })
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+          .single();
+        
+        if (createError) {
+          console.error('[Profile API] Error creating participant:', createError);
+        } else {
+          console.log('[Profile API] Successfully created participant:', newParticipant?.id);
+          participant = newParticipant;
+        }
+      } catch (createErr: any) {
+        console.error('[Profile API] Exception creating participant:', createErr);
+      }
     }
 
     // 5. Если админ - получаем список групп, где он администратор
@@ -136,7 +241,14 @@ export async function GET(request: NextRequest) {
       organization: organization || null
     };
 
-    console.log(`[Profile API] Profile fetched successfully. Shadow: ${isShadowProfile}, Has Telegram: ${!!telegramAccount}, Has Participant: ${!!participant}`);
+    console.log(`[Profile API] ========== PROFILE REQUEST COMPLETE ==========`);
+    console.log(`[Profile API] Summary:`, {
+      isShadowProfile,
+      hasTelegramAccount: !!telegramAccount,
+      hasParticipant: !!participant,
+      participantId: participant?.id || 'null',
+      participantName: participant?.full_name || 'null'
+    });
 
     return NextResponse.json({
       success: true,
@@ -173,7 +285,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { full_name, bio, custom_attributes } = body;
+    const { full_name, bio, phone, custom_attributes } = body;
 
     console.log(`[Profile API] Updating profile for user ${user.id} in org ${orgId}`);
 
@@ -240,6 +352,7 @@ export async function PATCH(request: NextRequest) {
 
     if (full_name !== undefined) updateData.full_name = full_name;
     if (bio !== undefined) updateData.bio = bio;
+    if (phone !== undefined) updateData.phone = phone;
     if (custom_attributes !== undefined) updateData.custom_attributes = custom_attributes;
 
     const { data: participant, error: updateError } = await adminSupabase

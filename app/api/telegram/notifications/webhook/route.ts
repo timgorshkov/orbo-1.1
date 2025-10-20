@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,13 @@ export async function POST(req: NextRequest) {
     console.error('[Notifications Bot Webhook] Secret source:', usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET');
     console.error('[Notifications Bot Webhook] Expected secret length:', secret?.length);
     console.error('[Notifications Bot Webhook] Received secret length:', receivedSecret?.length);
-    console.error('[Notifications Bot Webhook] To fix: Reset webhook using /api/telegram/admin/reset-webhook with botType=notifications');
+    
+    // 🔧 Автоматическое восстановление webhook
+    console.log('[Notifications Bot Webhook] 🔧 Attempting automatic webhook recovery...');
+    webhookRecoveryService.recoverWebhook('notifications', 'secret_token_mismatch').catch(err => {
+      console.error('[Notifications Bot Webhook] Recovery failed:', err);
+    });
+    
     return NextResponse.json({ ok: false }, { status: 401 })
   }
 
