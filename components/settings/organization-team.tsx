@@ -21,6 +21,7 @@ interface TeamMember {
   metadata?: {
     telegram_groups?: number[]
     telegram_group_titles?: string[]
+    is_owner_in_groups?: boolean
     synced_at?: string
   }
   admin_groups?: Array<{
@@ -164,6 +165,28 @@ export default function OrganizationTeam({
                       ⚠️ Telegram не привязан
                     </div>
                   )}
+
+                  {/* Группы владельца (если есть) */}
+                  {owner.admin_groups && owner.admin_groups.length > 0 && (
+                    <div className="mt-3 p-2 bg-purple-50 rounded-lg border border-purple-100">
+                      <div className="text-xs font-medium text-purple-900 mb-1.5">
+                        {owner.metadata?.is_owner_in_groups 
+                          ? `👑 Также владелец в группах (${owner.admin_groups.length})`
+                          : `Также администратор в группах (${owner.admin_groups.length})`
+                        }:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {owner.admin_groups.map((group) => (
+                          <span
+                            key={group.id}
+                            className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-white border border-purple-200 text-purple-700"
+                          >
+                            {group.title}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -244,7 +267,10 @@ export default function OrganizationTeam({
                       {admin.role_source === 'telegram_admin' && admin.admin_groups && admin.admin_groups.length > 0 && (
                         <div className="mt-3 p-2 bg-neutral-50 rounded-lg">
                           <div className="text-xs font-medium text-neutral-700 mb-1.5">
-                            Администратор в группах ({admin.admin_groups.length}):
+                            {admin.metadata?.is_owner_in_groups 
+                              ? `👑 Владелец в группах (${admin.admin_groups.length})`
+                              : `Администратор в группах (${admin.admin_groups.length})`
+                            }:
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {admin.admin_groups.map((group) => (
@@ -256,6 +282,11 @@ export default function OrganizationTeam({
                               </span>
                             ))}
                           </div>
+                          {admin.metadata?.is_owner_in_groups && (
+                            <div className="text-xs text-neutral-500 mt-1.5">
+                              💡 Создатель (creator) хотя бы в одной из групп
+                            </div>
+                          )}
                         </div>
                       )}
                       
