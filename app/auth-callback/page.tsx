@@ -12,24 +12,20 @@ export default function AuthCallback() {
       try {
         const supabase = createClientBrowser()
         
-        // Явно обрабатываем код из URL
+        // Логируем параметры для отладки
+        const urlParams = new URLSearchParams(window.location.search)
+        const code = urlParams.get('code')
         const hash = window.location.hash
-        console.log('Auth callback hash:', hash ? 'Hash present' : 'No hash')
         
-        if (hash && hash.includes('access_token')) {
-          // Обмениваем код на сессию
-          const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(hash.substring(1))
-          
-          if (exchangeError) {
-            console.error('Code exchange error:', exchangeError)
-            setError(exchangeError.message)
-            return
-          }
-          
-          console.log('Code exchange successful:', exchangeData ? 'Session created' : 'No session')
-        }
+        console.log('Auth callback:', { 
+          hasCode: !!code, 
+          hasHash: !!hash,
+          url: window.location.href
+        })
         
-        // Проверяем сессию после обмена кода
+        // Supabase автоматически обрабатывает code из URL через PKCE
+        // Не нужно вручную вызывать exchangeCodeForSession - это сломает PKCE flow
+        // Просто вызываем getSession, и Supabase сам обработает код
         const { data, error: sessionError } = await supabase.auth.getSession()
         
         if (sessionError) {
