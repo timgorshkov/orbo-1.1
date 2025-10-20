@@ -83,7 +83,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/healthz') ||
     pathname.startsWith('/signin') || 
     pathname.startsWith('/signup') ||
-    pathname.startsWith('/auth-callback') ||
+    pathname.startsWith('/auth-callback') || // Старый callback (для обратной совместимости)
+    pathname.startsWith('/auth/callback') || // Новый server-side callback
     pathname.startsWith('/p/') || // Публичные страницы
     pathname === '/' ||
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
