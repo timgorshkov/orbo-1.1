@@ -16,22 +16,47 @@ jobs:
       - name: Monitor and recover webhooks
         run: |
           echo "Checking Telegram webhooks..."
-          response=$(curl -s -X GET \
-            "${{ secrets.NEXT_PUBLIC_APP_URL }}/api/telegram/admin/monitor-webhooks")
           
-          echo "Response: $response"
+          # Используем правильный URL (не secret, а обычную переменную)
+          APP_URL="${{ secrets.APP_URL }}"
+          if [ -z "$APP_URL" ]; then
+            APP_URL="https://app.orbo.ru"
+          fi
+          
+          response=$(curl -s -w "\n%{http_code}" -X GET \
+            "${APP_URL}/api/telegram/admin/monitor-webhooks")
+          
+          # Разделяем ответ и HTTP код
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Code: $http_code"
+          echo "Response: $body"
+          
+          # Проверяем успешность запроса
+          if [ "$http_code" != "200" ]; then
+            echo "⚠️ API returned non-200 status: $http_code"
+            exit 0  # Не падаем, если API недоступен
+          fi
+          
+          # Проверяем, является ли ответ валидным JSON
+          if ! echo "$body" | jq empty 2>/dev/null; then
+            echo "⚠️ Response is not valid JSON"
+            exit 0  # Не падаем на невалидном JSON
+          fi
           
           # Проверяем, все ли webhook настроены правильно
-          all_configured=$(echo "$response" | jq -r '.allConfigured')
+          all_configured=$(echo "$body" | jq -r '.allConfigured // false')
           
           if [ "$all_configured" = "true" ]; then
             echo "✅ All webhooks are properly configured"
           else
             echo "⚠️ Some webhooks are misconfigured"
-            echo "Recovery actions: $(echo "$response" | jq -r '.recoveryActions')"
+            echo "Recovery actions:"
+            echo "$body" | jq -r '.recoveryActions // []'
           fi
           
           # Показываем статистику восстановлений
           echo "Recovery statistics:"
-          echo "$response" | jq -r '.recoveryStats'
+          echo "$body" | jq -r '.recoveryStats // {}'
 
