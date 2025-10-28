@@ -187,6 +187,26 @@ export async function POST(request: Request) {
       // Не критично, продолжаем
     }
 
+    // ✅ НОВОЕ: Добавляем ВСЕ группы из telegram_groups где бот подключен
+    try {
+      console.log('Scanning telegram_groups for groups with connected bot...');
+      const { data: connectedGroups } = await supabaseService
+        .from('telegram_groups')
+        .select('tg_chat_id')
+        .eq('bot_status', 'connected');
+      
+      connectedGroups?.forEach(record => {
+        if (record?.tg_chat_id !== undefined && record?.tg_chat_id !== null) {
+          candidateChatIds.add(String(record.tg_chat_id));
+        }
+      });
+      
+      console.log(`Found ${connectedGroups?.length || 0} groups with connected bot in telegram_groups`);
+    } catch (groupsError) {
+      console.error('Error scanning telegram_groups:', groupsError);
+      // Не критично, продолжаем
+    }
+
     if (candidateChatIds.size === 0) {
       return NextResponse.json({
         success: true,

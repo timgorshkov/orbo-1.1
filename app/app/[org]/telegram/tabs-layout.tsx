@@ -19,6 +19,11 @@ export default function TabsLayout({ orgId, children }: TabsLayoutProps) {
       isActive: pathname === `/app/${orgId}/telegram`
     },
     {
+      name: 'Группы',
+      href: `/app/${orgId}/telegram/groups`,
+      isActive: pathname === `/app/${orgId}/telegram/groups` || pathname.startsWith(`/app/${orgId}/telegram/groups/`)
+    },
+    {
       name: 'Аналитика',
       href: `/app/${orgId}/telegram/analytics`,
       isActive: pathname === `/app/${orgId}/telegram/analytics`

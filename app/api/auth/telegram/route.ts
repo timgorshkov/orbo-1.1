@@ -262,6 +262,8 @@ export async function POST(req: NextRequest) {
             org_id: targetOrgId,
             tg_user_id: tgUserId,
             username: username || activityRecord.from_username,
+            tg_first_name: firstName, // Telegram имя
+            tg_last_name: lastName, // Telegram фамилия
             full_name: fullName,
             photo_url: photoUrl,
             participant_status: 'participant',

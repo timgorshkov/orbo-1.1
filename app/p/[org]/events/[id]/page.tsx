@@ -1,8 +1,73 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import { Metadata } from 'next'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import PublicEventDetail from '@/components/events/public-event-detail'
 import AccessDeniedWithAuth from '@/components/events/access-denied-with-auth'
+
+// Generate metadata for Open Graph (Telegram preview)
+export async function generateMetadata({ params }: { params: { org: string; id: string } }): Promise<Metadata> {
+  const supabase = createAdminServer()
+
+  // Get organization
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('id, name')
+    .eq('id', params.org)
+    .single()
+
+  // Fetch event
+  const { data: event } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', params.id)
+    .eq('org_id', params.org)
+    .single()
+
+  if (!event || !org) {
+    return {
+      title: 'Событие не найдено',
+      description: 'Это событие не существует или было удалено'
+    }
+  }
+
+  const title = event.title || 'Событие'
+  const description = event.description || `Событие от ${org.name}`
+  const imageUrl = event.cover_image_url // Используем существующее поле
+  const url = `${process.env.NEXT_PUBLIC_APP_URL}/p/${org.id}/events/${event.id}`
+
+  const metadata: any = {
+    title: `${title} | ${org.name}`,
+    description,
+    openGraph: {
+      type: 'website',
+      url,
+      title,
+      description,
+      siteName: 'Orbo'
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description
+    }
+  }
+
+  // Добавляем изображение только если оно есть
+  if (imageUrl) {
+    metadata.openGraph.images = [
+      {
+        url: imageUrl,
+        width: 1200,
+        height: 630,
+        alt: title
+      }
+    ]
+    metadata.twitter.images = [imageUrl]
+  }
+
+  return metadata
+}
 
 export default async function PublicEventPage({ params }: { params: { org: string; id: string } }) {
   const supabase = createAdminServer()

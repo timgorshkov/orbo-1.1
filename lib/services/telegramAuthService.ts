@@ -308,8 +308,8 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
                 full_name: `${firstName || ''} ${lastName || ''}`.trim() || telegramUsername || `User ${telegramUserId}`,
                 tg_user_id: telegramUserId,
                 username: telegramUsername,
-                first_name: firstName,
-                last_name: lastName,
+                tg_first_name: firstName, // Telegram имя
+                tg_last_name: lastName, // Telegram фамилия
                 participant_status: 'participant',
                 source: 'telegram',
                 status: 'active'
@@ -322,34 +322,7 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
           }
           
           console.log('[Auth Service] Participant ID:', participantId)
-
-          if (participantId) {
-            // Проверяем, зарегистрирован ли уже на событие
-            try {
-              const existingRegistration = await supabaseFetch(
-                `event_registrations?event_id=eq.${authCode.event_id}&participant_id=eq.${participantId}&select=id`
-              )
-              
-              if (!Array.isArray(existingRegistration) || existingRegistration.length === 0) {
-                // Регистрируем на событие
-                await supabaseFetch('event_registrations', {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    event_id: authCode.event_id,
-                    participant_id: participantId,
-                    registered_at: new Date().toISOString()
-                  })
-                })
-                console.log(`[Auth Service] ✅ Registered user for event`)
-              } else {
-                console.log(`[Auth Service] ✅ User already registered for event`)
-              }
-            } catch (regError) {
-              console.error(`[Auth Service] Event registration error:`, regError instanceof Error ? regError.message : String(regError))
-            }
-          } else {
-            console.error('[Auth Service] ❌ Participant ID is missing')
-          }
+          console.log('[Auth Service] ✅ Participant linked to org (auto-registration disabled - user must click Register button)')
         } catch (err) {
           console.error('[Auth Service] Error registering participant:', err)
         }

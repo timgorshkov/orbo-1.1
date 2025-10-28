@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { RemoveGroupButton } from '@/components/telegram-group-actions'
 import { AdminBadge } from '@/components/admin-badge'
+import ImportHistory from '@/components/telegram/import-history'
 
 type TelegramGroupSettings = {
   id: number;
@@ -21,7 +22,7 @@ type TelegramGroupSettings = {
   last_sync_at: string | null;
   member_count: number | null;
   new_members_count: number | null;
-  status: string; // Added status field
+  status: string;
 }
 
 type GroupMetrics = {
@@ -51,9 +52,7 @@ type GroupMetrics = {
   }>;
 }
 
-export default function TelegramGroupPage({ params }: { params: { org: string, groupid?: string, groupId?: string } }) {
-  // Исправляем проблему с несоответствием имен параметров (groupid vs groupId)
-  const groupIdParam = params.groupid || params.groupId;
+export default function TelegramGroupPage({ params }: { params: { org: string, id: string } }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -108,15 +107,15 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     const fetchGroup = async () => {
       setLoading(true)
       try {
-        console.log('Fetching group with ID:', groupIdParam, 'for org:', params.org);
+        console.log('Fetching group with ID:', params.id, 'for org:', params.org);
 
-        if (!groupIdParam) {
+        if (!params.id) {
           setError('Не указан ID группы. Пожалуйста, вернитесь на страницу списка групп и выберите группу.');
           setLoading(false);
           return;
         }
 
-        const res = await fetch(`/api/telegram/groups/detail?orgId=${encodeURIComponent(params.org)}&groupId=${encodeURIComponent(groupIdParam)}`);
+        const res = await fetch(`/api/telegram/groups/detail?orgId=${encodeURIComponent(params.org)}&groupId=${encodeURIComponent(params.id)}`);
         const data = await res.json();
 
         if (!res.ok || !data.group) {
@@ -147,9 +146,9 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     };
 
     fetchGroup();
-  }, [groupIdParam, params.org]);
+  }, [params.id, params.org]);
 
-  // Выносим функцию fetchAnalytics за пределы useEffect, чтобы её можно было вызвать из кнопки
+  // Выносим функцию fetchAnalytics за пределы useEffect, чтобы её можно было вызывать из кнопки
   const fetchAnalytics = async () => {
       if (!group) {
         console.log('No group data available for analytics');
@@ -540,8 +539,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           welcome_message: welcomeMessage || null,
           notification_enabled: notificationsEnabled
         })
-        .eq('id', params.groupid)
-        .eq('org_id', params.org)
+        .eq('id', params.id)
 
       if (error) {
         throw new Error(error.message)
@@ -566,7 +564,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         },
         body: JSON.stringify({
           orgId: params.org,
-          groupId: params.groupid
+          groupId: params.id
         }),
       })
 
@@ -580,8 +578,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
       const { data, error } = await supabase
         .from('telegram_groups')
         .select('*')
-        .eq('id', params.groupid)
-        .eq('org_id', params.org)
+        .eq('id', params.id)
         .single()
 
       if (!error && data) {
@@ -626,6 +623,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               <TabsList className="mb-6">
                 <TabsTrigger value="analytics">Аналитика</TabsTrigger>
                 <TabsTrigger value="members">Участники</TabsTrigger>
+                <TabsTrigger value="import">Импорт истории</TabsTrigger>
                 <TabsTrigger value="settings">Настройки</TabsTrigger>
               </TabsList>
 
@@ -783,7 +781,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                         <CardContent>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <div className="text-sm text-neutral-500">Silent-кохорта</div>
+                              <div className="text-sm text-neutral-500">Silent-когорта</div>
                               <div className="text-xl font-semibold">{groupMetrics.silent_rate}%</div>
                               <div className="text-xs text-neutral-500">доля неактивных за 7 дней</div>
                             </div>
@@ -928,6 +926,10 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="import">
+                <ImportHistory groupId={params.id} orgId={params.org} />
               </TabsContent>
 
               <TabsContent value="settings">

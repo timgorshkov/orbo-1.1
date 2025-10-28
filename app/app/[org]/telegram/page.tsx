@@ -5,7 +5,6 @@ import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { AddGroupManuallyForm } from './form-components'
 import { addGroupManually } from './actions'
-import AddVerifiedGroup from './add-verified-group'
 import { DeleteGroupButton } from './delete-group-button'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -100,13 +99,6 @@ export default async function TelegramPage({ params }: { params: { org: string }
                 <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
                   Доступные группы
                 </Link>
-              </div>
-              
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-medium text-neutral-700 mb-4">
-                  Альтернативный способ: добавление по Chat ID
-                </h3>
-                <AddVerifiedGroup orgId={params.org} />
               </div>
               
               <div className="border-t pt-4">

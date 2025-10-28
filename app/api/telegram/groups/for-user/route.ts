@@ -118,23 +118,43 @@ export async function GET(request: Request) {
           }, { status: 500 });
         }
         
-        if (!adminRights || adminRights.length === 0) {
-          console.log(`No admin rights found for user ${activeAccount.telegram_user_id}`);
+        console.log(`Found ${adminRights?.length || 0} admin rights records for user ${activeAccount.telegram_user_id}`);
+        
+        // ✅ НОВОЕ: Также получаем ВСЕ группы с bot_status='connected' для показа с предупреждением
+        const { data: connectedGroups, error: connectedError } = await supabaseService
+          .from('telegram_groups')
+          .select('tg_chat_id')
+          .eq('bot_status', 'connected');
+        
+        if (connectedError) {
+          console.error('Error fetching connected groups:', safeErrorJson(connectedError));
+        }
+        
+        console.log(`Found ${connectedGroups?.length || 0} groups with connected bot`);
+        
+        // Собираем chat_id из обоих источников
+        const chatIdsFromAdminRights = new Set((adminRights || []).map(right => String(right.tg_chat_id)));
+        const chatIdsFromConnected = new Set((connectedGroups || []).map(group => String(group.tg_chat_id)));
+        
+        // Объединяем
+        const allChatIds = new Set([
+          ...Array.from(chatIdsFromAdminRights), 
+          ...Array.from(chatIdsFromConnected)
+        ]);
+        
+        if (allChatIds.size === 0) {
+          console.log(`No groups found for user ${activeAccount.telegram_user_id}`);
           return NextResponse.json({
             groups: [],
             availableGroups: [],
-            message: 'No admin rights found'
+            message: 'No groups found'
           });
         }
         
-        console.log(`Found ${adminRights.length} admin rights records for user ${activeAccount.telegram_user_id}`);
-        
-        // Теперь получаем группы по их tg_chat_id
-        const chatIds = adminRights.map(right => right.tg_chat_id);
-        console.log(`Chat IDs to fetch: ${chatIds.join(', ')}`);
+        console.log(`Chat IDs to fetch: ${Array.from(allChatIds).join(', ')}`);
         
         // Получаем группы и их связи с организациями
-        const chatIdValues = Array.from(new Set(chatIds.map(id => String(id))));
+        const chatIdValues = Array.from(allChatIds);
 
         let groups: any[] | null = null;
         let lastError: any = null;
@@ -193,10 +213,10 @@ export async function GET(request: Request) {
         }
 
         if (!groups || groups.length === 0) {
-          const chatIdsNumeric = chatIds
-            .map(id => (typeof id === 'string' ? id : String(id)))
-            .map(id => Number(id))
-            .filter(id => !Number.isNaN(id));
+          const chatIdsNumeric = chatIdValues
+            .map((id: string | number) => (typeof id === 'string' ? id : String(id)))
+            .map((id: string) => Number(id))
+            .filter((id: number) => !Number.isNaN(id));
 
           if (chatIdsNumeric.length > 0) {
             const numericResult = await fetchGroupsBatch(chatIdsNumeric);
@@ -230,7 +250,7 @@ export async function GET(request: Request) {
         }
         
         if (!groups || groups.length === 0) {
-          console.log(`No groups found for chat IDs: ${chatIds.join(', ')}`);
+          console.log(`No groups found for chat IDs: ${chatIdValues.join(', ')}`);
           return NextResponse.json({
             groups: [],
             availableGroups: [],
@@ -336,55 +356,18 @@ export async function GET(request: Request) {
           groupByChatId.set(String(group.tg_chat_id), group);
         });
 
+        // Создаем мапу прав админа для быстрого поиска
+        const adminRightsMap = new Map();
+        (adminRights || []).forEach(right => {
+          adminRightsMap.set(String(right.tg_chat_id), right);
+        });
+
         const availableGroups = [] as any[];
         const existingGroups = [] as any[];
 
-        for (const right of adminRights) {
-          const chatKey = String(right.tg_chat_id);
-          let group = groupByChatId.get(chatKey);
-
-          // Если группа не найдена в telegram_groups, но пользователь админ,
-          // создаём базовую запись (группа могла быть удалена из организации)
-          if (!group) {
-            console.log(`Group data missing for admin right ${right.id}, creating placeholder`);
-            
-            // Пытаемся создать запись в telegram_groups
-            try {
-              const { data: newGroup, error: createError } = await supabaseService
-                .from('telegram_groups')
-                .insert({
-                  tg_chat_id: right.tg_chat_id,
-                  title: `Group ${right.tg_chat_id}`,
-                  bot_status: 'connected',
-                  org_id: null // Не привязываем к организации
-                })
-                .select()
-                .single();
-              
-              if (createError) {
-                // Возможно, группа уже существует, пытаемся получить
-                const { data: existingGroupData } = await supabaseService
-                  .from('telegram_groups')
-                  .select('*')
-                  .eq('tg_chat_id', right.tg_chat_id)
-                  .single();
-                
-                if (existingGroupData) {
-                  group = existingGroupData;
-                  groupByChatId.set(chatKey, group);
-                } else {
-                  console.error('Failed to create or fetch group:', createError);
-                  continue;
-                }
-              } else {
-                group = newGroup;
-                groupByChatId.set(chatKey, group);
-              }
-            } catch (createGroupError: any) {
-              console.error('Error creating group record:', safeErrorJson(createGroupError));
-              continue;
-            }
-          }
+        // Проходим по ВСЕМ группам (включая те, где нет подтвержденных прав админа)
+        for (const [chatKey, group] of Array.from(groupByChatId.entries())) {
+          const right = adminRightsMap.get(chatKey);
 
           const groupAny = group as any;
           const mappedOrgIds = new Set<string>();
@@ -417,6 +400,9 @@ export async function GET(request: Request) {
             console.error(`Error counting members for group ${groupAny.tg_chat_id}:`, countError);
           }
 
+          // ✅ Проверяем, есть ли подтвержденные права админа
+          const hasAdminRights = !!right;
+          
           const normalizedGroup = {
             id: groupAny.id,
             tg_chat_id: groupAny.tg_chat_id,
@@ -425,14 +411,17 @@ export async function GET(request: Request) {
             member_count: actualMemberCount,
             mapped_org_ids: Array.from(mappedOrgIds),
             org_id: groupAny.org_id,
-            is_admin: right.is_admin,
-            is_owner: right.is_owner
+            is_admin: hasAdminRights ? right.is_admin : false,
+            is_owner: hasAdminRights ? right.is_owner : false,
+            admin_verified: hasAdminRights, // 🔴 НОВОЕ: флаг для фронтенда
+            verification_status: groupAny.verification_status
           };
 
           // Детальное логирование для отладки
           console.log(`Group ${groupAny.tg_chat_id} (${groupAny.title}):`, {
             isLinkedToOrg,
             botHasAdminRights,
+            hasAdminRights,
             bot_status: groupAny.bot_status,
             org_id: groupAny.org_id,
             mappedOrgIds: Array.from(mappedOrgIds),
@@ -441,12 +430,19 @@ export async function GET(request: Request) {
             willBeInAvailable: !isLinkedToOrg && botHasAdminRights
           });
 
+          // ✅ НОВАЯ ЛОГИКА: Показываем все подключенные группы
           if (isLinkedToOrg && botHasAdminRights) {
             existingGroups.push(normalizedGroup);
-          } else if (botHasAdminRights) {
+          } else if (!isLinkedToOrg && (botHasAdminRights || groupAny.bot_status === 'connected')) {
+            // Показываем группу, даже если нет записи в telegram_group_admins
+            // Флаг admin_verified покажет фронтенду, можно ли её добавить
             availableGroups.push(normalizedGroup);
+            
+            if (!hasAdminRights) {
+              console.log(`⚠️ Group ${groupAny.tg_chat_id} will be shown with "grant admin rights" warning`);
+            }
           } else {
-            console.log(`Group ${groupAny.tg_chat_id} skipped: botHasAdminRights=${botHasAdminRights}`);
+            console.log(`Group ${groupAny.tg_chat_id} skipped: botHasAdminRights=${botHasAdminRights}, bot_status=${groupAny.bot_status}`);
           }
         }
 

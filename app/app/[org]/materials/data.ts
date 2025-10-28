@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 
 export async function fetchMaterialsTree(orgIdentifier: string) {
   const cookieStore = cookies();
-  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin']);
+  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin', 'member']);
 
   const admin = createAdminServer();
 
@@ -35,7 +35,7 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
 
 export async function fetchMaterialPage(orgIdentifier: string, pageId: string) {
   const cookieStore = cookies();
-  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin']);
+  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin', 'member']);
 
   const admin = createAdminServer();
 

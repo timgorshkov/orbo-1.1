@@ -315,25 +315,22 @@ async function handleBotCommand(message: any) {
     }
   }
   
-  // Обработка личных сообщений - перенаправляем на notifications bot
+  // Обработка личных сообщений - инструкция по использованию
   if (message.chat.type === 'private' && (command === '/start' || command === '/help')) {
     const telegramService = createTelegramService('main');
     const userId = from.id;
     
-    const redirectMessage = `🤖 <b>Orbo Community Bot</b>
+    const instructionMessage = `🤖 <b>Orbo - ваш помощник для Telegram-групп</b>
 
-Этот бот используется для работы с Telegram-группами.
+Для получения доступа к материалам и событиям пришлите мне одноразовый код.
 
-Для получения вашего User ID и верификации аккаунта используйте:
-👉 @orbo_assistant_bot
-
-<i>Откройте @orbo_assistant_bot и нажмите /start</i>`;
+💡 <i>Одноразовый код можно получить на странице события или материала.</i>`;
     
-    await telegramService.sendMessage(chatId, redirectMessage, {
+    await telegramService.sendMessage(chatId, instructionMessage, {
       parse_mode: 'HTML'
     });
     
-    console.log(`[Bot] Redirected user ${userId} to notifications bot`);
+    console.log(`[Bot] Sent instruction message to user ${userId}`);
     return;
   }
   

@@ -15,6 +15,8 @@ type TelegramGroup = {
   is_admin: boolean
   is_owner: boolean
   status?: string
+  admin_verified?: boolean // Подтверждены ли права админа через Bot API
+  verification_status?: string // Статус верификации группы
 }
 
 export default function AvailableGroupsPage({ params }: { params: { org: string } }) {
@@ -249,15 +251,30 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
                       Эта группа ранее была удалена из организации. Добавление заново восстановит связь.
                     </p>
                   )}
+                  
+                  {/* ⚠️ НОВОЕ: Предупреждение для групп без подтвержденных прав админа */}
+                  {group.admin_verified === false && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded">
+                      <p className="text-sm text-amber-800 font-medium mb-1">
+                        ⚠️ Требуются права администратора
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        Выдайте боту <strong>@orbo_community_bot</strong> права администратора в этой группе, 
+                        затем отправьте любое сообщение и обновите страницу.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 
                 <Button 
                   variant={group.status === 'archived' ? 'outline' : 'default'}
                   onClick={() => addGroupToOrg(group.id)} 
                   className="w-full"
-                  disabled={addingGroup === group.id}
+                  disabled={addingGroup === group.id || group.admin_verified === false}
                 >
-                  {addingGroup === group.id ? 'Добавление...' : 'Добавить в организацию'}
+                  {addingGroup === group.id ? 'Добавление...' : 
+                   group.admin_verified === false ? 'Выдайте права администратора' :
+                   'Добавить в организацию'}
                 </Button>
               </CardContent>
             </Card>
@@ -285,26 +302,6 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
                 </div>
               </div>
             </div>
-          </div>
-          
-          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-neutral-900 mb-3">
-              Альтернативный способ: добавление по Chat ID
-            </h3>
-            <p className="text-neutral-600 mb-4">
-              Если вы знаете Chat ID группы, можете добавить её вручную на{' '}
-              <Button 
-                variant="ghost" 
-                className="p-0 h-auto font-normal text-blue-600 hover:text-blue-700 underline"
-                onClick={() => router.push(`/app/${params.org}/telegram`)}
-              >
-                странице Telegram настроек
-              </Button>
-              .
-            </p>
-            <p className="text-sm text-neutral-500">
-              Чтобы узнать Chat ID группы, добавьте в неё бота <strong>@getidsbot</strong>, напишите любое сообщение, и бот покажет ID.
-            </p>
           </div>
         </div>
       )}

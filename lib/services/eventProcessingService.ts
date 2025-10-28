@@ -552,8 +552,8 @@ export class EventProcessingService {
               org_id: orgId,
               tg_user_id: member.id,
               username: member.username ?? null,
-              first_name: member.first_name ?? null,
-              last_name: member.last_name ?? null,
+              tg_first_name: member.first_name ?? null, // Telegram имя
+              tg_last_name: member.last_name ?? null, // Telegram фамилия
               full_name: fullNameCandidate || member.username || null,
               source: 'telegram_group',
               participant_status: 'participant'
@@ -587,11 +587,12 @@ export class EventProcessingService {
           const patch: Record<string, any> = {};
           const fullNameCandidate = `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim();
 
-          if (!participant.first_name && member.first_name) {
-            patch.first_name = member.first_name;
+          // Обновляем Telegram имена (они могут измениться)
+          if (member.first_name) {
+            patch.tg_first_name = member.first_name;
           }
-          if (!participant.last_name && member.last_name) {
-            patch.last_name = member.last_name;
+          if (member.last_name) {
+            patch.tg_last_name = member.last_name;
           }
           if ((!participant.full_name || participant.full_name === participant.username) && fullNameCandidate) {
             patch.full_name = fullNameCandidate;
@@ -767,8 +768,8 @@ export class EventProcessingService {
             org_id: orgId,
             tg_user_id: userId,
             username: username ?? null,
-            first_name: message.from.first_name ?? null,
-            last_name: message.from.last_name ?? null,
+            tg_first_name: message.from.first_name ?? null, // Telegram имя
+            tg_last_name: message.from.last_name ?? null, // Telegram фамилия
             full_name: fullName || username || (userId ? `User ${userId}` : null),
             source: 'telegram_group',
             participant_status: 'participant' // ✅ Исправлено имя колонки
