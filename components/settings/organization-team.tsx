@@ -45,6 +45,11 @@ export default function OrganizationTeam({
   const [isPending, startTransition] = useTransition()
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
+  // Обновляем team когда изменяется initialTeam
+  useEffect(() => {
+    setTeam(initialTeam)
+  }, [initialTeam])
+
   const fetchTeam = async () => {
     try {
       const teamResponse = await fetch(`/api/organizations/${organizationId}/team`)
@@ -79,7 +84,12 @@ export default function OrganizationTeam({
   }
 
   const owner = team.find(m => m.role === 'owner')
-  const admins = team.filter(m => m.role === 'admin')
+  
+  // Фильтруем админов, исключая владельца (если он дублируется)
+  const admins = team.filter(m => 
+    m.role === 'admin' && 
+    m.user_id !== owner?.user_id // Не показываем владельца в списке админов
+  )
 
   return (
     <Card>

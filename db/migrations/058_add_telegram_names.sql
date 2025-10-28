@@ -14,20 +14,14 @@ CREATE INDEX IF NOT EXISTS idx_participants_tg_names
 ON participants(tg_first_name, tg_last_name) 
 WHERE tg_first_name IS NOT NULL;
 
--- Обновляем существующих участников: пытаемся разделить full_name на first/last
--- Только для тех, у кого есть tg_user_id (т.е. они из Telegram)
-UPDATE participants
-SET 
-  tg_first_name = CASE 
-    WHEN full_name IS NOT NULL AND position(' ' in full_name) > 0 
-    THEN split_part(full_name, ' ', 1)
-    ELSE full_name
-  END,
-  tg_last_name = CASE 
-    WHEN full_name IS NOT NULL AND position(' ' in full_name) > 0 
-    THEN substring(full_name from position(' ' in full_name) + 1)
-    ELSE NULL
-  END
-WHERE tg_user_id IS NOT NULL 
-  AND tg_first_name IS NULL;
+-- НЕ обновляем существующих участников автоматически!
+-- Поля tg_first_name и tg_last_name будут заполнены автоматически
+-- при следующей активности пользователя (сообщение в группе).
+-- Это гарантирует, что мы получим НАСТОЯЩИЕ имена из Telegram API,
+-- а не неправильно разобранные из редактируемого поля full_name.
+
+-- Если нужно принудительно обновить имена для конкретных участников,
+-- можно использовать запрос:
+-- UPDATE participants SET tg_first_name = NULL, tg_last_name = NULL WHERE tg_user_id IS NOT NULL;
+-- И при следующем сообщении от пользователя имена обновятся автоматически.
 

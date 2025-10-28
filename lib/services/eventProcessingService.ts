@@ -801,6 +801,28 @@ export class EventProcessingService {
         }
       } else {
         participantId = participant.merged_into || participant.id;
+        
+        // Обновляем Telegram имена (они могут измениться)
+        const patch: Record<string, any> = {};
+        
+        if (message.from.first_name) {
+          patch.tg_first_name = message.from.first_name;
+        }
+        if (message.from.last_name) {
+          patch.tg_last_name = message.from.last_name;
+        }
+        if (message.from.username && !participant.username) {
+          patch.username = message.from.username;
+        }
+        
+        if (Object.keys(patch).length > 0) {
+          await this.supabase
+            .from('participants')
+            .update(patch)
+            .eq('id', participantId);
+          
+          console.log(`Updated participant ${participantId} with Telegram names:`, patch);
+        }
       }
       
       // Если у нас есть ID участника, проверяем связь с группой
