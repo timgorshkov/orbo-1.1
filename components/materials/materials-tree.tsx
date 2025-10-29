@@ -602,12 +602,21 @@ type TreeMenuState = {
 };
 
 function TreeActionsMenu({ anchor, onAdd, onRename, onDelete, onClose }: { anchor: { x: number; y: number }; onAdd: () => void; onRename: () => void; onDelete: () => void; onClose: () => void }) {
+  // Расчёт позиции меню с учётом границ экрана
+  const menuWidth = 208; // w-52 = 13rem = 208px
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  
+  // Если меню не поместится справа, позиционируем слева от якоря
+  const left = anchor.x + menuWidth > viewportWidth 
+    ? Math.max(8, anchor.x - menuWidth - 8) // 8px отступ от края
+    : anchor.x;
+  
   return createPortal(
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
         className="fixed z-50 w-52 rounded-lg border border-neutral-200 bg-white p-2 text-sm shadow-xl"
-        style={{ top: anchor.y, left: anchor.x }}
+        style={{ top: anchor.y, left }}
         onMouseDown={event => event.stopPropagation()}
       >
         <button

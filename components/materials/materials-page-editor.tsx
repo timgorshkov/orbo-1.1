@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Bold, Heading1, Heading2, Italic, Link as LinkIcon, Link2Off, List, Quote, Type, Video, Image as ImageIcon } from 'lucide-react';
+import { Bold, Heading1, Heading2, Italic, Link as LinkIcon, Link2Off, List, Quote, Type, Video, Image as ImageIcon, ChevronLeft } from 'lucide-react';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
 
@@ -15,6 +15,7 @@ export type MaterialsPageEditorProps = {
   onUnsavedChanges?: (hasChanges: boolean) => void;
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>;
   onSave?: (pageId: string, newTitle: string) => void;
+  onBackToList?: () => void;
 };
 
 type FormattingAction = 'bold' | 'italic' | 'heading1' | 'heading2' | 'list' | 'quote' | 'link' | 'unlink';
@@ -141,7 +142,7 @@ function markdownToHtml(markdown: string): string {
   return html;
 }
 
-export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent, onUnsavedChanges, saveRef, onSave }: MaterialsPageEditorProps) {
+export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialContent, onUnsavedChanges, saveRef, onSave, onBackToList }: MaterialsPageEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [contentMd, setContentMd] = useState(initialContent);
   const [isSaving, setIsSaving] = useState(false);
@@ -535,7 +536,47 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           onHide={() => setToolbar(prev => ({ ...prev, visible: false }))}
         />
       )}
-      <div className="border-b border-neutral-200 px-6 py-6 flex items-center justify-between sticky top-0 bg-white z-10 shrink-0">
+      {/* Мобильная версия header */}
+      <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200 px-4 py-3 flex items-center gap-3 shrink-0">
+        {onBackToList && (
+          <button
+            onClick={() => {
+              if (hasUnsavedChanges) {
+                const confirmLeave = confirm('У вас есть несохранённые изменения. Сохранить перед выходом?');
+                if (confirmLeave) {
+                  handleSave().then(() => onBackToList());
+                } else {
+                  onBackToList();
+                }
+              } else {
+                onBackToList();
+              }
+            }}
+            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+          >
+            <ChevronLeft className="h-5 w-5" />
+            <span className="text-sm">К списку</span>
+          </button>
+        )}
+        <input
+          type="text"
+          value={title}
+          onChange={event => setTitle(event.target.value)}
+          placeholder="Название"
+          className="flex-1 text-lg font-bold border-0 outline-none focus:outline-none bg-transparent min-w-0"
+        />
+        <Button 
+          onClick={handleSave} 
+          disabled={isSaving || !title.trim()}
+          className="shrink-0"
+          size="sm"
+        >
+          {isSaving ? 'Сохр...' : 'Сохранить'}
+        </Button>
+      </div>
+
+      {/* Десктопная версия header */}
+      <div className="hidden md:flex border-b border-neutral-200 px-6 py-6 items-center justify-between sticky top-0 bg-white z-10 shrink-0">
         <input
           type="text"
           value={title}

@@ -8,7 +8,7 @@ import { MaterialsPageEditor } from './materials-page-editor';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Search, Sparkles, Loader2 } from 'lucide-react';
+import { Search, Sparkles, Loader2, ChevronLeft, Menu } from 'lucide-react';
 
 export type MaterialsPageViewerProps = {
   orgId: string;
@@ -42,6 +42,8 @@ export function MaterialsPageViewer({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingPageId, setPendingPageId] = useState<string | null>(null);
   const saveRef = useRef<(() => Promise<void>) | null>(null);
+  // Состояние для мобильных: показывать дерево или страницу
+  const [showTreeOnMobile, setShowTreeOnMobile] = useState(true);
 
   const flattenedTree = useMemo(() => flattenTree(tree), [tree]);
 
@@ -52,6 +54,8 @@ export function MaterialsPageViewer({
     }
     setSelectedId(id);
     setIsSearchOpen(false);
+    // На мобильных при выборе страницы скрываем дерево
+    setShowTreeOnMobile(false);
   }, [hasUnsavedChanges]);
 
   const confirmNavigation = useCallback(async (save: boolean) => {
@@ -147,7 +151,11 @@ export function MaterialsPageViewer({
 
   return (
     <div className="flex h-full">
-      <aside className="w-72 shrink-0 border-r border-neutral-200 bg-white">
+      {/* Боковая панель с деревом - на десктопе всегда видна, на мобильных - по условию */}
+      <aside className={`
+        w-full md:w-72 shrink-0 border-r border-neutral-200 bg-white
+        ${showTreeOnMobile ? 'block' : 'hidden md:block'}
+      `}>
         <div className="p-3">
           <MaterialsTree
             orgId={orgId}
@@ -159,13 +167,31 @@ export function MaterialsPageViewer({
           />
         </div>
       </aside>
-      <main className="flex-1 overflow-hidden bg-neutral-50">
-        <div className="h-full p-6">
+
+      {/* Основной контент - скрыт на мобильных, если показано дерево */}
+      <main className={`
+        flex-1 overflow-hidden bg-neutral-50
+        ${showTreeOnMobile ? 'hidden md:block' : 'block'}
+      `}>
+        {/* Кнопка "Назад" на мобильных - только для режима чтения */}
+        {selectedId && readOnly && (
+          <div className="md:hidden sticky top-0 z-10 bg-white border-b border-neutral-200 px-4 py-3 flex items-center gap-3">
+            <button
+              onClick={() => setShowTreeOnMobile(true)}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <ChevronLeft className="h-5 w-5" />
+              <span>К списку</span>
+            </button>
+          </div>
+        )}
+
+        <div className="h-full p-4 md:p-6">
           {selectedId && page ? (
             readOnly ? (
-              <article className="mx-auto max-w-3xl rounded-xl border border-neutral-200 bg-white p-10 shadow-sm">
-                <h2 className="text-3xl font-semibold mb-6 text-neutral-900">{page.title}</h2>
-                <pre className="whitespace-pre-wrap text-base leading-relaxed text-neutral-800">
+              <article className="mx-auto max-w-3xl rounded-xl border border-neutral-200 bg-white p-6 md:p-10 shadow-sm">
+                <h2 className="text-2xl md:text-3xl font-semibold mb-4 md:mb-6 text-neutral-900">{page.title}</h2>
+                <pre className="whitespace-pre-wrap text-sm md:text-base leading-relaxed text-neutral-800">
                   {page.contentMd || 'Материал пока пуст.'}
                 </pre>
               </article>
@@ -178,14 +204,15 @@ export function MaterialsPageViewer({
                 onUnsavedChanges={setHasUnsavedChanges}
                 saveRef={saveRef}
                 onSave={handlePageSave}
+                onBackToList={() => setShowTreeOnMobile(true)}
               />
             )
           ) : isLoading ? (
             <MaterialsEditorPlaceholder />
           ) : (
-            <div className="h-full rounded-xl border border-dashed border-neutral-300 bg-white/70 p-12 flex items-center justify-center text-center text-neutral-500">
+            <div className="h-full rounded-xl border border-dashed border-neutral-300 bg-white/70 p-8 md:p-12 flex items-center justify-center text-center text-neutral-500">
               <div>
-                <h2 className="text-lg font-medium text-neutral-700">Добро пожаловать в материалы организации</h2>
+                <h2 className="text-base md:text-lg font-medium text-neutral-700">Добро пожаловать в материалы организации</h2>
                 <p className="mt-2 text-sm text-neutral-500">
                   {readOnly
                     ? 'Выберите страницу слева, чтобы изучить материалы, подготовленные администраторами.'

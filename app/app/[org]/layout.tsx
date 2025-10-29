@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
+import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -180,7 +181,25 @@ export default async function OrgLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <CollapsibleSidebar
+      {/* Боковая панель - только на десктопе */}
+      <div className="hidden md:block">
+        <CollapsibleSidebar
+          orgId={org.id}
+          orgName={org.name}
+          orgLogoUrl={org.logo_url}
+          role={role}
+          telegramGroups={telegramGroups}
+          userProfile={userProfile}
+        />
+      </div>
+
+      {/* Основной контент */}
+      <main className="flex-1 overflow-y-auto bg-neutral-50 pb-16 md:pb-0">
+        {children}
+      </main>
+
+      {/* Мобильное нижнее меню - только на мобильных */}
+      <MobileBottomNav
         orgId={org.id}
         orgName={org.name}
         orgLogoUrl={org.logo_url}
@@ -188,9 +207,6 @@ export default async function OrgLayout({
         telegramGroups={telegramGroups}
         userProfile={userProfile}
       />
-      <main className="flex-1 overflow-y-auto bg-neutral-50">
-        {children}
-      </main>
     </div>
   )
 }
