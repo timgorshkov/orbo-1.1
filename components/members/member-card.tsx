@@ -13,8 +13,10 @@ interface Participant {
   email: string | null
   photo_url: string | null
   bio: string | null
-  is_owner?: boolean
-  is_admin?: boolean
+  is_owner?: boolean // Для обратной совместимости (= is_org_owner)
+  is_org_owner?: boolean // ✅ Владелец организации (фиолетовая корона)
+  is_group_creator?: boolean // ✅ Создатель группы в Telegram (синий бейдж)
+  is_admin?: boolean // Администратор (организации или группы)
   custom_title?: string | null
 }
 
@@ -50,10 +52,11 @@ export default function MemberCard({ participant }: MemberCardProps) {
       </h3>
 
       {/* Admin badge */}
-      {(participant.is_owner || participant.is_admin) && (
+      {(participant.is_org_owner || participant.is_group_creator || participant.is_admin) && (
         <div className="mb-2 flex justify-center">
           <AdminBadge 
-            isOwner={participant.is_owner}
+            isOrgOwner={participant.is_org_owner}
+            isGroupCreator={participant.is_group_creator}
             isAdmin={participant.is_admin}
             customTitle={participant.custom_title}
             size="sm"

@@ -87,27 +87,37 @@ export default async function MembersPage({ params, searchParams }: {
 
     // Enrich each participant
     for (const participant of participants) {
+      // ✅ Разделяем owner организации и owner группы
+      participant.is_org_owner = false // Владелец организации (фиолетовая корона)
+      participant.is_group_creator = false // Создатель группы в Telegram (синий бейдж)
+      participant.is_admin = false // Администратор
+      
       // Check if user is owner/admin via memberships
       const participantUserId = participant.user_id
       if (participantUserId) {
         const userRole = roleMap.get(participantUserId)
         if (userRole === 'owner') {
-          participant.is_owner = true
-          participant.is_admin = false
+          participant.is_org_owner = true // ✅ Владелец ОРГАНИЗАЦИИ
         } else if (userRole === 'admin') {
-          participant.is_owner = false
-          participant.is_admin = true
+          participant.is_admin = true // ✅ Администратор организации
         }
       }
 
-      // Check if user is telegram admin
+      // Check if user is telegram admin or group creator
       const tgUserId = participant.tg_user_id ? parseInt(participant.tg_user_id) : null
       if (tgUserId && adminMap.has(tgUserId)) {
         const adminInfo = adminMap.get(tgUserId)!
-        participant.is_owner = participant.is_owner || adminInfo.isOwner
-        participant.is_admin = participant.is_admin || adminInfo.isAdmin
+        if (adminInfo.isOwner) {
+          participant.is_group_creator = true // ✅ Создатель группы в Telegram
+        }
+        if (adminInfo.isAdmin) {
+          participant.is_admin = true // ✅ Администратор группы
+        }
         participant.custom_title = participant.custom_title || adminInfo.customTitle
       }
+      
+      // Для обратной совместимости: is_owner теперь означает только owner организации
+      participant.is_owner = participant.is_org_owner
     }
   }
 

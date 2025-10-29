@@ -18,11 +18,7 @@ export default function TabsLayout({ orgId, children }: TabsLayoutProps) {
       href: `/app/${orgId}/telegram`,
       isActive: pathname === `/app/${orgId}/telegram`
     },
-    {
-      name: 'Группы',
-      href: `/app/${orgId}/telegram/groups`,
-      isActive: pathname === `/app/${orgId}/telegram/groups` || pathname.startsWith(`/app/${orgId}/telegram/groups/`)
-    },
+    // ✅ Вкладка "Группы" убрана - избыточна (только перенаправляла в "Доступные группы")
     {
       name: 'Аналитика',
       href: `/app/${orgId}/telegram/analytics`,

@@ -107,8 +107,9 @@ async function copyGroupParticipantsToOrg(
         photo_url: participant.photo_url,
         source: 'telegram_group',
         participant_status: participant.participant_status || 'participant',
-        custom_attributes: participant.custom_attributes || {},
-        bio: participant.bio
+        // ✅ НЕ копируем bio и custom_attributes из другой организации
+        custom_attributes: {},
+        bio: null
       })
       .select('id')
       .single();

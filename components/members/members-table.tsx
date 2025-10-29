@@ -24,8 +24,10 @@ interface Participant {
   participant_status: string
   photo_url: string | null
   created_at?: string
-  is_owner?: boolean
-  is_admin?: boolean
+  is_owner?: boolean // Для обратной совместимости (= is_org_owner)
+  is_org_owner?: boolean // ✅ Владелец организации (фиолетовая корона)
+  is_group_creator?: boolean // ✅ Создатель группы в Telegram (синий бейдж)
+  is_admin?: boolean // Администратор (организации или группы)
   custom_title?: string | null
 }
 
@@ -161,7 +163,8 @@ export default function MembersTable({ participants }: MembersTableProps) {
               {/* Роль (Admin/Owner badge) */}
               <TableCell>
                 <AdminBadge 
-                  isOwner={participant.is_owner}
+                  isOrgOwner={participant.is_org_owner}
+                  isGroupCreator={participant.is_group_creator}
                   isAdmin={participant.is_admin}
                   customTitle={participant.custom_title}
                   size="sm"

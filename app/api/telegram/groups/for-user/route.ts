@@ -120,36 +120,18 @@ export async function GET(request: Request) {
         
         console.log(`Found ${adminRights?.length || 0} admin rights records for user ${activeAccount.telegram_user_id}`);
         
-        // ✅ НОВОЕ: Также получаем ВСЕ группы с bot_status='connected' для показа с предупреждением
-        const { data: connectedGroups, error: connectedError } = await supabaseService
-          .from('telegram_groups')
-          .select('tg_chat_id')
-          .eq('bot_status', 'connected');
-        
-        if (connectedError) {
-          console.error('Error fetching connected groups:', safeErrorJson(connectedError));
-        }
-        
-        console.log(`Found ${connectedGroups?.length || 0} groups with connected bot`);
-        
-        // Собираем chat_id из обоих источников
-        const chatIdsFromAdminRights = new Set((adminRights || []).map(right => String(right.tg_chat_id)));
-        const chatIdsFromConnected = new Set((connectedGroups || []).map(group => String(group.tg_chat_id)));
-        
-        // Объединяем
-        const allChatIds = new Set([
-          ...Array.from(chatIdsFromAdminRights), 
-          ...Array.from(chatIdsFromConnected)
-        ]);
-        
-        if (allChatIds.size === 0) {
-          console.log(`No groups found for user ${activeAccount.telegram_user_id}`);
+        // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь ДЕЙСТВИТЕЛЬНО админ
+        if (!adminRights || adminRights.length === 0) {
+          console.log(`No admin rights found for user ${activeAccount.telegram_user_id}`);
           return NextResponse.json({
             groups: [],
             availableGroups: [],
-            message: 'No groups found'
+            message: 'You are not an admin in any Telegram groups'
           });
         }
+        
+        // Собираем chat_id только из admin rights (где пользователь реально админ)
+        const allChatIds = new Set((adminRights || []).map(right => String(right.tg_chat_id)));
         
         console.log(`Chat IDs to fetch: ${Array.from(allChatIds).join(', ')}`);
         
@@ -430,17 +412,13 @@ export async function GET(request: Request) {
             willBeInAvailable: !isLinkedToOrg && botHasAdminRights
           });
 
-          // ✅ НОВАЯ ЛОГИКА: Показываем все подключенные группы
-          if (isLinkedToOrg && botHasAdminRights) {
+          // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь реально админ
+          if (isLinkedToOrg) {
+            // Группа уже привязана к этой организации
             existingGroups.push(normalizedGroup);
-          } else if (!isLinkedToOrg && (botHasAdminRights || groupAny.bot_status === 'connected')) {
-            // Показываем группу, даже если нет записи в telegram_group_admins
-            // Флаг admin_verified покажет фронтенду, можно ли её добавить
+          } else if (hasAdminRights && botHasAdminRights) {
+            // Группа доступна для добавления: пользователь админ И бот подключен
             availableGroups.push(normalizedGroup);
-            
-            if (!hasAdminRights) {
-              console.log(`⚠️ Group ${groupAny.tg_chat_id} will be shown with "grant admin rights" warning`);
-            }
           } else {
             console.log(`Group ${groupAny.tg_chat_id} skipped: botHasAdminRights=${botHasAdminRights}, bot_status=${groupAny.bot_status}`);
           }

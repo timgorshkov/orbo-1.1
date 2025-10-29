@@ -251,9 +251,16 @@ export async function POST(request: Request) {
           const isAdmin = memberStatus === 'administrator' || memberStatus === 'creator';
           const isOwner = memberStatus === 'creator';
           const userId = admin?.user?.id;
+          const isBot = admin?.user?.is_bot;
 
           if (!userId) {
             console.warn(`Administrator without user ID in chat ${chatId}, skipping`);
+            continue;
+          }
+
+          // ✅ Пропускаем ботов (включая orbo_community_bot)
+          if (isBot) {
+            console.log(`⏭️  Skipping bot ${userId} (${admin.user?.username || admin.user?.first_name}) in chat ${chatId}`);
             continue;
           }
 

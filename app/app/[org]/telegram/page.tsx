@@ -23,7 +23,7 @@ type TelegramGroup = {
 
 export default async function TelegramPage({ params }: { params: { org: string } }) {
   try {
-    const { supabase } = await requireOrgAccess(params.org)
+    const { supabase, role } = await requireOrgAccess(params.org)
     
     // Получаем список подключенных групп через org_telegram_groups
     const { data: orgGroupsData, error: orgGroupsError } = await supabase
@@ -83,35 +83,70 @@ export default async function TelegramPage({ params }: { params: { org: string }
               <CardTitle>Подключение Telegram-группы</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="text-sm text-neutral-600 space-y-3">
-                <p>
-                  <strong className="font-medium">1)</strong> Пригласите бота в вашу группу и назначьте администратором.
-                </p>
-                <p className="bg-neutral-50 rounded p-2 font-mono">
-                  @orbo_community_bot
-                </p>
-                <p>
-                  <strong className="font-medium">2)</strong> Нажмите «Доступные группы», чтобы увидеть список групп, в которых вы являетесь администратором, и подключить их к организации.
-                </p>
-              </div>
-              
-              <div className="flex gap-2 flex-wrap">
-                <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
-                  Доступные группы
-                </Link>
-              </div>
-              
-              <div className="border-t pt-4">
-                <Link href={`/app/${params.org}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
-                  Настроить Telegram-аккаунт
-                </Link>
-                <p className="mt-2 text-xs text-neutral-500 text-center">
-                  Необходимо для получения списка ваших групп
-                </p>
-              </div>
-
-
-
+              {role === 'owner' ? (
+                // ✅ Блок для владельца организации
+                <>
+                  <div className="text-sm text-neutral-600 space-y-3">
+                    <p>
+                      <strong className="font-medium">1)</strong> Пригласите бота в вашу группу и назначьте администратором.
+                    </p>
+                    <p className="bg-neutral-50 rounded p-2 font-mono">
+                      @orbo_community_bot
+                    </p>
+                    <p>
+                      <strong className="font-medium">2)</strong> Нажмите «Доступные группы», чтобы увидеть список групп, в которых вы являетесь администратором, и подключить их к организации.
+                    </p>
+                  </div>
+                  
+                  <div className="flex gap-2 flex-wrap">
+                    <Link href={`/app/${params.org}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
+                      Доступные группы
+                    </Link>
+                  </div>
+                  
+                  <div className="border-t pt-4">
+                    <Link href={`/app/${params.org}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
+                      Настроить Telegram-аккаунт
+                    </Link>
+                    <p className="mt-2 text-xs text-neutral-500 text-center">
+                      Необходимо для получения списка ваших групп
+                    </p>
+                  </div>
+                </>
+              ) : (
+                // ✅ Блок для администратора
+                <div className="text-sm text-neutral-600 space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="font-medium text-blue-900 mb-2">
+                      ℹ️ Подключение групп доступно только владельцу организации
+                    </p>
+                    <p className="text-blue-800">
+                      Группы к организации подключает владелец. Если вы хотите добавить свою группу:
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <p>
+                      <strong className="font-medium">1.</strong> Добавьте в вашу группу бота:
+                    </p>
+                    <p className="bg-neutral-50 rounded p-2 font-mono">
+                      @orbo_community_bot
+                    </p>
+                    
+                    <p>
+                      <strong className="font-medium">2.</strong> Добавьте владельца организации в группу с правами администратора
+                    </p>
+                    
+                    <p>
+                      <strong className="font-medium">3.</strong> Попросите владельца подключить группу к организации через раздел «Доступные группы»
+                    </p>
+                  </div>
+                  
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                    💡 После добавления группы вы сможете управлять ей как администратор
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
           

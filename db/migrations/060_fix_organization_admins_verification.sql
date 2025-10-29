@@ -81,6 +81,7 @@ DO $$
 DECLARE
   test_org_id UUID := 'a3e8bc8f-8171-472c-a955-2f7878aed6f1';
   test_count INTEGER;
+  r RECORD;
 BEGIN
   SELECT COUNT(*) INTO test_count
   FROM organization_admins

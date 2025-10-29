@@ -1,21 +1,29 @@
-import { Shield, Crown } from 'lucide-react'
+import { Shield, Crown, Star } from 'lucide-react'
 
 interface AdminBadgeProps {
-  isOwner?: boolean
-  isAdmin?: boolean
+  isOrgOwner?: boolean // ✅ Владелец организации (фиолетовая корона)
+  isGroupCreator?: boolean // ✅ Создатель группы в Telegram (синий бейдж со звездой)
+  isAdmin?: boolean // Администратор (синий бейдж со щитом)
   customTitle?: string | null
   size?: 'sm' | 'md' | 'lg'
   showLabel?: boolean
+  // Для обратной совместимости (deprecated)
+  isOwner?: boolean
 }
 
 export function AdminBadge({ 
-  isOwner = false, 
+  isOrgOwner = false,
+  isGroupCreator = false,
   isAdmin = false, 
   customTitle = null,
   size = 'md',
-  showLabel = true
+  showLabel = true,
+  isOwner = false // deprecated
 }: AdminBadgeProps) {
-  if (!isOwner && !isAdmin) return null
+  // Обратная совместимость: если isOwner=true, считаем это isOrgOwner
+  const actualIsOrgOwner = isOrgOwner || isOwner
+  
+  if (!actualIsOrgOwner && !isGroupCreator && !isAdmin) return null
 
   const sizeClasses = {
     sm: 'h-3 w-3',
@@ -29,18 +37,33 @@ export function AdminBadge({
     lg: 'text-base'
   }
 
-  if (isOwner) {
+  // ✅ Приоритет 1: Владелец организации (фиолетовая корона)
+  if (actualIsOrgOwner) {
     return (
       <span 
         className={`inline-flex items-center gap-1 ${textSizeClasses[size]} text-purple-700`}
-        title={customTitle || "Владелец группы"}
+        title="Владелец организации"
       >
         <Crown className={`${sizeClasses[size]} fill-purple-600`} />
-        {showLabel && (customTitle || "Владелец")}
+        {showLabel && "Владелец"}
       </span>
     )
   }
 
+  // ✅ Приоритет 2: Создатель группы в Telegram (синий бейдж)
+  if (isGroupCreator) {
+    return (
+      <span 
+        className={`inline-flex items-center gap-1 ${textSizeClasses[size]} text-blue-700`}
+        title={customTitle || "Создатель группы"}
+      >
+        <Star className={`${sizeClasses[size]} fill-blue-600`} />
+        {showLabel && (customTitle || "Создатель")}
+      </span>
+    )
+  }
+
+  // ✅ Приоритет 3: Администратор (синий бейдж)
   if (isAdmin) {
     return (
       <span 
@@ -55,4 +78,3 @@ export function AdminBadge({
 
   return null
 }
-
