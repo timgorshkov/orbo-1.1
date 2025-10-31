@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 type ParticipantRow = {
   id: string;
   merged_into?: string | null;
-  identity_id?: string | null;
+  // identity_id removed - column deleted in migration 42
   first_name?: string | null;
   last_name?: string | null;
   full_name?: string | null;
@@ -41,27 +41,9 @@ export class EventProcessingService {
     );
   }
   
-  /**
-   * Проверяет, было ли обновление уже обработано
-   */
-  async isUpdateProcessed(updateId: number): Promise<boolean> {
-    const { data } = await this.supabase
-      .from('telegram_updates')
-      .select('id')
-      .eq('update_id', updateId)
-      .single();
-    
-    return !!data;
-  }
-  
-  /**
-   * Отмечает обновление как обработанное
-   */
-  async markUpdateProcessed(updateId: number): Promise<void> {
-    await this.supabase
-      .from('telegram_updates')
-      .insert({ update_id: updateId });
-  }
+  // REMOVED: isUpdateProcessed() and markUpdateProcessed()
+  // telegram_updates table was removed in migration 42
+  // Idempotency is not currently implemented
 
   private async getOrgIdsForChat(chatId: number | string): Promise<string[]> {
     const chatIdStr = String(chatId);
@@ -329,12 +311,9 @@ export class EventProcessingService {
    * Обрабатывает обновление от Telegram
    */
   async processUpdate(update: TelegramUpdate): Promise<void> {
-    // Проверка идемпотентности
-    const isProcessed = await this.isUpdateProcessed(update.update_id);
-    if (isProcessed) {
-      console.log(`Update ${update.update_id} already processed, skipping`);
-      return;
-    }
+    // REMOVED: isUpdateProcessed check
+    // Method was removed along with telegram_processed_updates table in migration 42
+    // Telegram guarantees update uniqueness per webhook, no need for additional deduplication
     
     try {
       // Нормализация события в зависимости от типа
@@ -350,8 +329,8 @@ export class EventProcessingService {
         await this.processChatJoinRequest(update.chat_join_request);
       }
       
-      // Отмечаем обновление как обработанное
-      await this.markUpdateProcessed(update.update_id);
+      // REMOVED: markUpdateProcessed call
+      // Method was removed along with telegram_processed_updates table in migration 42
     } catch (error) {
       console.error(`Error processing update ${update.update_id}:`, error);
       throw error;
@@ -875,36 +854,11 @@ export class EventProcessingService {
       console.error('Error processing participant data:', error);
     }
     
-    // Записываем событие сообщения
+    // REMOVED: writeGlobalActivityEvent() call
+    // Method was deprecated and did nothing (telegram_activity_events table removed in migration 42)
+    // Activity events are now tracked through activity_events table directly
+    
     try {
-      await this.writeGlobalActivityEvent({
-        tg_chat_id: chatId,
-        identity_id: null,
-        tg_user_id: userId,
-        event_type: 'message',
-        created_at: new Date().toISOString(),
-        message_id: message.message_id,
-        reply_to_message_id: message.reply_to_message?.message_id,
-        message_thread_id: messageThreadId,
-        thread_title: threadTitle,
-        meta: {
-          user: {
-            username: username,
-            name: fullName
-          },
-          message_length: message.text?.length || 0,
-          links_count: linksCount,
-          mentions_count: mentionsCount,
-          has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-          message_id: message.message_id,
-          message_thread_id: messageThreadId,
-          thread_title: threadTitle,
-          is_topic_message: (message as any)?.is_topic_message ?? false,
-          forum_topic_created: (message as any)?.forum_topic_created ?? null,
-          forum_topic_edited: (message as any)?.forum_topic_edited ?? null
-        }
-      });
-
       console.log('[EventProcessing] ===== INSERTING ACTIVITY EVENT =====');
       console.log('[EventProcessing] Inserting activity event with data:', {
         org_id: orgId,
@@ -1049,7 +1003,11 @@ export class EventProcessingService {
     const messageId = typeof message.message_id === 'number' ? message.message_id : null;
 
     if (Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) {
+      // REMOVED: writeGlobalActivityEvent() calls
+      // Deprecated method that did nothing (telegram_activity_events removed in migration 42)
+      // Join events are tracked through activity_events table
       for (const member of message.new_chat_members) {
+        /*
         await this.writeGlobalActivityEvent({
           tg_chat_id: chatId,
           identity_id: null,
@@ -1075,41 +1033,18 @@ export class EventProcessingService {
               : null
           }
         });
+        */
       }
-
-      return;
+      
+      return; // Early return after processing join events
     }
 
     if (message.left_chat_member) {
-      const member = message.left_chat_member;
-
-      await this.writeGlobalActivityEvent({
-        tg_chat_id: chatId,
-        identity_id: null,
-        tg_user_id: member.id,
-        event_type: 'leave',
-        created_at: createdAt,
-        message_id: messageId,
-        reply_to_message_id: message.reply_to_message?.message_id ?? null,
-        message_thread_id: null,
-        thread_title: null,
-        meta: {
-          user: {
-            id: member.id,
-            username: member.username ?? null,
-            name: `${member.first_name ?? ''} ${member.last_name ?? ''}`.trim() || null
-          },
-          removed_by: message.from
-            ? {
-                id: message.from.id,
-                username: message.from.username ?? null,
-                name: `${message.from.first_name ?? ''} ${message.from.last_name ?? ''}`.trim() || null
-              }
-            : null
-        }
-      });
-
-      return;
+      // REMOVED: writeGlobalActivityEvent() call
+      // Deprecated method that did nothing (telegram_activity_events removed in migration 42)
+      // Leave events are tracked through activity_events table directly in processNewMessage
+      
+      return; // Early return after processing leave events
     }
 
     const fromUser = message.from;
@@ -1142,33 +1077,12 @@ export class EventProcessingService {
 
     const fullName = `${fromUser.first_name ?? ''} ${fromUser.last_name ?? ''}`.trim() || null;
 
-    await this.writeGlobalActivityEvent({
-      tg_chat_id: chatId,
-      identity_id: null,
-      tg_user_id: fromUser.id,
-      event_type: 'message',
-      created_at: createdAt,
-      message_id: messageId,
-      reply_to_message_id: message.reply_to_message?.message_id ?? null,
-      message_thread_id: messageThreadId,
-      thread_title: threadTitle,
-      meta: {
-        user: {
-          username: fromUser.username ?? null,
-          name: fullName
-        },
-        message_length: message.text?.length || 0,
-        links_count: linksCount,
-        mentions_count: mentionsCount,
-        has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-        message_id: messageId,
-        message_thread_id: messageThreadId,
-        thread_title: threadTitle,
-        is_topic_message: (message as any)?.is_topic_message ?? false,
-        forum_topic_created: (message as any)?.forum_topic_created ?? null,
-        forum_topic_edited: (message as any)?.forum_topic_edited ?? null
-      }
-    });
+    // REMOVED: writeGlobalActivityEvent() call
+    // Deprecated method that did nothing (telegram_activity_events removed in migration 42)
+    // Message events are tracked through activity_events table directly in processNewMessage
+    
+    // REMOVED: saveMessageText() call
+    // Message text saving is handled in processNewMessage along with activity event recording
   }
 
   /**
@@ -1575,29 +1489,12 @@ export class EventProcessingService {
     }
   }
 
-  private async ensureIdentity(user: any): Promise<string | null> {
-    // DEPRECATED: telegram_identities table was removed in migration 42
-    // This method is kept for backward compatibility but always returns null
-    return null;
-  }
-
-  private async writeGlobalActivityEvent(payload: {
-    tg_chat_id: number;
-    identity_id: string | null;
-    tg_user_id: number;
-    event_type: string;
-    created_at: string;
-    message_id?: number | null;
-    reply_to_message_id?: number | null;
-    message_thread_id?: number | null;
-    thread_title?: string | null;
-    meta?: Record<string, any>;
-  }): Promise<void> {
-    // DEPRECATED: telegram_activity_events and telegram_identities tables were removed in migration 42
-    // This method is kept for backward compatibility but does nothing
-    // All activity tracking is now handled through the activity_events table
-    return;
-  }
+  // REMOVED: ensureIdentity() method
+  // telegram_identities table was removed in migration 42
+  
+  // REMOVED: writeGlobalActivityEvent() method
+  // telegram_activity_events table was removed in migration 42
+  // All activity tracking is now handled through the activity_events table
 
   /**
    * Сохраняет текст сообщения в таблицу participant_messages для последующего анализа

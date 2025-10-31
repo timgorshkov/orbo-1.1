@@ -124,11 +124,14 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     };
   });
 
-  const identityId = participantRecord.identity_id;
-
+  // REMOVED: identity_id and telegram_activity_events usage
+  // Migration 42 removed these, use activity_events with tg_user_id instead
+  
   let eventsData: ParticipantTimelineEvent[] = [];
 
-  if (identityId) {
+  const tgUserId = participantRecord.tg_user_id;
+
+  if (tgUserId) {
     let accessibleChatIds: string[] = [];
 
     try {
@@ -167,22 +170,21 @@ export async function getParticipantDetail(orgId: string, participantId: string)
 
       if (numericChatIds.length > 0) {
         try {
-          const { data: globalEvents, error: globalEventsError } = await supabase
-            .from('telegram_activity_events')
+          // Use activity_events (not telegram_activity_events)
+          const { data: activityEvents, error: activityEventsError } = await supabase
+            .from('activity_events')
             .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id')
-            .eq('identity_id', identityId)
+            .eq('tg_user_id', tgUserId)
+            .eq('org_id', orgId)
             .in('tg_chat_id', numericChatIds)
             .order('created_at', { ascending: false })
             .limit(200);
 
-          if (globalEventsError) {
-            if (globalEventsError.code === '42P01') {
-              console.warn('telegram_activity_events table missing, falling back to activity_events');
-            } else {
-              throw globalEventsError;
-            }
-          } else if (globalEvents) {
-            eventsData = globalEvents.map(event => ({
+          if (activityEventsError) {
+            console.error('Error loading activity events:', activityEventsError);
+            throw activityEventsError;
+          } else if (activityEvents) {
+            eventsData = activityEvents.map(event => ({
               id: event.id,
               event_type: event.event_type,
               created_at: event.created_at,
@@ -190,8 +192,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
               meta: event.meta || null
             }));
           }
-        } catch (globalError) {
-          console.error('Error loading global activity events:', globalError);
+        } catch (activityError) {
+          console.error('Error loading activity events:', activityError);
         }
       }
     }

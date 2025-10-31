@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { logParticipantAudit } from '@/lib/server/participants/audit';
+// REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
@@ -127,19 +127,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
       updatedCustomAttributes: updatedParticipant?.custom_attributes
     });
 
-  try {
-    await logParticipantAudit({
-      orgId,
-      participantId: canonicalId,
-      actorId: user.id,
-      actorType: 'user',
-      source: 'manual',
-      action: 'update',
-      fieldChanges: updatePayload
-    });
-  } catch (auditError) {
-    console.error('Failed to log participant update audit:', auditError);
-  }
+  // REMOVED: Audit logging (migration 072)
+  console.log(`[Participant Updated] ID: ${canonicalId}, Actor: ${user.id}`);
 
     const detail = await getParticipantDetail(orgId, participantId);
 
@@ -405,22 +394,8 @@ async function mergeFromDuplicate(
     }
   }
 
-  try {
-    await logParticipantAudit({
-      orgId,
-      participantId: canonicalId,
-      actorId,
-      actorType: 'user',
-      source: 'manual',
-      action: 'merge',
-      fieldChanges: {
-        merged: duplicateCanonical,
-        into: canonicalId
-      }
-    });
-  } catch (auditError) {
-    console.error('Failed to log participant merge audit:', auditError);
-  }
+  // REMOVED: Audit logging (migration 072)
+  console.log(`[Participant Merged] ${duplicateCanonical} -> ${canonicalId}, Actor: ${actorId}`);
 
   const detail = await getParticipantDetail(orgId, canonicalId);
 
@@ -551,22 +526,8 @@ async function mergeIntoTarget(
     }
   }
 
-  try {
-    await logParticipantAudit({
-      orgId,
-      participantId: targetCanonical,
-      actorId,
-      actorType: 'user',
-      source: 'manual',
-      action: 'merge',
-      fieldChanges: {
-        merged: canonicalId,
-        into: targetCanonical
-      }
-    });
-  } catch (auditError) {
-    console.error('Failed to log participant merge audit:', auditError);
-  }
+  // REMOVED: Audit logging (migration 072)
+  console.log(`[Participant Merged] ${canonicalId} -> ${targetCanonical}, Actor: ${actorId}`);
 
   const detail = await getParticipantDetail(orgId, targetCanonical);
 

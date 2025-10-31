@@ -64,7 +64,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Дополнительная проверка для отладки сессии
-  if (pathname.startsWith('/app')) {
+  if (pathname.startsWith('/app') || pathname.startsWith('/superadmin')) {
     console.log('Checking session for path:', pathname);
     const { data } = await supabase.auth.getSession()
     console.log('Session found:', !!data?.session);
@@ -98,7 +98,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getSession()
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
-  if (!session && pathname.startsWith('/app')) {
+  if (!session && (pathname.startsWith('/app') || pathname.startsWith('/superadmin'))) {
     // Перенаправляем на страницу входа
     const redirectUrl = new URL('/signin', request.url)
     redirectUrl.searchParams.set('redirect', pathname)

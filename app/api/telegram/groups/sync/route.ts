@@ -230,28 +230,83 @@ export async function POST(request: Request) {
       let groupRecord = existingGroupGlobal;
 
       if (!groupRecord) {
-        const { data: newGroup, error: insertError } = await supabaseService
+        // Проверяем, есть ли группа с таким же названием (возможная миграция chat_id)
+        const { data: duplicateGroups } = await supabaseService
           .from('telegram_groups')
-          .insert({
-            tg_chat_id: chatId,
-            title: chatDetails.result.title,
-            invite_link: chatDetails.result.invite_link || null,
-            bot_status: 'connected',
-            verified_by_user_id: user.id,
-            verification_status: 'verified',
-            last_verification_at: new Date().toISOString(),
-            member_count: chatDetails.result.member_count || 0,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error(`Error inserting canonical group ${chatId}:`, insertError);
-          continue;
+          .select('*')
+          .eq('title', chatDetails.result.title)
+          .neq('tg_chat_id', chatId);
+        
+        // Если есть дубль и новый chatId начинается с -100, возможно это миграция
+        if (duplicateGroups && duplicateGroups.length > 0) {
+          const oldChatId = duplicateGroups[0].tg_chat_id;
+          const newChatIdStr = String(chatId);
+          const oldChatIdStr = String(oldChatId);
+          
+          // Проверяем паттерн миграции: старый ID без -100, новый с -100
+          if (newChatIdStr.startsWith('-100') && !oldChatIdStr.startsWith('-100')) {
+            console.log(`[Chat Migration Detected] ${chatDetails.result.title}: ${oldChatId} -> ${chatId}`);
+            
+            // Вызываем функцию миграции
+            const { data: migrationResult, error: migrationError } = await supabaseService
+              .rpc('migrate_telegram_chat_id', {
+                old_chat_id: oldChatId,
+                new_chat_id: chatId
+              });
+            
+            if (migrationError) {
+              console.error('[Chat Migration] Error:', migrationError);
+            } else {
+              console.log('[Chat Migration] Success:', migrationResult);
+              
+              // Сохраняем результат миграции
+              await supabaseService
+                .from('telegram_chat_migrations')
+                .insert({
+                  old_chat_id: oldChatId,
+                  new_chat_id: chatId,
+                  migration_result: migrationResult
+                });
+              
+              // Пробуем получить обновленную запись
+              const { data: migratedGroup } = await supabaseService
+                .from('telegram_groups')
+                .select('*')
+                .eq('tg_chat_id', chatId)
+                .maybeSingle();
+              
+              if (migratedGroup) {
+                groupRecord = migratedGroup;
+              }
+            }
+          }
         }
+        
+        // Если после миграции всё ещё нет записи, создаём новую
+        if (!groupRecord) {
+          const { data: newGroup, error: insertError } = await supabaseService
+            .from('telegram_groups')
+            .insert({
+              tg_chat_id: chatId,
+              title: chatDetails.result.title,
+              invite_link: chatDetails.result.invite_link || null,
+              bot_status: 'connected',
+              verified_by_user_id: user.id,
+              verification_status: 'verified',
+              last_verification_at: new Date().toISOString(),
+              member_count: chatDetails.result.member_count || 0,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
 
-        groupRecord = newGroup;
+          if (insertError) {
+            console.error(`Error inserting canonical group ${chatId}:`, insertError);
+            continue;
+          }
+
+          groupRecord = newGroup;
+        }
       } else {
         const updatePatch: Record<string, any> = {
           title: chatDetails.result.title,

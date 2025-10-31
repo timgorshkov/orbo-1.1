@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
-import { logParticipantAudit } from '@/lib/server/participants/audit';
+// REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
@@ -149,20 +149,9 @@ export async function POST(request: Request) {
 
     const updatedFields = Object.keys(updatePayload).filter(key => key !== 'updated_at');
 
+    // REMOVED: Audit logging (migration 072)
     if (updatedFields.length > 0) {
-      try {
-        await logParticipantAudit({
-          orgId,
-          participantId: existingParticipant.id,
-          actorId: access.user?.id ?? null,
-          actorType: 'user',
-          source: payload?.source || 'manual',
-          action: 'enrich',
-          fieldChanges: Object.fromEntries(updatedFields.map(field => [field, updatePayload[field]]))
-        });
-      } catch (auditError) {
-        console.error('Failed to log participant enrichment audit:', auditError);
-      }
+      console.log(`[Participant Enriched] ID: ${existingParticipant.id}, Fields: ${updatedFields.join(', ')}`);
     }
 
     const detail = await getParticipantDetail(orgId, existingParticipant.id);

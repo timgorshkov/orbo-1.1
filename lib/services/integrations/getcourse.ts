@@ -4,7 +4,7 @@ import { decryptCredentials } from './credentials';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { updateConnectionLastSync } from './scheduler';
 import { updateIntegrationJob, createIntegrationJobLog } from './connectionStore';
-import { logParticipantAudit } from '@/lib/server/participants/audit';
+// REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 const supabaseAdmin = createAdminServer();
 
@@ -338,15 +338,10 @@ export class GetCourseConnector implements IntegrationConnector {
                   .update(patch)
                   .eq('id', existing.id);
 
-                await logParticipantAudit({
-                  orgId: options.orgId,
-                  participantId: existing.id,
-                  actorType: 'integration',
-                  source: 'getcourse',
-                  action: 'update',
-                  fieldChanges: patch,
-                  integrationJobId: options.jobId
-                });
+                // REMOVED: Audit logging (migration 072)
+                console.log(`[GetCourse] Updated participant ${existing.id}`);
+
+                stats.updated += 1;
               }
             } else {
               const nowIso = new Date().toISOString();
@@ -375,25 +370,9 @@ export class GetCourseConnector implements IntegrationConnector {
               participantId = inserted?.id ?? null;
               stats.created += 1;
 
+              // REMOVED: Audit logging (migration 072)
               if (participantId) {
-                await logParticipantAudit({
-                  orgId: options.orgId,
-                  participantId,
-                  actorType: 'integration',
-                  source: 'getcourse',
-                  action: 'create',
-                  fieldChanges: {
-                    first_name: user.firstName ?? null,
-                    last_name: user.lastName ?? null,
-                    full_name: fullNameCandidate || user.email || user.phone || 'Участник GetCourse',
-                    email,
-                    phone,
-                    username: telegram ? telegram.replace(/^@/, '') : null,
-                    source: 'getcourse',
-                    status: 'active'
-                  },
-                  integrationJobId: options.jobId
-                });
+                console.log(`[GetCourse] Created participant ${participantId}`);
               }
             }
 
@@ -419,18 +398,8 @@ export class GetCourseConnector implements IntegrationConnector {
 
               stats.updated += 1;
 
-              await logParticipantAudit({
-                orgId: options.orgId,
-                participantId,
-                actorType: 'integration',
-                source: 'getcourse',
-                action: 'external_id_upsert',
-                fieldChanges: {
-                  system_code: 'getcourse',
-                  external_id: String(user.id)
-                },
-                integrationJobId: options.jobId
-              });
+              // REMOVED: Audit logging (migration 072)
+              console.log(`[GetCourse] Upserted external ID for participant ${participantId}`);
             }
           } catch (userError: any) {
             stats.errors += 1;

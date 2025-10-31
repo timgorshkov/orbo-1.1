@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
 import { participantMatcher } from '@/lib/services/participants/matcher';
 import { PostgrestSingleResponse } from '@supabase/supabase-js';
-import { logParticipantAudit } from '@/lib/server/participants/audit';
+// REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
@@ -120,20 +120,10 @@ export async function POST(request: Request) {
 
     const participantId = inserted?.[0]?.id;
 
+    // REMOVED: Audit logging (migration 072)
+    // participant_audit_log table and logParticipantAudit function removed
     if (participantId) {
-      try {
-        await logParticipantAudit({
-          orgId,
-          participantId,
-          actorId: access.user?.id ?? null,
-          actorType: 'user',
-          source: source || 'manual',
-          action: 'create',
-          fieldChanges: insertPayload
-        });
-      } catch (auditError) {
-        console.error('Failed to log participant create audit:', auditError);
-      }
+      console.log(`[Participant Created] ID: ${participantId}, Name: ${fullName || 'Unnamed'}, Source: ${source || 'manual'}`);
     }
 
     return NextResponse.json({

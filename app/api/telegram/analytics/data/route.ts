@@ -383,50 +383,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Дополнительное обогащение из telegram_identities (если таблица существует)
-    // Примечание: telegram_identities может не существовать в текущей схеме БД
-    // Закомментировано до создания таблицы или можно получить данные из participants
-    // const stillMissingIdentities = participantList
-    //   .filter(record => !record.username || !record.full_name)
-    //   .map(record => record.tg_user_id)
-
-    // if (stillMissingIdentities.length > 0) {
-    //   try {
-    //     const { data: identityRows, error: identityError } = await supabase
-    //       .from('telegram_identities')
-    //       .select('tg_user_id, username, first_name, last_name')
-    //       .in('tg_user_id', Array.from(new Set(stillMissingIdentities)))
-
-    //     if (identityError) {
-    //       console.error('Error fetching telegram identities for analytics:', identityError)
-    //     } else if (identityRows) {
-    //       identityRows.forEach(row => {
-    //         if (!row?.tg_user_id) {
-    //           return
-    //         }
-    //         const record = participantsMap.get(row.tg_user_id)
-    //         if (!record) {
-    //           return
-    //         }
-
-    //         if (!record.username && row.username) {
-    //           record.username = row.username
-    //           const normalized = normalizeUsername(row.username)
-    //           if (normalized) {
-    //             usernameToUserId.set(normalized, record.tg_user_id)
-    //           }
-    //         }
-
-    //         if (!record.full_name) {
-    //           const fullName = [row.first_name, row.last_name].filter(Boolean).join(' ') || null
-    //           record.full_name = fullName
-    //         }
-    //       })
-    //     }
-    //   } catch (identityEnrichmentException) {
-    //     console.error('Unexpected error enriching identities for analytics:', identityEnrichmentException)
-    //   }
-    // }
+    // REMOVED: Enrichment from telegram_identities
+    // Migration 42 removed telegram_identities table
+    // All participant data is now in participants table
 
     const membersTotal = participantList.length
 
