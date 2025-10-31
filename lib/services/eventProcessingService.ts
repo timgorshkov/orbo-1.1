@@ -452,13 +452,7 @@ export class EventProcessingService {
             .eq('id', participantGroup.id);
         }
         
-        // Обновляем счетчик участников в группе
-        await this.supabase
-          .from('telegram_groups')
-          .update({
-            member_count: this.supabase.rpc('decrement_counter', { row_id: chatId })
-          })
-          .eq('tg_chat_id', chatId);
+        // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
       }
     } catch (error) {
       console.error('Error updating participant_groups for leave event:', error);
@@ -631,13 +625,7 @@ export class EventProcessingService {
               });
           }
           
-          // Обновляем счетчик участников в группе
-          await this.supabase
-            .from('telegram_groups')
-            .update({
-              member_count: this.supabase.rpc('increment_counter', { row_id: chatId })
-            })
-            .eq('tg_chat_id', chatId);
+          // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
         }
       } catch (error) {
         console.error('Error processing new member:', error);
@@ -841,13 +829,7 @@ export class EventProcessingService {
           
           console.log(`Added participant ${participantId} to group ${chatId}`);
           
-          // Обновляем счетчик участников в группе
-          await this.supabase
-            .from('telegram_groups')
-            .update({
-              member_count: this.supabase.rpc('increment_counter', { row_id: chatId })
-            })
-            .eq('tg_chat_id', chatId);
+          // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
         }
       }
     } catch (error) {

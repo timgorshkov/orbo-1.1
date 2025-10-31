@@ -44,19 +44,19 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION recalculate_member_count(group_id BIGINT)
 RETURNS INTEGER AS $$
 DECLARE
-  member_count INTEGER;
+  v_member_count INTEGER;
 BEGIN
   -- Считаем активных участников
-  SELECT COUNT(*) INTO member_count
+  SELECT COUNT(*) INTO v_member_count
   FROM participant_groups
   WHERE tg_group_id = group_id
   AND is_active = TRUE;
   
   -- Обновляем счетчик в группе
   UPDATE telegram_groups
-  SET member_count = member_count
+  SET member_count = v_member_count
   WHERE tg_chat_id = group_id;
   
-  RETURN member_count;
+  RETURN v_member_count;
 END;
 $$ LANGUAGE plpgsql;

@@ -101,18 +101,28 @@ $$ LANGUAGE plpgsql;
 -- Функция для обновления количества участников в группе
 CREATE OR REPLACE FUNCTION update_group_member_count()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_tg_group_id BIGINT;
 BEGIN
+  -- Получаем tg_group_id в зависимости от операции (NEW для INSERT/UPDATE, OLD для DELETE)
+  v_tg_group_id := COALESCE(NEW.tg_group_id, OLD.tg_group_id);
+  
   -- Обновляем счетчик участников в группе
   UPDATE telegram_groups
   SET member_count = (
     SELECT COUNT(*)
     FROM participant_groups pg
-    WHERE pg.tg_group_id = NEW.tg_group_id
+    WHERE pg.tg_group_id = v_tg_group_id
     AND pg.is_active = TRUE
   )
-  WHERE tg_chat_id = NEW.tg_group_id;
+  WHERE tg_chat_id = v_tg_group_id;
   
-  RETURN NEW;
+  -- Возвращаем NEW для INSERT/UPDATE, OLD для DELETE
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  ELSE
+    RETURN NEW;
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -1,9 +1,6 @@
--- Создаем таблицу для хранения обработанных Telegram-обновлений (идемпотентность)
-CREATE TABLE IF NOT EXISTS telegram_updates (
-  id SERIAL PRIMARY KEY,
-  update_id BIGINT UNIQUE NOT NULL,
-  processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- ПРИМЕЧАНИЕ: telegram_updates была удалена в миграции 42
+-- Telegram API гарантирует уникальность update_id в рамках одного webhook,
+-- поэтому дополнительная проверка не требуется
 
 -- Проверяем существование таблицы activity_events
 DO $$
@@ -13,11 +10,12 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'activity_events'
   ) THEN
     -- Таблица для хранения событий активности
+    -- ПРИМЕЧАНИЕ: Колонки type, participant_id, tg_group_id удалены в миграции 71
+    -- Используем event_type, tg_user_id, tg_chat_id вместо них
     CREATE TABLE activity_events (
       id SERIAL PRIMARY KEY,
       org_id UUID NOT NULL REFERENCES organizations(id),
       event_type TEXT NOT NULL,
-      participant_id UUID REFERENCES participants(id),
       tg_user_id BIGINT,
       tg_chat_id BIGINT NOT NULL,
       message_id BIGINT,
@@ -33,9 +31,9 @@ BEGIN
 
     -- Индексы для быстрых агрегаций
     CREATE INDEX idx_activity_org_type_date ON activity_events(org_id, event_type, created_at);
-    CREATE INDEX idx_activity_participant ON activity_events(participant_id, created_at);
     CREATE INDEX idx_activity_chat_date ON activity_events(tg_chat_id, created_at);
     CREATE INDEX idx_activity_tg_user_id ON activity_events(tg_user_id);
+    CREATE INDEX idx_activity_org_tg_user ON activity_events(org_id, tg_user_id);
     
     RAISE NOTICE 'Created activity_events table with indexes';
   ELSE
