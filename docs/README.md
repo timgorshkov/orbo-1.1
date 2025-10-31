@@ -23,8 +23,9 @@
 - **[DATABASE_UNUSED_COLUMNS_AUDIT.md](./DATABASE_UNUSED_COLUMNS_AUDIT.md)** — аудит неиспользуемых колонок
 - **[MIGRATION_42_CLEANUP_SUMMARY.md](./MIGRATION_42_CLEANUP_SUMMARY.md)** — сводка по очистке после миграции 42
 
-### 📝 TODO
-- **[TODO_PARTICIPANT_SCORING_TRIGGERS.md](./TODO_PARTICIPANT_SCORING_TRIGGERS.md)** — план реализации скоринговых триггеров
+### 👥 Участники
+- **[PARTICIPANT_SCORING_LOGIC.md](./PARTICIPANT_SCORING_LOGIC.md)** — автоматический скоринг участников
+- **[PARTICIPANT_SCORING_IMPLEMENTATION_SUMMARY.md](./PARTICIPANT_SCORING_IMPLEMENTATION_SUMMARY.md)** — сводка реализации
 
 ---
 
