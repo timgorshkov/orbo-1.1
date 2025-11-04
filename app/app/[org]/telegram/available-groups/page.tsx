@@ -16,7 +16,7 @@ type TelegramGroup = {
   is_owner: boolean
   status?: string
   admin_verified?: boolean // Подтверждены ли права админа через Bot API
-  verification_status?: string // Статус верификации группы
+  // verification_status removed in migration 080
 }
 
 export default function AvailableGroupsPage({ params }: { params: { org: string } }) {

@@ -16,7 +16,6 @@ export default async function SuperadminGroupsPage() {
       title,
       tg_chat_id,
       bot_status,
-      verification_status,
       last_sync_at
     `)
     .order('id', { ascending: false })
@@ -85,10 +84,9 @@ export default async function SuperadminGroupsPage() {
       title: group.title,
       tg_chat_id: group.tg_chat_id,
       bot_status: group.bot_status,
-      verification_status: group.verification_status, // Legacy, для отображения в таблице
       created_at: group.last_sync_at || null,
       has_bot: group.bot_status === 'connected',
-      has_admin_rights: group.bot_status === 'connected', // FIX: используем bot_status вместо verification_status
+      has_admin_rights: group.bot_status === 'connected', // Uses bot_status as source of truth
       participants_count: group.participants_count || 0,
       organizations_count: group.org_telegram_groups?.length || 0,
       last_activity_at: group.last_activity

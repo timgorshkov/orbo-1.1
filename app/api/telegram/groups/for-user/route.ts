@@ -147,10 +147,10 @@ export async function GET(request: Request) {
           }
 
           try {
-            // Простой запрос без фильтра is_archived (колонка удалена из telegram_groups)
+            // Select only existing columns (verification_status and other legacy fields removed in migration 080)
             const { data, error } = await supabaseService
               .from('telegram_groups')
-              .select('*')
+              .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, new_members_count, last_activity_at')
               .in('tg_chat_id', ids);
 
             if (error) {
@@ -258,29 +258,9 @@ export async function GET(request: Request) {
           }
 
           if (mappings.length === 0) {
-            let assignedGroups: any[] = [];
-            try {
-              const { data: groupsWithOrg, error: groupsWithOrgError } = await supabaseService
-                .from('telegram_groups')
-                .select('tg_chat_id, org_id')
-                .in('tg_chat_id', chatIdValues)
-                .not('org_id', 'is', null);
-
-              if (groupsWithOrgError) {
-                console.warn('groupsWithOrg lookup failed:', safeErrorJson(groupsWithOrgError));
-              } else if (groupsWithOrg && groupsWithOrg.length > 0) {
-                assignedGroups = groupsWithOrg;
-              }
-            } catch (fallbackError: any) {
-              console.warn('Fallback org mapping lookup failed:', safeErrorJson(fallbackError));
-            }
-
-            mappings = assignedGroups.map(group => ({
-              org_id: group.org_id,
-              tg_chat_id: group.tg_chat_id,
-              status: 'active',
-              archived_reason: null
-            }));
+            // Legacy fallback removed: telegram_groups.org_id was removed in migration 071
+            // All org-group mappings should be in org_telegram_groups table
+            console.warn('No org mappings found for these groups. They need to be added to organizations via org_telegram_groups.');
           }
         } catch (mappingError: any) {
           if (mappingError?.code === '42P01') {
@@ -331,10 +311,8 @@ export async function GET(request: Request) {
           const groupAny = group as any;
           const mappedOrgIds = new Set<string>();
 
-          if (groupAny.org_id) {
-            mappedOrgIds.add(groupAny.org_id);
-          }
-
+          // Legacy: groupAny.org_id removed in migration 071
+          // All mappings now come from org_telegram_groups
           const extraMappings = mappingByChat.get(chatKey);
           if (extraMappings) {
             extraMappings.forEach(org => mappedOrgIds.add(org));
@@ -369,11 +347,11 @@ export async function GET(request: Request) {
             bot_status: groupAny.bot_status,
             member_count: actualMemberCount,
             mapped_org_ids: Array.from(mappedOrgIds),
-            org_id: groupAny.org_id,
+            org_id: null, // Legacy field removed in migration 071, now using mapped_org_ids
             is_admin: hasAdminRights ? right.is_admin : false,
             is_owner: hasAdminRights ? right.is_owner : false,
-            admin_verified: botHasAdminRights, // Флаг, что БОТ имеет права админа (для UI)
-            verification_status: groupAny.verification_status
+            admin_verified: botHasAdminRights // Флаг, что БОТ имеет права админа (для UI)
+            // verification_status removed in migration 080
           };
 
           // Детальное логирование для отладки
@@ -382,7 +360,6 @@ export async function GET(request: Request) {
             botHasAdminRights,
             hasAdminRights,
             bot_status: groupAny.bot_status,
-            org_id: groupAny.org_id,
             mappedOrgIds: Array.from(mappedOrgIds),
             currentOrgId: orgId,
             willBeInExisting: isLinkedToOrg,

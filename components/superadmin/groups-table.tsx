@@ -9,7 +9,7 @@ type Group = {
   title: string
   tg_chat_id: string
   bot_status: string
-  verification_status: string
+  // verification_status removed in migration 080
   created_at: string
   has_bot: boolean
   has_admin_rights: boolean
