@@ -246,31 +246,73 @@ export async function POST(
               return null;
             }
 
+            // Unified metadata structure (same as webhook)
+            const textPreview = msg.text ? msg.text.substring(0, 500) : ''; // First 500 chars
+            const tgUserId = (msg as any).authorUserId || null;
+            const messageId = (msg as any).messageId || null;
+            
             return {
               org_id: orgId,
               event_type: 'message',
-              tg_user_id: (msg as any).authorUserId || null, // ⭐ Используем Telegram User ID если есть (из JSON)
+              tg_user_id: tgUserId,
               tg_chat_id: group.tg_chat_id,
-              message_id: (msg as any).messageId || null, // Message ID тоже сохраняем из JSON
+              message_id: messageId,
               chars_count: msg.charCount,
               links_count: msg.linksCount,
               mentions_count: msg.mentionsCount,
+              reply_to_message_id: (msg as any).replyToMessageId || null,
+              has_media: false, // TODO: detect media from parsed data
               created_at: msg.timestamp.toISOString(),
               import_source: 'html_import', // Используем 'html_import' для любых файловых импортов (JSON/HTML)
               import_batch_id: batchId,
               meta: {
-                author_name: msg.authorName,
-                author_username: msg.authorUsername,
-                text_preview: msg.text.substring(0, 100),
-                // ⭐ Сохраняем формат в meta для отладки
-                import_format: isJson ? 'json' : 'html',
+                user: {
+                  name: msg.authorName,
+                  username: msg.authorUsername || null,
+                  tg_user_id: tgUserId
+                },
+                message: {
+                  id: messageId,
+                  thread_id: null,
+                  reply_to_id: (msg as any).replyToMessageId || null,
+                  text_preview: textPreview,
+                  text_length: msg.text?.length || 0,
+                  has_media: false, // TODO: detect from parsed data
+                  media_type: null
+                },
+                source: {
+                  type: 'import',
+                  format: isJson ? 'json' : 'html',
+                  batch_id: batchId
+                }
               },
+              // ⭐ Store full text and participant_id for participant_messages insert
+              _fullText: msg.text,
+              _participantId: participantId
             };
           })
           .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
         if (activityEvents.length > 0) {
           console.log(`📝 Attempting to insert ${activityEvents.length} activity events...`);
+          
+          // Store full texts and participant IDs before insert (they're not DB columns)
+          const messageTextsMap = new Map<number, { text: string; participantId: string; tgUserId: number | null; messageId: number | null; timestamp: string }>();
+          activityEvents.forEach((event: any, idx: number) => {
+            if (event._fullText) {
+              messageTextsMap.set(idx, {
+                text: event._fullText,
+                participantId: event._participantId,
+                tgUserId: event.tg_user_id,
+                messageId: event.message_id,
+                timestamp: event.created_at
+              });
+            }
+            // Remove temporary fields before DB insert
+            delete event._fullText;
+            delete event._participantId;
+          });
+          
           console.log(`📝 First event sample:`, JSON.stringify(activityEvents[0], null, 2));
           
           const { data, error: insertError } = await supabaseAdmin
@@ -296,6 +338,53 @@ export async function POST(
             console.log(`✅ Successfully inserted ${insertedCount} activity events`);
             console.log(`✅ Inserted IDs:`, data?.map(d => d.id).join(', '));
             importedCount += insertedCount;
+            
+            // Phase 2: Save full message texts to participant_messages
+            if (data && data.length > 0) {
+              const participantMessagesData = data
+                .map((insertedEvent: any, idx: number) => {
+                  const messageData = messageTextsMap.get(idx);
+                  if (!messageData || !messageData.text || !insertedEvent.id) return null;
+                  
+                  const wordsCount = messageData.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+                  
+                  return {
+                    org_id: orgId,
+                    participant_id: messageData.participantId,
+                    tg_user_id: messageData.tgUserId,
+                    tg_chat_id: group.tg_chat_id,
+                    activity_event_id: insertedEvent.id,
+                    message_id: messageData.messageId,
+                    message_text: messageData.text, // ✅ Full text
+                    message_thread_id: null,
+                    reply_to_message_id: null, // TODO: extract from parsed data
+                    has_media: false, // TODO: detect from parsed data
+                    media_type: null,
+                    chars_count: messageData.text.length,
+                    words_count: wordsCount,
+                    sent_at: messageData.timestamp // Original message timestamp
+                  };
+                })
+                .filter((m: any): m is NonNullable<typeof m> => m !== null);
+              
+              if (participantMessagesData.length > 0) {
+                console.log(`📝 Saving ${participantMessagesData.length} message texts to participant_messages...`);
+                
+                const { error: messagesError } = await supabaseAdmin
+                  .from('participant_messages')
+                  .upsert(participantMessagesData, {
+                    onConflict: 'tg_chat_id,message_id',
+                    ignoreDuplicates: true
+                  });
+                
+                if (messagesError) {
+                  console.error('⚠️  Failed to save message texts:', messagesError);
+                  // Non-critical error, continue
+                } else {
+                  console.log(`✅ Saved ${participantMessagesData.length} message texts`);
+                }
+              }
+            }
             
             if (insertedCount === 0 && activityEvents.length > 0) {
               console.warn(`⚠️ WARNING: Tried to insert ${activityEvents.length} events but got 0 back!`);

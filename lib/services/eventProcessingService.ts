@@ -831,7 +831,19 @@ export class EventProcessingService {
         tg_user_id: userId
       });
       
-      // Минимальный набор полей для вставки (без thread_title для совместимости)
+      // Unified metadata structure for activity_events
+      const messageText = message.text || '';
+      const textPreview = messageText.substring(0, 500); // First 500 chars for preview
+      
+      // Determine media type
+      let mediaType: string | null = null;
+      if (message.photo) mediaType = 'photo';
+      else if (message.video) mediaType = 'video';
+      else if (message.document) mediaType = 'document';
+      else if (message.audio) mediaType = 'audio';
+      else if (message.voice) mediaType = 'voice';
+      else if ((message as any).sticker) mediaType = 'sticker';
+      
       const baseEventData = {
         org_id: orgId,
         event_type: 'message',
@@ -841,31 +853,80 @@ export class EventProcessingService {
         message_thread_id: messageThreadId,
         reply_to_message_id: message.reply_to_message?.message_id || null,
         has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-        chars_count: message.text?.length || 0,
+        chars_count: messageText.length,
         links_count: linksCount,
         mentions_count: mentionsCount,
         meta: {
           user: {
+            name: fullName,
             username: username,
-            name: fullName
+            tg_user_id: userId
           },
-          message_length: message.text?.length || 0,
-          message_id: message.message_id,
-          is_topic_message: (message as any)?.is_topic_message ?? false
+          message: {
+            id: message.message_id,
+            thread_id: messageThreadId,
+            reply_to_id: message.reply_to_message?.message_id || null,
+            text_preview: textPreview,
+            text_length: messageText.length,
+            has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+            media_type: mediaType,
+            is_topic_message: (message as any)?.is_topic_message ?? false
+          },
+          source: {
+            type: 'webhook'
+          }
         }
       };
       
       console.log('[EventProcessing] Attempting insert to activity_events...');
       // Пробуем добавить дополнительные поля, если они существуют в таблице
       try {
-        // Сначала пробуем вставить только базовые поля
-        const { error } = await this.supabase.from('activity_events').insert(baseEventData);
+        // Вставляем событие и получаем ID для связи с participant_messages
+        const { data: insertedEvent, error } = await this.supabase
+          .from('activity_events')
+          .insert(baseEventData)
+          .select('id')
+          .single();
         
         if (error) {
           console.error('[EventProcessing] ❌ Error inserting activity event with base data:', error);
           throw error;
         } else {
-          console.log('[EventProcessing] ✅ Activity event recorded successfully with base data');
+          console.log('[EventProcessing] ✅ Activity event recorded successfully with ID:', insertedEvent?.id);
+          
+          // Phase 2: Save full message text to participant_messages for analysis
+          if (messageText && insertedEvent?.id && participantId) {
+            const wordsCount = messageText.trim().split(/\s+/).filter(w => w.length > 0).length;
+            
+            const { error: messageError } = await this.supabase
+              .from('participant_messages')
+              .upsert({
+                org_id: orgId,
+                participant_id: participantId,
+                tg_user_id: userId,
+                tg_chat_id: chatId,
+                activity_event_id: insertedEvent.id,
+                message_id: message.message_id,
+                message_text: messageText, // ✅ Full text
+                message_thread_id: messageThreadId,
+                reply_to_message_id: message.reply_to_message?.message_id || null,
+                has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
+                media_type: mediaType,
+                chars_count: messageText.length,
+                words_count: wordsCount,
+                sent_at: new Date(message.date * 1000).toISOString() // Telegram timestamp
+              }, {
+                onConflict: 'tg_chat_id,message_id',
+                ignoreDuplicates: true
+              });
+            
+            if (messageError) {
+              console.error('[EventProcessing] ⚠️  Failed to save message text:', messageError);
+              // Non-critical error, continue processing
+            } else {
+              console.log('[EventProcessing] ✅ Message text saved to participant_messages');
+            }
+          }
         }
       } catch (baseError) {
         console.error('[EventProcessing] ❌ Error in base insert, trying with minimal fields:', baseError);

@@ -150,7 +150,7 @@ export async function GET(request: Request) {
             // Select only existing columns (verification_status and other legacy fields removed in migration 080)
             const { data, error } = await supabaseService
               .from('telegram_groups')
-              .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, new_members_count, last_activity_at')
+              .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, new_members_count')
               .in('tg_chat_id', ids);
 
             if (error) {

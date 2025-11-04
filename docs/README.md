@@ -30,6 +30,8 @@
 ### 📊 Дашборд и аналитика
 - **[DASHBOARD_ATTENTION_ZONES_FIX.md](./DASHBOARD_ATTENTION_ZONES_FIX.md)** — логика дашборда и зон внимания
 - **[TELEGRAM_GROUPS_VERIFICATION_COLUMNS_ANALYSIS.md](./TELEGRAM_GROUPS_VERIFICATION_COLUMNS_ANALYSIS.md)** — анализ legacy столбцов верификации
+- **[MESSAGE_STORAGE_UNIFICATION_PLAN.md](./MESSAGE_STORAGE_UNIFICATION_PLAN.md)** — план унификации хранения сообщений
+- **[MESSAGE_STORAGE_UNIFICATION_COMPLETE.md](./MESSAGE_STORAGE_UNIFICATION_COMPLETE.md)** — ✅ завершённая унификация
 
 ### 📊 Стратегия и развитие (НОВОЕ — 1 ноября 2025)
 - **[REVISED_ROADMAP_SOLO_2025-11-01.md](./REVISED_ROADMAP_SOLO_2025-11-01.md)** — ⭐ **ACTIVE ROADMAP** — 16-недельный план (solo-founder)

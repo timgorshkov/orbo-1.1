@@ -469,15 +469,20 @@ function levenshteinDistance(str1: string, str2: string): number {
  */
 function isBot(name: string, username?: string): boolean {
   const lowerUsername = username?.toLowerCase() || '';
+  const lowerName = name.toLowerCase().trim();
 
   // Проверяем username - заканчивается на 'bot'
   if (lowerUsername.endsWith('bot')) {
     return true;
   }
 
+  // Проверяем имя - заканчивается на 'bot' (например, ChatKeeperBot)
+  if (lowerName.endsWith('bot')) {
+    return true;
+  }
+
   // Проверяем точные совпадения известных ботов по имени
   const knownBots = ['orbo', 'bot', 'telegram'];
-  const lowerName = name.toLowerCase().trim();
   if (knownBots.includes(lowerName)) {
     return true;
   }
