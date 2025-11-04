@@ -43,11 +43,12 @@ export async function POST(request: Request) {
 
     const { data: group, error: groupError } = await supabaseService
       .from('telegram_groups')
-      .select('id, tg_chat_id, org_id')
+      .select('id, tg_chat_id')
       .eq('id', groupId)
       .maybeSingle();
 
     if (groupError || !group) {
+      console.error('Error fetching group:', groupError);
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
@@ -99,21 +100,7 @@ export async function POST(request: Request) {
       console.error('Error checking other mappings:', otherMappingsError);
     } else {
       console.log(`Found ${otherMappings?.length || 0} other organizations using this group`)
-      
-      // Если группа больше не используется другими организациями, обнуляем org_id (legacy)
-      if (!otherMappings || otherMappings.length === 0) {
-        console.log('No other orgs use this group, clearing org_id in telegram_groups')
-        const { error: legacyUpdateError } = await supabaseService
-          .from('telegram_groups')
-          .update({ org_id: null })
-          .eq('id', groupId);
-        
-        if (legacyUpdateError) {
-          console.error('Error clearing org_id in telegram_groups:', legacyUpdateError);
-        } else {
-          console.log('Successfully cleared org_id in telegram_groups')
-        }
-      }
+      // Note: org_id column removed from telegram_groups, no need to clear it
     }
 
     return NextResponse.json({ success: true });

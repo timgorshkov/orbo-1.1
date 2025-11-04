@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
+import { TelegramJsonParser } from '@/lib/services/telegramJsonParser';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (increased for JSON files)
 
 interface ImportDecision {
   importName: string;
   importUsername?: string;
-  action: 'merge' | 'create_new';
+  importUserId?: number; // ⭐ Telegram User ID из JSON
+  action: 'merge' | 'create_new' | 'skip'; // ⭐ Добавлена опция "Игнорировать"
   targetParticipantId?: string; // Если merge
 }
 
@@ -78,17 +80,41 @@ export async function POST(
       return NextResponse.json({ error: 'File too large' }, { status: 400 });
     }
 
-    // Читаем и парсим файл
-    const htmlContent = await file.text();
-    const validation = TelegramHistoryParser.validate(htmlContent);
-
-    if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+    // Определяем формат файла
+    const isJson = file.name.endsWith('.json') || file.type === 'application/json';
+    const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
+    
+    if (!isJson && !isHtml) {
+      return NextResponse.json({
+        error: 'Invalid file type',
+        message: 'Пожалуйста, загрузите JSON или HTML файл экспорта Telegram'
+      }, { status: 400 });
     }
 
-    const parsingResult = TelegramHistoryParser.parse(htmlContent);
-
-    console.log(`Starting import: ${parsingResult.stats.totalMessages} messages, ${decisions.length} decisions`);
+    // Читаем и парсим файл
+    const fileContent = await file.text();
+    let parsingResult: any;
+    let authors: Map<string, any>;
+    
+    if (isJson) {
+      // Parse JSON format
+      const validation = TelegramJsonParser.validate(fileContent);
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+      parsingResult = TelegramJsonParser.parse(fileContent);
+      authors = parsingResult.authors;
+      console.log(`✅ Importing from JSON: ${parsingResult.stats.totalMessages} messages, ${decisions.length} decisions`);
+    } else {
+      // Parse HTML format
+      const validation = TelegramHistoryParser.validate(fileContent);
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+      parsingResult = TelegramHistoryParser.parse(fileContent);
+      authors = parsingResult.authors;
+      console.log(`⚠️ Importing from HTML: ${parsingResult.stats.totalMessages} messages, ${decisions.length} decisions`);
+    }
 
     // Создаем батч импорта
     const { data: batch, error: batchError } = await supabaseAdmin
@@ -118,7 +144,10 @@ export async function POST(
       // Создаем мапу решений
       const decisionsMap = new Map<string, ImportDecision>();
       decisions.forEach(d => {
-        const key = d.importUsername || d.importName;
+        // ⭐ Используем ту же логику ключа, что и в UI
+        const key = d.importUserId 
+          ? `user_${d.importUserId}` 
+          : (d.importUsername || d.importName);
         decisionsMap.set(key, d);
       });
 
@@ -128,10 +157,16 @@ export async function POST(
       let newParticipantsCount = 0;
 
       // Обрабатываем каждого автора
-      for (const [authorKey, author] of Array.from(parsingResult.authors.entries())) {
+      for (const [authorKey, author] of Array.from(authors.entries())) {
         const decision = decisionsMap.get(authorKey);
         if (!decision) {
           console.warn(`No decision for author: ${authorKey}`);
+          continue;
+        }
+
+        // ⭐ Пропускаем, если выбрано "Игнорировать"
+        if (decision.action === 'skip') {
+          console.log(`Skipping author: ${authorKey}`);
           continue;
         }
 
@@ -155,8 +190,8 @@ export async function POST(
               tg_first_name: tgFirstName, // Telegram имя (из импорта)
               tg_last_name: tgLastName, // Telegram фамилия (из импорта)
               username: author.username,
-              tg_user_id: null,
-              source: 'html_import',
+              tg_user_id: author.userId || null, // ⭐ Сохраняем Telegram User ID если есть (из JSON)
+              source: 'import', // Общий источник для всех импортов
               created_at: author.firstMessageDate,
               last_activity_at: author.lastMessageDate,
             })
@@ -170,19 +205,20 @@ export async function POST(
 
           participantId = newParticipant.id;
           newParticipantsCount++;
-
-          // Создаем связь с группой
-          await supabaseAdmin
-            .from('participant_groups')
-            .upsert({
-              participant_id: participantId,
-              tg_group_id: group.tg_chat_id,
-              joined_at: author.firstMessageDate,
-              is_active: true,
-            }, {
-              onConflict: 'participant_id,tg_group_id',
-            });
         }
+
+        // ⭐ ВАЖНО: Создаем связь с группой для ВСЕХ участников (и новых, и существующих)
+        // Это позволяет добавить в эту группу участников, которые уже есть в других группах организации
+        await supabaseAdmin
+          .from('participant_groups')
+          .upsert({
+            participant_id: participantId,
+            tg_group_id: group.tg_chat_id,
+            joined_at: author.firstMessageDate,
+            is_active: true,
+          }, {
+            onConflict: 'participant_id,tg_group_id',
+          });
 
         participantMap.set(authorKey, participantId);
       }
@@ -198,8 +234,11 @@ export async function POST(
         const messageBatch = parsingResult.messages.slice(i, i + BATCH_SIZE);
 
         const activityEvents = messageBatch
-          .map(msg => {
-            const authorKey = msg.authorUsername || msg.authorName;
+          .map((msg: any) => {
+            // ⭐ Используем ту же логику ключа, что и в парсере
+            const authorKey = msg.authorUserId 
+              ? `user_${msg.authorUserId}` 
+              : (msg.authorUsername || msg.authorName);
             const participantId = participantMap.get(authorKey);
 
             if (!participantId) {
@@ -210,36 +249,42 @@ export async function POST(
             return {
               org_id: orgId,
               event_type: 'message',
-              participant_id: participantId,
-              tg_user_id: null, // Нет ID из HTML
+              tg_user_id: (msg as any).authorUserId || null, // ⭐ Используем Telegram User ID если есть (из JSON)
               tg_chat_id: group.tg_chat_id,
-              message_id: null,
+              message_id: (msg as any).messageId || null, // Message ID тоже сохраняем из JSON
               chars_count: msg.charCount,
               links_count: msg.linksCount,
               mentions_count: msg.mentionsCount,
               created_at: msg.timestamp.toISOString(),
-              import_source: 'html_import',
+              import_source: 'html_import', // Используем 'html_import' для любых файловых импортов (JSON/HTML)
               import_batch_id: batchId,
               meta: {
                 author_name: msg.authorName,
                 author_username: msg.authorUsername,
                 text_preview: msg.text.substring(0, 100),
+                // ⭐ Сохраняем формат в meta для отладки
+                import_format: isJson ? 'json' : 'html',
               },
             };
           })
-          .filter((e): e is NonNullable<typeof e> => e !== null);
+          .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
         if (activityEvents.length > 0) {
+          console.log(`📝 Attempting to insert ${activityEvents.length} activity events...`);
+          console.log(`📝 First event sample:`, JSON.stringify(activityEvents[0], null, 2));
+          
           const { data, error: insertError } = await supabaseAdmin
             .from('activity_events')
             .insert(activityEvents as any)
             .select('id') as { data: any[] | null; error: any };
 
+          console.log(`📝 Insert result: data=${data?.length || 0} records, error=${insertError ? 'YES' : 'NO'}`);
+          
           if (insertError) {
-            console.error('Error inserting activity events:', insertError);
+            console.error('❌ Error inserting activity events:', insertError);
             // Проверяем дубликаты
             if (insertError.code === '23505') {
-              console.warn('Some messages were duplicates, continuing...');
+              console.warn('⚠️ Some messages were duplicates, continuing...');
               const insertedCount = data?.length || 0;
               skippedCount += activityEvents.length - insertedCount;
               importedCount += insertedCount;
@@ -247,7 +292,34 @@ export async function POST(
               throw insertError;
             }
           } else {
-            importedCount += data?.length || 0;
+            const insertedCount = data?.length || 0;
+            console.log(`✅ Successfully inserted ${insertedCount} activity events`);
+            console.log(`✅ Inserted IDs:`, data?.map(d => d.id).join(', '));
+            importedCount += insertedCount;
+            
+            if (insertedCount === 0 && activityEvents.length > 0) {
+              console.warn(`⚠️ WARNING: Tried to insert ${activityEvents.length} events but got 0 back!`);
+            }
+            
+            // 🔍 ДИАГНОСТИКА: Проверяем, действительно ли записи в БД
+            if (insertedCount > 0) {
+              const { data: checkData, error: checkError } = await supabaseAdmin
+                .from('activity_events')
+                .select('id, tg_chat_id, org_id, event_type, tg_user_id, created_at')
+                .eq('import_batch_id', batchId)
+                .limit(3);
+              
+              console.log(`🔍 Verification check - found ${checkData?.length || 0} records with batch_id=${batchId}`);
+              if (checkData && checkData.length > 0) {
+                console.log(`🔍 Sample record:`, JSON.stringify(checkData[0], null, 2));
+              } else {
+                console.error(`❌ CRITICAL: Records were inserted but cannot be found by batch_id!`);
+              }
+              
+              if (checkError) {
+                console.error(`❌ Error checking records:`, checkError);
+              }
+            }
           }
         }
 

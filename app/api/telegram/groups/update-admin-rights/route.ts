@@ -187,13 +187,13 @@ export async function POST(request: Request) {
       // Не критично, продолжаем
     }
 
-    // ✅ НОВОЕ: Добавляем ВСЕ группы из telegram_groups где бот подключен
+    // ✅ НОВОЕ: Добавляем ВСЕ группы из telegram_groups где бот подключен или pending
     try {
       console.log('Scanning telegram_groups for groups with connected bot...');
       const { data: connectedGroups } = await supabaseService
         .from('telegram_groups')
         .select('tg_chat_id')
-        .eq('bot_status', 'connected');
+        .in('bot_status', ['connected', 'pending']);
       
       connectedGroups?.forEach(record => {
         if (record?.tg_chat_id !== undefined && record?.tg_chat_id !== null) {
@@ -267,7 +267,6 @@ export async function POST(request: Request) {
           const upsertPayload: Record<string, any> = {
             tg_chat_id: chatId,
             tg_user_id: userId,
-            user_telegram_account_id: null, // Будет заполнено через sync_telegram_admins
             is_owner: isOwner,
             is_admin: isAdmin,
             custom_title: admin.custom_title || null,

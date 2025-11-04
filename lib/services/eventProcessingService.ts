@@ -71,25 +71,6 @@ export class EventProcessingService {
       console.error('Unexpected error fetching mapping orgs for chat', chatIdStr, error);
     }
 
-    try {
-      const { data: baseGroups, error: baseError } = await this.supabase
-        .from('telegram_groups')
-        .select('org_id')
-        .filter('tg_chat_id::text', 'eq', chatIdStr);
-
-      if (baseError && baseError.code !== 'PGRST116') {
-        console.error('Error fetching base group for chat', chatIdStr, baseError);
-      }
-
-      (baseGroups || []).forEach(group => {
-        if (group?.org_id) {
-          orgIds.add(group.org_id);
-        }
-      });
-    } catch (error) {
-      console.error('Unexpected error fetching base group orgs for chat', chatIdStr, error);
-    }
-
     const orgList = Array.from(orgIds);
 
     if (orgList.length === 0) {

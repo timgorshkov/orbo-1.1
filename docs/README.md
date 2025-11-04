@@ -27,6 +27,21 @@
 - **[PARTICIPANT_SCORING_LOGIC.md](./PARTICIPANT_SCORING_LOGIC.md)** — автоматический скоринг участников
 - **[PARTICIPANT_SCORING_IMPLEMENTATION_SUMMARY.md](./PARTICIPANT_SCORING_IMPLEMENTATION_SUMMARY.md)** — сводка реализации
 
+### 📊 Дашборд и аналитика
+- **[DASHBOARD_ATTENTION_ZONES_FIX.md](./DASHBOARD_ATTENTION_ZONES_FIX.md)** — логика дашборда и зон внимания
+- **[TELEGRAM_GROUPS_VERIFICATION_COLUMNS_ANALYSIS.md](./TELEGRAM_GROUPS_VERIFICATION_COLUMNS_ANALYSIS.md)** — анализ legacy столбцов верификации
+
+### 📊 Стратегия и развитие (НОВОЕ — 1 ноября 2025)
+- **[REVISED_ROADMAP_SOLO_2025-11-01.md](./REVISED_ROADMAP_SOLO_2025-11-01.md)** — ⭐ **ACTIVE ROADMAP** — 16-недельный план (solo-founder)
+- **[PRIORITY_CHANGES_SUMMARY.md](./PRIORITY_CHANGES_SUMMARY.md)** — сводка изменений приоритетов
+- **[STRATEGIC_ANALYSIS_2025-11-01.md](./STRATEGIC_ANALYSIS_2025-11-01.md)** — комплексный стратегический анализ
+- **[Audit.md](./Audit.md)** — функциональный аудит платформы
+- **[Gap-Analysis.md](./Gap-Analysis.md)** — анализ разрывов между стратегией и реализацией
+- **[Roadmap2.md](./Roadmap2.md)** — 12-недельный roadmap (original, superseded)
+- **[Tech-Notes.md](./Tech-Notes.md)** — технические заметки
+- **[Runbook.md](./Runbook.md)** — операционное руководство
+- **[Security_and_compliance.md](./Security_and_compliance.md)** — безопасность и compliance
+
 ---
 
 ## 🧹 История чистки
@@ -89,5 +104,5 @@ orbo-1.1/
 
 ---
 
-**Последнее обновление:** 31 октября 2025 (Хэллоуин 🎃)
+**Последнее обновление:** 4 ноября 2025
 

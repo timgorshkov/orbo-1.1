@@ -123,9 +123,7 @@ export async function POST(request: Request) {
             title: chatInfo.result.title,
             invite_link: chatInfo.result.invite_link || null,
             bot_status: 'connected',
-            verified_by_user_id: user.id,
-            verification_status: 'verified',
-            last_verification_at: new Date().toISOString(),
+            // Legacy verification fields removed in migration 080
             member_count: chatInfo.result.member_count || 0,
             created_at: new Date().toISOString()
           })
@@ -147,9 +145,7 @@ export async function POST(request: Request) {
           .update({
             title: chatInfo.result.title,
             invite_link: chatInfo.result.invite_link || null,
-            verified_by_user_id: user.id,
-            verification_status: 'verified',
-            last_verification_at: new Date().toISOString(),
+            // Legacy verification fields removed in migration 080
             member_count: chatInfo.result.member_count || 0
           })
           .eq('id', existingGroup.id)

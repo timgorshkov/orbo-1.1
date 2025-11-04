@@ -15,7 +15,6 @@ type TelegramGroupSettings = {
   id: number;
   tg_chat_id: number;
   title: string | null;
-  invite_link: string | null;
   bot_status: string | null;
   welcome_message: string | null;
   notification_enabled: boolean;
@@ -976,18 +975,6 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       {group?.last_sync_at && (
                         <p className="text-xs text-neutral-500 mt-1">
                           Последняя синхронизация: {new Date(group.last_sync_at).toLocaleString('ru')}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="text-sm text-neutral-600 block mb-2">
-                        Ссылка для приглашения
-                      </label>
-                      <Input value={group?.invite_link || ''} readOnly className="bg-gray-50" />
-                      {!group?.invite_link && group?.bot_status !== 'connected' && (
-                        <p className="text-xs text-amber-500 mt-1">
-                          Для создания ссылки-приглашения бот должен быть администратором
                         </p>
                       )}
                     </div>

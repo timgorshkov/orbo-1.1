@@ -160,7 +160,6 @@ export async function POST(request: Request) {
             .upsert({
               tg_chat_id: Number(group.tg_chat_id),
               tg_user_id: userId,
-              user_telegram_account_id: null, // Будет заполнено через sync_telegram_admins
               is_owner: isOwner,
               is_admin: isAdmin,
               custom_title: admin.custom_title || null,
@@ -209,9 +208,9 @@ export async function POST(request: Request) {
           const { error: updateError } = await supabaseService
             .from('telegram_groups')
             .update({
-              verified_by_user_id: accounts[0].user_id,
-              verification_status: 'verified',
-              last_verification_at: new Date().toISOString()
+              // Legacy verification fields removed in migration 080
+              // bot_status is updated automatically via my_chat_member webhook
+              last_sync_at: new Date().toISOString()
             })
             .eq('id', group.id);
             

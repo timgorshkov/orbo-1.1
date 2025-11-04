@@ -15,7 +15,6 @@ type TelegramGroup = {
   id: number;
   tg_chat_id: number;
   title: string | null;
-  invite_link: string | null;
   bot_status: 'connected' | 'pending' | 'inactive' | null;
   last_sync_at: string | null;
 };
@@ -33,7 +32,6 @@ export default async function TelegramPage({ params }: { params: { org: string }
           id,
           tg_chat_id,
           title,
-          invite_link,
           bot_status,
           last_sync_at
         )

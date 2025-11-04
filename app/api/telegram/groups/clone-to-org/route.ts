@@ -128,20 +128,12 @@ export async function POST(request: Request) {
         });
       
       if (linkError) {
-        // Если таблицы нет - значит миграция не применена
         if (linkError.code === '42P01') {
-          console.warn('Mapping table org_telegram_groups not found, falling back to direct update');
-          const { error: updateError } = await supabaseService
-            .from('telegram_groups')
-            .update({ org_id: orgId })
-            .eq('id', group.id);
-          if (updateError) {
-            console.error('Fallback update failed:', updateError);
-            return NextResponse.json({
-              error: 'Failed to link group to organization',
-              details: updateError
-            }, { status: 500 });
-          }
+          console.error('Mapping table org_telegram_groups not found - database schema issue');
+          return NextResponse.json({
+            error: 'Database schema error: org_telegram_groups table missing',
+            details: linkError
+          }, { status: 500 });
         } else if (linkError.code === '23505') {
           console.log('Mapping already exists, returning success');
         } else {
@@ -159,22 +151,11 @@ export async function POST(request: Request) {
       });
     } catch (linkEx: any) {
       if (linkEx.code === '42P01') {
-        console.warn('Mapping table missing during exception; falling back');
-        const { error: updateError } = await supabaseService
-          .from('telegram_groups')
-          .update({ org_id: orgId })
-          .eq('id', group.id);
-        if (updateError) {
-          console.error('Fallback update failed:', updateError);
-          return NextResponse.json({
-            error: 'Failed to link group to organization',
-            details: updateError
-          }, { status: 500 });
-        }
+        console.error('Mapping table org_telegram_groups not found - database schema issue');
         return NextResponse.json({
-          success: true,
-          message: 'Group linked to organization'
-        });
+          error: 'Database schema error: org_telegram_groups table missing',
+          details: linkEx instanceof Error ? linkEx.message : String(linkEx)
+        }, { status: 500 });
       }
       console.error('Exception during linking:', linkEx);
       return NextResponse.json({

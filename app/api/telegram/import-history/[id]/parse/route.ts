@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
+import { TelegramJsonParser, type ParsedJsonAuthor } from '@/lib/services/telegramJsonParser';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,7 @@ interface ParticipantMatch {
   // Данные из импорта
   importName: string;
   importUsername?: string;
+  importUserId?: number; // ⭐ Telegram User ID из JSON (для правильного ключа)
   importMessageCount: number;
   importDateRange: {
     start: Date;
@@ -95,34 +97,59 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Проверяем тип файла
-    if (!file.name.endsWith('.html') && file.type !== 'text/html') {
+    // Определяем формат файла
+    const isJson = file.name.endsWith('.json') || file.type === 'application/json';
+    const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
+    
+    if (!isJson && !isHtml) {
       return NextResponse.json({
         error: 'Invalid file type',
-        message: 'Пожалуйста, загрузите HTML файл экспорта Telegram',
+        message: 'Пожалуйста, загрузите JSON или HTML файл экспорта Telegram',
+        hint: 'Рекомендуется JSON формат - он содержит Telegram User ID для точного сопоставления участников'
       }, { status: 400 });
     }
 
     // Читаем содержимое файла
-    const htmlContent = await file.text();
+    const fileContent = await file.text();
 
-    // Валидируем HTML
-    const validation = TelegramHistoryParser.validate(htmlContent);
-    if (!validation.valid) {
-      return NextResponse.json({
-        error: 'Invalid Telegram export',
-        message: validation.error,
-      }, { status: 400 });
+    console.log(`Parsing Telegram history from ${file.name} (${file.size} bytes, format: ${isJson ? 'JSON' : 'HTML'})`);
+
+    let parsingResult: any;
+    let authors: Array<{ name: string; userId?: number; username?: string; messageCount: number; firstMessageDate: Date; lastMessageDate: Date }>;
+    
+    if (isJson) {
+      // ⭐ Parse JSON (preferred format with user_id)
+      const validation = TelegramJsonParser.validate(fileContent);
+      if (!validation.valid) {
+        return NextResponse.json({
+          error: 'Invalid Telegram JSON export',
+          message: validation.error,
+        }, { status: 400 });
+      }
+
+      parsingResult = TelegramJsonParser.parse(fileContent);
+      authors = Array.from(parsingResult.authors.values());
+      
+      console.log(`✅ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (JSON format with user IDs)`);
+    } else {
+      // Parse HTML (legacy format without user_id)
+      const validation = TelegramHistoryParser.validate(fileContent);
+      if (!validation.valid) {
+        return NextResponse.json({
+          error: 'Invalid Telegram HTML export',
+          message: validation.error,
+          hint: 'Попробуйте использовать JSON формат для лучшего сопоставления участников'
+        }, { status: 400 });
+      }
+
+      parsingResult = TelegramHistoryParser.parse(fileContent);
+      authors = Array.from(parsingResult.authors.values());
+      
+      console.log(`⚠️ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (HTML format - no user IDs)`);
     }
 
-    console.log(`Parsing Telegram history from ${file.name} (${file.size} bytes)`);
-
-    // Парсим HTML
-    const parsingResult = TelegramHistoryParser.parse(htmlContent);
-
-    console.log(`Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors`);
-
-    // Получаем существующих участников группы
+    // Получаем существующих участников организации (не только этой группы!)
+    // Это позволяет находить участников, которые есть в других группах организации
     const { data: existingParticipants, error: participantsError } = await supabaseAdmin
       .from('participants')
       .select(`
@@ -132,11 +159,9 @@ export async function POST(
         tg_user_id,
         tg_first_name,
         tg_last_name,
-        last_activity_at,
-        participant_groups!inner(tg_group_id)
+        last_activity_at
       `)
-      .eq('org_id', orgId)
-      .eq('participant_groups.tg_group_id', group.tg_chat_id);
+      .eq('org_id', orgId);
 
     if (participantsError) {
       console.error('Error fetching participants:', participantsError);
@@ -163,7 +188,7 @@ export async function POST(
     // Сопоставляем авторов из импорта с существующими участниками
     const matches: ParticipantMatch[] = [];
 
-    for (const [authorKey, author] of Array.from(parsingResult.authors.entries())) {
+    for (const author of authors) {
       // Пропускаем ботов
       if (isBot(author.name, author.username)) {
         console.log(`Skipping bot: ${author.name} (@${author.username || 'no username'})`);
@@ -173,8 +198,13 @@ export async function POST(
       const match = findParticipantMatch(
         author,
         existingParticipants || [],
-        messageCountMap
+        messageCountMap,
+        isJson // ⭐ Pass format flag to enable user_id matching
       );
+      // ⭐ Добавляем userId для JSON формата
+      if (isJson && author.userId) {
+        match.importUserId = author.userId;
+      }
       matches.push(match);
     }
 
@@ -227,13 +257,52 @@ export async function POST(
  * Находит совпадение участника из импорта с существующими
  */
 function findParticipantMatch(
-  importAuthor: { name: string; username?: string; messageCount: number; firstMessageDate: Date; lastMessageDate: Date },
+  importAuthor: { name: string; userId?: number; username?: string; messageCount: number; firstMessageDate: Date; lastMessageDate: Date },
   existingParticipants: any[],
-  messageCountMap: Map<string, number>
+  messageCountMap: Map<string, number>,
+  hasUserId: boolean = false
 ): ParticipantMatch {
   let bestMatch: any = null;
   let matchType: 'exact' | 'username' | 'fuzzy' | 'none' = 'none';
   let confidence = 0;
+
+  // ⭐ 0. PERFECT MATCH: По Telegram User ID (только для JSON формата)
+  if (hasUserId && importAuthor.userId) {
+    const userIdMatch = existingParticipants.find(
+      p => p.tg_user_id === importAuthor.userId
+    );
+    if (userIdMatch) {
+      bestMatch = userIdMatch;
+      matchType = 'exact';
+      confidence = 100; // 💯 Perfect match!
+      console.log(`✅ Perfect match by user_id: ${importAuthor.name} (${importAuthor.userId})`);
+      
+      // Early return - no need for other checks
+      const result: ParticipantMatch = {
+        importName: importAuthor.name,
+        importUsername: importAuthor.username,
+        importMessageCount: importAuthor.messageCount,
+        importDateRange: {
+          start: importAuthor.firstMessageDate,
+          end: importAuthor.lastMessageDate,
+        },
+        matchType,
+        matchConfidence: confidence,
+        recommendedAction: 'merge',
+        existingParticipant: {
+          id: userIdMatch.id,
+          full_name: userIdMatch.full_name,
+          username: userIdMatch.username,
+          tg_user_id: userIdMatch.tg_user_id,
+          currentMessageCount: messageCountMap.get(userIdMatch.id) || 0,
+          last_activity_at: userIdMatch.last_activity_at,
+        },
+      };
+      return result;
+    } else {
+      console.log(`⚠️ No user_id match for ${importAuthor.name} (${importAuthor.userId}) - trying other methods`);
+    }
+  }
 
   // 1. Точное совпадение по username
   if (importAuthor.username) {

@@ -51,7 +51,7 @@ export async function GET(
     ).length || 0
 
     const { count: materialsCount } = await adminSupabase
-      .from('materials')
+      .from('material_pages')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
 

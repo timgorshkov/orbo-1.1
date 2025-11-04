@@ -306,24 +306,8 @@ export async function POST(request: Request) {
       }
 
       if (linkError?.code === '42P01') {
-        console.warn('Mapping table org_telegram_groups not found; falling back to legacy update');
-        const { data: legacyMapping, error: legacyError } = await supabaseService
-          .from('telegram_groups')
-          .update({ org_id: orgId })
-          .eq('id', groupId)
-          .select()
-          .single();
-
-        if (legacyError) {
-          console.error('Legacy fallback update failed:', legacyError);
-          return NextResponse.json({ error: 'Failed to link group to organization (legacy fallback)' }, { status: 500 });
-        }
-
-        return NextResponse.json({
-          success: true,
-          message: 'Group linked to organization (legacy)',
-          group: legacyMapping
-        });
+        console.error('Mapping table org_telegram_groups not found - database schema issue');
+        return NextResponse.json({ error: 'Database schema error: org_telegram_groups table missing' }, { status: 500 });
       } else {
         console.error('Error creating group mapping:', linkError);
         return NextResponse.json({ 

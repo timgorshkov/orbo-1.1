@@ -187,23 +187,10 @@ export async function checkStatus(formData: FormData) {
             .update({
               bot_status: isAdmin ? 'connected' : 'pending',
               title: chatInfo.result.title || group.title,
-              last_sync_at: new Date().toISOString(),
-              analytics_enabled: true // Включаем аналитику
+              last_sync_at: new Date().toISOString()
+              // analytics_enabled removed in migration 080 (never read)
             })
             .eq('id', group.id)
-            
-          // Если бот админ, можно получить ссылку-приглашение
-          if (isAdmin) {
-            const inviteLink = await telegramService.createChatInviteLink(group.tg_chat_id)
-            if (inviteLink?.result?.invite_link) {
-              await supabase
-                .from('telegram_groups')
-                .update({
-                  invite_link: inviteLink.result.invite_link
-                })
-                .eq('id', group.id)
-            }
-          }
         }
       } catch (e) {
         console.error(`Error checking group ${group.tg_chat_id}:`, e)

@@ -1,6 +1,7 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import GroupsTable from '@/components/superadmin/groups-table'
+import { TelegramHealthStatus } from '@/components/superadmin/telegram-health-status'
 
 export default async function SuperadminGroupsPage() {
   await requireSuperadmin()
@@ -84,10 +85,10 @@ export default async function SuperadminGroupsPage() {
       title: group.title,
       tg_chat_id: group.tg_chat_id,
       bot_status: group.bot_status,
-      verification_status: group.verification_status,
+      verification_status: group.verification_status, // Legacy, для отображения в таблице
       created_at: group.last_sync_at || null,
       has_bot: group.bot_status === 'connected',
-      has_admin_rights: group.verification_status === 'verified',
+      has_admin_rights: group.bot_status === 'connected', // FIX: используем bot_status вместо verification_status
       participants_count: group.participants_count || 0,
       organizations_count: group.org_telegram_groups?.length || 0,
       last_activity_at: group.last_activity
@@ -96,11 +97,18 @@ export default async function SuperadminGroupsPage() {
   
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
-        <p className="text-gray-600 mt-1">
-          Все Telegram группы с метриками
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
+          <p className="text-gray-600 mt-1">
+            Все Telegram группы с метриками
+          </p>
+        </div>
+        
+        {/* Telegram Webhook Health Status */}
+        <div className="w-80 flex-shrink-0">
+          <TelegramHealthStatus />
+        </div>
       </div>
       
       <GroupsTable groups={formattedGroups} />

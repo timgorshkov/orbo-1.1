@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 interface ParticipantMatch {
   importName: string;
   importUsername?: string;
+  importUserId?: number; // ⭐ Telegram User ID из JSON
   importMessageCount: number;
   importDateRange: {
     start: string;
@@ -54,7 +55,8 @@ interface ImportHistoryProps {
 type ImportDecision = {
   importName: string;
   importUsername?: string;
-  action: 'merge' | 'create_new';
+  importUserId?: number; // ⭐ Telegram User ID из JSON
+  action: 'merge' | 'create_new' | 'skip'; // ⭐ Добавлена опция "Игнорировать"
   targetParticipantId?: string;
 };
 
@@ -67,6 +69,13 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [decisions, setDecisions] = useState<Map<string, ImportDecision>>(new Map());
+
+  // ⭐ Вспомогательная функция для формирования ключа (синхронизировано с backend)
+  const getAuthorKey = (match: ParticipantMatch): string => {
+    return match.importUserId 
+      ? `user_${match.importUserId}` 
+      : (match.importUsername || match.importName);
+  };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const selectedFile = acceptedFiles[0];
@@ -98,10 +107,13 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
       // Инициализируем решения рекомендуемыми действиями
       const initialDecisions = new Map<string, ImportDecision>();
       result.data.matches.forEach((match: ParticipantMatch) => {
-        const key = match.importUsername || match.importName;
+        const key = match.importUserId 
+          ? `user_${match.importUserId}` 
+          : (match.importUsername || match.importName);
         initialDecisions.set(key, {
           importName: match.importName,
           importUsername: match.importUsername,
+          importUserId: match.importUserId,
           action: match.recommendedAction,
           targetParticipantId: match.existingParticipant?.id,
         });
@@ -117,34 +129,47 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
+      'application/json': ['.json'],
       'text/html': ['.html'],
     },
-    maxSize: 2 * 1024 * 1024, // 2MB
+    maxSize: 5 * 1024 * 1024, // 5MB (JSON files are typically larger)
     multiple: false,
   });
 
-  const handleDecisionChange = (key: string, action: 'merge' | 'create_new') => {
-    const match = preview?.matches.find(m => (m.importUsername || m.importName) === key);
+  const handleDecisionChange = (key: string, action: 'merge' | 'create_new' | 'skip') => {
+    const match = preview?.matches.find(m => getAuthorKey(m) === key);
     if (!match) return;
 
     const newDecisions = new Map(decisions);
     newDecisions.set(key, {
       importName: match.importName,
       importUsername: match.importUsername,
+      importUserId: match.importUserId,
       action,
       targetParticipantId: action === 'merge' ? match.existingParticipant?.id : undefined,
     });
     setDecisions(newDecisions);
   };
 
-  const handleBulkAction = (action: 'merge_all' | 'create_all') => {
+  const handleBulkAction = (action: 'merge_all' | 'create_all' | 'skip_all') => {
     const newDecisions = new Map<string, ImportDecision>();
     preview?.matches.forEach(match => {
-      const key = match.importUsername || match.importName;
+      const key = getAuthorKey(match);
+      let finalAction: 'merge' | 'create_new' | 'skip';
+      
+      if (action === 'skip_all') {
+        finalAction = 'skip';
+      } else if (action === 'merge_all' && match.existingParticipant) {
+        finalAction = 'merge';
+      } else {
+        finalAction = 'create_new';
+      }
+      
       newDecisions.set(key, {
         importName: match.importName,
         importUsername: match.importUsername,
-        action: action === 'merge_all' && match.existingParticipant ? 'merge' : 'create_new',
+        importUserId: match.importUserId,
+        action: finalAction,
         targetParticipantId: action === 'merge_all' ? match.existingParticipant?.id : undefined,
       });
     });
@@ -200,23 +225,43 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ol className="list-decimal list-inside space-y-2 text-sm">
-            <li>Откройте группу в <strong>Telegram Desktop</strong></li>
-            <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
-            <li>Выберите формат: <strong>HTML</strong></li>
-            <li className="text-amber-600 font-medium">
-              ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
-            </li>
-            <li>Нажмите <strong>Export</strong> и дождитесь завершения</li>
-            <li>Загрузите полученный <code className="bg-neutral-100 px-2 py-1 rounded">messages.html</code> сюда</li>
-          </ol>
-          
-          <Alert className="mt-4 bg-blue-50 border-blue-200">
-            <AlertDescription className="text-sm text-blue-800">
-              💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB. 
-              Если получилось несколько файлов, загружайте их по одному. Система автоматически пропустит дубликаты.
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <Alert className="bg-green-50 border-green-200">
+              <AlertDescription className="text-sm text-green-800">
+                ✅ <strong>Рекомендуем JSON формат:</strong> содержит ID участников для точной идентификации!
+              </AlertDescription>
+            </Alert>
+
+            <div>
+              <h3 className="font-semibold mb-2 text-green-700">📱 JSON (рекомендуется)</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm ml-4">
+                <li>Откройте группу в <strong>Telegram Desktop</strong></li>
+                <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
+                <li>Выберите формат: <strong>JSON</strong> ✨</li>
+                <li className="text-amber-600 font-medium">
+                  ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
+                </li>
+                <li>Нажмите <strong>Export</strong> и дождитесь завершения</li>
+                <li>Загрузите полученный <code className="bg-neutral-100 px-2 py-1 rounded">result.json</code> сюда</li>
+              </ol>
+            </div>
+
+            <div className="pt-2 border-t">
+              <h3 className="font-semibold mb-2 text-neutral-600">📄 HTML (запасной вариант)</h3>
+              <p className="text-sm text-neutral-600 ml-4">
+                Если JSON недоступен, можно использовать HTML формат. 
+                Выполните те же шаги, но выберите <strong>HTML</strong> вместо JSON.
+                Загрузите файл <code className="bg-neutral-100 px-2 py-1 rounded">messages.html</code>.
+              </p>
+            </div>
+            
+            <Alert className="bg-blue-50 border-blue-200">
+              <AlertDescription className="text-sm text-blue-800">
+                💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB. 
+                Если получилось несколько файлов, загружайте их по одному. Система автоматически пропустит дубликаты.
+              </AlertDescription>
+            </Alert>
+          </div>
         </CardContent>
       </Card>
 
@@ -226,7 +271,7 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
           <CardHeader>
             <CardTitle>Загрузить файл истории</CardTitle>
             <CardDescription>
-              Макс. размер: 2MB. Поддерживаются только HTML файлы.
+              Макс. размер: 5MB. Поддерживаются JSON и HTML файлы экспорта из Telegram.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -253,10 +298,10 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
                 ) : (
                   <>
                     <p className="text-lg font-medium">
-                      Перетащите HTML файл сюда или нажмите для выбора
+                      Перетащите файл экспорта сюда или нажмите для выбора
                     </p>
                     <p className="text-sm text-neutral-500">
-                      Принимаются файлы формата .html размером до 2MB
+                      Принимаются файлы формата .json (рекомендуется) или .html размером до 5MB
                     </p>
                   </>
                 )}
@@ -314,37 +359,41 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
             </CardContent>
           </Card>
 
-          {/* Групповые действия */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Групповые действия</CardTitle>
-              <CardDescription>
-                Примените действие ко всем участникам сразу
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleBulkAction('merge_all')}
-              >
-                Добавить к распознанным
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleBulkAction('create_all')}
-              >
-                Создать всех новыми
-              </Button>
-            </CardContent>
-          </Card>
-
           {/* Таблица участников */}
           <Card>
             <CardHeader>
-              <CardTitle>Участники ({preview.matches.length})</CardTitle>
-              <CardDescription>
-                Выберите действие для каждого участника
-              </CardDescription>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Участники ({preview.matches.length})</CardTitle>
+                  <CardDescription>
+                    Выберите действие для каждого участника
+                  </CardDescription>
+                </div>
+                {/* Групповые действия - компактно в заголовке */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('merge_all')}
+                  >
+                    Добавить всех к найденным
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('create_all')}
+                  >
+                    Создать всех новыми
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkAction('skip_all')}
+                  >
+                    Игнорировать всех
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -361,7 +410,7 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
                   </thead>
                   <tbody>
                     {preview.matches.map((match) => {
-                      const key = match.importUsername || match.importName;
+                      const key = getAuthorKey(match);
                       const decision = decisions.get(key);
 
                       return (
@@ -415,7 +464,7 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
                           <td className="p-3">
                             <select
                               value={decision?.action || 'create_new'}
-                              onChange={(e) => handleDecisionChange(key, e.target.value as 'merge' | 'create_new')}
+                              onChange={(e) => handleDecisionChange(key, e.target.value as 'merge' | 'create_new' | 'skip')}
                               className="text-sm border rounded px-2 py-1"
                               disabled={!match.existingParticipant && decision?.action === 'merge'}
                             >
@@ -423,6 +472,7 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
                                 <option value="merge">Добавить к существующему</option>
                               )}
                               <option value="create_new">Создать нового</option>
+                              <option value="skip">Игнорировать</option>
                             </select>
                           </td>
                         </tr>

@@ -147,40 +147,17 @@ export async function GET(request: Request) {
           }
 
           try {
-            const query = supabaseService
+            // Простой запрос без фильтра is_archived (колонка удалена из telegram_groups)
+            const { data, error } = await supabaseService
               .from('telegram_groups')
               .select('*')
               .in('tg_chat_id', ids);
 
-            if (!includeArchived) {
-              try {
-                query.eq('is_archived', false);
-              } catch (filterError: any) {
-                // Если столбца нет, просто игнорируем фильтр
-                console.warn('Failed to apply is_archived filter, possibly missing column:', safeErrorJson(filterError));
-              }
-            }
-
-            const { data, error } = await query;
-
             if (error) {
-              if (error.code === '42703') {
-                console.warn('Column missing while fetching groups, falling back without archive filter');
-                const { data: fallbackData, error: fallbackError } = await supabaseService
-                  .from('telegram_groups')
-                  .select('*')
-                  .in('tg_chat_id', ids);
-
-                return {
-                  data: (fallbackData || []).filter(group => includeArchived || group?.is_archived !== true),
-                  error: fallbackError
-                };
-              }
-
               return { data: [] as any[], error };
             }
 
-            return { data: (data || []).filter(group => includeArchived || group?.is_archived !== true), error: null };
+            return { data: data || [], error: null };
           } catch (fetchError: any) {
             return { data: [] as any[], error: fetchError };
           }
@@ -395,7 +372,7 @@ export async function GET(request: Request) {
             org_id: groupAny.org_id,
             is_admin: hasAdminRights ? right.is_admin : false,
             is_owner: hasAdminRights ? right.is_owner : false,
-            admin_verified: hasAdminRights, // 🔴 НОВОЕ: флаг для фронтенда
+            admin_verified: botHasAdminRights, // Флаг, что БОТ имеет права админа (для UI)
             verification_status: groupAny.verification_status
           };
 
@@ -408,19 +385,20 @@ export async function GET(request: Request) {
             org_id: groupAny.org_id,
             mappedOrgIds: Array.from(mappedOrgIds),
             currentOrgId: orgId,
-            willBeInExisting: isLinkedToOrg && botHasAdminRights,
-            willBeInAvailable: !isLinkedToOrg && botHasAdminRights
+            willBeInExisting: isLinkedToOrg,
+            willBeInAvailable: !isLinkedToOrg && hasAdminRights
           });
 
           // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь реально админ
           if (isLinkedToOrg) {
             // Группа уже привязана к этой организации
             existingGroups.push(normalizedGroup);
-          } else if (hasAdminRights && botHasAdminRights) {
-            // Группа доступна для добавления: пользователь админ И бот подключен
+          } else if (hasAdminRights) {
+            // Группа доступна для добавления: пользователь админ (бот может быть pending)
+            // На UI будет показано предупреждение, если botHasAdminRights=false
             availableGroups.push(normalizedGroup);
           } else {
-            console.log(`Group ${groupAny.tg_chat_id} skipped: botHasAdminRights=${botHasAdminRights}, bot_status=${groupAny.bot_status}`);
+            console.log(`Group ${groupAny.tg_chat_id} skipped: hasAdminRights=${hasAdminRights}, bot_status=${groupAny.bot_status}`);
           }
         }
 
