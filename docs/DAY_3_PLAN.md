@@ -20,10 +20,10 @@
 
 **Tasks:**
 - [ ] Deploy final changes to Vercel
-  - Migration 082 (fix `check_participant_exclusion` trigger)
+  - Migration 083 (fix `check_participant_exclusion` trigger - v2)
   - Updated `parse/route.ts` (improved bot filtering)
-- [ ] Apply migration 082 in Supabase SQL Editor
-- [ ] Run cleanup script for ChatKeeperBot (optional)
+- [ ] Apply migration 083 in Supabase SQL Editor (replaces 082)
+- [ ] Run cleanup script for ChatKeeperBot
 - [ ] Smoke test:
   - Send webhook message → check `participant_messages` saved
   - Import JSON file → check texts saved

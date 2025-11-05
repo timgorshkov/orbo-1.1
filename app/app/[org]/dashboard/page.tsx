@@ -5,9 +5,13 @@ import '../../../globals.css'
 import { getOrgInfoWithClient } from '@/lib/getOrgInfo'
 import WelcomeBlock from '@/components/dashboard/welcome-block'
 import OnboardingChecklist from '@/components/dashboard/onboarding-checklist'
-import ActivityChart from '@/components/dashboard/activity-chart'
 import AttentionZones from '@/components/dashboard/attention-zones'
 import UpcomingEvents from '@/components/dashboard/upcoming-events'
+import ActivityTimeline from '@/components/analytics/activity-timeline'
+import TopContributors from '@/components/analytics/top-contributors'
+import EngagementPie from '@/components/analytics/engagement-pie'
+import KeyMetrics from '@/components/analytics/key-metrics'
+import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 
 type ActivityEvent = {
   id: number;
@@ -70,14 +74,8 @@ export default async function Dashboard({ params }: { params: { org: string } })
                 <p className="text-neutral-600 mt-1">Обзор активности вашего сообщества</p>
               </div>
 
-              {/* Activity Chart */}
-              <ActivityChart 
-                data={dashboardData.metrics.activityChart}
-                totalParticipants={dashboardData.metrics.totalParticipants}
-              />
-
-              {/* Attention Zones and Upcoming Events */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Attention Zones and Upcoming Events - Top Priority */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <AttentionZones 
                   orgId={params.org}
                   criticalEvents={dashboardData.attentionZones.criticalEvents}
@@ -89,6 +87,24 @@ export default async function Dashboard({ params }: { params: { org: string } })
                   orgId={params.org}
                   events={dashboardData.upcomingEvents}
                 />
+              </div>
+
+              {/* Analytics Section */}
+              <div className="space-y-6">
+                {/* Activity Timeline - Full Width */}
+                <ActivityTimeline orgId={params.org} days={30} />
+
+                {/* Top Contributors and Engagement */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TopContributors orgId={params.org} limit={10} />
+                  <EngagementPie orgId={params.org} />
+                </div>
+
+                {/* Key Metrics and Heatmap - Side by Side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <KeyMetrics orgId={params.org} periodDays={14} />
+                  <ActivityHeatmap orgId={params.org} days={30} />
+                </div>
               </div>
             </>
           )}

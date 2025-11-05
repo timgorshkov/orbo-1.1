@@ -1,7 +1,6 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import GroupsTable from '@/components/superadmin/groups-table'
-import { TelegramHealthStatus } from '@/components/superadmin/telegram-health-status'
 
 export default async function SuperadminGroupsPage() {
   await requireSuperadmin()
@@ -95,18 +94,11 @@ export default async function SuperadminGroupsPage() {
   
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
-          <p className="text-gray-600 mt-1">
-            Все Telegram группы с метриками
-          </p>
-        </div>
-        
-        {/* Telegram Webhook Health Status */}
-        <div className="w-80 flex-shrink-0">
-          <TelegramHealthStatus />
-        </div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
+        <p className="text-gray-600 mt-1">
+          Все Telegram группы с метриками
+        </p>
       </div>
       
       <GroupsTable groups={formattedGroups} />

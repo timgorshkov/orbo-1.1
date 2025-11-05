@@ -1,0 +1,189 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+
+interface KeyMetricsData {
+  current_participants: number;
+  current_messages: number;
+  current_engagement_rate: number;
+  current_replies: number;
+  current_reactions: number;
+  current_reply_ratio: number;
+  previous_participants: number;
+  previous_messages: number;
+  previous_engagement_rate: number;
+  previous_replies: number;
+  previous_reactions: number;
+  previous_reply_ratio: number;
+}
+
+interface KeyMetricsProps {
+  orgId: string;
+  tgChatId?: string;
+  periodDays?: number;
+}
+
+export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetricsProps) {
+  const [data, setData] = useState<KeyMetricsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams({
+          periodDays: periodDays.toString(),
+        });
+        if (tgChatId) {
+          params.append('tgChatId', tgChatId);
+        }
+
+        const response = await fetch(`/api/analytics/${orgId}/key-metrics?${params}`);
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.error || 'Failed to fetch');
+        
+        setData(result.data);
+        setError(null);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [orgId, tgChatId, periodDays]);
+
+  const calculateChange = (current: number, previous: number): number => {
+    if (previous === 0 && current === 0) return 0;
+    if (previous === 0) return 100;
+    if (current === 0) return -100;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const formatChange = (change: number): string => {
+    const sign = change > 0 ? '+' : '';
+    return `${sign}${change.toFixed(0)}%`;
+  };
+
+  const getChangeIcon = (change: number) => {
+    if (change > 0) return <TrendingUp className="w-4 h-4" />;
+    if (change < 0) return <TrendingDown className="w-4 h-4" />;
+    return <Minus className="w-4 h-4" />;
+  };
+
+  const getChangeColor = (change: number): string => {
+    if (change > 0) return 'text-green-600';
+    if (change < 0) return 'text-red-600';
+    return 'text-gray-400';
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-lg font-medium mb-4">Основные метрики</h3>
+        <div className="h-40 flex items-center justify-center text-gray-500">
+          Загрузка...
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-lg font-medium mb-4">Основные метрики</h3>
+        <div className="h-40 flex items-center justify-center text-gray-500">
+          {error || 'Нет данных'}
+        </div>
+      </div>
+    );
+  }
+
+  const participantsChange = calculateChange(data.current_participants, data.previous_participants);
+  const messagesChange = calculateChange(data.current_messages, data.previous_messages);
+  const engagementChange = data.current_engagement_rate - data.previous_engagement_rate;
+  const repliesChange = calculateChange(data.current_replies, data.previous_replies);
+  const reactionsChange = calculateChange(data.current_reactions, data.previous_reactions);
+  const replyRatioChange = data.current_reply_ratio - data.previous_reply_ratio;
+
+  const metrics = [
+    {
+      label: 'Число участников',
+      current: data.current_participants,
+      change: participantsChange,
+      format: (val: number) => val.toString(),
+    },
+    {
+      label: 'Число сообщений',
+      current: data.current_messages,
+      change: messagesChange,
+      format: (val: number) => val.toString(),
+    },
+    {
+      label: 'Вовлечённость',
+      current: data.current_engagement_rate,
+      change: engagementChange,
+      format: (val: number) => `${val.toFixed(1)}%`,
+      isPercentage: true,
+    },
+    {
+      label: 'Ответы',
+      current: data.current_replies,
+      change: repliesChange,
+      format: (val: number) => val.toString(),
+    },
+    {
+      label: 'Реакции',
+      current: data.current_reactions,
+      change: reactionsChange,
+      format: (val: number) => val.toString(),
+    },
+    {
+      label: 'Доля ответов',
+      current: data.current_reply_ratio,
+      change: replyRatioChange,
+      format: (val: number) => `${val.toFixed(1)}%`,
+      isPercentage: true,
+    },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium">Основные метрики</h3>
+        <span className="text-xs text-gray-500">За {periodDays} дней</span>
+      </div>
+
+      <div className="space-y-3">
+        {metrics.map((metric, index) => (
+          <div 
+            key={index} 
+            className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+          >
+            <div className="flex-1">
+              <p className="text-sm text-gray-600">{metric.label}</p>
+              <p className="text-2xl font-semibold mt-1">
+                {metric.format(metric.current)}
+              </p>
+            </div>
+
+            <div className={`flex items-center gap-1 text-sm font-medium ${getChangeColor(metric.change)}`}>
+              {getChangeIcon(metric.change)}
+              <span>
+                {metric.isPercentage 
+                  ? `${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}%`
+                  : formatChange(metric.change)
+                }
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+

@@ -844,6 +844,9 @@ export class EventProcessingService {
       else if (message.voice) mediaType = 'voice';
       else if ((message as any).sticker) mediaType = 'sticker';
       
+      // Extract reactions count if present
+      const reactionsCount = (message as any)?.reactions?.reduce((sum: number, r: any) => sum + (r.count || 0), 0) || 0;
+
       const baseEventData = {
         org_id: orgId,
         event_type: 'message',
@@ -856,6 +859,7 @@ export class EventProcessingService {
         chars_count: messageText.length,
         links_count: linksCount,
         mentions_count: mentionsCount,
+        reactions_count: reactionsCount,
         meta: {
           user: {
             name: fullName,
@@ -872,6 +876,10 @@ export class EventProcessingService {
             media_type: mediaType,
             is_topic_message: (message as any)?.is_topic_message ?? false
           },
+          reactions: reactionsCount > 0 ? {
+            total_count: reactionsCount,
+            reaction_types: (message as any)?.reactions?.map((r: any) => r.type?.emoji || r.type) || []
+          } : undefined,
           source: {
             type: 'webhook'
           }
@@ -1585,6 +1593,134 @@ export class EventProcessingService {
     if ((message as any).animation) return 'animation';
     if ((message as any).video_note) return 'video_note';
     return null;
+  }
+
+  /**
+   * Обрабатывает событие реакции на сообщение
+   */
+  async processReaction(reaction: any, orgId: string): Promise<void> {
+    try {
+      const chatId = reaction.chat?.id;
+      const messageId = reaction.message_id;
+      const userId = reaction.user?.id;
+      const newReactions = reaction.new_reaction || [];
+      const oldReactions = reaction.old_reaction || [];
+
+      if (!chatId || !messageId || !userId) {
+        console.log('[EventProcessing] Invalid reaction data, skipping');
+        return;
+      }
+
+      console.log('[EventProcessing] ===== PROCESSING REACTION =====');
+      console.log('[EventProcessing] OrgId:', orgId);
+      console.log('[EventProcessing] Message ID:', messageId);
+      console.log('[EventProcessing] Chat ID:', chatId);
+      console.log('[EventProcessing] User ID:', userId);
+      console.log('[EventProcessing] Old reactions:', oldReactions.length);
+      console.log('[EventProcessing] New reactions:', newReactions.length);
+
+      // 1. Ensure participant exists
+      const { data: participant } = await this.supabase
+        .from('participants')
+        .select('id')
+        .eq('tg_user_id', userId)
+        .eq('org_id', orgId)
+        .maybeSingle();
+
+      let participantId = participant?.id;
+
+      if (!participantId) {
+        // Create participant if doesn't exist
+        const { data: newParticipant, error: participantError } = await this.supabase
+          .from('participants')
+          .insert({
+            org_id: orgId,
+            tg_user_id: userId,
+            source: 'telegram',
+            last_activity_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (participantError) {
+          console.error('[EventProcessing] Error creating participant:', participantError);
+          return;
+        }
+
+        participantId = newParticipant.id;
+        console.log('[EventProcessing] Created new participant:', participantId);
+      }
+
+      // 2. Update reactions_count on the original message
+      // Count: +1 if reaction added, -1 if removed
+      const reactionDelta = newReactions.length - oldReactions.length;
+
+      if (reactionDelta !== 0) {
+        const { error: updateError } = await this.supabase.rpc('increment_reactions_count', {
+          p_org_id: orgId,
+          p_tg_chat_id: chatId,
+          p_message_id: messageId,
+          p_delta: reactionDelta
+        });
+
+        if (updateError) {
+          console.error('[EventProcessing] Error updating reactions_count:', updateError);
+        } else {
+          console.log('[EventProcessing] ✅ Updated reactions_count by', reactionDelta);
+        }
+      }
+
+      // 3. Record reaction event
+      const reactionTypes = newReactions.map((r: any) => r.emoji || r.type).filter(Boolean);
+      
+      const { error: insertError } = await this.supabase
+        .from('activity_events')
+        .insert({
+          org_id: orgId,
+          event_type: 'reaction',
+          tg_user_id: userId,
+          tg_chat_id: chatId,
+          message_id: messageId,
+          import_source: 'webhook',
+          meta: {
+            user: {
+              tg_user_id: userId
+            },
+            reaction: {
+              message_id: messageId,
+              old_reactions: oldReactions,
+              new_reactions: newReactions,
+              reaction_types: reactionTypes,
+              delta: reactionDelta
+            },
+            source: {
+              type: 'webhook'
+            }
+          },
+          created_at: new Date(reaction.date * 1000).toISOString()
+        });
+
+      if (insertError) {
+        console.error('[EventProcessing] ❌ Error inserting reaction event:', insertError);
+      } else {
+        console.log('[EventProcessing] ✅ Reaction event recorded');
+      }
+
+      // 4. Update participant last_activity_at
+      await this.supabase
+        .from('participants')
+        .update({
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('id', participantId);
+
+      // 5. Update group metrics
+      await this.updateGroupMetrics(orgId, chatId);
+
+      console.log('[EventProcessing] ===== REACTION PROCESSING COMPLETE =====');
+    } catch (error) {
+      console.error('[EventProcessing] Error processing reaction:', error);
+    }
   }
 }
 

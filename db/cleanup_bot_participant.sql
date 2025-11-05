@@ -2,7 +2,14 @@
 -- This bot was created before the isBot() fix
 -- Run this if you want to clean up existing bot records
 
--- 1. Check what will be deleted
+-- ⚠️ IMPORTANT: Apply migration 082 FIRST!
+-- Migration 082 fixes the check_participant_exclusion trigger
+-- Otherwise deletion will fail with "column org_id does not exist" error
+
+-- Step 1: Apply migration 082
+-- Run this in Supabase SQL Editor: db/migrations/082_fix_check_participant_exclusion_trigger.sql
+
+-- Step 2: Check what will be deleted
 SELECT 
   p.id,
   p.org_id,
@@ -15,8 +22,8 @@ SELECT
 FROM participants p
 WHERE p.tg_user_id = 553147242; -- ChatKeeperBot
 
--- 2. If you want to delete, uncomment below:
-/*
+-- Step 3: Delete (uncomment below after applying migration 082)
+
 BEGIN;
 
 -- Delete from participant_groups first (foreign key)
@@ -32,9 +39,8 @@ DELETE FROM participants
 WHERE tg_user_id = 553147242;
 
 COMMIT;
-*/
+
 
 -- Expected result:
 -- ✅ ChatKeeperBot and all related records removed
 -- ✅ Future imports will automatically filter bots
-

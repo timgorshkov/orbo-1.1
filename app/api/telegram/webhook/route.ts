@@ -258,6 +258,43 @@ async function processWebhookInBackground(body: any) {
       }
     }
     
+    // ========================================
+    // STEP 2.6: Обработка реакций (message_reaction)
+    // ========================================
+    if (body.message_reaction) {
+      const reaction = body.message_reaction;
+      const chatId = reaction.chat?.id;
+      const messageId = reaction.message_id;
+      const userId = reaction.user?.id;
+      
+      console.log('[Webhook] Step 2.6: Reaction received', {
+        chatId,
+        messageId,
+        userId,
+        oldReactions: reaction.old_reaction?.length || 0,
+        newReactions: reaction.new_reaction?.length || 0
+      });
+      
+      // Проверяем, что группа привязана к организации
+      if (chatId && messageId && userId) {
+        const { data: orgBindings } = await supabaseServiceRole
+          .from('org_telegram_groups')
+          .select('org_id')
+          .eq('tg_chat_id', chatId);
+        
+        if (orgBindings && orgBindings.length > 0) {
+          console.log('[Webhook] Processing reaction event for org:', orgBindings[0].org_id);
+          
+          // Используем EventProcessingService
+          const eventProcessingService = createEventProcessingService();
+          eventProcessingService.setSupabaseClient(supabaseServiceRole);
+          await eventProcessingService.processReaction(body.message_reaction, orgBindings[0].org_id);
+          
+          console.log('[Webhook] Step 2.6: Reaction processed');
+        }
+      }
+    }
+    
     console.log('[Webhook] Step 3: Checking for text message processing');
     
     // Обработка команд бота и кодов авторизации (включая личные сообщения)

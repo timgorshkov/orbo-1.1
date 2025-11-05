@@ -10,6 +10,10 @@ import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { RemoveGroupButton } from '@/components/telegram-group-actions'
 import { AdminBadge } from '@/components/admin-badge'
 import ImportHistory from '@/components/telegram/import-history'
+import ActivityTimeline from '@/components/analytics/activity-timeline'
+import TopContributors from '@/components/analytics/top-contributors'
+import KeyMetrics from '@/components/analytics/key-metrics'
+import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 
 type TelegramGroupSettings = {
   id: number;
@@ -627,240 +631,22 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               </TabsList>
 
               <TabsContent value="analytics">
-                <div className="mb-4 flex items-center gap-3">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      if (group) {
-                        setLoadingAnalytics(true);
-                        fetchAnalytics();
-                      }
-                    }}
-                    disabled={loadingAnalytics || !group}
-                  >
-                    {loadingAnalytics ? 'Загрузка...' : 'Обновить аналитику'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/app/${params.org}/telegram/message?groupId=${group?.id ?? ''}`)}
-                    disabled={!group}
-                  >
-                    Отправить сообщение
-                  </Button>
-                </div>
-                
-                {analyticsError ? (
-                  <div className="text-center py-8 text-red-500">{analyticsError}</div>
-                ) : loadingAnalytics ? (
-                  <div className="text-center py-8">Загрузка аналитики...</div>
+                {group ? (
+                  <div className="space-y-6">
+                    {/* Activity Timeline + Heatmap */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <ActivityTimeline orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
+                      <ActivityHeatmap orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
+                    </div>
+
+                    {/* Top Contributors + Key Metrics */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <TopContributors orgId={params.org} tgChatId={group.tg_chat_id.toString()} limit={10} />
+                      <KeyMetrics orgId={params.org} tgChatId={group.tg_chat_id.toString()} periodDays={14} />
+                    </div>
+                  </div>
                 ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Общая статистика</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="text-sm text-neutral-500">Активных участников</div>
-                              <div className="text-xl font-semibold">{groupMetrics.member_active_count}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Всего участников</div>
-                              <div className="text-xl font-semibold">{groupMetrics.member_total_count}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Сообщений за 7 дней</div>
-                              <div className="text-xl font-semibold">{groupMetrics.message_count}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Активных пользователей (DAU)</div>
-                              <div className="text-xl font-semibold">{groupMetrics.dau_avg}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Коэффициент ответов</div>
-                              <div className="text-xl font-semibold">{groupMetrics.reply_ratio_avg}%</div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Динамика участников</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="text-sm text-neutral-500">Новых участников</div>
-                              <div className="text-xl font-semibold">{group?.new_members_count || groupMetrics.join_count || 0}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Ушло участников</div>
-                              <div className="text-xl font-semibold">{groupMetrics.leave_count}</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Чистый прирост</div>
-                              <div className="text-xl font-semibold">
-                                {(group?.new_members_count || groupMetrics.join_count || 0) - groupMetrics.leave_count}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Активность</div>
-                              <div className="text-xl font-semibold">
-                                {groupMetrics.member_percent_active}%
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Топ активных участников</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          {topUsers.length > 0 ? (
-                            <div className="space-y-2">
-                              {topUsers.map((user, index) => (
-                                <div key={user.tg_user_id ?? index} className="flex justify-between items-center">
-                                  <div className="flex items-center">
-                                    <span className="w-5 h-5 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-xs mr-2">
-                                      {index + 1}
-                                    </span>
-                                    <span>
-                                      {user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
-                                      {user.username ? ` (@${user.username})` : ''}
-                                    </span>
-                                  </div>
-                                  <span className="text-sm text-neutral-500">{user.message_count} сообщ.</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-4 text-neutral-500">
-                              Нет данных об активности
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Дневная активность</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          {metrics && metrics.length > 0 ? (
-                            <div className="space-y-2">
-                              {metrics.map((metric: any) => (
-                                <div key={metric.date} className="flex justify-between items-center">
-                                  <span>{new Date(metric.date).toLocaleDateString('ru')}</span>
-                                  <div className="flex items-center space-x-4">
-                                    <span className="text-sm text-neutral-500">{metric.message_count || 0} сообщ.</span>
-                                    <span className="text-sm text-neutral-500">{metric.dau || 0} активн.</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-4 text-neutral-500">
-                              Нет данных о дневной активности
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Вовлеченность</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="text-sm text-neutral-500">Silent-когорта</div>
-                              <div className="text-xl font-semibold">{groupMetrics.silent_rate}%</div>
-                              <div className="text-xs text-neutral-500">доля неактивных за 7 дней</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Активация новичков</div>
-                              <div className="text-xl font-semibold">{groupMetrics.newcomer_activation}%</div>
-                              <div className="text-xs text-neutral-500">активны в первые 72ч</div>
-                            </div>
-                            <div>
-                              <div className="text-sm text-neutral-500">Равномерность</div>
-                              <div className="text-xl font-semibold">{(1 - groupMetrics.activity_gini) * 100}%</div>
-                              <div className="text-xs text-neutral-500">распределение активности</div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle>Prime Time</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="grid grid-cols-6 gap-1">
-                            {groupMetrics.prime_time.map((hour) => (
-                              <div
-                                key={hour.hour}
-                                className={`text-center p-1 text-xs rounded ${
-                                  hour.is_prime_time ? 'bg-blue-100 text-blue-800' : 'bg-gray-50'
-                                }`}
-                              >
-                                {hour.hour}:00
-                              </div>
-                            ))}
-                          </div>
-                          <div className="text-xs text-neutral-500 mt-2 text-center">
-                            Выделены часы пиковой активности
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="md:col-span-2">
-                        <CardHeader className="pb-2">
-                          <CardTitle>Risk Radar</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          {groupMetrics.risk_radar.length > 0 ? (
-                            <div className="space-y-3">
-                              {groupMetrics.risk_radar.map((user) => (
-                                <div key={user.tg_user_id} className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium">
-                                      {user.full_name || (user.username ? `@${user.username}` : `ID: ${user.tg_user_id}`)}
-                                      {user.username ? ` (@${user.username})` : ''}
-                                    </div>
-                                    <div className="text-xs text-neutral-500">
-                                      Последняя активность: {new Date(user.last_activity).toLocaleDateString('ru')}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-4">
-                                    <div className="text-sm">{user.message_count} сообщ.</div>
-                                    <div className={`px-2 py-1 rounded text-sm ${
-                                      user.risk_score >= 80 ? 'bg-red-100 text-red-800' :
-                                      user.risk_score >= 60 ? 'bg-amber-100 text-amber-800' :
-                                      'bg-blue-100 text-blue-800'
-                                    }`}>
-                                      Риск: {user.risk_score}%
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-4 text-neutral-500">
-                              Нет участников с высоким риском оттока
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </>
+                  <div className="text-center py-8 text-gray-500">Загрузка...</div>
                 )}
               </TabsContent>
 

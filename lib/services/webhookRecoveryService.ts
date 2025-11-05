@@ -108,7 +108,7 @@ class WebhookRecoveryService {
         url: webhookUrl,
         secret_token: webhookSecret,
         allowed_updates: botType === 'main' 
-          ? ['message', 'chat_member', 'my_chat_member']
+          ? ['message', 'chat_member', 'my_chat_member', 'message_reaction']
           : ['message'],
         drop_pending_updates: false,
         max_connections: 40
