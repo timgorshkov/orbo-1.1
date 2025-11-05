@@ -72,6 +72,37 @@ export function EnrichedProfileDisplay({
     if (conf >= 0.6) return 'secondary';
     return 'outline';
   };
+  
+  // Helper: Calculate engagement category
+  const getEngagementCategory = () => {
+    const now = new Date();
+    const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null;
+    const createdAt = new Date(participant.created_at);
+    const daysSinceCreated = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999;
+    
+    // Priority 1: Silent (no activity in 30 days)
+    if (daysSinceActivity > 30) {
+      return { label: 'Молчун', color: 'bg-gray-500' };
+    }
+    
+    // Priority 2: Newcomers (joined <30 days ago)
+    if (daysSinceCreated < 30) {
+      return { label: 'Новичок', color: 'bg-blue-500' };
+    }
+    
+    // Priority 3 & 4: Core/Experienced based on activity_score
+    const activityScore = participant.activity_score || 0;
+    if (activityScore >= 60) {
+      return { label: 'Ядро', color: 'bg-green-600' };
+    } else if (activityScore >= 30) {
+      return { label: 'Опытный', color: 'bg-yellow-500' };
+    }
+    
+    return { label: 'Остальные', color: 'bg-gray-400' };
+  };
+  
+  const engagementCategory = getEngagementCategory();
 
   return (
     <div className="space-y-6">
@@ -84,6 +115,16 @@ export function EnrichedProfileDisplay({
             <h3 className="text-lg font-semibold">AI Insights</h3>
             <Badge variant="secondary" className="text-xs">
               Автоматически
+            </Badge>
+          </div>
+          
+          {/* Engagement Category */}
+          <div className="mb-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Категория вовлечённости
+            </label>
+            <Badge className={`${engagementCategory.color} text-white border-0`}>
+              {engagementCategory.label}
             </Badge>
           </div>
           

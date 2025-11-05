@@ -512,6 +512,7 @@ export default function ParticipantProfileCard({
                 // Technical/meta fields (should only be in logs)
                 'last_enriched_at', 'enrichment_source', 'enrichment_version', 
                 'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
+                'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
                 // Event behavior (shown in separate section)
                 'event_attendance'
               ];

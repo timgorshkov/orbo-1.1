@@ -120,14 +120,9 @@ export function AIEnrichmentButton({
     <Card className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <h4 className="font-semibold text-gray-900">🤖 AI Enrichment</h4>
-            <Badge variant="secondary" className="text-xs">Платная функция</Badge>
+          <div className="flex items-center gap-2 mb-3">
+            <h4 className="font-semibold text-gray-900">🤖 AI-анализ участника</h4>
           </div>
-          
-          <p className="text-sm text-gray-600 mb-3">
-            Используйте ChatGPT для автоматического анализа интересов, запросов и поведения участника.
-          </p>
           
           {/* Cost Estimation */}
           {estimate && !isEnriching && !result && (
@@ -197,7 +192,7 @@ export function AIEnrichmentButton({
             disabled={isEstimating}
             className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
-            {isEstimating ? 'Оценка...' : 'Оценить стоимость'}
+            {isEstimating ? 'Проверка...' : 'Оценить наличие данных'}
           </button>
         )}
         
@@ -238,16 +233,6 @@ export function AIEnrichmentButton({
           </button>
         )}
       </div>
-      
-      {/* Info Box */}
-      {!result && (
-        <div className="mt-3 pt-3 border-t border-purple-200">
-          <p className="text-xs text-gray-600">
-            <strong>ℹ️ Что анализируется:</strong> Интересы, запросы, город, роль в сообществе, реакции.
-            Используется ChatGPT-4o-mini (~$0.0002-0.001 за участника).
-          </p>
-        </div>
-      )}
     </Card>
   );
 }

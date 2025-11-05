@@ -14,8 +14,14 @@ interface Props {
   days?: number;
 }
 
-const DAY_LABELS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+// Days starting from Monday (DB uses 0=Sunday, so we remap)
+const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const HOUR_LABELS = ['0-3', '3-6', '6-9', '9-12', '12-15', '15-18', '18-21', '21-24'];
+
+// Convert DB day_of_week (0=Sunday) to our display order (0=Monday)
+const convertDayIndex = (dbDayIndex: number): number => {
+  return dbDayIndex === 0 ? 6 : dbDayIndex - 1;
+};
 
 export default function ActivityHeatmap({ orgId, tgChatId, days = 30 }: Props) {
   const [data, setData] = useState<HeatmapData[]>([]);
@@ -74,7 +80,8 @@ export default function ActivityHeatmap({ orgId, tgChatId, days = 30 }: Props) {
   const groupedData: { [key: string]: number } = {};
   data.forEach(item => {
     const hourInterval = Math.floor(item.hour_of_day / 3);
-    const key = `${hourInterval}-${item.day_of_week}`;
+    const displayDayIndex = convertDayIndex(item.day_of_week);
+    const key = `${hourInterval}-${displayDayIndex}`;
     groupedData[key] = (groupedData[key] || 0) + item.message_count;
   });
 

@@ -116,7 +116,7 @@ export default function AttentionZones({
               {churningParticipants.map(participant => (
                 <Link
                   key={participant.participant_id}
-                  href={`/app/${orgId}/members?id=${participant.participant_id}`}
+                  href={`/app/${orgId}/members/${participant.participant_id}`}
                   className="block p-3 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -149,7 +149,7 @@ export default function AttentionZones({
               {inactiveNewcomers.map(newcomer => (
                 <Link
                   key={newcomer.participant_id}
-                  href={`/app/${orgId}/members?id=${newcomer.participant_id}`}
+                  href={`/app/${orgId}/members/${newcomer.participant_id}`}
                   className="block p-3 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
                 >
                   <div className="flex items-center justify-between">

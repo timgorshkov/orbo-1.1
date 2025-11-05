@@ -158,27 +158,26 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
         <span className="text-xs text-gray-500">За {periodDays} дней</span>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-4">
         {metrics.map((metric, index) => (
           <div 
             key={index} 
-            className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+            className="p-4 rounded-lg bg-gray-50 border border-gray-200"
           >
-            <div className="flex-1">
-              <p className="text-sm text-gray-600">{metric.label}</p>
-              <p className="text-2xl font-semibold mt-1">
+            <p className="text-sm text-gray-600 mb-2">{metric.label}</p>
+            <div className="flex items-end justify-between">
+              <p className="text-2xl font-semibold">
                 {metric.format(metric.current)}
               </p>
-            </div>
-
-            <div className={`flex items-center gap-1 text-sm font-medium ${getChangeColor(metric.change)}`}>
-              {getChangeIcon(metric.change)}
-              <span>
-                {metric.isPercentage 
-                  ? `${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}%`
-                  : formatChange(metric.change)
-                }
-              </span>
+              <div className={`flex items-center gap-1 text-sm font-medium ${getChangeColor(metric.change)}`}>
+                {getChangeIcon(metric.change)}
+                <span>
+                  {metric.isPercentage 
+                    ? `${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}%`
+                    : formatChange(metric.change)
+                  }
+                </span>
+              </div>
             </div>
           </div>
         ))}
