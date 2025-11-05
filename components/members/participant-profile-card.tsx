@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
 import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera } from 'lucide-react'
 import PhotoUploadModal from './photo-upload-modal'
+import { AIEnrichmentButton } from './ai-enrichment-button'
+import { EnrichedProfileDisplay } from './enriched-profile-display'
 
 interface ParticipantProfileCardProps {
   orgId: string
@@ -376,6 +378,104 @@ export default function ParticipantProfileCard({
             </div>
           </div>
 
+          {/* AI Enrichment Data (if available) */}
+          {isAdmin && (
+            <div className="mb-6">
+              {participant.custom_attributes && Object.keys(participant.custom_attributes).length > 0 && !editing ? (
+                <EnrichedProfileDisplay 
+                  participant={detail.participant}
+                  isAdmin={isAdmin}
+                />
+              ) : null}
+              
+              {/* Editable Goals & Offers (when editing) */}
+              {editing && (
+                <div className="space-y-4 p-6 border-2 border-blue-200 rounded-xl bg-blue-50">
+                  <h3 className="text-lg font-semibold text-gray-900">Цели и Предложения</h3>
+                  
+                  {/* Goals */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Мои цели в сообществе
+                    </label>
+                    <Textarea
+                      value={fields.custom_attributes.goals_self || ''}
+                      onChange={e => setFields(prev => ({
+                        ...prev,
+                        custom_attributes: {
+                          ...prev.custom_attributes,
+                          goals_self: e.target.value
+                        }
+                      }))}
+                      disabled={pending}
+                      placeholder="Например: Найти партнеров для стартапа, Изучить новые технологии"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  {/* Offers */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Чем могу помочь (через запятую)
+                    </label>
+                    <Input
+                      value={Array.isArray(fields.custom_attributes.offers) 
+                        ? fields.custom_attributes.offers.join(', ')
+                        : fields.custom_attributes.offers || ''}
+                      onChange={e => setFields(prev => ({
+                        ...prev,
+                        custom_attributes: {
+                          ...prev.custom_attributes,
+                          offers: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                        }
+                      }))}
+                      disabled={pending}
+                      placeholder="Например: консультации по маркетингу, помощь с дизайном"
+                    />
+                  </div>
+                  
+                  {/* Asks */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">
+                      Что мне нужно (через запятую)
+                    </label>
+                    <Input
+                      value={Array.isArray(fields.custom_attributes.asks) 
+                        ? fields.custom_attributes.asks.join(', ')
+                        : fields.custom_attributes.asks || ''}
+                      onChange={e => setFields(prev => ({
+                        ...prev,
+                        custom_attributes: {
+                          ...prev.custom_attributes,
+                          asks: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                        }
+                      }))}
+                      disabled={pending}
+                      placeholder="Например: инвестор, ментор по продажам"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* AI Analysis Button */}
+              {!editing && (
+                <div className="mt-4">
+                  <AIEnrichmentButton 
+                    participantId={participant.id}
+                    orgId={orgId}
+                    participantName={participant.full_name || participant.username || 'Участник'}
+                    onEnrichmentComplete={() => {
+                      // Refresh detail to show new enrichment data
+                      if (onDetailUpdate) {
+                        onDetailUpdate();
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Custom Attributes */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Дополнительная информация</h3>
@@ -399,43 +499,65 @@ export default function ParticipantProfileCard({
               </div>
             )}
             
-            {/* Custom attributes from JSON field */}
-            {Object.keys(fields.custom_attributes).length === 0 && (!detail.traits || detail.traits.filter(t => t.source !== 'merge').length === 0) && !editing ? (
-              <p className="text-sm text-gray-500 italic">Нет дополнительных характеристик</p>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(fields.custom_attributes).map(([key, value]) => (
-                  <div key={key} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
-                    <div className="flex-1">
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        {key}
+            {/* User-editable custom attributes (excluding system/enrichment fields) */}
+            {(() => {
+              // System fields that shouldn't be edited manually (AI-generated or technical)
+              const systemFields = [
+                // AI-extracted fields
+                'interests_keywords', 'recent_asks', 'city_inferred', 'city_confidence',
+                'topics_discussed', 'behavioral_role', 'role_confidence', 'reaction_patterns',
+                'communication_style',
+                // User-defined fields (shown in "Goals & Offers" section)
+                'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
+                // Technical/meta fields (should only be in logs)
+                'last_enriched_at', 'enrichment_source', 'enrichment_version', 
+                'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
+                // Event behavior (shown in separate section)
+                'event_attendance'
+              ];
+              
+              const userEditableAttrs = Object.entries(fields.custom_attributes)
+                .filter(([key]) => !systemFields.includes(key));
+              
+              if (userEditableAttrs.length === 0 && (!detail.traits || detail.traits.filter(t => t.source !== 'merge').length === 0) && !editing) {
+                return <p className="text-sm text-gray-500 italic">Нет дополнительных характеристик</p>;
+              }
+              
+              return (
+                <div className="space-y-2">
+                  {userEditableAttrs.map(([key, value]) => (
+                    <div key={key} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
+                      <div className="flex-1">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                          {key}
+                        </div>
+                        {editing ? (
+                          <Input
+                            value={String(value)}
+                            onChange={e => handleUpdateAttribute(key, e.target.value)}
+                            disabled={pending}
+                            className="mt-1"
+                          />
+                        ) : (
+                          <div className="text-sm text-gray-900 mt-1">{String(value)}</div>
+                        )}
                       </div>
-                      {editing ? (
-                        <Input
-                          value={String(value)}
-                          onChange={e => handleUpdateAttribute(key, e.target.value)}
+                      {editing && (
+                        <Button
+                          size={'sm' as const}
+                          variant="ghost"
+                          onClick={() => handleRemoveAttribute(key)}
                           disabled={pending}
-                          className="mt-1"
-                        />
-                      ) : (
-                        <div className="text-sm text-gray-900 mt-1">{String(value)}</div>
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       )}
                     </div>
-                    {editing && (
-                      <Button
-                        size={'sm' as const}
-                        variant="ghost"
-                        onClick={() => handleRemoveAttribute(key)}
-                        disabled={pending}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Add New Attribute */}
             {editing && (

@@ -5,6 +5,7 @@ import { createTelegramService } from '@/lib/services/telegramService'
 import { createEventProcessingService } from '@/lib/services/eventProcessingService'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
+import { updateParticipantActivity, incrementGroupMessageCount } from '@/lib/services/participantStatsService'
 
 export const dynamic = 'force-dynamic';
 
@@ -200,6 +201,16 @@ async function processWebhookInBackground(body: any) {
         eventProcessingService.setSupabaseClient(supabaseServiceRole);
         await eventProcessingService.processUpdate(body);
         console.log('[Webhook] Step 2c: EventProcessingService completed');
+        
+        // Update participant activity stats (lightweight, no enrichment)
+        if (body.message?.from?.id && orgId) {
+          updateParticipantActivity(body.message.from.id, orgId).catch(err => {
+            console.error('[Webhook] Failed to update participant activity:', err);
+          });
+          incrementGroupMessageCount(chatId).catch(err => {
+            console.error('[Webhook] Failed to update group message count:', err);
+          });
+        }
       } else {
         console.log('[Webhook] Step 2b: ⏭️  Group is NOT assigned to any organization, skipping event processing');
         console.log('[Webhook] Step 2c: Group will appear in "Available Groups" for admins to add manually');
@@ -291,6 +302,13 @@ async function processWebhookInBackground(body: any) {
           await eventProcessingService.processReaction(body.message_reaction, orgBindings[0].org_id);
           
           console.log('[Webhook] Step 2.6: Reaction processed');
+          
+          // Update participant activity stats (lightweight, no enrichment)
+          if (userId) {
+            updateParticipantActivity(userId, orgBindings[0].org_id).catch(err => {
+              console.error('[Webhook] Failed to update participant activity (reaction):', err);
+            });
+          }
         }
       }
     }

@@ -49,6 +49,10 @@
     {
       "path": "/api/cron/telegram-health-check",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/update-participant-roles",
+      "schedule": "0 3 * * *"
     }
   ],
   "rewrites": [
