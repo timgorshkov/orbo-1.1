@@ -121,6 +121,21 @@ export default function ParticipantProfileCard({
     setError(null)
 
     try {
+      // Convert comma-separated strings to arrays before saving
+      const customAttributes = { ...fields.custom_attributes };
+      if (typeof customAttributes.offers === 'string') {
+        customAttributes.offers = customAttributes.offers
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+      if (typeof customAttributes.asks === 'string') {
+        customAttributes.asks = customAttributes.asks
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+
       const response = await fetch(`/api/participants/${detail.requestedParticipantId}`, {
         method: 'PUT',
         headers: {
@@ -133,7 +148,7 @@ export default function ParticipantProfileCard({
           phone: fields.phone,
           bio: fields.bio,
           notes: fields.notes,
-          custom_attributes: fields.custom_attributes
+          custom_attributes: customAttributes
         })
       })
 
@@ -426,7 +441,7 @@ export default function ParticipantProfileCard({
                         ...prev,
                         custom_attributes: {
                           ...prev.custom_attributes,
-                          offers: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                          offers: e.target.value
                         }
                       }))}
                       disabled={pending}
@@ -447,7 +462,7 @@ export default function ParticipantProfileCard({
                         ...prev,
                         custom_attributes: {
                           ...prev.custom_attributes,
-                          asks: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+                          asks: e.target.value
                         }
                       }))}
                       disabled={pending}

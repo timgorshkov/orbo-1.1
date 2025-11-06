@@ -33,6 +33,9 @@
 - **[MESSAGE_STORAGE_UNIFICATION_PLAN.md](./MESSAGE_STORAGE_UNIFICATION_PLAN.md)** — план унификации хранения сообщений
 - **[MESSAGE_STORAGE_UNIFICATION_COMPLETE.md](./MESSAGE_STORAGE_UNIFICATION_COMPLETE.md)** — ✅ завершённая унификация
 
+### 🐛 Hotfixes
+- **[HOTFIX_4_PROBLEMS_2025-11-06.md](./HOTFIX_4_PROBLEMS_2025-11-06.md)** — ✅ 4 критичных проблемы (audit log, импорт, webhook recovery)
+
 ### 📊 Стратегия и развитие (НОВОЕ — 1 ноября 2025)
 - **[REVISED_ROADMAP_SOLO_2025-11-01.md](./REVISED_ROADMAP_SOLO_2025-11-01.md)** — ⭐ **ACTIVE ROADMAP** — 16-недельный план (solo-founder)
 - **[PRIORITY_CHANGES_SUMMARY.md](./PRIORITY_CHANGES_SUMMARY.md)** — сводка изменений приоритетов

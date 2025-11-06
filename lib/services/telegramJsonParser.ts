@@ -28,6 +28,7 @@ export interface ParsedJsonAuthor {
 export interface JsonParsingResult {
   messages: ParsedJsonMessage[];
   authors: Map<string, ParsedJsonAuthor>;
+  chatId: number; // ⭐ Chat ID from JSON export
   dateRange: {
     start: Date;
     end: Date;
@@ -158,6 +159,7 @@ export class TelegramJsonParser {
     return {
       messages,
       authors: authorsMap,
+      chatId: data.id, // ⭐ Chat ID from JSON export
       dateRange,
       stats: {
         totalMessages: messages.length,

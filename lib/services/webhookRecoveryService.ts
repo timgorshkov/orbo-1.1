@@ -15,6 +15,7 @@ interface RecoveryAttempt {
 class WebhookRecoveryService {
   private static instance: WebhookRecoveryService;
   private recoveryAttempts: Map<string, RecoveryAttempt[]> = new Map();
+  private activeRecoveries: Set<string> = new Set(); // Блокировка на время recovery
   private readonly MAX_ATTEMPTS_PER_HOUR = 3; // Не более 3 попыток в час
   private readonly COOLDOWN_MS = 20 * 60 * 1000; // 20 минут между попытками
 
@@ -77,11 +78,20 @@ class WebhookRecoveryService {
     console.log(`[Webhook Recovery] Bot: ${botType}`);
     console.log(`[Webhook Recovery] Reason: ${reason}`);
     
+    // Проверяем, не идёт ли уже recovery для этого бота
+    if (this.activeRecoveries.has(botType)) {
+      console.warn(`[Webhook Recovery] Recovery already in progress for ${botType} bot`);
+      return false;
+    }
+    
     // Проверяем, можем ли мы попытаться восстановить
     if (!this.canAttemptRecovery(botType)) {
       console.warn(`[Webhook Recovery] Recovery blocked by rate limiting`);
       return false;
     }
+    
+    // Блокируем новые попытки
+    this.activeRecoveries.add(botType);
     
     try {
       // Используем правильный secret для каждого бота
@@ -126,6 +136,13 @@ class WebhookRecoveryService {
       
       return true;
     } catch (error: any) {
+      // Если Telegram вернул "Too Many Requests" — это не наша проблема, просто ждём
+      if (error.message?.includes('Too Many Requests')) {
+        console.warn(`[Webhook Recovery] ⏳ Telegram rate limit hit, will retry later`);
+        // НЕ записываем как failed attempt
+        return false;
+      }
+      
       console.error(`[Webhook Recovery] ❌ Failed to recover webhook for ${botType} bot:`, error);
       this.recordAttempt(botType, false, error.message);
       
@@ -134,6 +151,8 @@ class WebhookRecoveryService {
       
       return false;
     } finally {
+      // Снимаем блокировку
+      this.activeRecoveries.delete(botType);
       console.log(`[Webhook Recovery] ========== RECOVERY ATTEMPT END ==========`);
     }
   }

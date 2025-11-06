@@ -105,12 +105,17 @@ export async function POST(
     }
     
     // Run enrichment
-    const result = await enrichParticipant(params.participantId, orgId, {
-      useAI,
-      includeBehavior,
-      includeReactions,
-      daysBack
-    });
+    const result = await enrichParticipant(
+      params.participantId, 
+      orgId, 
+      {
+        useAI,
+        includeBehavior,
+        includeReactions,
+        daysBack
+      },
+      user.id // ⭐ For OpenAI logging
+    );
     
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'Enrichment failed' }, { status: 500 });

@@ -246,30 +246,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     label: row.system_code
   })) as ParticipantExternalId[];
 
-  let auditLog: ParticipantAuditRecord[] = [];
-  try {
-    const { data: auditLogData, error: auditError } = await supabase
-      .from('participant_audit_log')
-      .select('*')
-      .eq('org_id', orgId)
-      .eq('participant_id', canonicalId)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (auditError) {
-      if ((auditError as any)?.code === '42P01') {
-        console.warn('participant_audit_log table not found, skipping audit trail');
-      } else {
-        console.error('Error loading participant audit log:', auditError);
-        throw auditError;
-      }
-    }
-
-    auditLog = (auditLogData || []) as ParticipantAuditRecord[];
-  } catch (auditException) {
-    console.error('Unexpected error while loading audit log:', auditException);
-    auditLog = [];
-  }
+  // Audit log feature was removed in migration 072
+  const auditLog: ParticipantAuditRecord[] = [];
 
   return {
     participant: participantRecord as ParticipantRecord,

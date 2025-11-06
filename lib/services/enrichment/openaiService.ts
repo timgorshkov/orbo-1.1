@@ -7,13 +7,71 @@
  * - City/location (if mentioned)
  * 
  * Cost-conscious: Only runs on demand (manual trigger by owner)
+ * 
+ * AUTO-LOGS all API calls to openai_api_logs table
  */
 
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Supabase admin client for logging
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false
+    }
+  }
+);
+
+/**
+ * Log OpenAI API call to database
+ */
+async function logOpenAICall(params: {
+  orgId: string | null;
+  userId: string | null;
+  requestType: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  metadata?: any;
+}): Promise<void> {
+  try {
+    const costRub = params.costUsd * 95; // Approximate conversion
+    
+    const { error } = await supabaseAdmin
+      .from('openai_api_logs')
+      .insert({
+        org_id: params.orgId,
+        created_by: params.userId,
+        request_type: params.requestType,
+        model: params.model,
+        prompt_tokens: params.promptTokens,
+        completion_tokens: params.completionTokens,
+        total_tokens: params.totalTokens,
+        cost_usd: params.costUsd,
+        cost_rub: costRub,
+        metadata: params.metadata || {}
+      });
+    
+    if (error) {
+      console.error('[OpenAI] Failed to log API call:', error);
+      // Don't throw - logging failure shouldn't break enrichment
+    } else {
+      console.log(`[OpenAI] Logged API call: ${params.requestType}, ${params.totalTokens} tokens, $${params.costUsd.toFixed(4)}`);
+    }
+  } catch (logError) {
+    console.error('[OpenAI] Error logging API call:', logError);
+    // Don't throw - logging failure shouldn't break enrichment
+  }
+}
 
 /**
  * Message with context for AI analysis
@@ -49,12 +107,18 @@ export interface AIEnrichmentResult {
  * 
  * @param messages - Messages with context (last 90 days, prioritize recent)
  * @param participantName - Name of the participant being analyzed
+ * @param orgId - Organization ID (for logging)
+ * @param userId - User ID who triggered the analysis (for logging)
+ * @param participantId - Participant ID (for metadata)
  * @param groupKeywords - Keywords from telegram_groups table (for context)
  * @returns AI enrichment result
  */
 export async function analyzeParticipantWithAI(
   messages: MessageWithContext[],
   participantName: string,
+  orgId: string,
+  userId: string | null = null,
+  participantId: string | null = null,
   groupKeywords: string[] = []
 ): Promise<AIEnrichmentResult> {
   // Filter messages from the last 90 days, prioritize last 14 days
@@ -150,6 +214,24 @@ ${recentMessages.slice(0, 50).map((m, i) => {
     
     console.log(`[AI Enrichment] Analyzed ${messages.length} messages in ${Date.now() - startTime}ms`);
     console.log(`[AI Enrichment] Tokens: ${totalTokens}, Cost: $${costUsd.toFixed(4)}`);
+    
+    // ⭐ Log API call to database
+    await logOpenAICall({
+      orgId,
+      userId,
+      requestType: 'participant_enrichment',
+      model: 'gpt-4o-mini',
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens,
+      costUsd,
+      metadata: {
+        participant_id: participantId,
+        participant_name: participantName,
+        message_count: messages.length,
+        analysis_duration_ms: Date.now() - startTime
+      }
+    });
     
     return {
       interests_keywords: result.interests || [],

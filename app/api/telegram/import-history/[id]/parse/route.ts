@@ -130,6 +130,18 @@ export async function POST(
       parsingResult = TelegramJsonParser.parse(fileContent);
       authors = Array.from(parsingResult.authors.values());
       
+      // 🔒 SECURITY: Validate chat_id matches the group
+      const expectedChatId = (group as any).tg_chat_id;
+      if (parsingResult.chatId !== expectedChatId) {
+        return NextResponse.json({
+          error: 'Chat ID mismatch',
+          message: `Файл содержит историю другой группы (ID: ${parsingResult.chatId}). Импорт разрешён только для текущей группы (ID: ${expectedChatId}).`,
+          hint: 'Загрузите правильный файл экспорта для этой группы или выберите другую группу в списке.',
+          importedChatId: parsingResult.chatId,
+          expectedChatId: expectedChatId
+        }, { status: 400 });
+      }
+      
       console.log(`✅ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (JSON format with user IDs)`);
     } else {
       // Parse HTML (legacy format without user_id)
@@ -145,7 +157,9 @@ export async function POST(
       parsingResult = TelegramHistoryParser.parse(fileContent);
       authors = Array.from(parsingResult.authors.values());
       
-      console.log(`⚠️ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (HTML format - no user IDs)`);
+      // ⚠️ HTML format doesn't include chat_id, so we can't validate it matches the group
+      // This is less secure than JSON format, but allowed for backward compatibility
+      console.log(`⚠️ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (HTML format - no user IDs, no chat_id validation)`);
     }
 
     // Получаем существующих участников организации (не только этой группы!)

@@ -53,12 +53,14 @@ export interface EnrichmentResult {
  * @param participantId - UUID of participant to enrich
  * @param orgId - UUID of organization (for permissions and context)
  * @param options - Enrichment options
+ * @param userId - UUID of user who triggered enrichment (for logging, optional)
  * @returns Enrichment result
  */
 export async function enrichParticipant(
   participantId: string,
   orgId: string,
-  options: EnrichmentOptions = {}
+  options: EnrichmentOptions = {},
+  userId: string | null = null
 ): Promise<EnrichmentResult> {
   const startTime = Date.now();
   const daysBack = options.daysBack || 90;
@@ -146,6 +148,9 @@ export async function enrichParticipant(
       aiAnalysis = await analyzeParticipantWithAI(
         messagesWithContext,
         participant.full_name || participant.username || `ID${participant.tg_user_id}`,
+        orgId, // ⭐ For logging
+        userId, // ⭐ Who triggered enrichment
+        participantId, // ⭐ For metadata
         allKeywords
       );
       
