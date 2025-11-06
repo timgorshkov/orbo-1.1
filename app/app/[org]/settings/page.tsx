@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
+import Link from 'next/link'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function OrganizationSettingsPage({ params }: { params: { org: string } }) {
   try {
@@ -78,6 +80,46 @@ export default async function OrganizationSettingsPage({ params }: { params: { o
         </div>
 
         <div className="space-y-6">
+          {/* Quick Links */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Дополнительные настройки</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Link
+                  href={`/app/${params.org}/settings/digest`}
+                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">📊</div>
+                    <div>
+                      <h3 className="font-medium">Еженедельный дайджест</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Настройка автоматической отправки дайджеста активности
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+
+                <Link
+                  href={`/app/${params.org}/settings/invites`}
+                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">✉️</div>
+                    <div>
+                      <h3 className="font-medium">Приглашения</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Управление приглашениями в пространство
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Organization Settings */}
           <OrganizationSettingsForm
             organization={org}
