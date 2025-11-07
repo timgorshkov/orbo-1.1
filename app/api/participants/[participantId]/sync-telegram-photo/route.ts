@@ -150,6 +150,15 @@ export async function POST(
       });
       
     } catch (telegramError: any) {
+      // Gracefully handle "user not found" errors (user was likely deleted or blocked the bot)
+      if (telegramError.message?.includes('user not found')) {
+        console.log(`Telegram user ${participant.tg_user_id} not found (deleted or blocked bot)`);
+        return NextResponse.json({
+          success: false,
+          message: 'Telegram user not found or has blocked the bot',
+        }, { status: 404 });
+      }
+      
       console.error('Telegram API error:', telegramError);
       return NextResponse.json({
         success: false,

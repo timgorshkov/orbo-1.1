@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createCronLogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 60 seconds timeout
@@ -8,18 +9,20 @@ export const maxDuration = 60 // 60 seconds timeout
  * Запускается каждые 30 минут через Vercel Cron
  */
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('check-webhook');
+  
   try {
     // Проверяем секретный токен для безопасности
     const authHeader = request.headers.get('authorization')
     const expectedToken = process.env.CRON_SECRET
     
     if (!expectedToken) {
-      console.error('[Webhook Cron] CRON_SECRET not configured')
+      logger.error('CRON_SECRET not configured')
       return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
     }
     
     if (authHeader !== `Bearer ${expectedToken}`) {
-      console.error('[Webhook Cron] Unauthorized request')
+      logger.error('Unauthorized request')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -27,16 +30,16 @@ export async function GET(request: NextRequest) {
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/webhook`
 
     if (!botToken) {
-      console.error('[Webhook Cron] TELEGRAM_BOT_TOKEN not configured')
+      logger.error('TELEGRAM_BOT_TOKEN not configured')
       return NextResponse.json({ error: 'Bot token not configured' }, { status: 500 })
     }
 
     if (!webhookUrl || !process.env.NEXT_PUBLIC_APP_URL) {
-      console.error('[Webhook Cron] NEXT_PUBLIC_APP_URL not configured')
+      logger.error('NEXT_PUBLIC_APP_URL not configured')
       return NextResponse.json({ error: 'Webhook URL not configured' }, { status: 500 })
     }
 
-    console.log('[Webhook Cron] Checking webhook status...')
+    logger.info('Checking webhook status')
 
     // 1. Получаем текущую информацию о webhook
     const webhookInfoResponse = await fetch(
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
     )
 
     if (!webhookInfoResponse.ok) {
-      console.error('[Webhook Cron] Failed to get webhook info:', webhookInfoResponse.statusText)
+      logger.error({ status: webhookInfoResponse.statusText }, 'Failed to get webhook info')
       return NextResponse.json({ 
         error: 'Failed to get webhook info',
         status: webhookInfoResponse.statusText
@@ -55,7 +58,7 @@ export async function GET(request: NextRequest) {
     const webhookInfo = await webhookInfoResponse.json()
     
     if (!webhookInfo.ok) {
-      console.error('[Webhook Cron] Telegram API error:', webhookInfo.description)
+      logger.error({ description: webhookInfo.description }, 'Telegram API error')
       return NextResponse.json({ 
         error: 'Telegram API error',
         description: webhookInfo.description
@@ -63,13 +66,13 @@ export async function GET(request: NextRequest) {
     }
 
     const currentWebhook = webhookInfo.result
-    console.log('[Webhook Cron] Current webhook:', {
+    logger.info({
       url: currentWebhook.url,
       has_custom_certificate: currentWebhook.has_custom_certificate,
       pending_update_count: currentWebhook.pending_update_count,
       last_error_date: currentWebhook.last_error_date,
       last_error_message: currentWebhook.last_error_message
-    })
+    }, 'Current webhook status')
 
     // 2. Проверяем, нужно ли восстанавливать webhook
     const needsRestore = 
@@ -77,7 +80,10 @@ export async function GET(request: NextRequest) {
       currentWebhook.last_error_date // Есть ошибки
 
     if (!needsRestore) {
-      console.log('[Webhook Cron] Webhook is healthy, no action needed')
+      logger.info({ 
+        url: currentWebhook.url,
+        pending_updates: currentWebhook.pending_update_count
+      }, 'Webhook is healthy')
       return NextResponse.json({ 
         status: 'healthy',
         url: currentWebhook.url,
@@ -86,7 +92,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Восстанавливаем webhook
-    console.log('[Webhook Cron] Restoring webhook...')
+    logger.info('Restoring webhook')
     
     const setWebhookResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/setWebhook`,
@@ -102,7 +108,7 @@ export async function GET(request: NextRequest) {
     )
 
     if (!setWebhookResponse.ok) {
-      console.error('[Webhook Cron] Failed to set webhook:', setWebhookResponse.statusText)
+      logger.error({ status: setWebhookResponse.statusText }, 'Failed to set webhook')
       return NextResponse.json({ 
         error: 'Failed to set webhook',
         status: setWebhookResponse.statusText
@@ -112,14 +118,14 @@ export async function GET(request: NextRequest) {
     const setWebhookResult = await setWebhookResponse.json()
 
     if (!setWebhookResult.ok) {
-      console.error('[Webhook Cron] Telegram API error when setting webhook:', setWebhookResult.description)
+      logger.error({ description: setWebhookResult.description }, 'Telegram API error when setting webhook')
       return NextResponse.json({ 
         error: 'Failed to set webhook',
         description: setWebhookResult.description
       }, { status: 500 })
     }
 
-    console.log('[Webhook Cron] ✅ Webhook restored successfully')
+    logger.info('Webhook restored successfully')
 
     return NextResponse.json({ 
       status: 'restored',
@@ -130,7 +136,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Webhook Cron] Error:', error)
+    logger.error({ error }, 'Unexpected error in check-webhook cron')
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'

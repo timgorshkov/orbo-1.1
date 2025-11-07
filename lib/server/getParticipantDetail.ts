@@ -199,33 +199,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     }
   }
 
-  // Fallback to legacy activity_events if global data is empty
-  if (eventsData.length === 0) {
-    try {
-      const { data: legacyEvents, error: legacyError } = await supabase
-        .from('activity_events')
-        .select('id, event_type, created_at, tg_chat_id, meta')
-        .eq('org_id', orgId)
-        .eq('participant_id', canonicalId)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (legacyError) {
-        console.error('Error loading legacy participant events:', legacyError);
-        throw legacyError;
-      }
-
-      eventsData = (legacyEvents || []).map(event => ({
-        id: event.id,
-        event_type: event.event_type,
-        created_at: event.created_at,
-        tg_chat_id: event.tg_chat_id ? String(event.tg_chat_id) : null,
-        meta: event.meta || null
-      }));
-    } catch (legacyException) {
-      console.error('Failed to load fallback participant events:', legacyException);
-    }
-  }
+  // Note: Fallback using participant_id removed in migration 071
+  // All events now loaded via tg_user_id (see lines 174-198 above)
 
   const { data: externalIdsData, error: externalIdsError } = await supabase
     .from('participant_external_ids')

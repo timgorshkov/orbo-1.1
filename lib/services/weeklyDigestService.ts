@@ -9,6 +9,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { createServiceLogger } from '@/lib/logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +24,8 @@ const supabaseAdmin = createClient(
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const logger = createServiceLogger('WeeklyDigestService');
 
 // ===== TYPES =====
 
@@ -196,7 +199,7 @@ async function fetchTopContributors(orgId: string): Promise<TopContributor[]> {
     });
 
   if (error || !data) {
-    console.warn('[Digest] Failed to fetch top contributors:', error);
+    logger.warn({ error }, 'Failed to fetch top contributors');
     return [];
   }
 
@@ -281,14 +284,17 @@ ${topContributors.map((c, i) => `${i + 1}. ${c.name}: ${c.messages} сообще
     const outputCost = (completion.usage?.completion_tokens || 0) / 1_000_000 * 0.60;
     const totalCost = inputCost + outputCost;
 
-    console.log(`[Digest] AI Insights generated: ${completion.usage?.total_tokens} tokens, $${totalCost.toFixed(4)}`);
+    logger.info({ 
+      tokens: completion.usage?.total_tokens, 
+      costUsd: totalCost 
+    }, 'AI Insights generated');
 
     return {
       insights,
       costUsd: totalCost
     };
   } catch (error) {
-    console.error('[Digest] AI insights generation failed:', error);
+    logger.error({ error }, 'AI insights generation failed');
     // Fallback to basic insights
     return {
       insights: {
@@ -403,9 +409,12 @@ ${ruleBasedActions.map(a => `- ${a.title}`).join('\n')}
       const outputCost = (completion.usage?.completion_tokens || 0) / 1_000_000 * 0.60;
       costUsd = inputCost + outputCost;
 
-      console.log(`[Digest] AI Actions generated: ${completion.usage?.total_tokens} tokens, $${costUsd.toFixed(4)}`);
+      logger.info({ 
+        tokens: completion.usage?.total_tokens, 
+        costUsd 
+      }, 'AI Actions generated');
     } catch (error) {
-      console.error('[Digest] AI actions generation failed:', error);
+      logger.error({ error }, 'AI actions generation failed');
     }
   }
 
@@ -443,9 +452,9 @@ async function logDigestGeneration(
         }
       });
 
-    console.log(`[Digest] Logged generation: $${costUsd.toFixed(4)}, ${durationMs}ms`);
+    logger.info({ costUsd, durationMs }, 'Digest generation logged');
   } catch (error) {
-    console.error('[Digest] Failed to log generation:', error);
+    logger.error({ error }, 'Failed to log digest generation');
   }
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createCronLogger } from '@/lib/logger';
 
 // Service role client for bypassing RLS
 const supabaseServiceRole = createClient(
@@ -20,6 +21,8 @@ const supabaseServiceRole = createClient(
  * Configured in vercel.json with schedule: "every 10 minutes"
  */
 export async function GET(req: NextRequest) {
+  const logger = createCronLogger('telegram-health-check');
+  
   // Verify cron secret (Vercel passes this automatically)
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -27,12 +30,12 @@ export async function GET(req: NextRequest) {
   // In production, verify the secret
   if (process.env.NODE_ENV === 'production' && cronSecret) {
     if (authHeader !== `Bearer ${cronSecret}`) {
-      console.error('[Telegram Health Cron] Unauthorized');
+      logger.error('Unauthorized cron request');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
   
-  console.log('[Telegram Health Cron] ========== HEALTH CHECK START ==========');
+  logger.info('Health check started');
   
   try {
     // Get all groups
@@ -41,11 +44,11 @@ export async function GET(req: NextRequest) {
       .select('id, tg_chat_id, title, last_sync_at, bot_status');
     
     if (error) {
-      console.error('[Telegram Health Cron] Error fetching groups:', error);
+      logger.error({ error }, 'Error fetching groups');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     
-    console.log(`[Telegram Health Cron] Checking ${groups?.length || 0} groups`);
+    logger.info({ groupsCount: groups?.length || 0 }, 'Checking groups');
     
     const results = [];
     let healthyCount = 0;
@@ -107,7 +110,10 @@ export async function GET(req: NextRequest) {
         });
         
         if (healthLogError) {
-          console.error(`[Telegram Health Cron] Failed to log health for group ${group.tg_chat_id}:`, healthLogError.message);
+          logger.error({ 
+            tgChatId: group.tg_chat_id, 
+            error: healthLogError 
+          }, 'Failed to log health event');
         }
       }
       
@@ -119,11 +125,14 @@ export async function GET(req: NextRequest) {
       });
     }
     
-    console.log('[Telegram Health Cron] ========== HEALTH CHECK COMPLETE ==========');
-    console.log(`[Telegram Health Cron] Healthy: ${healthyCount}, Degraded: ${degradedCount}, Unhealthy: ${unhealthyCount}`);
+    logger.info({ 
+      healthy: healthyCount, 
+      degraded: degradedCount, 
+      unhealthy: unhealthyCount 
+    }, 'Health check complete');
     
     // Run cleanup functions (cleanup old logs)
-    console.log('[Telegram Health Cron] Running cleanup functions...');
+    logger.info('Running cleanup functions');
     
     const [
       { data: idempotencyDeleted, error: idempotencyError },
@@ -135,9 +144,9 @@ export async function GET(req: NextRequest) {
       supabaseServiceRole.rpc('cleanup_error_logs')
     ]);
     
-    if (idempotencyError) console.error('[Telegram Health Cron] Idempotency cleanup failed:', idempotencyError.message);
-    if (healthError) console.error('[Telegram Health Cron] Health cleanup failed:', healthError.message);
-    if (errorLogsError) console.error('[Telegram Health Cron] Error logs cleanup failed:', errorLogsError.message);
+    if (idempotencyError) logger.error({ error: idempotencyError }, 'Idempotency cleanup failed');
+    if (healthError) logger.error({ error: healthError }, 'Health cleanup failed');
+    if (errorLogsError) logger.error({ error: errorLogsError }, 'Error logs cleanup failed');
     
     const cleanupResults = [
       idempotencyDeleted || 0,
@@ -145,11 +154,11 @@ export async function GET(req: NextRequest) {
       errorLogsDeleted || 0
     ];
     
-    console.log('[Telegram Health Cron] Cleanup complete:', {
+    logger.info({
       webhook_idempotency: cleanupResults[0],
       health_events: cleanupResults[1],
       error_logs: cleanupResults[2]
-    });
+    }, 'Cleanup complete');
     
     return NextResponse.json({
       ok: true,
@@ -168,7 +177,7 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('[Telegram Health Cron] Unexpected error:', error);
+    logger.error({ error }, 'Unexpected error in health check cron');
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 });

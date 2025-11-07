@@ -6,6 +6,7 @@ import { createEventProcessingService } from '@/lib/services/eventProcessingServ
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { updateParticipantActivity, incrementGroupMessageCount } from '@/lib/services/participantStatsService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
@@ -21,31 +22,33 @@ const supabaseServiceRole = createClient(
 );
 
 export async function POST(req: NextRequest) {
-  console.log('[Main Bot Webhook] ==================== WEBHOOK RECEIVED ====================');
+  const logger = createAPILogger(req, { webhook: 'main' });
+  logger.info('Webhook received');
   
   // Проверяем секретный токен
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET!
   const receivedSecret = req.headers.get('x-telegram-bot-api-secret-token');
-  console.log('[Main Bot Webhook] Secret token check:', { 
+  logger.debug({ 
     endpoint: '/api/telegram/webhook',
     botType: 'MAIN',
     hasSecret: !!secret, 
     receivedMatches: receivedSecret === secret,
     secretLength: secret?.length,
     receivedSecretLength: receivedSecret?.length
-  });
+  }, 'Secret token check');
   
   if (receivedSecret !== secret) {
-    console.error('[Main Bot Webhook] ❌ Unauthorized - secret token mismatch');
-    console.error('[Main Bot Webhook] Endpoint: /api/telegram/webhook (MAIN BOT)');
-    console.error('[Main Bot Webhook] Expected secret (TELEGRAM_WEBHOOK_SECRET) length:', secret?.length);
-    console.error('[Main Bot Webhook] Received secret length:', receivedSecret?.length);
-    console.error('[Main Bot Webhook] This suggests the webhook was set with a different secret');
+    logger.error({ 
+      endpoint: '/api/telegram/webhook',
+      botType: 'MAIN',
+      expectedSecretLength: secret?.length,
+      receivedSecretLength: receivedSecret?.length
+    }, 'Unauthorized - secret token mismatch');
     
     // 🔧 Автоматическое восстановление webhook
-    console.log('[Main Bot Webhook] 🔧 Attempting automatic webhook recovery...');
+    logger.info('Attempting automatic webhook recovery');
     webhookRecoveryService.recoverWebhook('main', 'secret_token_mismatch').catch(err => {
-      console.error('[Main Bot Webhook] Recovery failed:', err);
+      logger.error({ error: err }, 'Recovery failed');
     });
     
     return NextResponse.json({ ok: false }, { status: 401 })

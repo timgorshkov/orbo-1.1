@@ -31,71 +31,86 @@ export async function GET(req: NextRequest) {
       console.error('[Telegram Health] Error fetching groups:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    
-    // Get health status for each group
-    const healthStatuses = await Promise.all(
-      (groups || []).map(async (group) => {
-        const { data: status, error: statusError } = await supabaseServiceRole
-          .rpc('get_telegram_health_status', {
-            p_tg_chat_id: group.tg_chat_id
-          })
-          .single();
-        
-        if (statusError) {
-          console.error(`[Telegram Health] Error fetching health for group ${group.tg_chat_id}:`, statusError);
-        }
-        
-        // Calculate minutes since last sync
-        let minutesSinceSync = null;
-        if (group.last_sync_at) {
-          const lastSync = new Date(group.last_sync_at);
-          const now = new Date();
-          minutesSinceSync = Math.round((now.getTime() - lastSync.getTime()) / 60000);
-        }
-        
-        const healthStatus: HealthStatus = (status as HealthStatus) || {
+
+    if (!groups || groups.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        global_status: {
           status: 'unknown',
-          last_success: null,
-          last_failure: null,
-          failure_count_24h: 0
-        };
-        
-        // Get org_id from org_telegram_groups mapping
-        const { data: orgMapping } = await supabaseServiceRole
-          .from('org_telegram_groups')
-          .select('org_id')
-          .eq('tg_chat_id', group.tg_chat_id)
-          .limit(1)
-          .single();
-        
-        return {
-          id: group.id,
-          tg_chat_id: group.tg_chat_id,
-          title: group.title,
-          org_id: orgMapping?.org_id || null,
-          bot_status: group.bot_status,
-          last_sync_at: group.last_sync_at,
-          minutes_since_sync: minutesSinceSync,
-          health: healthStatus
-        };
-      })
-    );
+          last_event_at: null,
+          last_event_from_group: null,
+          minutes_since_last_event: null,
+          active_groups_24h: 0,
+          total_groups: 0
+        }
+      });
+    }
     
-    // Calculate overall health
-    const healthyCount = healthStatuses.filter(g => g.health.status === 'healthy').length;
-    const unhealthyCount = healthStatuses.filter(g => g.health.status === 'unhealthy').length;
-    const totalCount = healthStatuses.length;
+    // Find most recent event across ALL groups (global webhook status)
+    let mostRecentSync: { 
+      last_sync_at: string; 
+      title: string; 
+      tg_chat_id: number;
+    } | null = null;
+    let mostRecentTime = 0;
+    
+    for (const group of groups) {
+      if (group.last_sync_at) {
+        const syncTime = new Date(group.last_sync_at).getTime();
+        if (syncTime > mostRecentTime) {
+          mostRecentTime = syncTime;
+          mostRecentSync = {
+            last_sync_at: group.last_sync_at,
+            title: group.title,
+            tg_chat_id: group.tg_chat_id
+          };
+        }
+      }
+    }
+    
+    // Calculate minutes since last event (from ANY group)
+    const now = new Date();
+    const minutesSinceLastEvent = mostRecentSync 
+      ? Math.round((now.getTime() - new Date(mostRecentSync.last_sync_at).getTime()) / 60000)
+      : null;
+    
+    // Global webhook status logic:
+    // - Healthy: Last event < 30 minutes ago
+    // - Degraded: Last event 30 minutes - 3 hours ago
+    // - Unhealthy: Last event > 3 hours ago (technical webhook failure)
+    let globalStatus: 'healthy' | 'degraded' | 'unhealthy' | 'unknown' = 'unknown';
+    
+    if (minutesSinceLastEvent !== null) {
+      if (minutesSinceLastEvent < 30) {
+        globalStatus = 'healthy';
+      } else if (minutesSinceLastEvent < 180) { // 3 hours
+        globalStatus = 'degraded';
+      } else {
+        globalStatus = 'unhealthy';
+      }
+    }
+    
+    // Count active groups in last 24 hours
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const activeGroups24h = groups.filter(g => 
+      g.last_sync_at && new Date(g.last_sync_at) > twentyFourHoursAgo
+    ).length;
     
     return NextResponse.json({
       ok: true,
       timestamp: new Date().toISOString(),
-      summary: {
-        total_groups: totalCount,
-        healthy: healthyCount,
-        unhealthy: unhealthyCount,
-        overall_status: unhealthyCount === 0 ? 'healthy' : unhealthyCount < totalCount / 2 ? 'degraded' : 'unhealthy'
-      },
-      groups: healthStatuses
+      global_status: {
+        status: globalStatus,
+        last_event_at: mostRecentSync?.last_sync_at || null,
+        last_event_from_group: mostRecentSync ? {
+          title: mostRecentSync.title,
+          tg_chat_id: mostRecentSync.tg_chat_id
+        } : null,
+        minutes_since_last_event: minutesSinceLastEvent,
+        active_groups_24h: activeGroups24h,
+        total_groups: groups.length
+      }
     });
   } catch (error) {
     console.error('[Telegram Health] Unexpected error:', error);
