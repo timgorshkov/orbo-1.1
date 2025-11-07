@@ -1,0 +1,156 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false
+    }
+  }
+);
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * GET /api/superadmin/audit-log
+ * 
+ * Fetch admin action logs with optional filters
+ * 
+ * Query params:
+ * - org_id: UUID (optional filter by organization)
+ * - user_id: UUID (optional filter by user)
+ * - action: string (optional filter by action type)
+ * - resource_type: string (optional filter)
+ * - hours: number (default: 24)
+ * - limit: number (default: 100)
+ */
+export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: 'superadmin/audit-log' });
+  
+  try {
+    // TODO: Add superadmin authentication check here
+    
+    const url = new URL(req.url);
+    const orgId = url.searchParams.get('org_id');
+    const userId = url.searchParams.get('user_id');
+    const action = url.searchParams.get('action');
+    const resourceType = url.searchParams.get('resource_type');
+    const hours = parseInt(url.searchParams.get('hours') || '24', 10);
+    const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+    
+    logger.info({ orgId, userId, action, resourceType, hours, limit }, 'Fetching audit logs');
+    
+    // Calculate time threshold
+    const timeThreshold = new Date();
+    timeThreshold.setHours(timeThreshold.getHours() - hours);
+    
+    // Build query (without joins - we'll enrich separately)
+    let query = supabaseAdmin
+      .from('admin_action_log')
+      .select('*')
+      .gte('created_at', timeThreshold.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    // Apply filters
+    if (orgId) {
+      query = query.eq('org_id', orgId);
+    }
+    
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    
+    if (action) {
+      query = query.eq('action', action);
+    }
+    
+    if (resourceType) {
+      query = query.eq('resource_type', resourceType);
+    }
+    
+    const { data: logs, error } = await query;
+    
+    if (error) {
+      logger.error({ error }, 'Failed to fetch audit logs');
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    
+    // Enrich logs with user emails and org names
+    if (logs && logs.length > 0) {
+      // Get unique user IDs and org IDs
+      const userIds = Array.from(new Set(logs.map(l => l.user_id)));
+      const orgIds = Array.from(new Set(logs.map(l => l.org_id)));
+      
+      // Fetch users from auth.users (requires admin client)
+      const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+      const userMap = new Map(
+        users.users.map(u => [u.id, u.email])
+      );
+      
+      // Fetch organizations
+      const { data: orgs } = await supabaseAdmin
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+      const orgMap = new Map(
+        (orgs || []).map(o => [o.id, o.name])
+      );
+      
+      // Enrich logs
+      logs.forEach(log => {
+        (log as any).users = { email: userMap.get(log.user_id) || 'Unknown' };
+        (log as any).organizations = { name: orgMap.get(log.org_id) || 'Unknown' };
+      });
+    }
+    
+    // Get statistics
+    const { data: stats } = await supabaseAdmin
+      .from('admin_action_log')
+      .select('action, resource_type')
+      .gte('created_at', timeThreshold.toISOString());
+    
+    // Count by action type
+    const actionCounts: Record<string, number> = {};
+    const resourceCounts: Record<string, number> = {};
+    
+    stats?.forEach(s => {
+      actionCounts[s.action] = (actionCounts[s.action] || 0) + 1;
+      resourceCounts[s.resource_type] = (resourceCounts[s.resource_type] || 0) + 1;
+    });
+    
+    const statistics = {
+      total: stats?.length || 0,
+      by_action: actionCounts,
+      by_resource: resourceCounts,
+    };
+    
+    logger.info({ 
+      logsCount: logs?.length || 0, 
+      statistics 
+    }, 'Audit logs fetched successfully');
+    
+    return NextResponse.json({
+      ok: true,
+      logs: logs || [],
+      statistics,
+      filters: {
+        org_id: orgId,
+        user_id: userId,
+        action,
+        resource_type: resourceType,
+        hours,
+        limit
+      }
+    });
+  } catch (error) {
+    logger.error({ error }, 'Unexpected error fetching audit logs');
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    }, { status: 500 });
+  }
+}
+

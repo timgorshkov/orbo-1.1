@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { Shield, Users, Building2, MessageSquare, UserCog, Send, DollarSign } from 'lucide-react'
+import { Shield, Users, Building2, MessageSquare, UserCog, Send, DollarSign, AlertCircle, FileText } from 'lucide-react'
 import Link from 'next/link'
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createClientServer } from '@/lib/server/supabaseServer'
@@ -23,8 +23,10 @@ export default async function SuperadminLayout({
     { href: '/superadmin/organizations', label: 'Организации', icon: Building2 },
     { href: '/superadmin/groups', label: 'Группы', icon: MessageSquare },
     { href: '/superadmin/users', label: 'Пользователи', icon: Users },
-          { href: '/superadmin/telegram', label: 'Telegram', icon: Send },
-          { href: '/superadmin/ai-costs', label: 'AI Расходы', icon: DollarSign },
+    { href: '/superadmin/telegram', label: 'Telegram', icon: Send },
+    { href: '/superadmin/errors', label: 'Errors', icon: AlertCircle },
+    { href: '/superadmin/audit-log', label: 'Audit Log', icon: FileText },
+    { href: '/superadmin/ai-costs', label: 'AI Расходы', icon: DollarSign },
     { href: '/superadmin/superadmins', label: 'Суперадмины', icon: UserCog }
   ]
   

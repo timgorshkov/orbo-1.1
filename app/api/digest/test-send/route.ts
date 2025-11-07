@@ -11,6 +11,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';
 import { formatDigestForTelegram } from '@/lib/templates/weeklyDigest';
 import { sendDigestDM } from '@/lib/services/telegramNotificationService';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,6 +84,21 @@ export async function POST(request: NextRequest) {
     }
 
     const duration = Date.now() - startTime;
+
+    // Log admin action
+    await logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.SEND_TEST_DIGEST,
+      resourceType: ResourceTypes.DIGEST,
+      metadata: {
+        recipient_tg_user_id: participant.tg_user_id,
+        cost_usd: digest.cost.totalUsd,
+        messages_count: digest.keyMetrics.current.messages,
+        duration_ms: duration
+      },
+      requestId: request.headers.get('x-vercel-id') || undefined
+    });
 
     return NextResponse.json({
       success: true,
