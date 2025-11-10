@@ -58,25 +58,25 @@ export default function SignUp() {
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>CRM участников с профилями и поиском</span>
+              <span><strong>AI-конструктор приложений:</strong> доска объявлений, карта проблем, события — за 5 минут</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>База знаний как в Notion</span>
+              <span><strong>Instant user base:</strong> подключили группу → все участники сразу используют</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>События с QR-чекином</span>
+              <span>CRM участников с профилями и детальной аналитикой</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Дашборд активности и удержания</span>
+              <span>База знаний и события с QR-чекином</span>
             </li>
           </ul>
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-4 mt-8">

@@ -14,7 +14,9 @@ import {
   ChevronRight,
   ChevronDown,
   Building2,
-  User as UserIcon
+  User as UserIcon,
+  CreditCard,
+  AppWindow
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -123,6 +125,25 @@ export default function CollapsibleSidebar({
       active: pathname?.startsWith(`/app/${orgId}/members`),
     })
   }
+
+  if (permissions.canManageSettings) {
+    navItems.push({
+      key: 'subscriptions',
+      label: 'Подписки',
+      icon: CreditCard,
+      href: `/app/${orgId}/subscriptions`,
+      active: pathname?.startsWith(`/app/${orgId}/subscriptions`),
+    })
+  }
+
+  // Apps section (available for all authenticated users)
+  navItems.push({
+    key: 'apps',
+    label: 'Приложения',
+    icon: AppWindow,
+    href: `/app/${orgId}/apps`,
+    active: pathname?.startsWith(`/app/${orgId}/apps`),
+  })
 
   if (isCollapsed) {
     // Свёрнутая панель (только иконки)

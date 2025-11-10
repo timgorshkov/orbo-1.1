@@ -1,0 +1,332 @@
+import { createClientServer } from '@/lib/server/supabaseServer';
+import { NextRequest, NextResponse } from 'next/server';
+import { createAPILogger } from '@/lib/logger';
+
+// GET /api/apps/[appId]/items/[itemId] - Get item details (PUBLIC)
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { appId: string; itemId: string } }
+) {
+  const startTime = Date.now();
+  const logger = createAPILogger(request);
+  const { appId, itemId } = params;
+  
+  try {
+    const supabase = await createClientServer();
+
+    // Fetch item - public read access
+    const { data: item, error: itemError } = await supabase
+      .from('app_items')
+      .select(`
+        id,
+        collection_id,
+        data,
+        images,
+        files,
+        location_lat,
+        location_lon,
+        location_address,
+        status,
+        creator_id,
+        org_id,
+        moderated_by,
+        moderated_at,
+        moderation_note,
+        views_count,
+        reactions_count,
+        created_at,
+        updated_at,
+        expires_at
+      `)
+      .eq('id', itemId)
+      .in('status', ['published', 'active'])
+      .single();
+
+    if (itemError) {
+      if (itemError.code === 'PGRST116') {
+        return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      }
+      logger.error({ error: itemError, itemId }, 'Error fetching item');
+      return NextResponse.json(
+        { error: 'Failed to fetch item' },
+        { status: 500 }
+      );
+    }
+
+    // Fetch participant info (separate query to avoid join issues)
+    if (item.creator_id) {
+      try {
+        const { data: participant } = await supabase
+          .from('participants')
+          .select('id, user_id, full_name, username, photo_url')
+          .eq('user_id', item.creator_id)
+          .single();
+        
+        if (participant) {
+          (item as any).participant = participant;
+        }
+      } catch (err) {
+        logger.error({ error: err }, 'Error fetching participant (non-critical)');
+        // Continue without participant data
+      }
+    }
+
+    // Increment views count (fire and forget - ignore errors)
+    supabase
+      .from('app_items')
+      .update({ views_count: (item.views_count || 0) + 1 })
+      .eq('id', itemId);
+
+    // Log analytics event (optional - fire and forget)
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.rpc('log_app_event', {
+        p_app_id: appId,
+        p_event_type: 'item_viewed',
+        p_user_id: user?.id || null,
+        p_item_id: itemId,
+        p_collection_id: item.collection_id,
+        p_data: {}
+      });
+    } catch (err) {
+      // Ignore errors - analytics shouldn't block requests
+      logger.error({ error: err }, 'Error logging analytics event');
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({ itemId, appId, duration }, 'Item fetched successfully');
+
+    return NextResponse.json({ item });
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error({ 
+      error: error.message, 
+      appId,
+      itemId,
+      duration 
+    }, 'Error in GET /api/apps/[appId]/items/[itemId]');
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/apps/[appId]/items/[itemId] - Update item
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { appId: string; itemId: string } }
+) {
+  const startTime = Date.now();
+  const logger = createAPILogger(request);
+  const { appId, itemId } = params;
+  
+  try {
+    const supabase = await createClientServer();
+    const body = await request.json();
+    const { 
+      data, 
+      images, 
+      files,
+      locationLat, 
+      locationLon, 
+      locationAddress,
+      status 
+    } = body;
+
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get existing item
+    const { data: existingItem, error: fetchError } = await supabase
+      .from('app_items')
+      .select('creator_id, org_id, collection_id')
+      .eq('id', itemId)
+      .single();
+
+    if (fetchError || !existingItem) {
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+    }
+
+    // Check permissions
+    const { data: membership, error: membershipError } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', existingItem.org_id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    // Only owner can edit data/images, admins/moderators can change status
+    const isOwner = existingItem.creator_id === user.id;
+    const isModerator = ['owner', 'admin', 'moderator'].includes(membership.role);
+
+    if (!isOwner && !isModerator) {
+      return NextResponse.json(
+        { error: 'You can only edit your own items' },
+        { status: 403 }
+      );
+    }
+
+    // Build update object
+    const updates: any = {};
+    
+    if (isOwner) {
+      if (data !== undefined) updates.data = data;
+      if (images !== undefined) updates.images = images;
+      if (files !== undefined) updates.files = files;
+      if (locationLat !== undefined) updates.location_lat = locationLat;
+      if (locationLon !== undefined) updates.location_lon = locationLon;
+      if (locationAddress !== undefined) updates.location_address = locationAddress;
+    }
+
+    if (isModerator && status !== undefined) {
+      updates.status = status;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      );
+    }
+
+    // Update item
+    const { data: item, error: updateError } = await supabase
+      .from('app_items')
+      .update(updates)
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (updateError) {
+      logger.error({ error: updateError, itemId }, 'Error updating item');
+      return NextResponse.json(
+        { error: 'Failed to update item' },
+        { status: 500 }
+      );
+    }
+
+    // Log analytics event
+    try {
+      await supabase.rpc('log_app_event', {
+        p_app_id: appId,
+        p_event_type: 'item_updated',
+        p_user_id: user.id,
+        p_item_id: itemId,
+        p_collection_id: existingItem.collection_id,
+        p_data: { updates }
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error logging analytics event');
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({ itemId, appId, updates, duration }, 'Item updated successfully');
+
+    return NextResponse.json({ item });
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error({ 
+      error: error.message, 
+      appId,
+      itemId,
+      duration 
+    }, 'Error in PATCH /api/apps/[appId]/items/[itemId]');
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/apps/[appId]/items/[itemId] - Delete item
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { appId: string; itemId: string } }
+) {
+  const startTime = Date.now();
+  const logger = createAPILogger(request);
+  const { appId, itemId } = params;
+  
+  try {
+    const supabase = await createClientServer();
+
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get existing item
+    const { data: existingItem, error: fetchError } = await supabase
+      .from('app_items')
+      .select('creator_id, org_id, collection_id')
+      .eq('id', itemId)
+      .single();
+
+    if (fetchError || !existingItem) {
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+    }
+
+    // Check permissions (owner or admin)
+    const { data: membership, error: membershipError } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', existingItem.org_id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const isOwner = existingItem.creator_id === user.id;
+    const isAdmin = ['owner', 'admin'].includes(membership.role);
+
+    if (!isOwner && !isAdmin) {
+      return NextResponse.json(
+        { error: 'You can only delete your own items' },
+        { status: 403 }
+      );
+    }
+
+    // Delete item (CASCADE will delete reactions, comments)
+    const { error: deleteError } = await supabase
+      .from('app_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (deleteError) {
+      logger.error({ error: deleteError, itemId }, 'Error deleting item');
+      return NextResponse.json(
+        { error: 'Failed to delete item' },
+        { status: 500 }
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({ itemId, appId, duration }, 'Item deleted successfully');
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error({ 
+      error: error.message, 
+      appId,
+      itemId,
+      duration 
+    }, 'Error in DELETE /api/apps/[appId]/items/[itemId]');
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+

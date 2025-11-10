@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
@@ -30,14 +30,44 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
+    // Check permissions (user must be member of org)
+    const { data: membership } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .single();
+    
+    if (!membership) {
+      return NextResponse.json({ error: 'Forbidden: not a member of this organization' }, { status: 403 });
+    }
+    
     logger.info({ orgId, subscriptionId, eventId }, 'Fetching payments');
     
+    // Use admin client to bypass RLS
+    const adminSupabase = createAdminServer();
+    
     // Build query
-    let query = supabase
+    let query = adminSupabase
       .from('payments')
       .select(`
-        *,
-        participant:participants(id, full_name, tg_username, avatar_url),
+        id,
+        org_id,
+        subscription_id,
+        event_id,
+        participant_id,
+        payment_type,
+        amount,
+        currency,
+        payment_method,
+        payment_method_details,
+        status,
+        due_date,
+        paid_at,
+        notes,
+        receipt_url,
+        created_at,
+        participant:participants(id, full_name, username, photo_url),
         subscription:subscriptions(id, plan_name, billing_period),
         event:events(id, title, event_date)
       `)
