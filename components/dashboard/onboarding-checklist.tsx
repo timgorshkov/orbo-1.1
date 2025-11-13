@@ -29,28 +29,28 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
       id: 'telegram',
       label: 'Привязан Telegram-аккаунт',
       completed: status.hasTelegramAccount,
-      link: `/app/${orgId}/telegram/account`,
+      link: `/p/${orgId}/telegram/account`,
       action: 'Привязать сейчас'
     },
     {
       id: 'groups',
       label: 'Добавлена первая группа',
       completed: status.hasGroups,
-      link: `/app/${orgId}/telegram`,
+      link: `/p/${orgId}/telegram`,
       action: 'Добавить группу'
     },
     {
       id: 'materials',
       label: 'Создан первый материал',
       completed: status.hasMaterials,
-      link: `/app/${orgId}/materials`,
+      link: `/p/${orgId}/materials`,
       action: 'Создать материал'
     },
     {
       id: 'events',
       label: 'Запланировано первое событие',
       completed: status.hasEvents,
-      link: `/app/${orgId}/events/new`,
+      link: `/p/${orgId}/events/new`,
       action: 'Создать событие'
     }
   ]

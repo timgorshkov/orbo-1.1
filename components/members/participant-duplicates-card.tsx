@@ -158,7 +158,7 @@ const filteredSuggestions = useMemo(() => {
         onDetailUpdate(data.detail);
       }
       if (data?.merged_into) {
-        window.location.href = `/app/${orgId}/members/${data.merged_into}`;
+        window.location.href = `/p/${orgId}/members/${data.merged_into}`;
       }
     } catch (err: any) {
       setError(err.message || 'Не удалось объединить дубликаты');

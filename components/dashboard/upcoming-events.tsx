@@ -32,7 +32,7 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
         </CardHeader>
         <CardContent className="text-center py-8">
           <p className="text-neutral-500 mb-4">Нет запланированных событий</p>
-          <Link href={`/app/${orgId}/events/new`}>
+          <Link href={`/p/${orgId}/events/new`}>
             <Button>Создать событие</Button>
           </Link>
         </CardContent>
@@ -59,7 +59,7 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Ближайшие события</CardTitle>
-        <Link href={`/app/${orgId}/events`}>
+        <Link href={`/p/${orgId}/events`}>
           <Button variant="outline">Все события</Button>
         </Link>
       </CardHeader>
@@ -67,7 +67,7 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
         {events.map(event => (
           <Link
             key={event.id}
-            href={`/app/${orgId}/events/${event.id}`}
+            href={`/p/${orgId}/events/${event.id}`}
             className="block border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
           >
             <div className="flex">

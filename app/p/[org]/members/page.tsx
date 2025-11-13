@@ -152,7 +152,7 @@ export default async function MembersPage({ params, searchParams }: {
             orgId={orgId}
             initialParticipants={participants || []}
             initialInvites={invites}
-            isAdmin={isAdmin}
+            role={role as 'owner' | 'admin' | 'member' | 'guest'}
             activeTab={tab}
           />
         </Suspense>

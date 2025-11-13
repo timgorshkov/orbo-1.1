@@ -41,7 +41,7 @@ export default function MembersTable({ participants }: MembersTableProps) {
   const orgId = params?.org as string
 
   const handleRowClick = (participantId: string) => {
-    router.push(`/app/${orgId}/members/${participantId}`)
+    router.push(`/p/${orgId}/members/${participantId}`)
   }
 
   const formatDate = (dateString?: string) => {

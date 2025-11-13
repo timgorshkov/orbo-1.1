@@ -32,7 +32,7 @@ export default function MemberCard({ participant }: MemberCardProps) {
 
   return (
     <Link
-      href={`/app/${orgId}/members/${participant.id}`}
+      href={`/p/${orgId}/members/${participant.id}`}
       className="group flex flex-col items-center rounded-lg border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-lg"
     >
       {/* Фото или placeholder */}

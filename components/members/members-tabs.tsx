@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '../ui/button'
 import MembersView from './members-view'
 import InvitesManager from '../settings/invites-manager'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 
 interface Participant {
   id: string
@@ -22,7 +23,7 @@ interface MembersTabsProps {
   orgId: string
   initialParticipants: Participant[]
   initialInvites: any[]
-  isAdmin: boolean
+  role: 'owner' | 'admin' | 'member' | 'guest'
   activeTab: string
 }
 
@@ -30,15 +31,19 @@ export default function MembersTabs({
   orgId,
   initialParticipants,
   initialInvites,
-  isAdmin,
+  role,
   activeTab: initialTab,
 }: MembersTabsProps) {
   const router = useRouter()
+  const { adminMode, isAdmin } = useAdminMode(role)
   const [activeTab, setActiveTab] = useState(initialTab)
+  
+  // Show admin features only if user is admin AND in admin mode
+  const showAdminFeatures = isAdmin && adminMode
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab)
-    router.push(`/app/${orgId}/members?tab=${tab}`, { scroll: false })
+    router.push(`/p/${orgId}/members?tab=${tab}`, { scroll: false })
   }
 
   return (
@@ -59,7 +64,7 @@ export default function MembersTabs({
           )}
         </button>
 
-        {isAdmin && (
+        {showAdminFeatures && (
           <button
             onClick={() => handleTabChange('invites')}
             className={`px-4 py-2 font-medium transition-colors relative ${
@@ -82,10 +87,11 @@ export default function MembersTabs({
           orgId={orgId}
           initialParticipants={initialParticipants}
           isAdmin={isAdmin}
+          adminMode={adminMode}
         />
       )}
 
-      {activeTab === 'invites' && isAdmin && (
+      {activeTab === 'invites' && showAdminFeatures && (
         <InvitesManager orgId={orgId} initialInvites={initialInvites} />
       )}
     </div>

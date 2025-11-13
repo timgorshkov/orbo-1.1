@@ -121,7 +121,7 @@ export default function OrganizationSwitcher({
               {organizations.map(org => (
                 <Link
                   key={org.id}
-                  href={`/app/${org.id}/dashboard`}
+                  href={`/p/${org.id}/dashboard`}
                   className={`block px-4 py-2 text-sm hover:bg-neutral-50 ${
                     org.id === currentOrgId ? 'bg-neutral-100 font-medium' : ''
                   }`}

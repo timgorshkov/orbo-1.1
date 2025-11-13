@@ -113,7 +113,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
         
         // Redirect to event detail page
         setTimeout(() => {
-          router.push(`/app/${orgId}/events/${data.event.id}`)
+          router.push(`/p/${orgId}/events/${data.event.id}`)
         }, 1000)
       } catch (err: any) {
         setError(err.message || 'Произошла ошибка при сохранении')

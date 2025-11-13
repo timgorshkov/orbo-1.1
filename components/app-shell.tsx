@@ -104,11 +104,11 @@ export default function AppShell({
   }, [orgId, telegramGroups, orgName]);
 
   const nav: NavItem[] = [
-    { href: `/app/${orgId}/dashboard`, label: 'Дашборд', icon: '🏠' },
-    { href: `/app/${orgId}/events`, label: 'События', icon: '📅' },
-    { href: `/app/${orgId}/members`, label: 'Участники', icon: '👥' },
-    { href: `/app/${orgId}/materials`, label: 'Материалы', icon: '📁' },
-    { href: `/app/${orgId}/integrations`, label: 'Интеграции', icon: '🔗' },
+    { href: `/p/${orgId}/dashboard`, label: 'Дашборд', icon: '🏠' },
+    { href: `/p/${orgId}/events`, label: 'События', icon: '📅' },
+    { href: `/p/${orgId}/members`, label: 'Участники', icon: '👥' },
+    { href: `/p/${orgId}/materials`, label: 'Материалы', icon: '📁' },
+    { href: `/p/${orgId}/integrations`, label: 'Интеграции', icon: '🔗' },
   ]
   
   return (
@@ -148,10 +148,10 @@ export default function AppShell({
           {/* Настройки внизу */}
           <div className="border-t pt-2 pb-2">
             <Link
-              href={`/app/${orgId}/settings`}
+              href={`/p/${orgId}/settings`}
               className={clsx(
                 "flex items-center px-3 py-2 text-sm rounded-xl",
-                currentPath === `/app/${orgId}/settings`
+                currentPath === `/p/${orgId}/settings`
                   ? "bg-black text-white"
                   : "hover:bg-black/5"
               )}

@@ -23,6 +23,7 @@ interface MembersViewProps {
   orgId: string
   initialParticipants: Participant[]
   isAdmin: boolean
+  adminMode: boolean
 }
 
 type ViewMode = 'cards' | 'table'
@@ -31,10 +32,14 @@ export default function MembersView({
   orgId,
   initialParticipants,
   isAdmin,
+  adminMode,
 }: MembersViewProps) {
   const [participants] = useState<Participant[]>(initialParticipants)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
+  
+  // Show admin features only if user is admin AND in admin mode
+  const showAdminFeatures = isAdmin && adminMode
 
   // Фильтрация участников по поисковому запросу
   const filteredParticipants = useMemo(() => {

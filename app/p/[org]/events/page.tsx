@@ -101,7 +101,7 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
           <EventsList 
             events={eventsWithStats}
             orgId={orgId}
-            isAdmin={isAdmin}
+            role={role as 'owner' | 'admin' | 'member' | 'guest'}
             telegramGroups={telegramGroups}
           />
         </Suspense>

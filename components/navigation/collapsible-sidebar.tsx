@@ -227,7 +227,7 @@ export default function CollapsibleSidebar({
                           telegramGroups.map((group: any) => (
                             <Link
                               key={group.id}
-                              href={`/app/${orgId}/telegram/${group.tg_chat_id}`}
+                              href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
                               className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
                               onClick={() => setShowMenuDropdown(false)}
                             >
@@ -249,7 +249,7 @@ export default function CollapsibleSidebar({
                   <>
                     <div className="border-t border-gray-100 my-1"></div>
                     <Link
-                      href={`/app/${orgId}/settings`}
+                      href={`/p/${orgId}/settings`}
                       className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       onClick={() => setShowMenuDropdown(false)}
                     >
@@ -281,7 +281,7 @@ export default function CollapsibleSidebar({
 
                 <div className="border-t border-gray-100 my-1"></div>
                 <Link
-                  href={`/app/${orgId}/profile`}
+                  href={`/p/${orgId}/profile`}
                   className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                   onClick={() => setShowMenuDropdown(false)}
                 >
@@ -416,7 +416,7 @@ export default function CollapsibleSidebar({
                 Telegram группы
               </div>
               <Link
-                href={`/app/${orgId}/telegram`}
+                href={`/p/${orgId}/telegram`}
                 className="p-1 rounded hover:bg-gray-100"
                 title="Настройки Telegram"
               >
@@ -427,9 +427,9 @@ export default function CollapsibleSidebar({
               telegramGroups.map((group: any) => (
                 <Link
                   key={group.id}
-                  href={`/app/${orgId}/telegram/${group.tg_chat_id}`}
+                  href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    pathname === `/app/${orgId}/telegram/${group.tg_chat_id}`
+                    pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
                       ? 'bg-blue-50 text-blue-600'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -452,9 +452,9 @@ export default function CollapsibleSidebar({
         {/* Настройки (только для админов в режиме админа) */}
         {isAdmin && adminMode && (
           <Link
-            href={`/app/${orgId}/settings`}
+            href={`/p/${orgId}/settings`}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-              pathname?.startsWith(`/app/${orgId}/settings`)
+              pathname?.startsWith(`/p/${orgId}/settings`)
                 ? 'bg-gray-100 text-gray-900 font-medium'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
@@ -480,7 +480,7 @@ export default function CollapsibleSidebar({
 
         {/* Профиль */}
         <Link
-          href={`/app/${orgId}/profile`}
+          href={`/p/${orgId}/profile`}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
         >
           {userProfile ? (

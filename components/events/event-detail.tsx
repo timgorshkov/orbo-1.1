@@ -191,7 +191,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
           <h1 className="text-2xl font-semibold">Редактировать событие</h1>
           <Button
             variant="outline"
-            onClick={() => router.push(`/app/${orgId}/events/${event.id}`)}
+            onClick={() => router.push(`/p/${orgId}/events/${event.id}`)}
           >
             Отменить
           </Button>
@@ -211,7 +211,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => router.push(`/app/${orgId}/events`)}
+            onClick={() => router.push(`/p/${orgId}/events`)}
           >
             ← Назад
           </Button>
@@ -238,7 +238,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
             )}
             <Button
               variant="outline"
-              onClick={() => router.push(`/app/${orgId}/events/${event.id}?edit=true`)}
+              onClick={() => router.push(`/p/${orgId}/events/${event.id}?edit=true`)}
             >
               <Edit className="w-4 h-4 mr-2" />
               Редактировать

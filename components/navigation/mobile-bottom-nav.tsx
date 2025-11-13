@@ -77,8 +77,8 @@ export default function MobileBottomNav({
       key: 'dashboard',
       label: 'Дашборд',
       icon: LayoutDashboard,
-      href: `/app/${orgId}/dashboard`,
-      active: pathname === `/app/${orgId}/dashboard`,
+      href: `/p/${orgId}/dashboard`,
+      active: pathname === `/p/${orgId}/dashboard`,
     })
   }
 
@@ -87,8 +87,8 @@ export default function MobileBottomNav({
       key: 'materials',
       label: 'Материалы',
       icon: FileText,
-      href: `/app/${orgId}/materials`,
-      active: pathname?.startsWith(`/app/${orgId}/materials`),
+      href: `/p/${orgId}/materials`,
+      active: pathname?.startsWith(`/p/${orgId}/materials`),
     })
   }
 
@@ -97,8 +97,8 @@ export default function MobileBottomNav({
       key: 'events',
       label: 'События',
       icon: Calendar,
-      href: `/app/${orgId}/events`,
-      active: pathname?.startsWith(`/app/${orgId}/events`),
+      href: `/p/${orgId}/events`,
+      active: pathname?.startsWith(`/p/${orgId}/events`),
     })
   }
 
@@ -107,8 +107,8 @@ export default function MobileBottomNav({
       key: 'members',
       label: 'Участники',
       icon: Users,
-      href: `/app/${orgId}/members`,
-      active: pathname?.startsWith(`/app/${orgId}/members`),
+      href: `/p/${orgId}/members`,
+      active: pathname?.startsWith(`/p/${orgId}/members`),
     })
   }
 
@@ -120,8 +120,8 @@ export default function MobileBottomNav({
       key: 'settings',
       label: 'Настройки',
       icon: Settings,
-      href: `/app/${orgId}/settings`,
-      active: pathname?.startsWith(`/app/${orgId}/settings`),
+      href: `/p/${orgId}/settings`,
+      active: pathname?.startsWith(`/p/${orgId}/settings`),
     })
   }
 
@@ -194,7 +194,7 @@ export default function MobileBottomNav({
                 {/* Профиль */}
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <Link
-                    href={`/app/${orgId}/profile`}
+                    href={`/p/${orgId}/profile`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm hover:bg-gray-100"
                   >
                     {userProfile ? (

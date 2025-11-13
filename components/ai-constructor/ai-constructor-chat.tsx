@@ -166,7 +166,7 @@ export default function AIConstructorChat() {
       console.log('[AI Constructor] Redirecting to /app/' + orgId + '/apps?created=' + data.app.id);
       
       // Navigate to success page or app page
-      router.push(`/app/${orgId}/apps?created=${data.app.id}`);
+      router.push(`/p/${orgId}/apps?created=${data.app.id}`);
     } catch (error) {
       console.error('[AI Constructor] Error creating app:', error);
       alert('Не удалось создать приложение. Попробуйте ещё раз.');

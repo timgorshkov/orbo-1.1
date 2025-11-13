@@ -43,7 +43,7 @@ export function RemoveGroupButton({ groupId, orgId, onRemoved }: { groupId: numb
       
       // Дополнительно перенаправляем на страницу телеграм настроек с timestamp для гарантии обновления
       setTimeout(() => {
-        window.location.href = `/app/${orgId}/telegram?t=${Date.now()}`
+        window.location.href = `/p/${orgId}/telegram?t=${Date.now()}`
       }, 500)
     } catch (e: any) {
       console.error('Error removing group:', e)

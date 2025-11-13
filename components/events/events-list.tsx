@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Calendar, MapPin, Users, DollarSign, Globe, Lock } from 'lucide-react'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 
 type Event = {
   id: string
@@ -28,14 +29,19 @@ type Event = {
 type Props = {
   events: Event[]
   orgId: string
-  isAdmin: boolean
+  role: 'owner' | 'admin' | 'member' | 'guest'
   telegramGroups: Array<{ id: number; tg_chat_id: number; title: string | null }>
 }
 
-export default function EventsList({ events, orgId, isAdmin, telegramGroups }: Props) {
+export default function EventsList({ events, orgId, role, telegramGroups }: Props) {
   const router = useRouter()
+  const { adminMode, isAdmin } = useAdminMode(role)
+  
   // Default filter: 'upcoming' (Предстоящие)
   const [statusFilter, setStatusFilter] = useState<string>('upcoming')
+  
+  // Show admin features only if user is admin AND in admin mode
+  const showAdminFeatures = isAdmin && adminMode
 
   // Calculate event categories
   const now = new Date()
@@ -104,7 +110,7 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
   }
 
   const renderEventCard = (event: Event) => (
-    <Card key={event.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/app/${orgId}/events/${event.id}`)}>
+    <Card key={event.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/p/${orgId}/events/${event.id}`)}>
       <CardContent className="p-0">
         {event.cover_image_url && (
           <div className="h-48 w-full overflow-hidden rounded-t-lg">
@@ -203,7 +209,7 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
           >
             Предстоящие ({upcomingEvents.length})
           </Button>
-          {isAdmin && (
+          {showAdminFeatures && (
             <Button
               variant={statusFilter === 'draft' ? 'default' : 'outline'}
               onClick={() => setStatusFilter('draft')}
@@ -225,8 +231,8 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
           </Button>
         </div>
 
-        {isAdmin && (
-          <Button onClick={() => router.push(`/app/${orgId}/events/new`)}>
+        {showAdminFeatures && (
+          <Button onClick={() => router.push(`/p/${orgId}/events/new`)}>
             Создать событие
           </Button>
         )}
@@ -236,12 +242,12 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
         <Card>
           <CardContent className="py-8 text-center text-neutral-500">
             {statusFilter === 'all' ? (
-              isAdmin ? (
+              showAdminFeatures ? (
                 <>
                   Пока нет событий.{' '}
                   <button 
                     className="text-blue-600 hover:underline"
-                    onClick={() => router.push(`/app/${orgId}/events/new`)}
+                    onClick={() => router.push(`/p/${orgId}/events/new`)}
                   >
                     Создайте первое событие
                   </button>
