@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
       isPaid,
       priceInfo,
       capacity,
-      isPublic
+      status,
+      isPublic,
+      telegramGroupLink
     } = body
 
     // Validation
@@ -135,8 +137,9 @@ export async function POST(request: NextRequest) {
         is_paid: isPaid || false,
         price_info: priceInfo || null,
         capacity: capacity || null,
-        status: 'draft',
+        status: status || 'draft', // Use status from form, default to draft
         is_public: isPublic || false,
+        telegram_group_link: telegramGroupLink || null,
         created_by: user.id
       })
       .select()

@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
@@ -13,10 +13,11 @@ export async function GET(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
+    // Use admin client for public read access (no RLS restrictions)
+    const adminSupabase = createAdminServer();
 
     // Fetch app - public read access
-    const { data: app, error: appError } = await supabase
+    const { data: app, error: appError } = await adminSupabase
       .from('apps')
       .select(`
         id,
@@ -27,6 +28,7 @@ export async function GET(
         app_type,
         config,
         status,
+        visibility,
         created_by,
         created_at,
         updated_at
@@ -75,7 +77,7 @@ export async function PATCH(
   try {
     const supabase = await createClientServer();
     const body = await request.json();
-    const { name, description, icon, config, status } = body;
+    const { name, description, icon, config, status, visibility } = body;
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -83,19 +85,23 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Use admin client for reading (after auth check)
+    const adminSupabase = createAdminServer();
+
     // Get app to check org_id
-    const { data: existingApp, error: fetchError } = await supabase
+    const { data: existingApp, error: fetchError } = await adminSupabase
       .from('apps')
       .select('org_id')
       .eq('id', appId)
       .single();
 
     if (fetchError || !existingApp) {
+      logger.error({ error: fetchError, appId }, 'App not found for update');
       return NextResponse.json({ error: 'App not found' }, { status: 404 });
     }
 
     // Check admin/owner role
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingApp.org_id)
@@ -103,6 +109,7 @@ export async function PATCH(
       .single();
 
     if (membershipError || !membership) {
+      logger.error({ error: membershipError, userId: user.id, orgId: existingApp.org_id }, 'Membership not found for update');
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -120,9 +127,10 @@ export async function PATCH(
     if (icon !== undefined) updates.icon = icon;
     if (config !== undefined) updates.config = config;
     if (status !== undefined) updates.status = status;
+    if (visibility !== undefined) updates.visibility = visibility;
 
-    // Update app
-    const { data: app, error: updateError } = await supabase
+    // Update app using admin client
+    const { data: app, error: updateError } = await adminSupabase
       .from('apps')
       .update(updates)
       .eq('id', appId)
@@ -183,19 +191,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Use admin client for reading (after auth check)
+    const adminSupabase = createAdminServer();
+
     // Get app to check org_id
-    const { data: existingApp, error: fetchError } = await supabase
+    const { data: existingApp, error: fetchError } = await adminSupabase
       .from('apps')
       .select('org_id, name')
       .eq('id', appId)
       .single();
 
     if (fetchError || !existingApp) {
+      logger.error({ error: fetchError, appId }, 'App not found for deletion');
       return NextResponse.json({ error: 'App not found' }, { status: 404 });
     }
 
     // Check owner role (only owners can delete)
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingApp.org_id)
@@ -203,6 +215,7 @@ export async function DELETE(
       .single();
 
     if (membershipError || !membership) {
+      logger.error({ error: membershipError, userId: user.id, orgId: existingApp.org_id }, 'Membership not found');
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -213,8 +226,76 @@ export async function DELETE(
       );
     }
 
-    // Delete app (CASCADE will delete collections, items, etc)
-    const { error: deleteError } = await supabase
+    // Delete AI requests for this app
+    const { error: aiRequestsDeleteError } = await adminSupabase
+      .from('ai_requests')
+      .delete()
+      .eq('app_id', appId);
+    
+    if (aiRequestsDeleteError) {
+      logger.error({ error: aiRequestsDeleteError, appId }, 'Error deleting AI requests');
+    }
+
+    // Check if app has any items and delete them first
+    const { data: collections } = await adminSupabase
+      .from('app_collections')
+      .select('id')
+      .eq('app_id', appId);
+
+    if (collections && collections.length > 0) {
+      const collectionIds = collections.map(c => c.id);
+      
+      // Get all item IDs
+      const { data: itemsList } = await adminSupabase
+        .from('app_items')
+        .select('id')
+        .in('collection_id', collectionIds);
+      
+      if (itemsList && itemsList.length > 0) {
+        const itemIds = itemsList.map(item => item.id);
+        
+        // Delete analytics events first (they reference items)
+        const { error: analyticsDeleteError } = await adminSupabase
+          .from('app_analytics_events')
+          .delete()
+          .in('item_id', itemIds);
+        
+        if (analyticsDeleteError) {
+          logger.error({ error: analyticsDeleteError, appId }, 'Error deleting analytics events');
+        }
+      }
+      
+      // Delete all items
+      const { error: itemsDeleteError } = await adminSupabase
+        .from('app_items')
+        .delete()
+        .in('collection_id', collectionIds);
+      
+      if (itemsDeleteError) {
+        logger.error({ error: itemsDeleteError, appId }, 'Error deleting app items');
+        return NextResponse.json(
+          { error: 'Не удалось удалить объекты приложения' },
+          { status: 500 }
+        );
+      }
+
+      // Delete all collections
+      const { error: collectionsDeleteError } = await adminSupabase
+        .from('app_collections')
+        .delete()
+        .eq('app_id', appId);
+      
+      if (collectionsDeleteError) {
+        logger.error({ error: collectionsDeleteError, appId }, 'Error deleting app collections');
+        return NextResponse.json(
+          { error: 'Не удалось удалить коллекции приложения' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Delete app
+    const { error: deleteError } = await adminSupabase
       .from('apps')
       .delete()
       .eq('id', appId);

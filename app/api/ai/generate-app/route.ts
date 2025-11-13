@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { appConfig, orgId, conversationId } = body;
+    const { appConfig, orgId, visibility, conversationId } = body;
 
     if (!appConfig || !orgId) {
       return NextResponse.json(
@@ -30,6 +30,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Default to 'members' if visibility not specified
+    const appVisibility = visibility || 'members';
 
     // Validate config
     const validation = validateAppConfig(appConfig);
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
         app_type: appConfig.app.app_type || 'custom',
         config: appConfig.app.config || {},
         status: 'active',
+        visibility: appVisibility,
         created_by: user.id,
       })
       .select()

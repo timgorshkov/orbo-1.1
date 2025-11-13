@@ -114,11 +114,39 @@ export async function GET(request: NextRequest) {
       finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
     }
     
-    console.log('[Telegram Auth Fallback] Setting session via SSR')
+    console.log('[Telegram Auth Fallback] Setting session via SSR cookies')
     
-    // Используем Supabase SSR для правильной установки cookies
-    const { createClientServer } = await import('@/lib/server/supabaseServer')
-    const supabaseSSR = await createClientServer()
+    // ✅ Используем @supabase/ssr для правильной установки cookies в Next.js App Router
+    const { createServerClient } = await import('@supabase/ssr')
+    const { cookies: getCookies } = await import('next/headers')
+    
+    const cookieStore = await getCookies()
+    
+    const supabaseSSR = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+          set(name: string, value: string, options: any) {
+            try {
+              cookieStore.set({ name, value, ...options })
+            } catch (error) {
+              // Игнорируем ошибки установки cookies (может быть вызвано после отправки ответа)
+            }
+          },
+          remove(name: string, options: any) {
+            try {
+              cookieStore.set({ name, value: '', ...options })
+            } catch (error) {
+              // Игнорируем ошибки
+            }
+          },
+        },
+      }
+    )
     
     const { error: setSessionError } = await supabaseSSR.auth.setSession({
       access_token: sessionData.session.access_token,
@@ -129,7 +157,7 @@ export async function GET(request: NextRequest) {
       console.error('[Telegram Auth Fallback] ❌ Error setting session:', setSessionError)
       // Продолжаем даже при ошибке
     } else {
-      console.log('[Telegram Auth Fallback] ✅ Session set via SSR')
+      console.log('[Telegram Auth Fallback] ✅ Session set via SSR cookies')
     }
     
     console.log('[Telegram Auth Fallback] ✅ Redirecting to:', finalRedirectUrl)

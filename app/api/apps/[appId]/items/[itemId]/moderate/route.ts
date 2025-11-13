@@ -2,6 +2,7 @@ import { createClientServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
+import { notifyItemApproved, notifyItemRejected } from '@/lib/services/appsNotificationService';
 
 // POST /api/apps/[appId]/items/[itemId]/moderate - Moderate item (approve/reject)
 export async function POST(
@@ -113,9 +114,33 @@ export async function POST(
       logger.error({ error: err }, 'Error logging analytics event');
     }
 
-    // TODO: Send notification to creator
-    // If approved → send to Telegram group
-    // If rejected → send DM to creator with reason
+    // Send Telegram notifications
+    if (action === 'approve') {
+      // Post to Telegram group
+      const notificationResult = await notifyItemApproved(itemId);
+      if (!notificationResult.success) {
+        logger.error({ 
+          error: notificationResult.error, 
+          itemId 
+        }, 'Failed to send approval notification to Telegram');
+      } else {
+        logger.info({ 
+          itemId, 
+          messageId: notificationResult.messageId 
+        }, 'Item posted to Telegram group');
+      }
+    } else if (action === 'reject') {
+      // Send DM to creator
+      const notificationResult = await notifyItemRejected(itemId, note);
+      if (!notificationResult.success) {
+        logger.error({ 
+          error: notificationResult.error, 
+          itemId 
+        }, 'Failed to send rejection DM');
+      } else {
+        logger.info({ itemId }, 'Rejection DM sent to creator');
+      }
+    }
 
     const duration = Date.now() - startTime;
     logger.info({

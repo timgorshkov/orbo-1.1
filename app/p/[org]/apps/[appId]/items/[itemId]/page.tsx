@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, MapPin, User, Tag, Edit, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import Head from 'next/head';
+import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List } from 'lucide-react';
 
 interface App {
   id: string;
@@ -47,6 +48,10 @@ export default function ItemDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     fetchItemDetails();
@@ -75,31 +80,66 @@ export default function ItemDetailPage() {
       const itemResponse = await fetch(`/api/apps/${appId}/items/${itemId}`);
       if (!itemResponse.ok) throw new Error('Item not found');
       const itemData = await itemResponse.json();
+      
+      console.log('[ItemDetail] Full item data:', itemData.item);
+      console.log('[ItemDetail] Has participant?', !!itemData.item.participant);
+      console.log('[ItemDetail] Participant data:', itemData.item.participant);
+      console.log('[ItemDetail] Creator ID:', itemData.item.creator_id);
+      console.log('[ItemDetail] Org ID:', itemData.item.org_id);
+      
       setItem(itemData.item);
 
       // Fetch participant (author) if available
       if (itemData.item.participant) {
+        console.log('[ItemDetail] Setting participant:', itemData.item.participant);
         setParticipant(itemData.item.participant);
+      } else {
+        console.warn('[ItemDetail] No participant data in API response');
       }
 
       // Check if current user is owner or admin
       try {
         const authResponse = await fetch('/api/auth/status');
+        console.log('[ItemDetail] Auth response ok?', authResponse.ok);
+        
         if (authResponse.ok) {
           const authData = await authResponse.json();
-          if (authData.isAuthenticated && authData.user) {
+          console.log('[ItemDetail] Auth data:', authData);
+          
+          if (authData.authenticated && authData.user) {
             // Check if user is creator
             const isCreator = itemData.item.creator_id === authData.user.id;
+            console.log('[ItemDetail] Is creator?', isCreator);
+            console.log('[ItemDetail] Item creator_id:', itemData.item.creator_id);
+            console.log('[ItemDetail] Current user id:', authData.user.id);
             
-            // Check if user is org admin/member
-            const membershipResponse = await fetch(`/api/organizations/${orgId}/membership`);
-            const isOrgMember = membershipResponse.ok;
+            // Check if user is org admin/member by fetching membership
+            let isOrgAdmin = false;
+            try {
+              const membershipResponse = await fetch(`/api/memberships?org_id=${orgId}&user_id=${authData.user.id}`);
+              if (membershipResponse.ok) {
+                const membershipData = await membershipResponse.json();
+                isOrgAdmin = membershipData.memberships && membershipData.memberships.length > 0;
+              }
+            } catch (membershipErr) {
+              console.warn('[ItemDetail] Could not check membership:', membershipErr);
+            }
+            console.log('[ItemDetail] Is org admin?', isOrgAdmin);
             
-            setIsOwner(isCreator || isOrgMember);
+            const finalIsOwner = isCreator || isOrgAdmin;
+            console.log('[ItemDetail] Final isOwner:', finalIsOwner);
+            setIsOwner(finalIsOwner);
+            setIsAdmin(isOrgAdmin); // Set admin status for toolbar
+          } else {
+            console.log('[ItemDetail] User not authenticated');
           }
+        } else {
+          console.log('[ItemDetail] Auth check failed');
         }
       } catch (err) {
-        console.error('Error checking ownership:', err);
+        console.error('[ItemDetail] Error checking ownership:', err);
+      } finally {
+        setIsCheckingAuth(false);
       }
     } catch (err: any) {
       console.error('Error fetching item:', err);
@@ -125,6 +165,18 @@ export default function ItemDetailPage() {
     } catch (err: any) {
       console.error('Error deleting item:', err);
       alert('Не удалось удалить объявление');
+    }
+  };
+
+  const handleCopyLink = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      alert('Не удалось скопировать ссылку');
     }
   };
 
@@ -220,9 +272,63 @@ export default function ItemDetailPage() {
   
   const title = titleField ? item.data[titleField.name] : 'Без названия';
   const description = descriptionField ? item.data[descriptionField.name] : '';
+  const imageUrl = item.data.image_url || '/orbo-logo-2-no-bg.png';
+  const price = item.data.price ? `${new Intl.NumberFormat('ru-RU').format(item.data.price)} ₽` : '';
+  const category = item.data.category || '';
+
+  // Build SEO meta
+  const pageTitle = `${title} - ${app.name}`;
+  const pageDescription = description?.slice(0, 160) || `${category ? category + ' - ' : ''}${price}`;
+  const pageUrl = `https://app.orbo.ru/p/${orgId}/apps/${appId}/items/${itemId}`;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <>
+      <Head>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        
+        {/* Open Graph */}
+        <meta property="og:type" content="article" />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta property="og:url" content={pageUrl} />
+        <meta property="og:image" content={imageUrl} />
+        <meta property="og:site_name" content="Orbo" />
+        
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+        <meta name="twitter:image" content={imageUrl} />
+        
+        {/* Telegram specific */}
+        <meta property="telegram:card" content="summary_large_image" />
+      </Head>
+      
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Admin Toolbar */}
+      {isAdmin && !isCheckingAuth && (
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 border-b border-blue-800">
+          <div className="container mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-white text-sm font-medium">Режим администратора</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Link
+                  href={`/p/${orgId}/apps/${appId}`}
+                  className="inline-flex items-center px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <List className="w-4 h-4 mr-1.5" />
+                  Все объявления
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4 py-6">
@@ -247,15 +353,15 @@ export default function ItemDetailPage() {
               </div>
             </div>
 
-            {isOwner && (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => router.push(`/p/${orgId}/apps/${appId}/items/${itemId}/edit`)}
-                  className="inline-flex items-center px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Редактировать
-                </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowShareModal(true)}
+                className="inline-flex items-center px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Поделиться
+              </button>
+              {isOwner && (
                 <button
                   onClick={handleDelete}
                   className="inline-flex items-center px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
@@ -263,8 +369,8 @@ export default function ItemDetailPage() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Удалить
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -389,10 +495,64 @@ export default function ItemDetailPage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-700 mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-sm text-gray-600 dark:text-gray-400">
-          Powered by <a href="https://www.orbo.ru" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Orbo</a>
+          Создано на платформе{' '}
+          <a 
+            href="https://www.orbo.ru" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            Orbo
+          </a>
+          {' '}— инструменты для Telegram-сообществ
         </div>
       </footer>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Поделиться
+              </h3>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Copy Link Button */}
+              <button
+                onClick={handleCopyLink}
+                className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-5 h-5 mr-2" />
+                    Ссылка скопирована!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-5 h-5 mr-2" />
+                    Скопировать ссылку
+                  </>
+                )}
+              </button>
+
+              {/* Future: Telegram Groups */}
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center pt-2">
+                Скоро: публикация в Telegram-группы
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    </>
   );
 }
 

@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { X, CheckCircle2, AlertCircle } from 'lucide-react';
+import VisibilitySelector from '@/components/apps/visibility-selector';
 
 interface AppConfigPreviewProps {
   config: any;
   onClose: () => void;
-  onCreateApp: (orgId: string) => void;
+  onCreateApp: (orgId: string, visibility: 'public' | 'members' | 'private') => void;
   userOrganizations: Array<{ id: string; name: string }>;
 }
 
@@ -19,6 +20,7 @@ export default function AppConfigPreview({
   const [selectedOrgId, setSelectedOrgId] = useState(
     userOrganizations.length > 0 ? userOrganizations[0].id : ''
   );
+  const [selectedVisibility, setSelectedVisibility] = useState<'public' | 'members' | 'private'>('members');
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreate = async () => {
@@ -28,7 +30,7 @@ export default function AppConfigPreview({
     }
 
     setIsCreating(true);
-    await onCreateApp(selectedOrgId);
+    await onCreateApp(selectedOrgId, selectedVisibility);
     // onCreateApp will handle navigation/success
   };
 
@@ -172,21 +174,34 @@ export default function AppConfigPreview({
 
           {/* Organization Selector */}
           {userOrganizations.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Организация:
-              </label>
-              <select
-                value={selectedOrgId}
-                onChange={(e) => setSelectedOrgId(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {userOrganizations.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Организация:
+                </label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {userOrganizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Visibility Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Кто может видеть приложение:
+                </label>
+                <VisibilitySelector
+                  value={selectedVisibility}
+                  onChange={setSelectedVisibility}
+                />
+              </div>
             </div>
           )}
 

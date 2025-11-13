@@ -33,9 +33,17 @@ turndown.addRule('embeds', {
     return node instanceof HTMLElement && Boolean(node.dataset?.embed);
   },
   replacement: (_content, node: any) => {
-    const url = node.dataset.url || '';
-    const title = node.dataset.title || '';
     const type = node.dataset.embed || 'embed';
+    const url = node.dataset.url || '';
+    
+    // For images, use standard markdown format
+    if (type === 'image') {
+      const alt = node.dataset.alt || '';
+      return `\n\n![${alt}](${url})\n\n`;
+    }
+    
+    // For videos, use custom format
+    const title = node.dataset.title || '';
     return `\n\n[${type}:${url}:${title}]\n\n`;
   }
 });
@@ -101,6 +109,30 @@ function markdownToHtml(markdown: string): string {
       <div class="flex items-center justify-between px-4 py-3 text-sm text-neutral-700 bg-neutral-50">
         <span class="font-medium">${finalTitle}</span>
         <a href="${url}" target="_blank" class="text-blue-600 hover:underline">Открыть</a>
+      </div>
+    </div>`;
+    embeds.push(embedHtml);
+    return `<!--EMBED_${embeds.length - 1}-->`;
+  });
+  
+  // Заменяем markdown изображения на наши custom embeds
+  processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    console.log('Found markdown image:', url, 'Alt:', alt);
+    
+    const embedHtml = `<div class="relative group inline-block" data-embed="image" data-url="${url}" data-alt="${alt}" contenteditable="false" style="display: block; margin: 1em 0;">
+      <div class="relative rounded-lg overflow-hidden border border-neutral-200">
+        <img src="${url}" alt="${alt}" class="w-full h-auto block" style="max-width: 100%; display: block;" />
+        <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onclick="
+          const newUrl = prompt('Введите новый URL изображения', '${url}');
+          if (newUrl && newUrl !== '${url}') {
+            this.parentElement.querySelector('img').src = newUrl;
+            this.parentElement.parentElement.setAttribute('data-url', newUrl);
+          }
+        ">
+          <button class="px-4 py-2 bg-white rounded-lg text-sm font-medium text-neutral-900 hover:bg-neutral-100">
+            Изменить URL
+          </button>
+        </div>
       </div>
     </div>`;
     embeds.push(embedHtml);
@@ -406,8 +438,29 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
     };
   }, [handleKeyDownGlobal, handleKeyUpGlobal]);
 
+  const insertMarkdownAtCursor = useCallback((markdown: string) => {
+    if (!editorRef.current) return;
+    
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    
+    const textNode = document.createTextNode(markdown);
+    range.insertNode(textNode);
+    
+    // Move cursor to end of inserted text
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    
+    synchronizeMarkdown();
+  }, [synchronizeMarkdown]);
+
   const insertEmbed = useCallback(
-    (type: 'youtube' | 'vk') => {
+    (type: 'youtube' | 'vk' | 'image') => {
       console.log('=== insertEmbed START ===');
       console.log('Type:', type);
       
@@ -417,6 +470,90 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
       }
       
       focusEditor();
+      
+      // For images, create an embedded image block
+      if (type === 'image') {
+        const url = prompt('Вставьте ссылку на изображение');
+        console.log('Image URL entered:', url);
+        
+        if (!url) {
+          console.log('No URL, aborting');
+          return;
+        }
+
+        const alt = prompt('Введите описание изображения (опционально)') || '';
+        
+        // Create image container (similar to video embeds)
+        const container = document.createElement('div');
+        container.className = 'relative group';
+        container.style.cssText = 'display: block; margin: 1em 0;';
+        container.setAttribute('data-embed', 'image');
+        container.setAttribute('data-url', url);
+        container.setAttribute('data-alt', alt);
+        container.contentEditable = 'false';
+        
+        // Create image wrapper
+        const imgWrapper = document.createElement('div');
+        imgWrapper.className = 'relative rounded-lg overflow-hidden border border-neutral-200';
+        
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = alt;
+        img.className = 'w-full h-auto block';
+        img.style.cssText = 'max-width: 100%; display: block;';
+        
+        imgWrapper.appendChild(img);
+        
+        // Create edit overlay (shows on hover)
+        const editOverlay = document.createElement('div');
+        editOverlay.className = 'absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer';
+        editOverlay.innerHTML = `
+          <button class="px-4 py-2 bg-white rounded-lg text-sm font-medium text-neutral-900 hover:bg-neutral-100">
+            Изменить URL
+          </button>
+        `;
+        
+        // Handle edit click
+        editOverlay.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const newUrl = prompt('Введите новый URL изображения', url);
+          if (newUrl && newUrl !== url) {
+            img.src = newUrl;
+            container.setAttribute('data-url', newUrl);
+            synchronizeMarkdown();
+          }
+        });
+        
+        imgWrapper.appendChild(editOverlay);
+        container.appendChild(imgWrapper);
+        
+        // Insert into editor
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        
+        // Add line breaks before and after
+        const br1 = document.createElement('br');
+        const br2 = document.createElement('br');
+        
+        range.insertNode(br2);
+        range.insertNode(container);
+        range.insertNode(br1);
+        
+        // Move cursor after inserted content
+        range.setStartAfter(br2);
+        range.setEndAfter(br2);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        console.log('Image container inserted');
+        synchronizeMarkdown();
+        return;
+      }
+      
+      // For videos
       const url = prompt('Вставьте ссылку на видео');
       console.log('URL entered:', url);
       
@@ -606,6 +743,13 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           <ImageIcon className="h-4 w-4" />
           Видео VK
         </button>
+        <button
+          className="flex items-center gap-1 rounded border border-dashed border-neutral-300 px-2 py-1 hover:border-neutral-500"
+          onClick={() => insertEmbed('image')}
+        >
+          <ImageIcon className="h-4 w-4" />
+          Изображение
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         <style dangerouslySetInnerHTML={{__html: `
@@ -657,6 +801,13 @@ export function MaterialsPageEditor({ orgId, pageId, initialTitle, initialConten
           .material-editor a:hover {
             color: #1d4ed8;
             cursor: pointer;
+          }
+          .material-editor img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 1em 0;
+            border-radius: 8px;
           }
           /* Показываем курсор pointer при Ctrl/Cmd */
           .material-editor.ctrl-pressed a {

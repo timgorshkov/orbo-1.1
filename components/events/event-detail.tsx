@@ -21,8 +21,9 @@ type Event = {
   is_paid: boolean
   price_info: string | null
   capacity: number | null
-  status: 'draft' | 'published' | 'cancelled' | 'completed'
+  status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
+  telegram_group_link: string | null
   registered_count: number
   available_spots: number | null
   is_user_registered: boolean
@@ -275,11 +276,6 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
           {event.status === 'cancelled' && (
             <span className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-800">
               Отменено
-            </span>
-          )}
-          {event.status === 'completed' && (
-            <span className="px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
-              Завершено
             </span>
           )}
           {event.is_public ? (

@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 
@@ -12,10 +12,11 @@ export async function GET(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
+    // Use admin client for public read access (no RLS restrictions)
+    const adminSupabase = createAdminServer();
 
     // Fetch collections - public read access
-    const { data: collections, error: collectionsError } = await supabase
+    const { data: collections, error: collectionsError } = await adminSupabase
       .from('app_collections')
       .select(`
         id,

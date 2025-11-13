@@ -13,7 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: { org: str
   }
 
   try {
-    await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    // ✅ Разрешаем просмотр дерева материалов для members
+    await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member']);
     const tree = await MaterialService.getTree(orgId);
     return NextResponse.json({ tree });
   } catch (error: any) {

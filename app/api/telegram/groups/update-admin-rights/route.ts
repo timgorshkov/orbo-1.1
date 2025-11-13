@@ -245,6 +245,22 @@ export async function POST(request: Request) {
         const administrators = adminsResponse.result || [];
         console.log(`Found ${administrators.length} administrators in chat ${chatId}`);
 
+        // ✅ Проверяем, является ли НАШ БОТ администратором
+        const ourBotId = Number(process.env.TELEGRAM_BOT_ID || '8355772450');
+        const botAdmin = administrators.find((admin: any) => admin?.user?.id === ourBotId);
+        const botHasAdminRights = botAdmin && (botAdmin.status === 'administrator' || botAdmin.status === 'creator');
+        
+        console.log(`Bot ${ourBotId} admin rights in chat ${chatId}: ${botHasAdminRights ? 'YES ✅' : 'NO ❌'}`);
+        
+        // ✅ Обновляем bot_status в telegram_groups
+        const newBotStatus = botHasAdminRights ? 'connected' : 'pending';
+        await supabaseService
+          .from('telegram_groups')
+          .update({ bot_status: newBotStatus, last_sync_at: new Date().toISOString() })
+          .eq('tg_chat_id', chatId);
+        
+        console.log(`Updated bot_status to '${newBotStatus}' for chat ${chatId}`);
+
         // Обрабатываем каждого администратора
         for (const admin of administrators) {
           const memberStatus = admin?.status;
@@ -258,7 +274,7 @@ export async function POST(request: Request) {
             continue;
           }
 
-          // ✅ Пропускаем ботов (включая orbo_community_bot)
+          // ✅ Пропускаем ботов (включая orbo_community_bot) при сохранении в telegram_group_admins
           if (isBot) {
             console.log(`⏭️  Skipping bot ${userId} (${admin.user?.username || admin.user?.first_name}) in chat ${chatId}`);
             continue;

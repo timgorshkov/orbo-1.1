@@ -19,7 +19,7 @@ type Event = {
   is_paid: boolean
   price_info: string | null
   capacity: number | null
-  status: 'draft' | 'published' | 'cancelled' | 'completed'
+  status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
   registered_count: number
   available_spots: number | null
@@ -34,8 +34,8 @@ type Props = {
 
 export default function EventsList({ events, orgId, isAdmin, telegramGroups }: Props) {
   const router = useRouter()
-  // Default filter: 'all' for everyone
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  // Default filter: 'upcoming' (Предстоящие)
+  const [statusFilter, setStatusFilter] = useState<string>('upcoming')
 
   // Calculate event categories
   const now = new Date()
@@ -43,21 +43,35 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
     e => e.status === 'published' && new Date(e.event_date) >= now
   )
   const pastEvents = events.filter(
-    e => e.status === 'completed' || (e.status === 'published' && new Date(e.event_date) < now)
+    e => e.status === 'published' && new Date(e.event_date) < now
   )
   const draftEvents = events.filter(e => e.status === 'draft')
 
   // Filter events by status
-  const filteredEvents = events.filter(event => {
+  let filteredEvents = events.filter(event => {
     if (statusFilter === 'all') return true
     if (statusFilter === 'upcoming') {
       return event.status === 'published' && new Date(event.event_date) >= now
     }
     if (statusFilter === 'past') {
-      return event.status === 'completed' || (event.status === 'published' && new Date(event.event_date) < now)
+      return event.status === 'published' && new Date(event.event_date) < now
     }
     return event.status === statusFilter
   })
+
+  // Apply sorting based on filter
+  // 'all' and 'past': newest first (desc)
+  // 'upcoming' and 'draft': oldest first (asc)
+  if (statusFilter === 'all' || statusFilter === 'past') {
+    filteredEvents = [...filteredEvents].sort((a, b) => 
+      new Date(b.event_date).getTime() - new Date(a.event_date).getTime()
+    )
+  } else {
+    // upcoming, draft
+    filteredEvents = [...filteredEvents].sort((a, b) => 
+      new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
+    )
+  }
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -75,14 +89,12 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
     const styles = {
       draft: 'bg-gray-100 text-gray-800',
       published: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800',
-      completed: 'bg-blue-100 text-blue-800'
+      cancelled: 'bg-red-100 text-red-800'
     }
     const labels = {
       draft: 'Черновик',
       published: 'Опубликовано',
-      cancelled: 'Отменено',
-      completed: 'Завершено'
+      cancelled: 'Отменено'
     }
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status as keyof typeof styles]}`}>
@@ -186,12 +198,6 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
       <div className="mb-6 flex items-center justify-between">
         <div className="flex gap-2">
           <Button
-            variant={statusFilter === 'all' ? 'default' : 'outline'}
-            onClick={() => setStatusFilter('all')}
-          >
-            Все ({events.length})
-          </Button>
-          <Button
             variant={statusFilter === 'upcoming' ? 'default' : 'outline'}
             onClick={() => setStatusFilter('upcoming')}
           >
@@ -210,6 +216,12 @@ export default function EventsList({ events, orgId, isAdmin, telegramGroups }: P
             onClick={() => setStatusFilter('past')}
           >
             Прошедшие ({pastEvents.length})
+          </Button>
+          <Button
+            variant={statusFilter === 'all' ? 'default' : 'outline'}
+            onClick={() => setStatusFilter('all')}
+          >
+            Все ({events.length})
           </Button>
         </div>
 

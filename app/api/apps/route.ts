@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
@@ -38,8 +38,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Fetch apps (RLS will handle authorization)
-    const { data: apps, error: appsError } = await supabase
+    // Use admin client to bypass RLS after authorization
+    const adminSupabase = createAdminServer();
+    const { data: apps, error: appsError } = await adminSupabase
       .from('apps')
       .select(`
         id,
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
         app_type,
         config,
         status,
+        visibility,
         created_by,
         created_at,
         updated_at
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClientServer();
     const body = await request.json();
-    const { orgId, name, description, icon, appType, config } = body;
+    const { orgId, name, description, icon, appType, config, visibility } = body;
 
     if (!orgId || !name) {
       return NextResponse.json(
@@ -125,8 +127,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create app
-    const { data: app, error: createError } = await supabase
+    // Use admin client to bypass RLS after authorization
+    const adminSupabase = createAdminServer();
+    const { data: app, error: createError } = await adminSupabase
       .from('apps')
       .insert({
         org_id: orgId,
@@ -136,6 +139,7 @@ export async function POST(request: NextRequest) {
         app_type: appType || 'custom',
         config: config || {},
         status: 'active',
+        visibility: visibility || 'members', // Default to members-only
         created_by: user.id
       })
       .select()

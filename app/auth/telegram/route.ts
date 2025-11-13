@@ -7,7 +7,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 // Admin client для создания сессии
 const supabaseAdmin = createClient(
@@ -171,225 +170,17 @@ export async function GET(request: NextRequest) {
     console.log('[Telegram Auth] ✅ Preparing session setup page')
     console.log('[Telegram Auth] ✅ Target redirect:', finalRedirectUrl)
     
-    // ВРЕМЕННОЕ РЕШЕНИЕ: Используем fallback метод сразу для Telegram WebView
-    // Причина: client-side cookies не сохраняются надёжно
-    const userAgent = request.headers.get('user-agent') || ''
-    const isTelegramWebView = userAgent.toLowerCase().includes('telegram')
+    // ✅ ВСЕГДА используем server-side метод для надежности
+    // Client-side метод не работает надёжно ни в Telegram WebView, ни в обычных браузерах
+    console.log('[Telegram Auth] 🔄 Using server-side cookies method')
+    console.log('[Telegram Auth] ==================== REDIRECTING TO FALLBACK ====================')
     
-    if (isTelegramWebView) {
-      console.log('[Telegram Auth] 🔄 Detected Telegram WebView, using server-side cookies')
-      console.log('[Telegram Auth] ==================== REDIRECTING TO FALLBACK ====================')
-      
-      // Редиректим на fallback endpoint который установит cookies на сервере
-      const fallbackUrl = new URL('/auth/telegram-fallback', request.url)
-      fallbackUrl.searchParams.set('code', code)
-      fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
-      
-      return NextResponse.redirect(fallbackUrl)
-    }
+    // Редиректим на fallback endpoint который установит cookies на сервере
+    const fallbackUrl = new URL('/auth/telegram-fallback', request.url)
+    fallbackUrl.searchParams.set('code', code)
+    fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
     
-    console.log('[Telegram Auth] ==================== SUCCESS ====================')
-    
-    // 9. Возвращаем HTML страницу с client-side авторизацией
-    // Для обычных браузеров
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Авторизация...</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .container {
-      text-align: center;
-      color: white;
-      padding: 2rem;
-      max-width: 90%;
-    }
-    .spinner {
-      border: 4px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      border-top: 4px solid white;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1rem;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .message {
-      font-size: 18px;
-      font-weight: 500;
-      margin-bottom: 0.5rem;
-    }
-    .debug {
-      font-size: 12px;
-      opacity: 0.7;
-      margin-top: 1rem;
-      max-width: 300px;
-      margin-left: auto;
-      margin-right: auto;
-      word-break: break-all;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="spinner"></div>
-    <div class="message">Авторизация...</div>
-    <div class="debug" id="debug"></div>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    const log = (msg) => {
-      console.log('[Client Auth]', msg);
-      const debug = document.getElementById('debug');
-      if (debug) debug.textContent = msg;
-    };
-    
-    const redirectUrl = '${finalRedirectUrl}';
-    const accessToken = '${sessionData.session.access_token}';
-    const refreshToken = '${sessionData.session.refresh_token}';
-    const code = '${code}';
-    
-    const showFallbackButton = () => {
-      const container = document.querySelector('.container');
-      if (!container) return;
-      
-      const button = document.createElement('button');
-      button.textContent = 'Попробовать альтернативный метод';
-      button.style.cssText = 'margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: white; color: #667eea; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-      
-      button.onclick = () => {
-        window.location.href = '/auth/telegram-fallback?code=' + code + '&redirect=' + encodeURIComponent(redirectUrl);
-      };
-      
-      container.appendChild(button);
-      
-      // Также добавляем кнопку "Продолжить без авторизации"
-      const skipButton = document.createElement('button');
-      skipButton.textContent = 'Продолжить без авторизации';
-      skipButton.style.cssText = 'margin-top: 1rem; padding: 0.5rem 1rem; background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; font-size: 14px; cursor: pointer;';
-      
-      skipButton.onclick = () => {
-        window.location.href = redirectUrl;
-      };
-      
-      container.appendChild(skipButton);
-    };
-    
-    log('Загрузка...');
-    
-    // Ждём загрузки Supabase SDK
-    let attempts = 0;
-    const checkAndAuth = async () => {
-      attempts++;
-      
-      if (typeof window.supabase === 'undefined') {
-        if (attempts > 20) {
-          log('Ошибка загрузки SDK');
-          document.querySelector('.message').textContent = 'Ошибка загрузки';
-          setTimeout(() => window.location.href = redirectUrl, 2000);
-          return;
-        }
-        setTimeout(checkAndAuth, 100);
-        return;
-      }
-      
-      try {
-        log('SDK загружен, создание клиента...');
-        const supabase = window.supabase.createClient(
-          '${process.env.NEXT_PUBLIC_SUPABASE_URL}',
-          '${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}'
-        );
-        
-        log('Установка сессии...');
-        const { error, data } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
-        });
-        
-        if (error) {
-          console.error('[Client Auth] Error:', error);
-          log('Ошибка: ' + error.message);
-          document.querySelector('.message').textContent = 'Ошибка авторизации';
-          
-          // Показываем кнопку для fallback метода
-          showFallbackButton();
-          return;
-        }
-        
-        log('Сессия установлена!');
-        console.log('[Client Auth] Session set:', data);
-        
-        // ВАЖНО: Даём время для сохранения cookies перед проверкой
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Проверяем что сессия действительно сохранилась
-        log('Проверка сохранения...');
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session) {
-          log('Проверка OK!');
-          console.log('[Client Auth] Session confirmed:', session.user.id);
-          
-          // Ещё одна задержка для надёжности сохранения cookies
-          log('Сохранение cookies...');
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          log('Редирект...');
-          window.location.href = redirectUrl;
-        } else {
-          log('Сессия не сохранилась, используем fallback');
-          document.querySelector('.message').textContent = 'Переключение на надёжный метод...';
-          
-          // Автоматически переключаемся на fallback без кнопки
-          setTimeout(() => {
-            window.location.href = '/auth/telegram-fallback?code=' + code + '&redirect=' + encodeURIComponent(redirectUrl);
-          }, 1000);
-        }
-      } catch (err) {
-        console.error('[Client Auth] Exception:', err);
-        log('Исключение: ' + err.message);
-        document.querySelector('.message').textContent = 'Ошибка';
-        
-        // Показываем кнопку для fallback метода
-        showFallbackButton();
-      }
-    };
-    
-    // Запускаем после загрузки страницы
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', checkAndAuth);
-    } else {
-      checkAndAuth();
-    }
-  </script>
-</body>
-</html>
-`
-    
-    return new NextResponse(html, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    })
+    return NextResponse.redirect(fallbackUrl)
     
   } catch (error) {
     console.error('[Telegram Auth] ❌ Error:', error)
@@ -397,4 +188,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/signin?error=internal_error', request.url))
   }
 }
-

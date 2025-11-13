@@ -38,9 +38,10 @@ type MaterialsTreeProps = {
   onSelect?: (id: string | null) => void;
   onTreeChange?: (tree: MaterialTreeNode[]) => void;
   onSearchOpen?: () => void;
+  onPageRenamed?: (pageId: string, newTitle: string) => void;
 };
 
-export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange, onSearchOpen }: MaterialsTreeProps) {
+export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange, onSearchOpen, onPageRenamed }: MaterialsTreeProps) {
   const [tree, setTree] = useState<MaterialTreeNode[]>(initialTree);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialTree.map(node => node.id)));
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -178,6 +179,8 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
           });
           if (!response.ok) throw new Error('Не удалось обновить страницу');
           await reloadTree();
+          // ✅ Уведомляем родительский компонент о переименовании
+          onPageRenamed?.(nodeId, title);
         } catch (error) {
           console.error(error);
         } finally {
@@ -186,7 +189,7 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
         }
       });
     },
-    [orgId, reloadTree]
+    [orgId, reloadTree, onPageRenamed]
   );
 
   const handleDelete = useCallback(
@@ -444,8 +447,8 @@ function TreeRow({ node, parentId, depth, expanded, toggle, onCreate, onStartRen
         )}
         style={{ 
           transform: transform ? CSS.Translate.toString(transform) : undefined,
-          paddingTop: '2px',
-          paddingBottom: '2px'
+          paddingTop: '1px',
+          paddingBottom: '1px'
         }}
         {...attributes}
         {...listeners}
@@ -537,7 +540,7 @@ function DropBetween({ parentId, depth, position }: DropBetweenProps) {
     <div
       ref={setNodeRef}
       className="relative"
-      style={{ height: isRoot ? 0 : 12, pointerEvents: isRoot ? 'none' : 'auto' }}
+      style={{ height: isRoot ? 0 : 10, pointerEvents: isRoot ? 'none' : 'auto' }}
     >
       {!isRoot && (
         <div

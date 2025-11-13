@@ -80,7 +80,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { name, logo_url } = body
+    const { name, logo_url, public_description, telegram_group_link } = body
 
     // Validate input
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -97,6 +97,14 @@ export async function PUT(
 
     if (logo_url !== undefined) {
       updateData.logo_url = logo_url
+    }
+
+    if (public_description !== undefined) {
+      updateData.public_description = public_description
+    }
+
+    if (telegram_group_link !== undefined) {
+      updateData.telegram_group_link = telegram_group_link
     }
 
     const { data: org, error } = await supabase

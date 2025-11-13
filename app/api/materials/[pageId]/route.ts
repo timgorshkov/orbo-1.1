@@ -10,8 +10,9 @@ export async function GET(request: NextRequest, { params }: { params: { pageId: 
     return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
   }
 
-  const { role } = await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
-  if (!['owner', 'admin'].includes(role)) {
+  // ✅ Разрешаем просмотр материалов для members
+  const { role } = await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member']);
+  if (!['owner', 'admin', 'member'].includes(role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

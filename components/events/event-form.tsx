@@ -19,8 +19,9 @@ type Event = {
   is_paid: boolean
   price_info: string | null
   capacity: number | null
-  status: 'draft' | 'published' | 'cancelled' | 'completed'
+  status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
+  telegram_group_link: string | null
 }
 
 type Props = {
@@ -44,10 +45,11 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
   const [priceInfo, setPriceInfo] = useState(initialEvent?.price_info || '')
   const [capacity, setCapacity] = useState<string>(initialEvent?.capacity?.toString() || '')
-  const [status, setStatus] = useState<'draft' | 'published' | 'cancelled' | 'completed'>(
+  const [status, setStatus] = useState<'draft' | 'published' | 'cancelled'>(
     initialEvent?.status || 'draft'
   )
   const [isPublic, setIsPublic] = useState(initialEvent?.is_public || false)
+  const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')
   
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -83,7 +85,8 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       priceInfo: isPaid ? priceInfo : null,
       capacity: capacity ? parseInt(capacity) : null,
       status,
-      isPublic
+      isPublic,
+      telegramGroupLink: telegramGroupLink || null
     }
 
     startTransition(async () => {
@@ -321,7 +324,6 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                   <option value="draft">Черновик</option>
                   <option value="published">Опубликовано</option>
                   <option value="cancelled">Отменено</option>
-                  <option value="completed">Завершено</option>
                 </select>
               </div>
 
@@ -356,6 +358,23 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
               <p className="text-xs text-neutral-500">
                 Публичные события видны всем, даже неавторизованным пользователям
               </p>
+
+              {isPublic && (
+                <div>
+                  <label className="text-sm font-medium block mb-2">
+                    Ссылка на Telegram-группу для регистрации
+                  </label>
+                  <Input
+                    type="text"
+                    value={telegramGroupLink}
+                    onChange={(e) => setTelegramGroupLink(e.target.value)}
+                    placeholder="https://t.me/your_group"
+                  />
+                  <p className="text-xs text-neutral-500 mt-1">
+                    ⚠️ Важно: группа должна быть подключена к вашей организации. Участники должны сначала присоединиться к группе, затем смогут зарегистрироваться на событие.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

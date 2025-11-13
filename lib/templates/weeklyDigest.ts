@@ -55,9 +55,7 @@ ${formatDateRange(digest.dateRange.start, digest.dateRange.end)}
 Сообщений: ${current.messages} (${formatChange(current.messages, previous.messages)})
 Активных участников: ${current.active_participants} (${formatChange(current.active_participants, previous.active_participants)})
 Ответов: ${current.replies} (${formatChange(current.replies, previous.replies)})
-Реакций: ${current.reactions} (${formatChange(current.reactions, previous.reactions)})
-
-${aiInsights.activity_comment}`;
+Реакций: ${current.reactions} (${formatChange(current.reactions, previous.reactions)})`;
 
   // Section 2: Top Contributors
   let contributorsSection = '';
@@ -71,9 +69,7 @@ ${topContributors.map((c, i) => {
   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
   const newBadge = c.is_new_to_top ? ' (новый в топе)' : '';
   return `${medal} ${c.name}: ${c.messages} сообщений${newBadge}`;
-}).join('\n')}
-
-${aiInsights.contributors_comment}`;
+}).join('\n')}`;
   }
 
   // Section 3: Attention Zones
@@ -93,10 +89,6 @@ ${aiInsights.contributors_comment}`;
 🚨 Зоны внимания
 
 ${items.join('\n')}`;
-
-    if (aiInsights.attention_comment) {
-      attentionSection += `\n\n${aiInsights.attention_comment}`;
-    }
   }
 
   // Section 4: Upcoming Events
@@ -118,10 +110,6 @@ ${items.join('\n')}`;
 📆 Ближайшие события
 
 ${eventsList}`;
-
-    if (aiInsights.events_comment) {
-      eventsSection += `\n\n${aiInsights.events_comment}`;
-    }
   }
 
   // Section 5: Suggested Actions
@@ -141,13 +129,7 @@ ${eventsList}`;
 ${actionsList}`;
   }
 
-  // Footer
-  const footer = `
-━━━━━━━━━━━━━━━━━━━━
-
-Настроить дайджест: /settings`;
-
-  return header + activitySection + contributorsSection + attentionSection + eventsSection + actionsSection + footer;
+  return header + activitySection + contributorsSection + attentionSection + eventsSection + actionsSection;
 }
 
 /**

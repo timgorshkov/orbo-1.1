@@ -101,13 +101,14 @@ export default function AppDetailPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete app');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete app');
       }
 
       router.push(`/app/${orgId}/apps`);
     } catch (err: any) {
       console.error('Error deleting app:', err);
-      alert('Не удалось удалить приложение. Попробуйте ещё раз.');
+      alert(err.message || 'Не удалось удалить приложение. Попробуйте ещё раз.');
     }
   };
 

@@ -481,10 +481,38 @@ async function handleAuthCode(message: any, code: string) {
     if (verifyResult.success) {
       // Успешная авторизация
       const telegramService = createTelegramService('main');
-      await telegramService.sendMessage(
-        chatId,
-        `✅ Авторизация успешна!\n\nОткройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`
-      );
+      
+      // Формируем сообщение с двумя ссылками
+      let message = '✅ Авторизация успешна!\n\n';
+      
+      if (verifyResult.orgId) {
+        // Получаем название организации
+        try {
+          const { data: org } = await supabaseServiceRole
+            .from('organizations')
+            .select('name')
+            .eq('id', verifyResult.orgId)
+            .single();
+          
+          const orgName = org?.name || 'Ваше пространство';
+          const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL}/p/${verifyResult.orgId}`;
+          
+          message += `🏠 Вы получили доступ к пространству *${orgName}*\n\n`;
+          message += `📱 Постоянная ссылка на пространство:\n${publicUrl}\n\n`;
+          message += `🔐 Для первого входа откройте эту авторизационную ссылку:\n${verifyResult.sessionUrl}\n\n`;
+          message += `⏰ _Авторизационная ссылка действует 1 час и только для первого входа._\n`;
+          message += `_После первого входа используйте постоянную ссылку выше._`;
+        } catch (err) {
+          console.error('[Bot Auth] Failed to fetch org name:', err);
+          message += `Откройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`;
+        }
+      } else {
+        message += `Откройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`;
+      }
+      
+      await telegramService.sendMessage(chatId, message, {
+        parse_mode: 'Markdown'
+      });
       
       console.log(`[Bot Auth] ✅ User ${from.id} authenticated successfully with code ${code}`);
       console.log(`[Bot Auth] ==================== SUCCESS ====================`);

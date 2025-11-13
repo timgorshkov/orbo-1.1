@@ -107,7 +107,8 @@ export async function PUT(
       priceInfo,
       capacity,
       status,
-      isPublic
+      isPublic,
+      telegramGroupLink
     } = body
 
     const supabase = await createClientServer()
@@ -160,7 +161,8 @@ export async function PUT(
         price_info: priceInfo || null,
         capacity: capacity || null,
         status,
-        is_public: isPublic
+        is_public: isPublic,
+        telegram_group_link: telegramGroupLink || null
       })
       .eq('id', eventId)
       .select()

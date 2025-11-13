@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 
@@ -20,10 +20,11 @@ export async function GET(
   const offset = parseInt(searchParams.get('offset') || '0');
   
   try {
-    const supabase = await createClientServer();
+    // Use admin client for public read access (no auth required)
+    const adminSupabase = createAdminServer();
 
     // Build query - public read access
-    let query = supabase
+    let query = adminSupabase
       .from('app_items')
       .select(`
         id,
@@ -51,7 +52,7 @@ export async function GET(
       query = query.eq('collection_id', collectionId);
     } else {
       // Get all collections for this app
-      const { data: collections } = await supabase
+      const { data: collections } = await adminSupabase
         .from('app_collections')
         .select('id')
         .eq('app_id', appId);
@@ -90,24 +91,30 @@ export async function GET(
       );
     }
 
-    // Fetch participant info for items (separate query to avoid join issues)
+    // Fetch participant info for items using admin client (public data for display)
     if (items && items.length > 0) {
       const creatorIds = Array.from(new Set(items.map(item => item.creator_id).filter(Boolean)));
+      const orgIds = Array.from(new Set(items.map(item => item.org_id).filter(Boolean)));
       
-      if (creatorIds.length > 0) {
+      if (creatorIds.length > 0 && orgIds.length > 0) {
         try {
-          const { data: participants } = await supabase
+          const { data: participants } = await adminSupabase
             .from('participants')
-            .select('id, user_id, full_name, username, photo_url')
-            .in('user_id', creatorIds);
+            .select('id, user_id, org_id, full_name, username, photo_url')
+            .in('user_id', creatorIds)
+            .in('org_id', orgIds);
 
           if (participants) {
-            const participantMap = new Map(participants.map(p => [p.user_id, p]));
+            // Create a composite key map: user_id + org_id -> participant
+            const participantMap = new Map(
+              participants.map(p => [`${p.user_id}_${p.org_id}`, p])
+            );
             
             // Attach participant data to items
             items.forEach((item: any) => {
-              if (item.creator_id) {
-                item.participant = participantMap.get(item.creator_id) || null;
+              if (item.creator_id && item.org_id) {
+                const key = `${item.creator_id}_${item.org_id}`;
+                item.participant = participantMap.get(key) || null;
               }
             });
           }
@@ -181,18 +188,22 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Use admin client for reading (after auth check)
+    const adminSupabase = createAdminServer();
+
     // Get app and collection to verify access and get config
-    const { data: app, error: appError } = await supabase
+    const { data: app, error: appError } = await adminSupabase
       .from('apps')
       .select('id, org_id')
       .eq('id', appId)
       .single();
 
     if (appError || !app) {
+      logger.error({ error: appError, appId }, 'App not found for item creation');
       return NextResponse.json({ error: 'App not found' }, { status: 404 });
     }
 
-    const { data: collection, error: collectionError } = await supabase
+    const { data: collection, error: collectionError } = await adminSupabase
       .from('app_collections')
       .select('id, moderation_enabled, permissions')
       .eq('id', collectionId)
@@ -200,6 +211,7 @@ export async function POST(
       .single();
 
     if (collectionError || !collection) {
+      logger.error({ error: collectionError, collectionId, appId }, 'Collection not found');
       return NextResponse.json(
         { error: 'Collection not found' },
         { status: 404 }
@@ -207,7 +219,7 @@ export async function POST(
     }
 
     // Check membership
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', app.org_id)
@@ -215,14 +227,15 @@ export async function POST(
       .single();
 
     if (membershipError || !membership) {
+      logger.error({ error: membershipError, userId: user.id, orgId: app.org_id }, 'Membership check failed');
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Determine initial status based on moderation settings
     const initialStatus = collection.moderation_enabled ? 'pending' : 'published';
 
-    // Create item
-    const { data: item, error: createError } = await supabase
+    // Create item using admin client (after membership check)
+    const { data: item, error: createError } = await adminSupabase
       .from('app_items')
       .insert({
         collection_id: collectionId,
@@ -249,7 +262,7 @@ export async function POST(
 
     // Log analytics event
     try {
-      await supabase.rpc('log_app_event', {
+      await adminSupabase.rpc('log_app_event', {
         p_app_id: appId,
         p_event_type: 'item_created',
         p_user_id: user.id,

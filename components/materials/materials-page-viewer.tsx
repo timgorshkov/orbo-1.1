@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Search, Sparkles, Loader2, ChevronLeft, Menu } from 'lucide-react';
+import { marked } from 'marked';
 
 export type MaterialsPageViewerProps = {
   orgId: string;
@@ -22,6 +23,7 @@ type PageState = {
   id: string;
   title: string;
   contentMd: string;
+  contentHtml: string;
 };
 
 export function MaterialsPageViewer({
@@ -74,6 +76,22 @@ export function MaterialsPageViewer({
     setPendingPageId(null);
   }, []);
 
+  const reloadTree = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/materials/tree?orgId=${orgId}`);
+      if (!response.ok) {
+        throw new Error('Не удалось обновить дерево материалов');
+      }
+      const payload = await response.json();
+      const fresh: MaterialTreeNode[] = payload.tree ?? [];
+      setTree(fresh);
+      return fresh;
+    } catch (error) {
+      console.error('Error reloading tree:', error);
+      return tree; // Return current tree on error
+    }
+  }, [orgId, tree]);
+
   const loadPage = useCallback(async (pageId: string) => {
     setIsLoading(true);
     try {
@@ -82,32 +100,43 @@ export function MaterialsPageViewer({
         throw new Error('Не удалось загрузить страницу');
       }
       const { page } = await response.json();
-      setPage({ id: page.id, title: page.title, contentMd: page.content_md ?? '' });
+      const contentMd = page.content_md ?? '';
+      // Convert markdown to HTML for rendering
+      const contentHtml = marked.parse(contentMd, { breaks: true }) as string;
+      
+      // ✅ Используем актуальное название из дерева, а не с сервера
+      // Это решает проблему с редактированием названия в дереве
+      const nodeInTree = flattenedTree.find(item => item.id === pageId);
+      const actualTitle = nodeInTree?.node.title ?? page.title;
+      
+      setPage({ id: page.id, title: actualTitle, contentMd, contentHtml });
     } catch (error) {
       console.error(error);
       setPage(null);
     } finally {
       setIsLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, flattenedTree]);
 
-  const handlePageSave = useCallback((pageId: string, newTitle: string) => {
-    // Обновляем дерево, чтобы отразить новое название
-    const updateTreeTitles = (nodes: MaterialTreeNode[]): MaterialTreeNode[] => {
-      return nodes.map(node => {
-        if (node.id === pageId) {
-          return { ...node, title: newTitle };
-        }
-        if (node.children) {
-          return { ...node, children: updateTreeTitles(node.children) };
-        }
-        return node;
-      });
-    };
-    setTree(prevTree => updateTreeTitles(prevTree));
+  const handlePageSave = useCallback(async (pageId: string, newTitle: string) => {
+    // ✅ Перезагружаем дерево с сервера после сохранения
+    // Это решает проблему с фантомными строками
+    await reloadTree();
     
-    // Также обновляем локальное состояние страницы
-    setPage(prevPage => prevPage ? { ...prevPage, title: newTitle } : null);
+    // ✅ Обновляем локальное состояние страницы
+    setPage(prevPage => {
+      if (!prevPage) return null;
+      const contentHtml = marked.parse(prevPage.contentMd, { breaks: true }) as string;
+      return { ...prevPage, title: newTitle, contentHtml };
+    });
+  }, [reloadTree]);
+
+  const handlePageRenamed = useCallback((pageId: string, newTitle: string) => {
+    // ✅ Обновляем заголовок открытой страницы при переименовании в дереве
+    setPage(prevPage => {
+      if (!prevPage || prevPage.id !== pageId) return prevPage;
+      return { ...prevPage, title: newTitle };
+    });
   }, []);
 
   useEffect(() => {
@@ -164,6 +193,7 @@ export function MaterialsPageViewer({
             onSelect={handleSelect}
             onTreeChange={setTree}
             onSearchOpen={() => setIsSearchOpen(true)}
+            onPageRenamed={handlePageRenamed}
           />
         </div>
       </aside>
@@ -190,10 +220,72 @@ export function MaterialsPageViewer({
           {selectedId && page ? (
             readOnly ? (
               <article className="mx-auto max-w-3xl rounded-xl border border-neutral-200 bg-white p-6 md:p-10 shadow-sm">
+                <style dangerouslySetInnerHTML={{__html: `
+                  .material-content {
+                    font-size: 1rem;
+                    line-height: 1.75;
+                    color: #1f2937;
+                  }
+                  .material-content h1 {
+                    font-size: 2em;
+                    font-weight: bold;
+                    margin: 1em 0 0.5em;
+                    line-height: 1.2;
+                  }
+                  .material-content h2 {
+                    font-size: 1.5em;
+                    font-weight: bold;
+                    margin: 1em 0 0.5em;
+                    line-height: 1.3;
+                  }
+                  .material-content h3 {
+                    font-size: 1.17em;
+                    font-weight: bold;
+                    margin: 1em 0 0.5em;
+                    line-height: 1.4;
+                  }
+                  .material-content p {
+                    margin: 0.5em 0;
+                  }
+                  .material-content ul, .material-content ol {
+                    margin: 1em 0;
+                    padding-left: 2em;
+                  }
+                  .material-content li {
+                    margin: 0.25em 0;
+                  }
+                  .material-content blockquote {
+                    border-left: 4px solid #e5e7eb;
+                    padding-left: 1em;
+                    margin: 1em 0;
+                    color: #6b7280;
+                    font-style: italic;
+                  }
+                  .material-content a {
+                    color: #2563eb;
+                    text-decoration: underline;
+                  }
+                  .material-content a:hover {
+                    color: #1d4ed8;
+                  }
+                  .material-content img {
+                    max-width: 100%;
+                    height: auto;
+                    display: block;
+                    margin: 1em 0;
+                    border-radius: 8px;
+                  }
+                  @media (max-width: 768px) {
+                    .material-content {
+                      font-size: 0.875rem;
+                    }
+                  }
+                `}} />
                 <h2 className="text-2xl md:text-3xl font-semibold mb-4 md:mb-6 text-neutral-900">{page.title}</h2>
-                <pre className="whitespace-pre-wrap text-sm md:text-base leading-relaxed text-neutral-800">
-                  {page.contentMd || 'Материал пока пуст.'}
-                </pre>
+                <div 
+                  className="material-content" 
+                  dangerouslySetInnerHTML={{ __html: page.contentHtml || '<p class="text-neutral-500">Материал пока пуст.</p>' }}
+                />
               </article>
             ) : (
               <MaterialsPageEditor 

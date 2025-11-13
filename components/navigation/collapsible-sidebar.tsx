@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import TelegramGroupsNav from '../telegram-groups-nav'
 import { 
   LayoutDashboard, 
@@ -15,27 +16,14 @@ import {
   ChevronDown,
   Building2,
   User as UserIcon,
-  CreditCard,
-  AppWindow
+  AppWindow,
+  Home,
+  Eye,
+  MessageCircle
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
-
-function getRolePermissions(role: UserRole) {
-  return {
-    canViewDashboard: role === 'owner' || role === 'admin',
-    canManageTelegram: role === 'owner' || role === 'admin',
-    canManageSettings: role === 'owner' || role === 'admin',
-    canEditMaterials: role === 'owner' || role === 'admin',
-    canViewMaterials: role !== 'guest',
-    canCreateEvents: role === 'owner' || role === 'admin',
-    canViewEvents: role !== 'guest',
-    canRegisterForEvents: role !== 'guest',
-    canViewMembers: role !== 'guest',
-    canEditMembers: role === 'owner' || role === 'admin',
-  }
-}
 
 interface CollapsibleSidebarProps {
   orgId: string
@@ -44,6 +32,10 @@ interface CollapsibleSidebarProps {
   role: UserRole
   telegramGroups?: any[]
   userProfile?: {
+    name?: string
+    username?: string
+    avatarUrl?: string | null
+  } | {
     id: string
     email: string | null
     displayName: string
@@ -63,13 +55,14 @@ export default function CollapsibleSidebar({
 }: CollapsibleSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const permissions = getRolePermissions(role)
+  const { adminMode, toggleAdminMode, isAdmin } = useAdminMode(role)
 
-  // Определяем начальное состояние панели (по умолчанию развернута для всех)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showOrgDropdown, setShowOrgDropdown] = useState(false)
+  const [showMenuDropdown, setShowMenuDropdown] = useState(false)
+  const [showTelegramDropdown, setShowTelegramDropdown] = useState(false)
 
-  // Сохраняем состояние в localStorage
+  // Сохраняем состояние свёрнутости в localStorage
   useEffect(() => {
     const saved = localStorage.getItem(`sidebar-collapsed-${orgId}`)
     if (saved !== null) {
@@ -83,67 +76,64 @@ export default function CollapsibleSidebar({
     localStorage.setItem(`sidebar-collapsed-${orgId}`, String(newState))
   }
 
-  // Навигационные элементы в зависимости от роли
+  // Определяем видимость пунктов меню
+  const showDashboard = isAdmin && adminMode
+  const showHome = !isAdmin || !adminMode
+
+  // Навигационные элементы (основная панель - без dropdown)
   const navItems = []
 
-  if (permissions.canViewDashboard) {
+  // Динамический первый пункт
+  if (showHome) {
+    navItems.push({
+      key: 'home',
+      label: 'Главная',
+      icon: Home,
+      href: `/p/${orgId}`,
+      active: pathname === `/p/${orgId}`,
+    })
+  } else if (showDashboard) {
     navItems.push({
       key: 'dashboard',
       label: 'Дашборд',
       icon: LayoutDashboard,
-      href: `/app/${orgId}/dashboard`,
-      active: pathname === `/app/${orgId}/dashboard`,
+      href: `/p/${orgId}/dashboard`,
+      active: pathname === `/p/${orgId}/dashboard`,
     })
   }
 
-  if (permissions.canViewMaterials) {
+  // Материалы (для всех, кроме guest)
+  if (role !== 'guest') {
     navItems.push({
       key: 'materials',
       label: 'Материалы',
       icon: FileText,
-      href: `/app/${orgId}/materials`,
-      active: pathname?.startsWith(`/app/${orgId}/materials`),
+      href: `/p/${orgId}/materials`,
+      active: pathname?.startsWith(`/p/${orgId}/materials`),
     })
   }
 
-  if (permissions.canViewEvents) {
+  // События (для всех, кроме guest)
+  if (role !== 'guest') {
     navItems.push({
       key: 'events',
       label: 'События',
       icon: Calendar,
-      href: `/app/${orgId}/events`,
-      active: pathname?.startsWith(`/app/${orgId}/events`),
+      href: `/p/${orgId}/events`,
+      active: pathname?.startsWith(`/p/${orgId}/events`),
     })
   }
 
-  if (permissions.canViewMembers) {
+  // Участники (для всех, кроме guest)
+  if (role !== 'guest') {
     navItems.push({
       key: 'members',
       label: 'Участники',
       icon: Users,
-      href: `/app/${orgId}/members`,
-      active: pathname?.startsWith(`/app/${orgId}/members`),
+      href: `/p/${orgId}/members`,
+      active: pathname?.startsWith(`/p/${orgId}/members`),
     })
   }
-
-  if (permissions.canManageSettings) {
-    navItems.push({
-      key: 'subscriptions',
-      label: 'Подписки',
-      icon: CreditCard,
-      href: `/app/${orgId}/subscriptions`,
-      active: pathname?.startsWith(`/app/${orgId}/subscriptions`),
-    })
-  }
-
-  // Apps section (available for all authenticated users)
-  navItems.push({
-    key: 'apps',
-    label: 'Приложения',
-    icon: AppWindow,
-    href: `/app/${orgId}/apps`,
-    active: pathname?.startsWith(`/app/${orgId}/apps`),
-  })
 
   if (isCollapsed) {
     // Свёрнутая панель (только иконки)
@@ -189,41 +179,144 @@ export default function CollapsibleSidebar({
           })}
         </nav>
 
-        {/* Кнопка разворачивания и настройки */}
-        <div className="border-t border-gray-200 p-2 space-y-1">
-          {permissions.canManageSettings && (
-            <Link
-              href={`/app/${orgId}/settings`}
-              className={`flex h-12 items-center justify-center rounded-lg transition-colors ${
-                pathname?.startsWith(`/app/${orgId}/settings`)
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-              title="Настройки"
-            >
-              <Settings className="h-5 w-5" />
-            </Link>
-          )}
-          
-          <Link
-            href={`/app/${orgId}/profile`}
-            className="flex h-12 w-full items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
-            title={userProfile ? `Профиль - ${userProfile.displayName}` : 'Профиль'}
+        {/* Кнопка разворачивания и dropdown меню */}
+        <div className="border-t border-gray-200 p-2 space-y-1 relative">
+          <button
+            onClick={() => setShowMenuDropdown(!showMenuDropdown)}
+            className={`flex h-12 w-full items-center justify-center rounded-lg transition-colors ${
+              showMenuDropdown
+                ? 'bg-gray-100 text-gray-900'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+            title="Меню"
           >
-            {userProfile ? (
-              <div className="flex items-center justify-center w-10 h-10">
-                <ParticipantAvatar
-                  participantId={userProfile.participantId || userProfile.id}
-                  photoUrl={userProfile.photoUrl}
-                  tgUserId={userProfile.tgUserId}
-                  displayName={userProfile.displayName}
-                  size="sm"
-                />
+            <ChevronDown className="h-5 w-5" />
+          </button>
+
+          {/* Dropdown меню (collapsed mode) */}
+          {showMenuDropdown && (
+            <>
+              <div 
+                className="fixed inset-0 z-10" 
+                onClick={() => setShowMenuDropdown(false)}
+              />
+              <div className="absolute bottom-14 left-16 z-20 w-64 rounded-lg border border-gray-200 bg-white shadow-lg py-2">
+                <Link
+                  href={`/p/${orgId}/apps`}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={() => setShowMenuDropdown(false)}
+                >
+                  <AppWindow className="h-4 w-4" />
+                  <span>Приложения</span>
+                </Link>
+
+                {/* Telegram группы (только для админов) */}
+                {isAdmin && adminMode && (
+                  <div className="border-t border-gray-100 my-1 pt-1">
+                    <button
+                      onClick={() => setShowTelegramDropdown(!showTelegramDropdown)}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      <span>Telegram группы</span>
+                      <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${showTelegramDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showTelegramDropdown && (
+                      <div className="pl-6">
+                        {telegramGroups.length > 0 ? (
+                          telegramGroups.map((group: any) => (
+                            <Link
+                              key={group.id}
+                              href={`/app/${orgId}/telegram/${group.tg_chat_id}`}
+                              className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                              onClick={() => setShowMenuDropdown(false)}
+                            >
+                              {group.title}
+                            </Link>
+                          ))
+                        ) : (
+                          <div className="px-4 py-2 text-sm text-gray-500 italic">
+                            Нет подключенных групп
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Настройки (только для админов) */}
+                {isAdmin && adminMode && (
+                  <>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <Link
+                      href={`/app/${orgId}/settings`}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setShowMenuDropdown(false)}
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Настройки</span>
+                    </Link>
+                  </>
+                )}
+
+                {/* Переключатель режима (только для админов) */}
+                {isAdmin && (
+                  <>
+                    <div className="border-t border-gray-100 my-1"></div>
+                    <button
+                      onClick={() => {
+                        toggleAdminMode()
+                        setShowMenuDropdown(false)
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+                    >
+                      <Eye className="h-4 w-4" />
+                      <span>Режим участника</span>
+                      <div className={`ml-auto w-9 h-5 rounded-full transition-colors ${adminMode ? 'bg-gray-300' : 'bg-blue-600'}`}>
+                        <div className={`w-4 h-4 mt-0.5 rounded-full bg-white transition-transform ${adminMode ? 'ml-0.5' : 'ml-4'}`}></div>
+                      </div>
+                    </button>
+                  </>
+                )}
+
+                <div className="border-t border-gray-100 my-1"></div>
+                <Link
+                  href={`/app/${orgId}/profile`}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={() => setShowMenuDropdown(false)}
+                >
+                  {userProfile ? (
+                    <>
+                      {'avatarUrl' in userProfile && userProfile.avatarUrl ? (
+                        <img
+                          src={userProfile.avatarUrl}
+                          alt={userProfile.name || 'User'}
+                          className="h-4 w-4 rounded-full object-cover"
+                        />
+                      ) : 'photoUrl' in userProfile && userProfile.photoUrl ? (
+                        <img
+                          src={userProfile.photoUrl}
+                          alt={'displayName' in userProfile ? userProfile.displayName : 'User'}
+                          className="h-4 w-4 rounded-full object-cover"
+                        />
+                      ) : (
+                        <UserIcon className="h-4 w-4" />
+                      )}
+                      <span>
+                        {'name' in userProfile ? userProfile.name || userProfile.username : 
+                         'displayName' in userProfile ? userProfile.displayName : 'Профиль'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <UserIcon className="h-4 w-4" />
+                      <span>Профиль</span>
+                    </>
+                  )}
+                </Link>
               </div>
-            ) : (
-              <UserIcon className="h-5 w-5" />
-            )}
-          </Link>
+            </>
+          )}
           
           <button
             onClick={toggleSidebar}
@@ -302,17 +395,62 @@ export default function CollapsibleSidebar({
           )
         })}
 
-        {/* Для админов показываем секцию Telegram Groups */}
-        {permissions.canManageTelegram && (
-          <div className="mt-6">
-            <TelegramGroupsNav orgId={orgId} groups={telegramGroups} />
+        {/* Приложения (для всех авторизованных) */}
+        <Link
+          href={`/p/${orgId}/apps`}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            pathname?.startsWith(`/p/${orgId}/apps`)
+              ? 'bg-blue-50 text-blue-600'
+              : 'text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          <AppWindow className="h-5 w-5 flex-shrink-0" />
+          <span>Приложения</span>
+        </Link>
+
+        {/* Telegram группы (только для админов в режиме админа) */}
+        {isAdmin && adminMode && (
+          <div className="mt-2 pt-2 border-t border-gray-200">
+            <div className="flex items-center justify-between px-3 py-2">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Telegram группы
+              </div>
+              <Link
+                href={`/app/${orgId}/telegram`}
+                className="p-1 rounded hover:bg-gray-100"
+                title="Настройки Telegram"
+              >
+                <Settings className="h-4 w-4 text-gray-500" />
+              </Link>
+            </div>
+            {telegramGroups.length > 0 ? (
+              telegramGroups.map((group: any) => (
+                <Link
+                  key={group.id}
+                  href={`/app/${orgId}/telegram/${group.tg_chat_id}`}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    pathname === `/app/${orgId}/telegram/${group.tg_chat_id}`
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate">{group.title}</span>
+                </Link>
+              ))
+            ) : (
+              <div className="px-3 py-2 text-sm text-gray-500 italic">
+                Нет подключенных групп
+              </div>
+            )}
           </div>
         )}
       </nav>
 
-      {/* Футер с кнопками */}
+      {/* Футер с прямыми ссылками (без dropdown) */}
       <div className="border-t border-gray-200 p-2 space-y-1">
-        {permissions.canManageSettings && (
+        {/* Настройки (только для админов в режиме админа) */}
+        {isAdmin && adminMode && (
           <Link
             href={`/app/${orgId}/settings`}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -326,28 +464,47 @@ export default function CollapsibleSidebar({
           </Link>
         )}
 
+        {/* Переключатель режима (только для админов) */}
+        {isAdmin && (
+          <button
+            onClick={toggleAdminMode}
+            className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+          >
+            <Eye className="h-5 w-5 flex-shrink-0" />
+            <span>Режим участника</span>
+            <div className={`ml-auto w-9 h-5 rounded-full transition-colors ${adminMode ? 'bg-gray-300' : 'bg-blue-600'}`}>
+              <div className={`w-4 h-4 mt-0.5 rounded-full bg-white transition-transform ${adminMode ? 'ml-0.5' : 'ml-4'}`}></div>
+            </div>
+          </button>
+        )}
+
+        {/* Профиль */}
         <Link
           href={`/app/${orgId}/profile`}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
         >
           {userProfile ? (
             <>
-              <ParticipantAvatar
-                participantId={userProfile.participantId || userProfile.id}
-                photoUrl={userProfile.photoUrl}
-                tgUserId={userProfile.tgUserId}
-                displayName={userProfile.displayName}
-                size="sm"
-              />
+              {'avatarUrl' in userProfile && userProfile.avatarUrl ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={userProfile.name || 'User'}
+                  className="h-5 w-5 rounded-full object-cover flex-shrink-0"
+                />
+              ) : 'photoUrl' in userProfile && userProfile.photoUrl ? (
+                <img
+                  src={userProfile.photoUrl}
+                  alt={'displayName' in userProfile ? userProfile.displayName : 'User'}
+                  className="h-5 w-5 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <UserIcon className="h-5 w-5 flex-shrink-0" />
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900 truncate">
-                  {userProfile.displayName}
+                  {'name' in userProfile ? userProfile.name || userProfile.username : 
+                   'displayName' in userProfile ? userProfile.displayName : 'Профиль'}
                 </div>
-                {userProfile.email && (
-                  <div className="text-xs text-gray-500 truncate">
-                    {userProfile.email}
-                  </div>
-                )}
               </div>
             </>
           ) : (
@@ -358,6 +515,7 @@ export default function CollapsibleSidebar({
           )}
         </Link>
 
+        {/* Свернуть меню */}
         <button
           onClick={toggleSidebar}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"

@@ -22,6 +22,8 @@ type Event = {
   registered_count: number
   available_spots: number | null
   is_user_registered?: boolean
+  is_public: boolean
+  telegram_group_link: string | null
 }
 
 type Org = {
@@ -146,19 +148,6 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                 </CardContent>
               </Card>
             )}
-
-            {event.is_paid && event.price_info && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Стоимость и оплата</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-wrap text-neutral-700">
-                    {event.price_info}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -214,14 +203,25 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                     <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500 flex-shrink-0" />
                     <div>
                       <div className="font-medium">Платное</div>
-                      <div className="text-sm text-neutral-600">
-                        См. информацию о стоимости ниже
-                      </div>
                     </div>
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            {/* Pricing */}
+            {event.is_paid && event.price_info && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Стоимость и оплата</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap text-neutral-700">
+                    {event.price_info}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Registration */}
             <Card>
@@ -271,16 +271,33 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                             Осталось всего {event.available_spots} мест!
                           </div>
                         )}
+                        {event.is_public && event.telegram_group_link && !isAuthenticated && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-3">
+                            <h4 className="font-medium text-blue-900 mb-2">Для регистрации:</h4>
+                            <ol className="text-sm text-blue-800 space-y-2 mb-3 list-decimal list-inside">
+                              <li>Присоединитесь к группе в Telegram</li>
+                              <li>Затем нажмите "Зарегистрироваться"</li>
+                            </ol>
+                            <a 
+                              href={event.telegram_group_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"
+                            >
+                              Присоединиться к группе
+                            </a>
+                          </div>
+                        )}
                         <Button
                           className="w-full"
                           onClick={handleRegister}
-                          disabled={isPending || !isAuthenticated}
+                          disabled={isPending || (!isOrgMember && !isAuthenticated)}
                         >
                           {isPending ? 'Регистрация...' : 'Зарегистрироваться'}
                         </Button>
                         {!isAuthenticated && (
                           <p className="text-xs text-center text-neutral-500">
-                            <a href="/signin" className="text-blue-600 hover:underline">Войдите</a>, чтобы зарегистрироваться
+                            <a href={`/p/${org.id}/auth`} className="text-blue-600 hover:underline">Войдите через Telegram</a>, чтобы зарегистрироваться
                           </p>
                         )}
                       </>
@@ -311,7 +328,18 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
       {/* Footer */}
       <footer className="bg-white border-t border-neutral-200 mt-16">
         <div className="max-w-6xl mx-auto px-4 py-6 text-center text-sm text-neutral-500">
-          <p>Powered by Orbo</p>
+          <p>
+            Работает на{' '}
+            <a
+              href="https://www.orbo.ru"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              Orbo
+            </a>
+            {' '}— платформе для управления сообществами
+          </p>
         </div>
       </footer>
 

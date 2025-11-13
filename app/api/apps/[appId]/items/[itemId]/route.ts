@@ -1,4 +1,4 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 
@@ -12,10 +12,13 @@ export async function GET(
   const { appId, itemId } = params;
   
   try {
+    // Use admin client for public read access (no RLS restrictions)
+    const adminSupabase = createAdminServer();
+    // Also create regular client for analytics (to get user session if available)
     const supabase = await createClientServer();
 
     // Fetch item - public read access
-    const { data: item, error: itemError } = await supabase
+    const { data: item, error: itemError } = await adminSupabase
       .from('app_items')
       .select(`
         id,
@@ -53,34 +56,73 @@ export async function GET(
       );
     }
 
-    // Fetch participant info (separate query to avoid join issues)
-    if (item.creator_id) {
-      try {
-        const { data: participant } = await supabase
-          .from('participants')
-          .select('id, user_id, full_name, username, photo_url')
-          .eq('user_id', item.creator_id)
-          .single();
-        
-        if (participant) {
-          (item as any).participant = participant;
+      // Fetch participant info using admin client (public data for display)
+      if (item.creator_id && item.org_id) {
+        try {
+          logger.info({ 
+            creator_id: item.creator_id, 
+            org_id: item.org_id,
+            itemId 
+          }, 'Attempting to fetch participant');
+
+          const { data: participant, error: participantError } = await adminSupabase
+            .from('participants')
+            .select('id, user_id, org_id, full_name, username, photo_url')
+            .eq('user_id', item.creator_id)
+            .eq('org_id', item.org_id)
+            .single();
+
+          if (participantError) {
+            logger.error({ 
+              error: participantError, 
+              creator_id: item.creator_id,
+              org_id: item.org_id 
+            }, 'Participant query error');
+          }
+
+          if (participant) {
+            (item as any).participant = participant;
+            logger.info({ 
+              participant: { 
+                id: participant.id, 
+                full_name: participant.full_name, 
+                username: participant.username 
+              } 
+            }, 'Participant found and attached');
+          } else {
+            logger.warn({ 
+              creator_id: item.creator_id,
+              org_id: item.org_id 
+            }, 'No participant found for this creator_id + org_id');
+          }
+        } catch (err) {
+          logger.error({ 
+            error: err,
+            creator_id: item.creator_id,
+            org_id: item.org_id 
+          }, 'Exception while fetching participant');
+          // Continue without participant data
         }
-      } catch (err) {
-        logger.error({ error: err }, 'Error fetching participant (non-critical)');
-        // Continue without participant data
+      } else {
+        logger.warn({ 
+          has_creator_id: !!item.creator_id,
+          has_org_id: !!item.org_id,
+          itemId 
+        }, 'Missing creator_id or org_id for participant lookup');
       }
-    }
 
     // Increment views count (fire and forget - ignore errors)
-    supabase
+    adminSupabase
       .from('app_items')
       .update({ views_count: (item.views_count || 0) + 1 })
       .eq('id', itemId);
 
     // Log analytics event (optional - fire and forget)
     try {
+      // Try to get user session (if available, e.g. logged in user viewing)
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.rpc('log_app_event', {
+      // Use admin client for RPC call (bypasses RLS)
+      await adminSupabase.rpc('log_app_event', {
         p_app_id: appId,
         p_event_type: 'item_viewed',
         p_user_id: user?.id || null,
@@ -257,6 +299,7 @@ export async function DELETE(
   
   try {
     const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -295,6 +338,17 @@ export async function DELETE(
         { error: 'You can only delete your own items' },
         { status: 403 }
       );
+    }
+
+    // Delete analytics events first (to avoid foreign key constraint violation)
+    try {
+      await adminSupabase
+        .from('app_analytics_events')
+        .delete()
+        .eq('item_id', itemId);
+      logger.info({ itemId }, 'Analytics events deleted');
+    } catch (err) {
+      logger.warn({ error: err, itemId }, 'Error deleting analytics events (non-critical)');
     }
 
     // Delete item (CASCADE will delete reactions, comments)

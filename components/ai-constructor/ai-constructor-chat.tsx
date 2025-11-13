@@ -138,10 +138,11 @@ export default function AIConstructorChat() {
     }
   };
 
-  const handleCreateApp = async (orgId: string) => {
+  const handleCreateApp = async (orgId: string, visibility: 'public' | 'members' | 'private') => {
     try {
       console.log('[AI Constructor] Creating app for org:', orgId);
       console.log('[AI Constructor] App config:', appConfig);
+      console.log('[AI Constructor] Visibility:', visibility);
       
       const response = await fetch('/api/ai/generate-app', {
         method: 'POST',
@@ -149,6 +150,7 @@ export default function AIConstructorChat() {
         body: JSON.stringify({
           appConfig,
           orgId,
+          visibility,
           conversationId,
         }),
       });

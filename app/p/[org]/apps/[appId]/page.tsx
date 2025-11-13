@@ -68,11 +68,18 @@ export default function PublicItemsFeedPage() {
       const response = await fetch('/api/auth/status');
       if (response.ok) {
         const data = await response.json();
-        if (data.isAuthenticated && data.user) {
-          // Check if user is member/admin of this org
-          const membershipResponse = await fetch(`/api/organizations/${orgId}/membership`);
-          if (membershipResponse.ok) {
-            setIsAdmin(true);
+        if (data.authenticated && data.user) {
+          // Check if user is member/admin of this org by fetching membership
+          try {
+            const membershipResponse = await fetch(`/api/memberships?org_id=${orgId}&user_id=${data.user.id}`);
+            if (membershipResponse.ok) {
+              const membershipData = await membershipResponse.json();
+              if (membershipData.memberships && membershipData.memberships.length > 0) {
+                setIsAdmin(true);
+              }
+            }
+          } catch (membershipErr) {
+            console.warn('Could not check membership:', membershipErr);
           }
         }
       }
@@ -85,7 +92,7 @@ export default function PublicItemsFeedPage() {
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [items, filters, sort]);
+  }, [items, filters, sort, isAdmin]);
 
   const fetchAppData = async () => {
     try {
@@ -127,11 +134,9 @@ export default function PublicItemsFeedPage() {
         throw new Error('Failed to fetch items');
       }
       const itemsData = await itemsResponse.json();
-      // Filter out pending items (moderation queue)
-      const visibleItems = (itemsData.items || []).filter(
-        (item: AppItem) => item.status === 'published' || item.status === 'active'
-      );
-      setItems(visibleItems);
+      // For public users: filter out pending items (moderation queue)
+      // For admins: show all items (will be checked after auth status is loaded)
+      setItems(itemsData.items || []);
     } catch (err: any) {
       console.error('Error fetching app data:', err);
       setError(err.message);
@@ -142,6 +147,11 @@ export default function PublicItemsFeedPage() {
 
   const applyFiltersAndSort = () => {
     let result = [...items];
+
+    // For non-admins: filter out pending/draft items
+    if (!isAdmin) {
+      result = result.filter(item => item.status === 'published' || item.status === 'active');
+    }
 
     // Apply filters
     Object.keys(filters).forEach(fieldName => {
@@ -192,7 +202,12 @@ export default function PublicItemsFeedPage() {
   }
 
   const handleDeleteApp = async () => {
-    if (!confirm('Вы уверены, что хотите удалить это приложение? Это действие необратимо.')) {
+    const itemCount = items.length;
+    const message = itemCount > 0
+      ? `Вы уверены, что хотите удалить это приложение?\n\nБудут удалены:\n- Приложение "${app?.name}"\n- ${itemCount} объектов\n- Все связанные данные\n\nЭто действие необратимо!`
+      : `Вы уверены, что хотите удалить приложение "${app?.name}"? Это действие необратимо.`;
+    
+    if (!confirm(message)) {
       return;
     }
 
@@ -201,11 +216,13 @@ export default function PublicItemsFeedPage() {
         method: 'DELETE',
       });
 
-      if (response.ok) {
-        router.push(`/app/${orgId}/apps`);
-      } else {
-        alert('Не удалось удалить приложение');
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.error || 'Не удалось удалить приложение');
+        return;
       }
+
+      router.push(`/app/${orgId}/apps`);
     } catch (err) {
       console.error('Error deleting app:', err);
       alert('Произошла ошибка при удалении');
@@ -344,7 +361,16 @@ export default function PublicItemsFeedPage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-700 mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-sm text-gray-600 dark:text-gray-400">
-          Powered by <a href="https://www.orbo.ru" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Orbo</a>
+          Создано на платформе{' '}
+          <a 
+            href="https://www.orbo.ru" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            Orbo
+          </a>
+          {' '}— инструменты для Telegram-сообществ
         </div>
       </footer>
     </div>

@@ -187,7 +187,16 @@ export default function CreateItemPage() {
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-700 mt-12 py-6">
         <div className="container mx-auto px-4 text-center text-sm text-gray-600 dark:text-gray-400">
-          Powered by <a href="https://www.orbo.ru" target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Orbo</a>
+          Создано на платформе{' '}
+          <a 
+            href="https://www.orbo.ru" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            Orbo
+          </a>
+          {' '}— инструменты для Telegram-сообществ
         </div>
       </footer>
     </div>
