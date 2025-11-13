@@ -23,8 +23,9 @@ export default async function DigestSettingsPage({
 }: {
   params: Promise<{ org: string }>;
 }) {
+  const { org: orgId } = await params
+  
   try {
-    const { org: orgId } = await params
     // Verify access
     const { supabase, user } = await requireOrgAccess(orgId);
 
@@ -102,7 +103,7 @@ export default async function DigestSettingsPage({
     );
   } catch (error) {
     console.error('Digest settings page error:', error);
-    redirect(`/app/${params.org}/dashboard`);
+    redirect(`/p/${orgId}/dashboard`);
   }
 }
 
