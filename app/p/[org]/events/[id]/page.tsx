@@ -1,222 +1,59 @@
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { Metadata } from 'next'
-import { createAdminServer } from '@/lib/server/supabaseServer'
-import PublicEventDetail from '@/components/events/public-event-detail'
-import AccessDeniedWithAuth from '@/components/events/access-denied-with-auth'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { requireOrgAccess } from '@/lib/orgGuard'
+import EventDetail from '@/components/events/event-detail'
 
-// Generate metadata for Open Graph (Telegram preview)
-export async function generateMetadata({ params }: { params: { org: string; id: string } }): Promise<Metadata> {
-  const supabase = createAdminServer()
-
-  // Get organization
-  const { data: org } = await supabase
-    .from('organizations')
-    .select('id, name')
-    .eq('id', params.org)
-    .single()
-
-  // Fetch event
-  const { data: event } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', params.id)
-    .eq('org_id', params.org)
-    .single()
-
-  if (!event || !org) {
-    return {
-      title: 'Событие не найдено',
-      description: 'Это событие не существует или было удалено'
-    }
+export default async function EventDetailPage({ 
+  params,
+  searchParams 
+}: { 
+  params: Promise<{ org: string; id: string }>
+  searchParams: Promise<{ edit?: string }>
+}) {
+  const { org: orgId, id: eventId } = await params
+  const { edit } = await searchParams
+  
+  const supabase = await createClientServer()
+  
+  // Check authentication
+  const { user } = await supabase.auth.getUser().then(res => res.data)
+  if (!user) {
+    redirect('/signin')
   }
 
-  const title = event.title || 'Событие'
-  const description = event.description || `Событие от ${org.name}`
-  const imageUrl = event.cover_image_url // Используем существующее поле
-  const url = `${process.env.NEXT_PUBLIC_APP_URL}/p/${org.id}/events/${event.id}`
+  // Require org access
+  await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member', 'viewer'])
 
-  const metadata: any = {
-    title: `${title} | ${org.name}`,
-    description,
-    openGraph: {
-      type: 'website',
-      url,
-      title,
-      description,
-      siteName: 'Orbo'
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description
-    }
-  }
+  const adminSupabase = createAdminServer()
 
-  // Добавляем изображение только если оно есть
-  if (imageUrl) {
-    metadata.openGraph.images = [
-      {
-        url: imageUrl,
-        width: 1200,
-        height: 630,
-        alt: title
-      }
-    ]
-    metadata.twitter.images = [imageUrl]
-  }
-
-  return metadata
-}
-
-export default async function PublicEventPage({ params }: { params: { org: string; id: string } }) {
-  const supabase = createAdminServer()
-
-  // Get organization
-  const { data: org, error: orgError } = await supabase
-    .from('organizations')
-    .select('id, name')
-    .eq('id', params.org)
-    .single()
-
-  if (orgError || !org) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Организация не найдена</h1>
-          <p className="text-neutral-600">Эта организация не существует или была удалена.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Fetch event
-  const { data: event, error: eventError } = await supabase
+  // Fetch event using admin client to avoid RLS issues after access check
+  const { data: event, error } = await adminSupabase
     .from('events')
     .select(`
       *,
       event_registrations!event_registrations_event_id_fkey(
-        id, 
+        id,
         status,
-        participants!inner(merged_into)
+        registered_at,
+        participants!inner(
+          id,
+          full_name,
+          username,
+          tg_user_id,
+          merged_into
+        )
       )
     `)
-    .eq('id', params.id)
-    .eq('org_id', org.id)
+    .eq('org_id', orgId)
+    .eq('id', eventId)
     .single()
 
-  if (eventError || !event) {
+  if (error || !event) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Событие не найдено</h1>
+      <div className="p-6">
+        <div className="text-center py-8">
+          <h2 className="text-xl font-semibold mb-2">Событие не найдено</h2>
           <p className="text-neutral-600">Это событие не существует или было удалено.</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Check access rights by reading cookies directly (without modification)
-  // This prevents "Cookies can only be modified in a Server Action" error
-  const cookieStore = await cookies()
-  
-  // Try to find Supabase auth token in cookies
-  let userId: string | null = null
-  
-  // Check for auth token (Next.js + Supabase can store it in different formats)
-  const allCookies = cookieStore.getAll()
-  const authCookie = allCookies.find(c => 
-    c.name.includes('auth-token') || 
-    c.name === 'sb-access-token' ||
-    c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
-  )
-  
-  if (authCookie?.value) {
-    try {
-      // Try to parse as JSON first (Supabase v2 format)
-      const authData = JSON.parse(authCookie.value)
-      userId = authData?.user?.id || authData?.access_token ? 
-        JSON.parse(Buffer.from(authData.access_token.split('.')[1], 'base64').toString()).sub : null
-    } catch {
-      try {
-        // Try as JWT token directly
-        const payload = JSON.parse(Buffer.from(authCookie.value.split('.')[1], 'base64').toString())
-        userId = payload.sub
-      } catch (err) {
-        console.error('Error decoding auth cookie:', err)
-      }
-    }
-  }
-  
-  let isOrgMember = false
-  
-  if (userId) {
-    console.log(`[PublicEventPage] Checking membership for userId: ${userId}, orgId: ${org.id}`)
-    
-    // Check if user is a member of this organization
-    const { data: telegramAccount, error: taError } = await supabase
-      .from('user_telegram_accounts')
-      .select('telegram_user_id')
-      .eq('user_id', userId)
-      .eq('org_id', org.id)
-      .maybeSingle()
-    
-    console.log(`[PublicEventPage] telegramAccount:`, telegramAccount, 'error:', taError)
-    
-    if (telegramAccount) {
-      const { data: participants, error: pError } = await supabase
-        .from('participants')
-        .select('id')
-        .eq('org_id', org.id)
-        .eq('tg_user_id', telegramAccount.telegram_user_id)
-        .is('merged_into', null) // Exclude merged participants
-        .limit(1)
-      
-      console.log(`[PublicEventPage] participants:`, participants, 'error:', pError)
-      
-      isOrgMember = !!(participants && participants.length > 0)
-    } else {
-      // Try to find participant by user_id directly (backup check)
-      console.log(`[PublicEventPage] No telegram account found, checking participants directly`)
-      const { data: directParticipants } = await supabase
-        .from('participants')
-        .select('id')
-        .eq('org_id', org.id)
-        .eq('user_id', userId)
-        .is('merged_into', null) // Exclude merged participants
-        .limit(1)
-      
-      console.log(`[PublicEventPage] directParticipants:`, directParticipants)
-      isOrgMember = !!(directParticipants && directParticipants.length > 0)
-    }
-  }
-  
-  console.log(`[PublicEventPage] Final isOrgMember: ${isOrgMember}`)
-  
-  // If user is authenticated and is org member, redirect to internal page with navigation
-  if (userId && isOrgMember) {
-    redirect(`/app/${org.id}/events/${params.id}`)
-  }
-  
-  // If event is NOT public and user is NOT a member, show access denied with auth option
-  if (!event.is_public && !isOrgMember) {
-    return (
-      <AccessDeniedWithAuth
-        orgId={org.id}
-        orgName={org.name}
-        eventId={params.id}
-        isAuthenticated={!!userId}
-      />
-    )
-  }
-
-  // Check if event is published
-  if (event.status !== 'published') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Событие недоступно</h1>
-          <p className="text-neutral-600">Это событие еще не опубликовано.</p>
         </div>
       </div>
     )
@@ -231,68 +68,104 @@ export default async function PublicEventPage({ params }: { params: { org: strin
     ? Math.max(0, event.capacity - registeredCount)
     : null
 
+  // Check user's role
+  const { data: membership } = await supabase
+    .from('memberships')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .single()
+
+  const role = membership?.role || 'guest'
+
   // Check if current user is registered
-  let isUserRegistered = false
+  // Find participant via user_telegram_accounts
+  const { data: telegramAccount } = await supabase
+    .from('user_telegram_accounts')
+    .select('telegram_user_id')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
   let participant: { id: string } | null = null
-  
-  if (userId) {
-    // Find participant via user_telegram_accounts
-    const { data: telegramAccount } = await supabase
-      .from('user_telegram_accounts')
-      .select('telegram_user_id')
-      .eq('user_id', userId)
-      .eq('org_id', org.id)
+  if (telegramAccount?.telegram_user_id) {
+    const { data: foundParticipant } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', event.org_id)
+      .eq('tg_user_id', telegramAccount.telegram_user_id)
+      .is('merged_into', null)
       .maybeSingle()
-
-    if (telegramAccount?.telegram_user_id) {
-      const { data: foundParticipant } = await supabase
-        .from('participants')
-        .select('id')
-        .eq('org_id', org.id)
-        .eq('tg_user_id', telegramAccount.telegram_user_id)
-        .is('merged_into', null)
-        .maybeSingle()
-      
-      participant = foundParticipant
-    } else {
-      // Fallback: try finding by email (fetch user to get email)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.email) {
-        const { data: foundByEmail } = await supabase
-          .from('participants')
-          .select('id')
-          .eq('org_id', org.id)
-          .eq('email', user.email)
-          .is('merged_into', null)
-          .maybeSingle()
-        
-        participant = foundByEmail
-      }
-    }
-
-    if (participant) {
-      isUserRegistered = event.event_registrations?.some(
-        (reg: any) => 
-          reg.participants?.id === participant?.id && 
-          reg.status === 'registered'
-      ) || false
-    }
+    
+    participant = foundParticipant
+  } else if (user.email) {
+    // Fallback: try finding by email
+    const { data: foundByEmail } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', event.org_id)
+      .eq('email', user.email)
+      .is('merged_into', null)
+      .maybeSingle()
+    
+    participant = foundByEmail
   }
+
+  const isUserRegistered = participant && event.event_registrations?.some(
+    (reg: any) => 
+      reg.participants?.id === participant.id && 
+      reg.status === 'registered'
+  )
 
   const eventWithStats = {
     ...event,
     registered_count: registeredCount,
     available_spots: availableSpots,
-    is_user_registered: isUserRegistered,
-    event_registrations: undefined
+    is_user_registered: isUserRegistered || false
   }
 
+  // Fetch telegram groups for notifications (admin only)
+  let telegramGroups: any[] = []
+  if (role === 'owner' || role === 'admin') {
+    // Загружаем группы через org_telegram_groups (new many-to-many schema)
+    const { data: orgGroupsData } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups!inner (
+          id,
+          tg_chat_id,
+          title,
+          bot_status
+        )
+      `)
+      .eq('org_id', orgId)
+    
+    if (orgGroupsData) {
+      // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
+      telegramGroups = (orgGroupsData as any[])
+        .map((item: any) => item.telegram_groups)
+        .filter((group: any) => group !== null && group.bot_status === 'connected')
+        .sort((a: any, b: any) => {
+          const titleA = a.title || ''
+          const titleB = b.title || ''
+          return titleA.localeCompare(titleB)
+        })
+    }
+    
+    console.log(`Loaded ${telegramGroups.length} connected telegram groups for event sharing`)
+  }
+
+  const isEditMode = edit === 'true'
+
   return (
-    <PublicEventDetail 
-      event={eventWithStats}
-      org={org}
-      isAuthenticated={!!userId}
-      isOrgMember={isOrgMember}
-    />
+    <div className="p-6">
+      <EventDetail 
+        event={eventWithStats}
+        orgId={orgId}
+        role={role as 'owner' | 'admin' | 'member' | 'guest'}
+        isEditMode={isEditMode}
+        telegramGroups={telegramGroups}
+      />
+    </div>
   )
 }

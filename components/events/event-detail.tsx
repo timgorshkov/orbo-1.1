@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon } from 'lucide-react'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
 
 type Event = {
@@ -44,12 +45,13 @@ type Event = {
 type Props = {
   event: Event
   orgId: string
-  isAdmin: boolean
+  role: 'owner' | 'admin' | 'member' | 'guest'
   isEditMode: boolean
   telegramGroups: Array<{ id: number; tg_chat_id: number; title: string | null }>
 }
 
-export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegramGroups }: Props) {
+export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups }: Props) {
+  const { adminMode, isAdmin } = useAdminMode(role)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [registrationError, setRegistrationError] = useState<string | null>(null)
@@ -59,6 +61,11 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
   const [notifyError, setNotifyError] = useState<string | null>(null)
   const [notifySuccess, setNotifySuccess] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  
+  // Show admin features only if user is admin AND in admin mode
+  const showAdminFeatures = isAdmin && adminMode
+  // Allow edit mode only if admin features are shown and edit mode is requested
+  const canEdit = showAdminFeatures && isEditMode
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -184,7 +191,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
     .sort((a, b) => new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime())
     || []
 
-  if (isEditMode) {
+  if (canEdit) {
     return (
       <div>
         <div className="mb-6 flex items-center justify-between">
@@ -216,7 +223,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
             ← Назад
           </Button>
         </div>
-        {isAdmin && (
+        {showAdminFeatures && (
           <div className="flex gap-2">
             {event.is_public && event.status === 'published' && (
               <Button
@@ -295,7 +302,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
       <Tabs defaultValue="overview">
         <TabsList className="mb-6">
           <TabsTrigger value="overview">Обзор</TabsTrigger>
-          {isAdmin && <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>}
+          {showAdminFeatures && <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview">
@@ -462,7 +469,7 @@ export default function EventDetail({ event, orgId, isAdmin, isEditMode, telegra
           </div>
         </TabsContent>
 
-        {isAdmin && (
+        {showAdminFeatures && (
           <TabsContent value="participants">
             <Card>
               <CardHeader>

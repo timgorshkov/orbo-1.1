@@ -46,7 +46,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [priceInfo, setPriceInfo] = useState(initialEvent?.price_info || '')
   const [capacity, setCapacity] = useState<string>(initialEvent?.capacity?.toString() || '')
   const [status, setStatus] = useState<'draft' | 'published' | 'cancelled'>(
-    initialEvent?.status || 'draft'
+    initialEvent?.status || 'published'
   )
   const [isPublic, setIsPublic] = useState(initialEvent?.is_public || false)
   const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')

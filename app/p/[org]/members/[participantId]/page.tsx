@@ -1,16 +1,3 @@
-import { redirect } from 'next/navigation'
-
-export default async function OldParticipantPageRedirect({ 
-  params 
-}: { 
-  params: Promise<{ org: string; participantId: string }> 
-}) {
-  const { org, participantId } = await params
-  redirect(`/p/${org}/members/${participantId}`)
-}
-
-/*
-// Old implementation - redirects to new /p/ structure
 import { notFound, redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
@@ -78,4 +65,4 @@ export default async function ParticipantPage({
     </div>
   )
 }
-*/
+

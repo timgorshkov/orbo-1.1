@@ -1,4 +1,22 @@
 import { redirect } from 'next/navigation'
+
+export default async function OldEventDetailPageRedirect({ 
+  params,
+  searchParams 
+}: { 
+  params: Promise<{ org: string; id: string }>
+  searchParams: Promise<{ edit?: string }>
+}) {
+  const { org, id } = await params
+  const { edit } = await searchParams
+  
+  const editParam = edit === 'true' ? '?edit=true' : ''
+  redirect(`/p/${org}/events/${id}${editParam}`)
+}
+
+/*
+// Old implementation - redirects to new /p/ structure
+import { redirect } from 'next/navigation'
 import AppShell from '@/components/app-shell'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { requireOrgAccess } from '@/lib/orgGuard'
@@ -167,4 +185,4 @@ export default async function EventDetailPage({
     </div>
   )
 }
-
+*/
