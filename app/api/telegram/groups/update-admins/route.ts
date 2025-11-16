@@ -142,6 +142,41 @@ export async function POST(request: Request) {
         const administrators = adminsResponse.result || [];
         console.log(`Found ${administrators.length} administrators in group ${group.tg_chat_id} (${group.title})`);
         
+        // ✅ КРИТИЧЕСКИЙ ФИКС: Сначала деактивируем ВСЕХ админов этой группы
+        // Это гарантирует, что если кого-то убрали из админов, его права будут отозваны
+        console.log(`[DEACTIVATE] Starting deactivation for group ${group.tg_chat_id}`);
+        
+        // Сначала проверим, сколько записей существует
+        const { data: existingAdmins, error: countError } = await supabaseService
+          .from('telegram_group_admins')
+          .select('tg_user_id, is_admin')
+          .eq('tg_chat_id', Number(group.tg_chat_id));
+        
+        if (countError) {
+          console.error(`[DEACTIVATE] Error counting admins for group ${group.tg_chat_id}:`, countError);
+        } else {
+          console.log(`[DEACTIVATE] Found ${existingAdmins?.length || 0} existing admin records for group ${group.tg_chat_id}:`, 
+            existingAdmins?.map((a: any) => ({ tg_user_id: a.tg_user_id, is_admin: a.is_admin })));
+        }
+        
+        const { data: deactivatedData, error: deactivateError } = await supabaseService
+          .from('telegram_group_admins')
+          .update({ 
+            is_admin: false, 
+            is_owner: false,
+            verified_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 1000).toISOString() // Истекает немедленно
+          })
+          .eq('tg_chat_id', Number(group.tg_chat_id))
+          .select('tg_user_id');
+        
+        if (deactivateError) {
+          console.error(`[DEACTIVATE] ERROR deactivating admins for group ${group.tg_chat_id}:`, deactivateError);
+        } else {
+          console.log(`[DEACTIVATE] ✅ Successfully deactivated ${deactivatedData?.length || 0} admins for group ${group.tg_chat_id}:`,
+            deactivatedData?.map((a: any) => a.tg_user_id));
+        }
+        
         // Обрабатываем каждого администратора
         for (const admin of administrators) {
           const memberStatus = admin?.status;
