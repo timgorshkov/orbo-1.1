@@ -10,6 +10,7 @@ interface App {
   name: string;
   description: string;
   icon: string;
+  logo_url: string | null;
   app_type: string;
   status: string;
   created_at: string;
@@ -117,7 +118,11 @@ export default function AppsPage() {
               className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all group"
             >
               <div className="flex items-start space-x-4">
-                <div className="text-4xl">{app.icon}</div>
+                {app.logo_url ? (
+                  <img src={app.logo_url} alt={app.name} className="w-16 h-16 rounded-lg object-contain flex-shrink-0" />
+                ) : (
+                  <div className="text-4xl flex-shrink-0">{app.icon}</div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
                     {app.name}

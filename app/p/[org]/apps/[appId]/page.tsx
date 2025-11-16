@@ -12,6 +12,7 @@ interface App {
   name: string;
   description: string;
   icon: string;
+  logo_url: string | null;
   org_id: string;
 }
 
@@ -288,7 +289,11 @@ export default function PublicItemsFeedPage() {
 
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="text-3xl md:text-4xl flex-shrink-0">{app.icon}</div>
+              {app.logo_url ? (
+                <img src={app.logo_url} alt={app.name} className="w-12 h-12 md:w-16 md:h-16 rounded-lg object-contain flex-shrink-0" />
+              ) : (
+                <div className="text-3xl md:text-4xl flex-shrink-0">{app.icon}</div>
+              )}
               <div className="min-w-0">
                 <h1 className="text-lg md:text-xl font-bold text-gray-900 dark:text-white truncate">
                   {app.name}
