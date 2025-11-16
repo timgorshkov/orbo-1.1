@@ -70,13 +70,15 @@ export default function PublicItemsFeedPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.authenticated && data.user) {
-          // Check if user is member/admin of this org by fetching membership
+          // Check if user is admin/owner of this org by fetching membership
           try {
             const membershipResponse = await fetch(`/api/memberships?org_id=${orgId}&user_id=${data.user.id}`);
             if (membershipResponse.ok) {
               const membershipData = await membershipResponse.json();
               if (membershipData.memberships && membershipData.memberships.length > 0) {
-                setIsAdmin(true);
+                const membership = membershipData.memberships[0];
+                // ✅ Only owner and admin can see admin toolbar
+                setIsAdmin(membership.role === 'owner' || membership.role === 'admin');
               }
             }
           } catch (membershipErr) {
@@ -235,40 +237,45 @@ export default function PublicItemsFeedPage() {
       {/* Admin Toolbar */}
       {isAdmin && !isCheckingAuth && (
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 border-b border-blue-800">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center justify-between">
+          <div className="container mx-auto px-2 md:px-4 py-2 md:py-3">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-white text-sm font-medium">Режим администратора</span>
+                <span className="text-white text-xs md:text-sm font-medium hidden sm:inline">Режим администратора</span>
+                <span className="text-white text-xs font-medium sm:hidden">Админ</span>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-1 md:gap-2">
                 <Link
                   href={`/p/${orgId}/apps/${appId}/customize`}
-                  className="inline-flex items-center px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  className="inline-flex items-center px-2 md:px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  title="Кастомизация"
                 >
-                  <Settings className="w-4 h-4 mr-1.5" />
-                  Кастомизация
+                  <Settings className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline">Кастомизация</span>
                 </Link>
                 <Link
                   href={`/p/${orgId}/apps/${appId}/edit`}
-                  className="inline-flex items-center px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
+                  className="inline-flex items-center px-2 md:px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
+                  title="Настройки"
                 >
-                  <Settings className="w-4 h-4 mr-1.5" />
-                  Настройки
+                  <Settings className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline">Настройки</span>
                 </Link>
                 <Link
                   href={`/p/${orgId}/apps/${appId}/moderation`}
-                  className="inline-flex items-center px-3 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  className="inline-flex items-center px-2 md:px-3 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  title="Модерация"
                 >
-                  <AlertTriangle className="w-4 h-4 mr-1.5" />
-                  Модерация
+                  <AlertTriangle className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline">Модерация</span>
                 </Link>
                 <button
                   onClick={handleDeleteApp}
-                  className="inline-flex items-center px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  className="inline-flex items-center px-2 md:px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                  title="Удалить"
                 >
-                  <Trash2 className="w-4 h-4 mr-1.5" />
-                  Удалить
+                  <Trash2 className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline">Удалить</span>
                 </button>
               </div>
             </div>

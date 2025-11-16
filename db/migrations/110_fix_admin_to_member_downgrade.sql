@@ -9,6 +9,20 @@
 -- Solution: UPDATE role to 'member' instead of DELETE
 -- =====================================================
 
+-- Step 1: Add 'telegram_group' to role_source constraint
+DO $$
+BEGIN
+  -- Drop old constraint
+  ALTER TABLE memberships DROP CONSTRAINT IF EXISTS memberships_role_source_check;
+  
+  -- Add new constraint with 'telegram_group' included
+  ALTER TABLE memberships ADD CONSTRAINT memberships_role_source_check 
+    CHECK (role_source IN ('manual', 'telegram_admin', 'invitation', 'telegram_group'));
+  
+  RAISE NOTICE '✅ Updated memberships_role_source_check constraint to include telegram_group';
+END $$;
+
+-- Step 2: Update sync_telegram_admins function
 CREATE OR REPLACE FUNCTION sync_telegram_admins(p_org_id UUID)
 RETURNS TABLE(
   tg_user_id BIGINT,

@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         name,
         description,
         icon,
+        logo_url,
         app_type,
         config,
         status,
