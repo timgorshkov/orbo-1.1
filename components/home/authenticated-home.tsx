@@ -86,9 +86,6 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
         orgName={data.organization.name}
         orgLogo={data.organization.logo_url}
         publicDescription={data.organization.public_description}
-        memberCount={data.organization.member_count}
-        eventCount={data.organization.event_count}
-        materialCount={data.organization.material_count}
       />
 
       <div className="py-8">

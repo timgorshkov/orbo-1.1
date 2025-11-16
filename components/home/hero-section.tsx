@@ -2,18 +2,12 @@ interface Props {
   orgName: string
   orgLogo: string | null
   publicDescription: string | null
-  memberCount: number
-  eventCount: number
-  materialCount: number
 }
 
 export default function HeroSection({
   orgName,
   orgLogo,
-  publicDescription,
-  memberCount,
-  eventCount,
-  materialCount
+  publicDescription
 }: Props) {
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 border-b border-gray-200 dark:border-gray-700">
@@ -32,17 +26,10 @@ export default function HeroSection({
                 {orgName}
               </h1>
               {publicDescription && (
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                <p className="text-gray-600 dark:text-gray-400">
                   {publicDescription}
                 </p>
               )}
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
-                <span>👥 {memberCount} участников</span>
-                <span>·</span>
-                <span>📅 {eventCount} событий</span>
-                <span>·</span>
-                <span>📚 {materialCount} материалов</span>
-              </div>
             </div>
           </div>
         </div>

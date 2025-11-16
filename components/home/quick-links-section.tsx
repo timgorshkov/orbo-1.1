@@ -25,12 +25,6 @@ export default function QuickLinksSection({ orgId, isAdmin }: Props) {
       icon: BookOpen,
       title: 'Материалы',
       description: 'База знаний'
-    },
-    {
-      href: `/p/${orgId}/telegram`,
-      icon: MessageCircle,
-      title: 'Telegram группы',
-      description: 'Чаты сообщества'
     }
   ]
 

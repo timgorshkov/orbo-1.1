@@ -72,15 +72,14 @@ export default function MobileBottomNav({
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
 
-  if (permissions.canViewDashboard) {
-    mainNavItems.push({
-      key: 'dashboard',
-      label: 'Дашборд',
-      icon: LayoutDashboard,
-      href: `/p/${orgId}/dashboard`,
-      active: pathname === `/p/${orgId}/dashboard`,
-    })
-  }
+  // Главная страница для всех пользователей
+  mainNavItems.push({
+    key: 'home',
+    label: 'Главная',
+    icon: LayoutDashboard,
+    href: `/p/${orgId}`,
+    active: pathname === `/p/${orgId}`,
+  })
 
   if (permissions.canViewMaterials) {
     mainNavItems.push({
@@ -186,8 +185,8 @@ export default function MobileBottomNav({
 
                 {/* Telegram Groups для админов */}
                 {permissions.canManageTelegram && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <TelegramGroupsNav orgId={orgId} groups={telegramGroups} />
+                  <div className="mt-4 pt-4 border-gray-200">
+                    <TelegramGroupsNav orgId={orgId} groups={telegramGroups} currentPath={pathname} />
                   </div>
                 )}
 

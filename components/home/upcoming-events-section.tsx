@@ -55,16 +55,10 @@ export default function UpcomingEventsSection({ events, orgId }: Props) {
     <section className="mb-12">
       <div className="container mx-auto px-4">
         <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               📅 Предстоящие события
             </h2>
-            <Link
-              href={`/p/${orgId}/events`}
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium text-sm"
-            >
-              Все события →
-            </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
