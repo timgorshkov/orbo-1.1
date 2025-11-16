@@ -67,12 +67,6 @@ export async function GET(
       `)
       .eq('id', itemId);
     
-    // ✅ Non-admins can only see published/active items
-    if (!isAdmin) {
-      itemQuery = itemQuery.in('status', ['published', 'active']);
-    }
-    // Admins can see all statuses including pending
-    
     const { data: item, error: itemError } = await itemQuery.single();
 
     if (itemError) {
@@ -84,6 +78,21 @@ export async function GET(
         { error: 'Failed to fetch item' },
         { status: 500 }
       );
+    }
+
+    // ✅ Check permissions: non-admins can only see published/active OR their own pending items
+    if (!isAdmin && item.status === 'pending') {
+      // Check if user is the creator
+      const { data: participant } = await adminSupabase
+        .from('participants')
+        .select('user_id')
+        .eq('id', item.creator_id)
+        .maybeSingle();
+      
+      // If not the creator, deny access
+      if (!participant || participant.user_id !== userId) {
+        return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      }
     }
 
       // Fetch participant info using admin client (public data for display)

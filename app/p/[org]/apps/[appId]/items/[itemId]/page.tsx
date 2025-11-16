@@ -100,41 +100,34 @@ export default function ItemDetailPage() {
       // Check if current user is owner or admin
       try {
         const authResponse = await fetch('/api/auth/status');
-        console.log('[ItemDetail] Auth response ok?', authResponse.ok);
         
         if (authResponse.ok) {
           const authData = await authResponse.json();
-          console.log('[ItemDetail] Auth data:', authData);
           
           if (authData.authenticated && authData.user) {
-            // Check if user is creator
-            const isCreator = itemData.item.creator_id === authData.user.id;
-            console.log('[ItemDetail] Is creator?', isCreator);
-            console.log('[ItemDetail] Item creator_id:', itemData.item.creator_id);
-            console.log('[ItemDetail] Current user id:', authData.user.id);
+            // ✅ Check if user is creator (compare through participant.user_id, not creator_id)
+            const isCreator = itemData.item.participant?.user_id === authData.user.id;
             
-            // Check if user is org admin/member by fetching membership
+            // Check if user is org admin/owner by fetching membership
             let isOrgAdmin = false;
             try {
               const membershipResponse = await fetch(`/api/memberships?org_id=${orgId}&user_id=${authData.user.id}`);
               if (membershipResponse.ok) {
                 const membershipData = await membershipResponse.json();
-                isOrgAdmin = membershipData.memberships && membershipData.memberships.length > 0;
+                if (membershipData.memberships && membershipData.memberships.length > 0) {
+                  const membership = membershipData.memberships[0];
+                  // ✅ Only owner/admin are considered admins, not all members
+                  isOrgAdmin = membership.role === 'owner' || membership.role === 'admin';
+                }
               }
             } catch (membershipErr) {
               console.warn('[ItemDetail] Could not check membership:', membershipErr);
             }
-            console.log('[ItemDetail] Is org admin?', isOrgAdmin);
             
             const finalIsOwner = isCreator || isOrgAdmin;
-            console.log('[ItemDetail] Final isOwner:', finalIsOwner);
             setIsOwner(finalIsOwner);
-            setIsAdmin(isOrgAdmin); // Set admin status for toolbar
-          } else {
-            console.log('[ItemDetail] User not authenticated');
+            setIsAdmin(isOrgAdmin); // ✅ Only real admins, not creators
           }
-        } else {
-          console.log('[ItemDetail] Auth check failed');
         }
       } catch (err) {
         console.error('[ItemDetail] Error checking ownership:', err);
