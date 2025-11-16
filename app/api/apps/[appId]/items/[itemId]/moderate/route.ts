@@ -1,8 +1,27 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
 import { notifyItemApproved, notifyItemRejected } from '@/lib/services/appsNotificationService';
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
+// GET /api/apps/[appId]/items/[itemId]/moderate - Test endpoint
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ appId: string; itemId: string }> }
+) {
+  const { appId, itemId } = await params;
+  const logger = createAPILogger(request);
+  logger.info({ appId, itemId }, '[MODERATE] GET endpoint called - route is working!');
+  return NextResponse.json({ 
+    message: 'Moderate endpoint is working',
+    appId,
+    itemId,
+    method: 'GET'
+  });
+}
 
 // POST /api/apps/[appId]/items/[itemId]/moderate - Moderate item (approve/reject)
 export async function POST(
@@ -14,7 +33,10 @@ export async function POST(
   const { appId, itemId } = await params;
   
   try {
+    // ✅ Use separate clients: user client for auth, admin for DB operations
     const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
+    
     const body = await request.json();
     const { action, note } = body; // action: 'approve' | 'reject'
 
@@ -31,14 +53,15 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get existing item
-    const { data: existingItem, error: fetchError } = await supabase
+    // ✅ Get existing item using admin client (bypasses RLS)
+    const { data: existingItem, error: fetchError } = await adminSupabase
       .from('app_items')
       .select('id, org_id, collection_id, creator_id, status, data')
       .eq('id', itemId)
       .single();
 
     if (fetchError || !existingItem) {
+      logger.error({ fetchError, itemId }, 'Item not found for moderation');
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
@@ -64,8 +87,8 @@ export async function POST(
     // Determine new status
     const newStatus = action === 'approve' ? 'active' : 'rejected';
 
-    // Update item
-    const { data: item, error: updateError } = await supabase
+    // ✅ Update item using admin client (bypasses RLS)
+    const { data: item, error: updateError } = await adminSupabase
       .from('app_items')
       .update({
         status: newStatus,

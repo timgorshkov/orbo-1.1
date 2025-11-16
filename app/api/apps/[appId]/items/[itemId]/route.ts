@@ -95,10 +95,11 @@ export async function GET(
             itemId 
           }, 'Attempting to fetch participant');
 
+          // ✅ After migration 111: creator_id is participant_id
           const { data: participant, error: participantError } = await adminSupabase
             .from('participants')
             .select('id, user_id, org_id, full_name, username, photo_url')
-            .eq('user_id', item.creator_id)
+            .eq('id', item.creator_id) // ✅ Search by participant.id
             .eq('org_id', item.org_id)
             .single();
 

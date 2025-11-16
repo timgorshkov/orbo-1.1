@@ -138,19 +138,39 @@ export async function GET(
 
     // ✅ Post-process filtering: remove pending items that don't belong to current user
     let filteredItems = items || [];
+    
     if (!isAdmin && userId) {
-      filteredItems = filteredItems.filter(item => {
-        // Keep published and active for everyone
-        if (item.status === 'published' || item.status === 'active') {
-          return true;
-        }
-        // Keep pending only if user is the creator
-        if (item.status === 'pending' && item.creator_id === userId) {
-          return true;
-        }
-        // Filter out all other pending items
-        return false;
-      });
+      // For non-admins: show published/active to everyone, pending only to creator
+      filteredItems = await Promise.all(
+        filteredItems.map(async (item) => {
+          // Keep published and active for everyone
+          if (item.status === 'published' || item.status === 'active') {
+            return item;
+          }
+          // For pending items, check if user is the creator
+          if (item.status === 'pending') {
+            // ✅ Backwards compatibility: creator_id can be either participant_id (new) or user_id (old)
+            
+            // First, check if creator_id matches user_id directly (old format)
+            if (item.creator_id === userId) {
+              return item;
+            }
+            
+            // Second, check if creator_id is participant_id belonging to this user (new format)
+            const { data: participant } = await adminSupabase
+              .from('participants')
+              .select('user_id')
+              .eq('id', item.creator_id)
+              .maybeSingle();
+            
+            if (participant && participant.user_id === userId) {
+              return item;
+            }
+          }
+          // Filter out
+          return null;
+        })
+      ).then(results => results.filter(item => item !== null));
     }
 
     // Fetch participant info for items using admin client (public data for display)
@@ -160,16 +180,17 @@ export async function GET(
       
       if (creatorIds.length > 0 && orgIds.length > 0) {
         try {
+          // ✅ After migration 111: creator_id is participant_id, so search by 'id' not 'user_id'
           const { data: participants } = await adminSupabase
             .from('participants')
             .select('id, user_id, org_id, full_name, username, photo_url')
-            .in('user_id', creatorIds)
+            .in('id', creatorIds) // ✅ Search by participant.id
             .in('org_id', orgIds);
 
           if (participants) {
-            // Create a composite key map: user_id + org_id -> participant
+            // ✅ Create map with participant.id as key (matches creator_id)
             const participantMap = new Map(
-              participants.map(p => [`${p.user_id}_${p.org_id}`, p])
+              participants.map(p => [`${p.id}_${p.org_id}`, p])
             );
             
             // Attach participant data to items
@@ -293,10 +314,27 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
+    // ✅ Get participant_id for creator_id (app_items.creator_id should reference participants, not users)
+    const { data: participant, error: participantError } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', app.org_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (participantError || !participant) {
+      logger.error({ 
+        error: participantError, 
+        userId: user.id, 
+        orgId: app.org_id 
+      }, 'Participant not found for item creation');
+      return NextResponse.json({ error: 'Participant record not found' }, { status: 403 });
+    }
+
     // Determine initial status based on moderation settings
     const initialStatus = collection.moderation_enabled ? 'pending' : 'published';
 
-    // Create item using admin client (after membership check)
+    // ✅ Create item using participant_id as creator_id
     const { data: item, error: createError } = await adminSupabase
       .from('app_items')
       .insert({
@@ -308,7 +346,7 @@ export async function POST(
         location_lon: locationLon || null,
         location_address: locationAddress || null,
         status: initialStatus,
-        creator_id: user.id,
+        creator_id: participant.id, // ✅ Use participant_id instead of user_id
         org_id: app.org_id
       })
       .select()
