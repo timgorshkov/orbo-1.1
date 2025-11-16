@@ -28,11 +28,13 @@ export function ParticipantAvatar({
 
   // Placeholder для фото
   const initials = displayName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+    ? displayName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : '?'
 
   // Размеры в зависимости от size
   const sizeClasses = {

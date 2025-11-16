@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { 
   LayoutDashboard, 
   FileText, 
@@ -13,7 +14,9 @@ import {
   Settings,
   ChevronRight,
   Building2,
-  User as UserIcon
+  User as UserIcon,
+  Home,
+  Eye
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 import TelegramGroupsNav from '../telegram-groups-nav'
@@ -60,6 +63,7 @@ export default function MobileBottomNav({
   userProfile,
 }: MobileBottomNavProps) {
   const pathname = usePathname()
+  const { adminMode, toggleAdminMode, isAdmin } = useAdminMode(role)
   const permissions = getRolePermissions(role)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [showOrgDropdown, setShowOrgDropdown] = useState(false)
@@ -72,14 +76,28 @@ export default function MobileBottomNav({
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
 
-  // Главная страница для всех пользователей
-  mainNavItems.push({
-    key: 'home',
-    label: 'Главная',
-    icon: LayoutDashboard,
-    href: `/p/${orgId}`,
-    active: pathname === `/p/${orgId}`,
-  })
+  // Определяем видимость пунктов меню
+  const showDashboard = isAdmin && adminMode
+  const showHome = !isAdmin || !adminMode
+
+  // Динамический первый пункт - Главная или Дашборд
+  if (showHome) {
+    mainNavItems.push({
+      key: 'home',
+      label: 'Главная',
+      icon: Home,
+      href: `/p/${orgId}`,
+      active: pathname === `/p/${orgId}`,
+    })
+  } else if (showDashboard) {
+    mainNavItems.push({
+      key: 'dashboard',
+      label: 'Дашборд',
+      icon: LayoutDashboard,
+      href: `/p/${orgId}/dashboard`,
+      active: pathname === `/p/${orgId}/dashboard`,
+    })
+  }
 
   if (permissions.canViewMaterials) {
     mainNavItems.push({
@@ -163,6 +181,24 @@ export default function MobileBottomNav({
 
             {/* Контент меню */}
             <div className="flex-1 overflow-y-auto">
+              {/* Переключатель режима для админов */}
+              {isAdmin && (
+                <div className="px-4 py-3 border-b border-gray-200">
+                  <button
+                    onClick={toggleAdminMode}
+                    className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    <Eye className="h-5 w-5 flex-shrink-0" />
+                    <span className="flex-1 text-left">
+                      {adminMode ? 'Режим админа' : 'Режим участника'}
+                    </span>
+                    <span className="text-xs text-gray-600">
+                      {adminMode ? 'Переключить' : 'Переключить'}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {/* Дополнительные пункты */}
               <nav className="px-2 py-4 space-y-1">
                 {menuItems.map((item) => {
@@ -196,13 +232,13 @@ export default function MobileBottomNav({
                     href={`/p/${orgId}/profile`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm hover:bg-gray-100"
                   >
-                    {userProfile ? (
+                    {userProfile && userProfile.displayName ? (
                       <>
                         <ParticipantAvatar
-                          participantId={userProfile.participantId || userProfile.id}
-                          photoUrl={userProfile.photoUrl}
-                          tgUserId={userProfile.tgUserId}
-                          displayName={userProfile.displayName}
+                          participantId={userProfile.participantId || userProfile.id || ''}
+                          photoUrl={userProfile.photoUrl || null}
+                          tgUserId={userProfile.tgUserId || null}
+                          displayName={userProfile.displayName || 'Пользователь'}
                           size="sm"
                         />
                         <div className="flex-1 min-w-0">
