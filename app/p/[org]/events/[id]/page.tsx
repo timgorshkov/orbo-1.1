@@ -55,21 +55,61 @@ export default async function EventDetailPage({
     )
   }
 
-  // For private events, require org membership
+  // For private events, require org membership or show auth form
   // For public events, allow any authenticated user
+  let hasOrgAccess = true;
   if (!event.is_public) {
     try {
       await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member', 'viewer'])
     } catch (error) {
-      return (
-        <div className="p-6">
-          <div className="text-center py-8">
-            <h2 className="text-xl font-semibold mb-2">Доступ запрещен</h2>
-            <p className="text-neutral-600">Это событие доступно только участникам сообщества.</p>
+      hasOrgAccess = false;
+    }
+  }
+  
+  // If user doesn't have access to private event, show auth form
+  if (!hasOrgAccess) {
+    // Import the auth page component
+    const { data: org } = await adminSupabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', orgId)
+      .single()
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
+                <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Доступ ограничен
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Это событие доступно только участникам сообщества <strong>{org?.name}</strong>
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <a
+                href={`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${eventId}`)}`}
+                className="block w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-center"
+              >
+                Войти через Telegram
+              </a>
+              
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                Для доступа к событию необходимо быть участником сообщества. 
+                Используйте Telegram для входа.
+              </p>
+            </div>
           </div>
         </div>
-      )
-    }
+      </div>
+    )
   }
 
   // Calculate stats (exclude merged participants)
