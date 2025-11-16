@@ -341,33 +341,34 @@ export default function ItemDetailPage() {
           </Link>
 
           <div className="flex items-start justify-between">
-            <div className="flex items-start space-x-4">
-              <div className="text-4xl">{app.icon}</div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                  {title}
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {app.name}
-                </p>
-              </div>
+            {/* ✅ Removed emoji icon, only text */}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                {title}
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {app.name}
+              </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            {/* ✅ Responsive buttons - icons only on mobile */}
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowShareModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                title="Поделиться"
+                className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
               >
-                <Share2 className="w-4 h-4 mr-2" />
-                Поделиться
+                <Share2 className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Поделиться</span>
               </button>
               {isOwner && (
                 <button
                   onClick={handleDelete}
-                  className="inline-flex items-center px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                  title="Удалить"
+                  className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Удалить
+                  <Trash2 className="w-4 h-4 md:mr-2" />
+                  <span className="hidden md:inline">Удалить</span>
                 </button>
               )}
             </div>

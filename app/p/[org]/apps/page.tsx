@@ -24,6 +24,7 @@ export default function AppsPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [apps, setApps] = useState<App[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (createdAppId) {
@@ -36,8 +37,30 @@ export default function AppsPage() {
   useEffect(() => {
     if (orgId) {
       fetchApps();
+      checkAdminStatus();
     }
   }, [orgId]);
+
+  const checkAdminStatus = async () => {
+    try {
+      const authResponse = await fetch('/api/auth/status');
+      if (authResponse.ok) {
+        const authData = await authResponse.json();
+        if (authData.authenticated && authData.user) {
+          const membershipResponse = await fetch(`/api/memberships?org_id=${orgId}&user_id=${authData.user.id}`);
+          if (membershipResponse.ok) {
+            const membershipData = await membershipResponse.json();
+            if (membershipData.memberships && membershipData.memberships.length > 0) {
+              const membership = membershipData.memberships[0];
+              setIsAdmin(membership.role === 'owner' || membership.role === 'admin');
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[Apps Page] Error checking admin status:', error);
+    }
+  };
 
   const fetchApps = async () => {
     try {
@@ -88,17 +111,21 @@ export default function AppsPage() {
             Приложения
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Создавайте и управляйте приложениями для вашего сообщества
+            {isAdmin ? 'Создавайте и управляйте приложениями для вашего сообщества' : 'Полезные приложения сообщества'}
           </p>
         </div>
         
-        <Link
-          href="/create-app"
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Создать приложение
-        </Link>
+        {/* ✅ Create button only for admins, responsive */}
+        {isAdmin && (
+          <Link
+            href="/create-app"
+            title="Создать приложение"
+            className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            <Plus className="w-5 h-5 md:mr-2" />
+            <span className="hidden md:inline">Создать приложение</span>
+          </Link>
+        )}
       </div>
 
       {/* Loading State */}

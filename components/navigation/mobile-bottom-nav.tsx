@@ -120,17 +120,6 @@ export default function MobileBottomNav({
     })
   }
 
-  // ✅ Apps visible for all non-guests
-  if (role !== 'guest') {
-    mainNavItems.push({
-      key: 'apps',
-      label: 'Приложения',
-      icon: Grid3x3,
-      href: `/p/${orgId}/apps`,
-      active: pathname?.startsWith(`/p/${orgId}/apps`),
-    })
-  }
-
   if (permissions.canViewMembers) {
     mainNavItems.push({
       key: 'members',
@@ -143,6 +132,17 @@ export default function MobileBottomNav({
 
   // Дополнительные пункты меню для боковой панели
   const menuItems = []
+
+  // ✅ Apps in dropdown menu for all non-guests
+  if (role !== 'guest') {
+    menuItems.push({
+      key: 'apps',
+      label: 'Приложения',
+      icon: Grid3x3,
+      href: `/p/${orgId}/apps`,
+      active: pathname?.startsWith(`/p/${orgId}/apps`),
+    })
+  }
 
   // ✅ Settings only in admin mode
   if (permissions.canManageSettings && adminMode) {

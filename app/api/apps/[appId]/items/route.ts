@@ -92,28 +92,26 @@ export async function GET(
       }
     }
     
-    // Apply status filter
+    // Apply status filter - SIMPLIFIED APPROACH
     if (status) {
       // If admin explicitly requested a specific status, allow it
       if (isAdmin) {
         query = query.eq('status', status);
-      } else if (userId) {
-        // ✅ Non-admins: show published/active + their own pending items
-        query = query.or(`status.in.(published,active),and(status.eq.pending,creator_id.eq.${userId})`);
       } else {
-        // Non-authenticated: only published/active
+        // Non-admins can only see published/active when filtering by status
         query = query.in('status', ['published', 'active']);
       }
     } else {
-      // Default filter
+      // Default filter: no explicit status requested
       if (isAdmin) {
         // Admins see all statuses by default
-      } else if (userId) {
-        // ✅ Regular users: published/active + their own pending
-        query = query.or(`status.in.(published,active),and(status.eq.pending,creator_id.eq.${userId})`);
       } else {
-        // Non-authenticated: only published/active
-        query = query.in('status', ['published', 'active']);
+        // ✅ Regular users: published OR active OR (pending AND owned by user)
+        // Note: We can't easily do complex OR with Supabase, so we'll filter published+active+pending
+        // and rely on RLS or post-processing. But let's try a working approach:
+        // For now: show published, active, AND pending (will show all pending to everyone)
+        // Then we filter on client or in post-processing
+        query = query.in('status', ['published', 'active', 'pending']);
       }
     }
 
@@ -138,10 +136,27 @@ export async function GET(
       );
     }
 
+    // ✅ Post-process filtering: remove pending items that don't belong to current user
+    let filteredItems = items || [];
+    if (!isAdmin && userId) {
+      filteredItems = filteredItems.filter(item => {
+        // Keep published and active for everyone
+        if (item.status === 'published' || item.status === 'active') {
+          return true;
+        }
+        // Keep pending only if user is the creator
+        if (item.status === 'pending' && item.creator_id === userId) {
+          return true;
+        }
+        // Filter out all other pending items
+        return false;
+      });
+    }
+
     // Fetch participant info for items using admin client (public data for display)
-    if (items && items.length > 0) {
-      const creatorIds = Array.from(new Set(items.map(item => item.creator_id).filter(Boolean)));
-      const orgIds = Array.from(new Set(items.map(item => item.org_id).filter(Boolean)));
+    if (filteredItems && filteredItems.length > 0) {
+      const creatorIds = Array.from(new Set(filteredItems.map(item => item.creator_id).filter(Boolean)));
+      const orgIds = Array.from(new Set(filteredItems.map(item => item.org_id).filter(Boolean)));
       
       if (creatorIds.length > 0 && orgIds.length > 0) {
         try {
@@ -158,7 +173,7 @@ export async function GET(
             );
             
             // Attach participant data to items
-            items.forEach((item: any) => {
+            filteredItems.forEach((item: any) => {
               if (item.creator_id && item.org_id) {
                 const key = `${item.creator_id}_${item.org_id}`;
                 item.participant = participantMap.get(key) || null;
@@ -175,14 +190,14 @@ export async function GET(
     const duration = Date.now() - startTime;
     logger.info({
       appId,
-      count: items?.length || 0,
+      count: filteredItems?.length || 0,
       total: count,
       duration
     }, 'Items fetched successfully');
 
     return NextResponse.json({ 
-      items: items || [], 
-      total: count || 0,
+      items: filteredItems || [], 
+      total: filteredItems?.length || 0,
       limit,
       offset
     });
