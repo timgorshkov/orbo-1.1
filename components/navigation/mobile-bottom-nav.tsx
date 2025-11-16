@@ -16,7 +16,8 @@ import {
   Building2,
   User as UserIcon,
   Home,
-  Eye
+  Eye,
+  Grid3x3
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 import TelegramGroupsNav from '../telegram-groups-nav'
@@ -116,6 +117,17 @@ export default function MobileBottomNav({
       icon: Calendar,
       href: `/p/${orgId}/events`,
       active: pathname?.startsWith(`/p/${orgId}/events`),
+    })
+  }
+
+  // ✅ Apps visible for all non-guests
+  if (role !== 'guest') {
+    mainNavItems.push({
+      key: 'apps',
+      label: 'Приложения',
+      icon: Grid3x3,
+      href: `/p/${orgId}/apps`,
+      active: pathname?.startsWith(`/p/${orgId}/apps`),
     })
   }
 

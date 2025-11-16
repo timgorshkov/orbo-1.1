@@ -17,8 +17,32 @@ export async function GET(
     // Also create regular client for analytics (to get user session if available)
     const supabase = await createClientServer();
 
-    // Fetch item - public read access
-    const { data: item, error: itemError } = await adminSupabase
+    // ✅ Check user permissions
+    const { data: { user } } = await supabase.auth.getUser();
+    let isAdmin = false;
+    
+    if (user) {
+      // Get item's org_id first
+      const { data: itemOrg } = await adminSupabase
+        .from('app_items')
+        .select('org_id')
+        .eq('id', itemId)
+        .maybeSingle();
+      
+      if (itemOrg) {
+        const { data: membership } = await supabase
+          .from('memberships')
+          .select('role')
+          .eq('org_id', itemOrg.org_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        isAdmin = membership && (membership.role === 'owner' || membership.role === 'admin');
+      }
+    }
+
+    // Fetch item - with status filtering based on permissions
+    let itemQuery = adminSupabase
       .from('app_items')
       .select(`
         id,
@@ -41,9 +65,15 @@ export async function GET(
         updated_at,
         expires_at
       `)
-      .eq('id', itemId)
-      .in('status', ['published', 'active'])
-      .single();
+      .eq('id', itemId);
+    
+    // ✅ Non-admins can only see published/active items
+    if (!isAdmin) {
+      itemQuery = itemQuery.in('status', ['published', 'active']);
+    }
+    // Admins can see all statuses including pending
+    
+    const { data: item, error: itemError } = await itemQuery.single();
 
     if (itemError) {
       if (itemError.code === 'PGRST116') {

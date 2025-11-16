@@ -65,9 +65,46 @@ export async function GET(
       query = query.in('collection_id', collectionIds);
     }
 
-    // Filter by status
+    // ✅ Filter by status - check user permissions
+    const supabase = await createClientServer();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    let isAdmin = false;
+    if (user) {
+      // Check if user is admin/owner
+      const { data: app } = await adminSupabase
+        .from('apps')
+        .select('org_id')
+        .eq('id', appId)
+        .single();
+      
+      if (app) {
+        const { data: membership } = await supabase
+          .from('memberships')
+          .select('role')
+          .eq('org_id', app.org_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        isAdmin = membership && (membership.role === 'owner' || membership.role === 'admin');
+      }
+    }
+    
+    // Apply status filter
     if (status) {
-      query = query.eq('status', status);
+      // If admin explicitly requested a specific status, allow it
+      if (isAdmin) {
+        query = query.eq('status', status);
+      } else {
+        // Non-admins can only see published/active
+        query = query.in('status', ['published', 'active']);
+      }
+    } else {
+      // Default: non-admins see only published/active
+      if (!isAdmin) {
+        query = query.in('status', ['published', 'active']);
+      }
+      // Admins see all statuses by default
     }
 
     // Search in JSONB data (basic)

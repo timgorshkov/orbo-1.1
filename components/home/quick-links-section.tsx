@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { User, Calendar, BookOpen, MessageCircle } from 'lucide-react'
+import { User, Calendar, BookOpen, MessageCircle, Grid3x3 } from 'lucide-react'
 
 interface Props {
   orgId: string
@@ -25,6 +25,12 @@ export default function QuickLinksSection({ orgId, isAdmin }: Props) {
       icon: BookOpen,
       title: 'Материалы',
       description: 'База знаний'
+    },
+    {
+      href: `/p/${orgId}/apps`,
+      icon: Grid3x3,
+      title: 'Приложения',
+      description: 'Полезные сервисы'
     }
   ]
 
