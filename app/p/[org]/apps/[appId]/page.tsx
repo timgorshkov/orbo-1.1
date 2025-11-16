@@ -242,6 +242,13 @@ export default function PublicItemsFeedPage() {
               </div>
               <div className="flex items-center space-x-2">
                 <Link
+                  href={`/p/${orgId}/apps/${appId}/customize`}
+                  className="inline-flex items-center px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  <Settings className="w-4 h-4 mr-1.5" />
+                  Кастомизация
+                </Link>
+                <Link
                   href={`/p/${orgId}/apps/${appId}/edit`}
                   className="inline-flex items-center px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
                 >

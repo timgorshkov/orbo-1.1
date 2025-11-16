@@ -29,6 +29,10 @@ export async function GET(
         config,
         status,
         visibility,
+        primary_color,
+        secondary_color,
+        logo_url,
+        custom_css,
         created_by,
         created_at,
         updated_at
@@ -77,7 +81,7 @@ export async function PATCH(
   try {
     const supabase = await createClientServer();
     const body = await request.json();
-    const { name, description, icon, config, status, visibility } = body;
+    const { name, description, icon, config, status, visibility, primary_color, secondary_color, logo_url, custom_css } = body;
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -128,6 +132,10 @@ export async function PATCH(
     if (config !== undefined) updates.config = config;
     if (status !== undefined) updates.status = status;
     if (visibility !== undefined) updates.visibility = visibility;
+    if (primary_color !== undefined) updates.primary_color = primary_color;
+    if (secondary_color !== undefined) updates.secondary_color = secondary_color;
+    if (logo_url !== undefined) updates.logo_url = logo_url;
+    if (custom_css !== undefined) updates.custom_css = custom_css;
 
     // Update app using admin client
     const { data: app, error: updateError } = await adminSupabase
