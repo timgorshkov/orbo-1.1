@@ -1,7 +1,7 @@
 interface Props {
   orgName: string
   orgLogo: string | null
-  orgDescription: string | null
+  publicDescription: string | null
   memberCount: number
   eventCount: number
   materialCount: number
@@ -10,7 +10,7 @@ interface Props {
 export default function HeroSection({
   orgName,
   orgLogo,
-  orgDescription,
+  publicDescription,
   memberCount,
   eventCount,
   materialCount
@@ -31,9 +31,9 @@ export default function HeroSection({
               <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2">
                 {orgName}
               </h1>
-              {orgDescription && (
+              {publicDescription && (
                 <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {orgDescription}
+                  {publicDescription}
                 </p>
               )}
               <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">

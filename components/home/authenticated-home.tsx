@@ -85,7 +85,7 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
       <HeroSection
         orgName={data.organization.name}
         orgLogo={data.organization.logo_url}
-        orgDescription={data.organization.description}
+        publicDescription={data.organization.public_description}
         memberCount={data.organization.member_count}
         eventCount={data.organization.event_count}
         materialCount={data.organization.material_count}

@@ -10,7 +10,7 @@ export interface HomePageData {
     id: string
     name: string
     logo_url: string | null
-    description: string | null
+    public_description: string | null
     member_count: number
     event_count: number
     material_count: number
@@ -80,7 +80,7 @@ export async function getHomePageData(
     // 1. Get organization info
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .select('id, name, logo_url, description')
+      .select('id, name, logo_url, public_description')
       .eq('id', orgId)
       .single()
 
@@ -297,7 +297,7 @@ export async function getHomePageData(
         id: org.id,
         name: org.name,
         logo_url: org.logo_url,
-        description: org.description,
+        public_description: org.public_description,
         member_count: memberCount || 0,
         event_count: eventCount || 0,
         material_count: materialCount || 0
