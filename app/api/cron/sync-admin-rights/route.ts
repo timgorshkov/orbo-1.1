@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { TelegramService } from '@/lib/telegram/telegramService';
+import { createTelegramService } from '@/lib/services/telegramService';
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     console.log(`[Cron] Found ${orgs?.length || 0} organizations with Telegram groups`);
 
     const results = [];
-    const telegramService = new TelegramService('main');
+    const telegramService = createTelegramService('main');
 
     for (const org of orgs || []) {
       console.log(`[Cron] Processing org ${org.id} (${org.name})`);
