@@ -5,11 +5,11 @@ import { createAPILogger } from '@/lib/logger';
 // GET /api/apps/[appId]/items/[itemId] - Get item details (PUBLIC)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { appId: string; itemId: string } }
+  { params }: { params: Promise<{ appId: string; itemId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId, itemId } = params;
+  const { appId, itemId } = await params;
   
   try {
     // Use admin client for public read access (no RLS restrictions)
@@ -187,11 +187,11 @@ export async function GET(
 // PATCH /api/apps/[appId]/items/[itemId] - Update item
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { appId: string; itemId: string } }
+  { params }: { params: Promise<{ appId: string; itemId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId, itemId } = params;
+  const { appId, itemId } = await params;
   
   try {
     const supabase = await createClientServer();
@@ -321,11 +321,11 @@ export async function PATCH(
 // DELETE /api/apps/[appId]/items/[itemId] - Delete item
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { appId: string; itemId: string } }
+  { params }: { params: Promise<{ appId: string; itemId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId, itemId } = params;
+  const { appId, itemId } = await params;
   
   try {
     const supabase = await createClientServer();

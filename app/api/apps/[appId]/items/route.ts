@@ -5,11 +5,11 @@ import { createAPILogger } from '@/lib/logger';
 // GET /api/apps/[appId]/items - List items in app
 export async function GET(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   const { searchParams } = new URL(request.url);
   
   // Query parameters
@@ -203,11 +203,11 @@ export async function GET(
 // POST /api/apps/[appId]/items - Create new item
 export async function POST(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     const supabase = await createClientServer();
