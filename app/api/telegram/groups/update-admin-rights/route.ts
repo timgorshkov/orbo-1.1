@@ -263,8 +263,22 @@ export async function POST(request: Request) {
 
         // ✅ КРИТИЧЕСКИЙ ФИКС: Сначала деактивируем ВСЕХ админов этой группы
         // Это гарантирует, что если кого-то убрали из админов, его права будут отозваны
-        console.log(`Deactivating all existing admins for chat ${chatId} before update`);
-        const { error: deactivateError } = await supabaseService
+        console.log(`[DEACTIVATE] Starting deactivation for chat ${chatId}`);
+        
+        // Сначала проверим, сколько записей существует
+        const { data: existingAdmins, error: countError } = await supabaseService
+          .from('telegram_group_admins')
+          .select('tg_user_id, is_admin')
+          .eq('tg_chat_id', chatId);
+        
+        if (countError) {
+          console.error(`[DEACTIVATE] Error counting admins for chat ${chatId}:`, countError);
+        } else {
+          console.log(`[DEACTIVATE] Found ${existingAdmins?.length || 0} existing admin records for chat ${chatId}:`, 
+            existingAdmins?.map(a => ({ tg_user_id: a.tg_user_id, is_admin: a.is_admin })));
+        }
+        
+        const { data: deactivatedData, error: deactivateError } = await supabaseService
           .from('telegram_group_admins')
           .update({ 
             is_admin: false, 
@@ -272,13 +286,15 @@ export async function POST(request: Request) {
             verified_at: new Date().toISOString(),
             expires_at: new Date(Date.now() + 1000).toISOString() // Истекает немедленно
           })
-          .eq('tg_chat_id', chatId);
+          .eq('tg_chat_id', chatId)
+          .select('tg_user_id');
         
         if (deactivateError) {
-          console.warn(`Warning: Could not deactivate old admins for chat ${chatId}:`, deactivateError);
+          console.error(`[DEACTIVATE] ERROR deactivating admins for chat ${chatId}:`, deactivateError);
           warnings.push(`Could not deactivate old admins for chat ${chatId}: ${deactivateError.message}`);
         } else {
-          console.log(`✅ Deactivated all existing admins for chat ${chatId}`);
+          console.log(`[DEACTIVATE] ✅ Successfully deactivated ${deactivatedData?.length || 0} admins for chat ${chatId}:`,
+            deactivatedData?.map(a => a.tg_user_id));
         }
 
         // Обрабатываем каждого администратора
