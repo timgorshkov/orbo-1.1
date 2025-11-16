@@ -14,6 +14,7 @@ export default async function EventDetailPage({
   const { edit } = await searchParams
   
   const supabase = await createClientServer()
+  const adminSupabase = createAdminServer()
   
   // Check authentication
   const { user } = await supabase.auth.getUser().then(res => res.data)
@@ -21,12 +22,7 @@ export default async function EventDetailPage({
     redirect('/signin')
   }
 
-  // Require org access
-  await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member', 'viewer'])
-
-  const adminSupabase = createAdminServer()
-
-  // Fetch event using admin client to avoid RLS issues after access check
+  // Fetch event first to check if it's public
   const { data: event, error } = await adminSupabase
     .from('events')
     .select(`
@@ -59,6 +55,23 @@ export default async function EventDetailPage({
     )
   }
 
+  // For private events, require org membership
+  // For public events, allow any authenticated user
+  if (!event.is_public) {
+    try {
+      await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member', 'viewer'])
+    } catch (error) {
+      return (
+        <div className="p-6">
+          <div className="text-center py-8">
+            <h2 className="text-xl font-semibold mb-2">Доступ запрещен</h2>
+            <p className="text-neutral-600">Это событие доступно только участникам сообщества.</p>
+          </div>
+        </div>
+      )
+    }
+  }
+
   // Calculate stats (exclude merged participants)
   const registeredCount = event.event_registrations?.filter(
     (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
@@ -74,9 +87,11 @@ export default async function EventDetailPage({
     .select('role')
     .eq('user_id', user.id)
     .eq('org_id', orgId)
-    .single()
+    .maybeSingle()
 
   const role = membership?.role || 'guest'
+  
+  console.log(`[Event Detail] User ${user.id} viewing event ${eventId} as ${role} (is_public: ${event.is_public})`)
 
   // Check if current user is registered
   // Find participant via user_telegram_accounts
@@ -155,7 +170,9 @@ export default async function EventDetailPage({
     console.log(`Loaded ${telegramGroups.length} connected telegram groups for event sharing`)
   }
 
-  const isEditMode = edit === 'true'
+  // Only allow edit mode for admins/owners
+  const isAdmin = role === 'owner' || role === 'admin'
+  const isEditMode = edit === 'true' && isAdmin
 
   return (
     <div className="p-6">
