@@ -265,37 +265,41 @@ export default function ModerationPage() {
                     <button
                       onClick={() => handleModerate(item.id, 'approve')}
                       disabled={isProcessing}
-                      className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      title="Одобрить"
+                      className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                       {isProcessing ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <>
-                          <Check className="w-4 h-4 mr-2" />
-                          Одобрить
+                          <Check className="w-4 h-4 md:mr-2" />
+                          <span className="hidden md:inline">Одобрить</span>
                         </>
                       )}
                     </button>
                     <button
                       onClick={() => handleModerate(item.id, 'reject')}
                       disabled={isProcessing}
-                      className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      title="Отклонить"
+                      className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                       {isProcessing ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <>
-                          <X className="w-4 h-4 mr-2" />
-                          Отклонить
+                          <X className="w-4 h-4 md:mr-2" />
+                          <span className="hidden md:inline">Отклонить</span>
                         </>
                       )}
                     </button>
                     <Link
                       href={`/p/${orgId}/apps/${appId}/items/${item.id}`}
                       target="_blank"
-                      className="inline-flex items-center justify-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm whitespace-nowrap"
+                      title="Подробнее"
+                      className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm whitespace-nowrap"
                     >
-                      Подробнее
+                      <AlertCircle className="w-4 h-4 md:mr-1" />
+                      <span className="hidden md:inline">Подробнее</span>
                     </Link>
                   </div>
                 </div>

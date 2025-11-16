@@ -7,11 +7,11 @@ import { notifyItemApproved, notifyItemRejected } from '@/lib/services/appsNotif
 // POST /api/apps/[appId]/items/[itemId]/moderate - Moderate item (approve/reject)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { appId: string; itemId: string } }
+  { params }: { params: Promise<{ appId: string; itemId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId, itemId } = params;
+  const { appId, itemId } = await params;
   
   try {
     const supabase = await createClientServer();

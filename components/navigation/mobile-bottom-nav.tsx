@@ -144,7 +144,8 @@ export default function MobileBottomNav({
   // Дополнительные пункты меню для боковой панели
   const menuItems = []
 
-  if (permissions.canManageSettings) {
+  // ✅ Settings only in admin mode
+  if (permissions.canManageSettings && adminMode) {
     menuItems.push({
       key: 'settings',
       label: 'Настройки',
@@ -231,8 +232,8 @@ export default function MobileBottomNav({
                   )
                 })}
 
-                {/* Telegram Groups для админов */}
-                {permissions.canManageTelegram && telegramGroups && telegramGroups.length > 0 && (
+                {/* ✅ Telegram Groups только для админов в режиме админа */}
+                {permissions.canManageTelegram && adminMode && telegramGroups && telegramGroups.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <TelegramGroupsNav orgId={orgId} groups={telegramGroups} currentPath={pathname || ''} />
                   </div>

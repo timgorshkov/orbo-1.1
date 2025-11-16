@@ -70,6 +70,8 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser();
     
     let isAdmin = false;
+    let userId = user?.id || null;
+    
     if (user) {
       // Check if user is admin/owner
       const { data: app } = await adminSupabase
@@ -95,16 +97,24 @@ export async function GET(
       // If admin explicitly requested a specific status, allow it
       if (isAdmin) {
         query = query.eq('status', status);
+      } else if (userId) {
+        // ✅ Non-admins: show published/active + their own pending items
+        query = query.or(`status.in.(published,active),and(status.eq.pending,creator_id.eq.${userId})`);
       } else {
-        // Non-admins can only see published/active
+        // Non-authenticated: only published/active
         query = query.in('status', ['published', 'active']);
       }
     } else {
-      // Default: non-admins see only published/active
-      if (!isAdmin) {
+      // Default filter
+      if (isAdmin) {
+        // Admins see all statuses by default
+      } else if (userId) {
+        // ✅ Regular users: published/active + their own pending
+        query = query.or(`status.in.(published,active),and(status.eq.pending,creator_id.eq.${userId})`);
+      } else {
+        // Non-authenticated: only published/active
         query = query.in('status', ['published', 'active']);
       }
-      // Admins see all statuses by default
     }
 
     // Search in JSONB data (basic)

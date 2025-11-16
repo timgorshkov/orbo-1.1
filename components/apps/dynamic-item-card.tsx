@@ -110,9 +110,17 @@ export default function DynamicItemCard({
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between mb-2">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
-                {title}
-              </h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                  {title}
+                </h3>
+                {/* ✅ Status badge for pending items */}
+                {item.status === 'pending' && (
+                  <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800">
+                    ⏳ На модерации
+                  </span>
+                )}
+              </div>
               {price !== null && (
                 <div className="ml-3 flex-shrink-0 text-lg font-bold text-blue-600 dark:text-blue-400">
                   {new Intl.NumberFormat('ru-RU').format(price)} ₽
@@ -196,6 +204,13 @@ export default function DynamicItemCard({
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors min-h-[2.5rem]">
           {title}
         </h3>
+
+        {/* ✅ Status badge for pending items */}
+        {item.status === 'pending' && (
+          <span className="inline-flex items-center mt-1 mb-2 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800">
+            ⏳ На модерации
+          </span>
+        )}
 
         {price !== null && (
           <div className="text-base font-bold text-blue-600 dark:text-blue-400 mb-2">
