@@ -128,19 +128,47 @@ export async function POST(
       )
     }
 
-    // Call sync function
+    // Step 1: Update admin rights from Telegram API first
+    console.log(`[Team Sync] Step 1: Updating admin rights from Telegram for org ${orgId}`)
+    try {
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/telegram/groups/update-admins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Forward authentication cookie
+          'Cookie': request.headers.get('cookie') || ''
+        },
+        body: JSON.stringify({ orgId })
+      })
+
+      if (!updateResponse.ok) {
+        console.warn(`[Team Sync] Warning: Failed to update admin rights from Telegram:`, await updateResponse.text())
+        // Continue anyway - maybe there are existing records to sync
+      } else {
+        const updateData = await updateResponse.json()
+        console.log(`[Team Sync] ✅ Updated admin rights from Telegram:`, updateData)
+      }
+    } catch (updateError: any) {
+      console.warn(`[Team Sync] Warning: Error updating admin rights:`, updateError.message)
+      // Continue anyway
+    }
+
+    // Step 2: Sync memberships from telegram_group_admins
+    console.log(`[Team Sync] Step 2: Syncing memberships for org ${orgId}`)
     const { data: syncResults, error } = await adminSupabase.rpc(
       'sync_telegram_admins',
       { p_org_id: orgId }
     )
 
     if (error) {
-      console.error('Error syncing admins:', error)
+      console.error('[Team Sync] Error syncing admins:', error)
       return NextResponse.json(
         { error: 'Failed to sync admins' },
         { status: 500 }
       )
     }
+
+    console.log(`[Team Sync] ✅ Sync completed:`, syncResults)
 
     return NextResponse.json({
       success: true,

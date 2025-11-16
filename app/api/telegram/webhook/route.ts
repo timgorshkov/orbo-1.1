@@ -273,7 +273,95 @@ async function processWebhookInBackground(body: any) {
     }
     
     // ========================================
-    // STEP 2.6: Обработка реакций (message_reaction)
+    // STEP 2.6: Обработка изменений статуса администраторов (chat_member)
+    // ========================================
+    if (body.chat_member) {
+      const chatMember = body.chat_member;
+      const chatId = chatMember.chat?.id;
+      const userId = chatMember.new_chat_member?.user?.id;
+      const newStatus = chatMember.new_chat_member?.status;
+      const oldStatus = chatMember.old_chat_member?.status;
+      
+      console.log('[Webhook] Step 2.6: Admin status changed in chat', chatId, {
+        userId,
+        oldStatus,
+        newStatus,
+        chatType: chatMember.chat?.type
+      });
+      
+      // Проверяем, что это изменение статуса администратора
+      const wasAdmin = oldStatus === 'administrator' || oldStatus === 'creator';
+      const isAdmin = newStatus === 'administrator' || newStatus === 'creator';
+      
+      if (wasAdmin !== isAdmin) {
+        console.log(`[Webhook] Admin rights changed for user ${userId} in chat ${chatId}: ${wasAdmin} -> ${isAdmin}`);
+        
+        // Обновляем права для конкретного пользователя в группе
+        if (chatId && userId) {
+          const isOwner = newStatus === 'creator';
+          
+          // Деактивируем старую запись (если была)
+          await supabaseServiceRole
+            .from('telegram_group_admins')
+            .update({
+              is_admin: false,
+              is_owner: false,
+              verified_at: new Date().toISOString(),
+              expires_at: new Date().toISOString()
+            })
+            .eq('tg_chat_id', chatId)
+            .eq('tg_user_id', userId);
+          
+          // Если пользователь стал админом, добавляем новую запись
+          if (isAdmin) {
+            const { error: upsertError } = await supabaseServiceRole
+              .from('telegram_group_admins')
+              .upsert({
+                tg_chat_id: chatId,
+                tg_user_id: userId,
+                is_admin: true,
+                is_owner: isOwner,
+                verified_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 дней
+              }, {
+                onConflict: 'tg_chat_id,tg_user_id'
+              });
+            
+            if (upsertError) {
+              console.error('[Webhook] ❌ Error upserting admin rights:', upsertError);
+            } else {
+              console.log('[Webhook] ✅ Admin rights updated for user', userId, 'in chat', chatId);
+            }
+          }
+          
+          // Синхронизируем memberships для организации
+          const { data: orgBindings } = await supabaseServiceRole
+            .from('org_telegram_groups')
+            .select('org_id')
+            .eq('tg_chat_id', chatId);
+          
+          if (orgBindings && orgBindings.length > 0) {
+            for (const binding of orgBindings) {
+              console.log(`[Webhook] Syncing memberships for org ${binding.org_id} after admin rights change`);
+              
+              const { error: syncError } = await supabaseServiceRole.rpc(
+                'sync_telegram_admins',
+                { p_org_id: binding.org_id }
+              );
+              
+              if (syncError) {
+                console.error(`[Webhook] ❌ Error syncing memberships for org ${binding.org_id}:`, syncError);
+              } else {
+                console.log(`[Webhook] ✅ Memberships synced for org ${binding.org_id}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // ========================================
+    // STEP 2.7: Обработка реакций (message_reaction)
     // ========================================
     if (body.message_reaction) {
       const reaction = body.message_reaction;
