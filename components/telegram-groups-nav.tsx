@@ -15,8 +15,8 @@ interface TelegramGroupsNavProps {
   currentPath?: string
 }
 
-export default function TelegramGroupsNav({ groups, orgId, currentPath }: TelegramGroupsNavProps) {
-  const isSettingsActive = currentPath?.startsWith(`/p/${orgId}/telegram`)
+export default function TelegramGroupsNav({ groups, orgId, currentPath = '' }: TelegramGroupsNavProps) {
+  const isSettingsActive = currentPath.startsWith(`/p/${orgId}/telegram`)
   
   return (
     <div className="pt-4">
@@ -28,7 +28,7 @@ export default function TelegramGroupsNav({ groups, orgId, currentPath }: Telegr
           href={`/p/${orgId}/telegram`}
           className={clsx(
             "p-1 rounded-md transition-colors",
-            isSettingsActive && !currentPath?.includes('/groups/')
+            isSettingsActive && !currentPath.includes('/groups/')
               ? "bg-black text-white"
               : "hover:bg-black/5 text-neutral-400 hover:text-neutral-600"
           )}

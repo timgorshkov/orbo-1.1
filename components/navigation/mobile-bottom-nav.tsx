@@ -184,9 +184,9 @@ export default function MobileBottomNav({
                 })}
 
                 {/* Telegram Groups для админов */}
-                {permissions.canManageTelegram && (
-                  <div className="mt-4 pt-4 border-gray-200">
-                    <TelegramGroupsNav orgId={orgId} groups={telegramGroups} currentPath={pathname} />
+                {permissions.canManageTelegram && telegramGroups && telegramGroups.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <TelegramGroupsNav orgId={orgId} groups={telegramGroups} currentPath={pathname || ''} />
                   </div>
                 )}
 
