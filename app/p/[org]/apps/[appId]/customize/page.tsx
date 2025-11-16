@@ -28,10 +28,8 @@ export default function AppCustomizePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Form state
-  const [primaryColor, setPrimaryColor] = useState('#3B82F6');
-  const [secondaryColor, setSecondaryColor] = useState('#10B981');
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [iconFile, setIconFile] = useState<File | null>(null);
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApp();
@@ -46,9 +44,7 @@ export default function AppCustomizePage() {
       }
       const data = await response.json();
       setApp(data.app);
-      setPrimaryColor(data.app.primary_color || '#3B82F6');
-      setSecondaryColor(data.app.secondary_color || '#10B981');
-      setLogoPreview(data.app.logo_url);
+      setIconPreview(data.app.logo_url);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -56,13 +52,13 @@ export default function AppCustomizePage() {
     }
   };
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIconChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setLogoFile(file);
+      setIconFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setLogoPreview(reader.result as string);
+        setIconPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -74,12 +70,12 @@ export default function AppCustomizePage() {
       setError(null);
       setSuccessMessage(null);
 
-      let logoUrl = app?.logo_url;
+      let iconUrl = app?.logo_url;
 
-      // Upload logo if changed
-      if (logoFile) {
+      // Upload icon if changed
+      if (iconFile) {
         const formData = new FormData();
-        formData.append('file', logoFile);
+        formData.append('file', iconFile);
         formData.append('appId', appId);
 
         const uploadResponse = await fetch('/api/apps/upload-logo', {
@@ -88,11 +84,11 @@ export default function AppCustomizePage() {
         });
 
         if (!uploadResponse.ok) {
-          throw new Error('Failed to upload logo');
+          throw new Error('Failed to upload icon');
         }
 
         const uploadData = await uploadResponse.json();
-        logoUrl = uploadData.url;
+        iconUrl = uploadData.url;
       }
 
       // Update app
@@ -102,9 +98,7 @@ export default function AppCustomizePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          primary_color: primaryColor,
-          secondary_color: secondaryColor,
-          logo_url: logoUrl,
+          logo_url: iconUrl,
         }),
       });
 
@@ -112,7 +106,7 @@ export default function AppCustomizePage() {
         throw new Error('Failed to update app');
       }
 
-      setSuccessMessage('Изменения сохранены!');
+      setSuccessMessage('Иконка сохранена!');
       setTimeout(() => setSuccessMessage(null), 3000);
       await fetchApp();
     } catch (err: any) {
@@ -166,10 +160,10 @@ export default function AppCustomizePage() {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Palette className="w-8 h-8 text-blue-600" />
+              <ImageIcon className="w-8 h-8 text-blue-600" />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Визуальная кастомизация
+                  Иконка приложения
                 </h1>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {app?.name}
@@ -212,174 +206,88 @@ export default function AppCustomizePage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Settings Panel */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Colors Section */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Palette className="w-5 h-5" />
-                  Цветовая схема
-                </h2>
-
-                <div className="space-y-4">
-                  {/* Primary Color */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Основной цвет
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="w-16 h-16 rounded-lg border-2 border-gray-300 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="#3B82F6"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Используется для кнопок, ссылок и акцентов
-                    </p>
-                  </div>
-
-                  {/* Secondary Color */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Дополнительный цвет
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={secondaryColor}
-                        onChange={(e) => setSecondaryColor(e.target.value)}
-                        className="w-16 h-16 rounded-lg border-2 border-gray-300 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={secondaryColor}
-                        onChange={(e) => setSecondaryColor(e.target.value)}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="#10B981"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Используется для второстепенных элементов
-                    </p>
-                  </div>
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+            <div className="flex items-start gap-6">
+              {/* Icon Preview */}
+              <div className="flex-shrink-0">
+                <div className="w-32 h-32 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600">
+                  {iconPreview ? (
+                    <img
+                      src={iconPreview}
+                      alt="App icon"
+                      className="w-28 h-28 rounded-xl object-contain"
+                    />
+                  ) : (
+                    <div className="text-6xl">{app?.icon || '📱'}</div>
+                  )}
                 </div>
               </div>
 
-              {/* Logo Section */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5" />
-                  Логотип приложения
+              {/* Upload Section */}
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Иконка приложения
                 </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Загрузите изображение, которое будет использоваться вместо эмодзи "{app?.icon}". 
+                  Иконка отображается в списке приложений и на публичной странице.
+                </p>
 
                 <div className="space-y-4">
-                  {logoPreview && (
-                    <div className="flex items-center justify-center p-6 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <img
-                        src={logoPreview}
-                        alt="Logo preview"
-                        className="max-h-32 max-w-full object-contain"
-                      />
-                    </div>
-                  )}
-
                   <div>
                     <label className="block">
-                      <span className="sr-only">Выбрать логотип</span>
+                      <span className="sr-only">Выбрать иконку</span>
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={handleLogoChange}
+                        onChange={handleIconChange}
                         className="block w-full text-sm text-gray-500
                           file:mr-4 file:py-2 file:px-4
                           file:rounded-lg file:border-0
                           file:text-sm file:font-semibold
                           file:bg-blue-50 file:text-blue-700
                           hover:file:bg-blue-100
+                          dark:file:bg-blue-900/30 dark:file:text-blue-400
                           cursor-pointer"
                       />
                     </label>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Рекомендуем PNG или SVG, размер до 2MB
-                    </p>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-gray-500">
+                        • Рекомендуем квадратное изображение (например, 512x512px)
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        • Форматы: PNG, SVG, JPEG, WebP
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        • Максимальный размер: 2MB
+                      </p>
+                    </div>
                   </div>
+
+                  {iconPreview && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Иконка загружена. Нажмите "Сохранить" для применения.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Preview Panel */}
-            <div className="lg:col-span-1">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 sticky top-24">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Предпросмотр
-                </h2>
-
-                {/* Preview Content */}
-                <div className="space-y-4">
-                  {/* Logo + Name */}
-                  <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    {logoPreview ? (
-                      <img src={logoPreview} alt="Logo" className="w-12 h-12 rounded-lg object-contain" />
-                    ) : (
-                      <div className="w-12 h-12 text-3xl">{app?.icon}</div>
-                    )}
-                    <div>
-                      <div className="font-semibold text-gray-900 dark:text-white">
-                        {app?.name}
-                      </div>
-                      <div className="text-xs text-gray-500">Приложение</div>
-                    </div>
-                  </div>
-
-                  {/* Button Preview */}
-                  <div>
-                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Кнопки:
-                    </div>
-                    <button
-                      style={{ backgroundColor: primaryColor }}
-                      className="w-full px-4 py-2 text-white rounded-lg font-medium shadow-sm"
-                    >
-                      Основная кнопка
-                    </button>
-                  </div>
-
-                  <div>
-                    <button
-                      style={{ backgroundColor: secondaryColor }}
-                      className="w-full px-4 py-2 text-white rounded-lg font-medium shadow-sm"
-                    >
-                      Дополнительная кнопка
-                    </button>
-                  </div>
-
-                  {/* Link Preview */}
-                  <div>
-                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                      Ссылки:
-                    </div>
-                    <a
-                      href="#"
-                      style={{ color: primaryColor }}
-                      className="inline-block font-medium underline"
-                    >
-                      Пример ссылки
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Info Section */}
+          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+              💡 Где отображается иконка?
+            </h3>
+            <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+              <li>• В списке приложений вашего сообщества</li>
+              <li>• На публичной странице приложения (вверху)</li>
+              <li>• В карточках объявлений/записей</li>
+            </ul>
           </div>
         </div>
       </main>
