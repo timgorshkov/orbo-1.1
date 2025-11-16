@@ -261,6 +261,26 @@ export async function POST(request: Request) {
         
         console.log(`Updated bot_status to '${newBotStatus}' for chat ${chatId}`);
 
+        // ✅ КРИТИЧЕСКИЙ ФИКС: Сначала деактивируем ВСЕХ админов этой группы
+        // Это гарантирует, что если кого-то убрали из админов, его права будут отозваны
+        console.log(`Deactivating all existing admins for chat ${chatId} before update`);
+        const { error: deactivateError } = await supabaseService
+          .from('telegram_group_admins')
+          .update({ 
+            is_admin: false, 
+            is_owner: false,
+            verified_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 1000).toISOString() // Истекает немедленно
+          })
+          .eq('tg_chat_id', chatId);
+        
+        if (deactivateError) {
+          console.warn(`Warning: Could not deactivate old admins for chat ${chatId}:`, deactivateError);
+          warnings.push(`Could not deactivate old admins for chat ${chatId}: ${deactivateError.message}`);
+        } else {
+          console.log(`✅ Deactivated all existing admins for chat ${chatId}`);
+        }
+
         // Обрабатываем каждого администратора
         for (const admin of administrators) {
           const memberStatus = admin?.status;
