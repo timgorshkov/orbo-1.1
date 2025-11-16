@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
  * Cron job: Синхронизация прав администраторов из Telegram
  * Запускается каждые 6 часов как страховка (основной способ - webhook)
  * 
- * Vercel Cron: 0 */6 * * *
+ * Vercel Cron: "0 *\/6 * * *" (every 6 hours)
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
