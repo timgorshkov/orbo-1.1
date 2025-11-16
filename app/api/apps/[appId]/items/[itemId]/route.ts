@@ -37,7 +37,7 @@ export async function GET(
           .eq('user_id', user.id)
           .maybeSingle();
         
-        isAdmin = membership && (membership.role === 'owner' || membership.role === 'admin');
+        isAdmin = !!(membership && (membership.role === 'owner' || membership.role === 'admin'));
       }
     }
 
