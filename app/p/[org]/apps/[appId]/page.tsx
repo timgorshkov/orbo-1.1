@@ -151,10 +151,10 @@ export default function PublicItemsFeedPage() {
   const applyFiltersAndSort = () => {
     let result = [...items];
 
-    // For non-admins: filter out pending/draft items
-    if (!isAdmin) {
-      result = result.filter(item => item.status === 'published' || item.status === 'active');
-    }
+    // ✅ Removed frontend filtering of pending items
+    // API already returns correct items based on user permissions:
+    // - Admins see all items
+    // - Regular users see published/active + their own pending items
 
     // Apply filters
     Object.keys(filters).forEach(fieldName => {
