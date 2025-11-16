@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Head from 'next/head';
-import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List, Edit } from 'lucide-react';
 
 interface App {
   id: string;
@@ -355,14 +355,24 @@ export default function ItemDetailPage() {
                 <span className="hidden md:inline">Поделиться</span>
               </button>
               {isOwner && (
-                <button
-                  onClick={handleDelete}
-                  title="Удалить"
-                  className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4 md:mr-2" />
-                  <span className="hidden md:inline">Удалить</span>
-                </button>
+                <>
+                  <Link
+                    href={`/p/${orgId}/apps/${appId}/items/${itemId}/edit`}
+                    title="Редактировать"
+                    className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                  >
+                    <Edit className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Редактировать</span>
+                  </Link>
+                  <button
+                    onClick={handleDelete}
+                    title="Удалить"
+                    className="inline-flex items-center justify-center px-3 md:px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 md:mr-2" />
+                    <span className="hidden md:inline">Удалить</span>
+                  </button>
+                </>
               )}
             </div>
           </div>

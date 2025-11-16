@@ -82,6 +82,11 @@ export async function GET(
 
     // ✅ Check permissions: non-admins can only see published/active OR their own pending items
     if (!isAdmin && item.status === 'pending') {
+      // If not authenticated, deny access to pending items
+      if (!user) {
+        return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+      }
+      
       // Check if user is the creator
       const { data: participant } = await adminSupabase
         .from('participants')
@@ -90,7 +95,7 @@ export async function GET(
         .maybeSingle();
       
       // If not the creator, deny access
-      if (!participant || participant.user_id !== userId) {
+      if (!participant || participant.user_id !== user.id) {
         return NextResponse.json({ error: 'Item not found' }, { status: 404 });
       }
     }
