@@ -22,7 +22,7 @@ type Event = {
   requires_payment?: boolean
   default_price?: number | null
   currency?: string
-  payment_deadline_days?: number
+  payment_deadline_days?: number | null
   payment_instructions?: string | null
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
