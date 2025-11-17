@@ -5,13 +5,21 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Head from 'next/head';
 import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List, Edit } from 'lucide-react';
+import { getAppItemOGImage, getAbsoluteOGImageUrl, extractItemImageUrl } from '@/lib/utils/ogImageFallback';
 
 interface App {
   id: string;
   name: string;
   description: string;
   icon: string;
+  logo_url?: string | null;
   org_id: string;
+}
+
+interface Organization {
+  id: string;
+  name: string;
+  logo_url?: string | null;
 }
 
 interface Collection {
@@ -42,6 +50,7 @@ export default function ItemDetailPage() {
   const itemId = params.itemId as string;
 
   const [app, setApp] = useState<App | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [item, setItem] = useState<AppItem | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
@@ -67,6 +76,17 @@ export default function ItemDetailPage() {
       if (!appResponse.ok) throw new Error('App not found');
       const appData = await appResponse.json();
       setApp(appData.app);
+
+      // Fetch organization for OG image fallback
+      try {
+        const orgResponse = await fetch(`/api/organizations/${orgId}`);
+        if (orgResponse.ok) {
+          const orgData = await orgResponse.json();
+          setOrganization(orgData);
+        }
+      } catch (orgErr) {
+        console.warn('[ItemDetail] Could not fetch organization:', orgErr);
+      }
 
       // Fetch collection
       const collectionResponse = await fetch(`/api/apps/${appId}/collections`);
@@ -265,9 +285,19 @@ export default function ItemDetailPage() {
   
   const title = titleField ? item.data[titleField.name] : 'Без названия';
   const description = descriptionField ? item.data[descriptionField.name] : '';
-  const imageUrl = item.data.image_url || '/orbo-logo-2-no-bg.png';
   const price = item.data.price ? `${new Intl.NumberFormat('ru-RU').format(item.data.price)} ₽` : '';
   const category = item.data.category || '';
+  
+  // Apply cascading OG image logic
+  // Priority: item images → app logo → org logo → Orbo default
+  const extractedItemImage = extractItemImageUrl(item.data);
+  const itemImages = extractedItemImage ? [extractedItemImage] : null;
+  const ogImage = getAppItemOGImage(
+    itemImages,
+    app.logo_url,
+    organization?.logo_url
+  );
+  const imageUrl = getAbsoluteOGImageUrl(ogImage);
 
   // Build SEO meta
   const pageTitle = `${title} - ${app.name}`;

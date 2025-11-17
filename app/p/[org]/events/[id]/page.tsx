@@ -2,6 +2,104 @@ import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import EventDetail from '@/components/events/event-detail'
+import { Metadata } from 'next'
+import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
+
+/**
+ * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
+ */
+export async function generateMetadata({ 
+  params 
+}: { 
+  params: Promise<{ org: string; id: string }> 
+}): Promise<Metadata> {
+  const { org: orgId, id: eventId } = await params
+  const adminSupabase = createAdminServer()
+  
+  try {
+    // Fetch event and organization
+    const { data: event } = await adminSupabase
+      .from('events')
+      .select(`
+        id,
+        title,
+        description,
+        cover_image_url,
+        event_type,
+        event_date,
+        start_time,
+        is_public
+      `)
+      .eq('id', eventId)
+      .single()
+    
+    const { data: org } = await adminSupabase
+      .from('organizations')
+      .select('id, name, logo_url')
+      .eq('id', orgId)
+      .single()
+    
+    if (!event || !org) {
+      return {
+        title: 'Событие не найдено',
+      }
+    }
+    
+    // Apply cascading OG image logic
+    const ogImage = getEventOGImage(
+      event.cover_image_url,
+      org.logo_url
+    )
+    
+    const absoluteOgImage = getAbsoluteOGImageUrl(ogImage)
+    
+    // Format event date
+    const eventDate = event.event_date 
+      ? new Date(event.event_date).toLocaleDateString('ru-RU', { 
+          day: 'numeric', 
+          month: 'long', 
+          year: 'numeric' 
+        })
+      : ''
+    
+    const eventTime = event.start_time?.substring(0, 5) || ''
+    
+    const description = event.description || 
+      `${event.event_type === 'online' ? 'Онлайн' : 'Оффлайн'} событие от ${org.name}${eventDate ? ` • ${eventDate}` : ''}${eventTime ? ` в ${eventTime}` : ''}`
+    
+    return {
+      title: `${event.title} | ${org.name}`,
+      description,
+      openGraph: {
+        type: 'website',
+        locale: 'ru_RU',
+        url: `https://app.orbo.ru/p/${orgId}/events/${eventId}`,
+        title: event.title,
+        description,
+        siteName: 'Orbo',
+        images: [
+          {
+            url: absoluteOgImage,
+            width: 1200,
+            height: 630,
+            alt: event.title,
+          },
+        ],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: event.title,
+        description,
+        images: [absoluteOgImage],
+      },
+    }
+  } catch (error) {
+    console.error('Error generating event metadata:', error)
+    return {
+      title: 'Событие',
+    }
+  }
+}
 
 export default async function EventDetailPage({ 
   params,
