@@ -18,6 +18,12 @@ type Event = {
   end_time: string
   is_paid: boolean
   price_info: string | null
+  // New payment fields
+  requires_payment?: boolean
+  default_price?: number | null
+  currency?: string
+  payment_deadline_days?: number
+  payment_instructions?: string | null
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -42,8 +48,26 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [eventDate, setEventDate] = useState(initialEvent?.event_date || '')
   const [startTime, setStartTime] = useState(initialEvent?.start_time || '')
   const [endTime, setEndTime] = useState(initialEvent?.end_time || '')
+  
+  // Payment fields (new)
+  const [requiresPayment, setRequiresPayment] = useState(
+    initialEvent?.requires_payment ?? initialEvent?.is_paid ?? false
+  )
+  const [defaultPrice, setDefaultPrice] = useState<string>(
+    initialEvent?.default_price?.toString() || ''
+  )
+  const [currency, setCurrency] = useState(initialEvent?.currency || 'RUB')
+  const [paymentDeadlineDays, setPaymentDeadlineDays] = useState<string>(
+    initialEvent?.payment_deadline_days?.toString() || '3'
+  )
+  const [paymentInstructions, setPaymentInstructions] = useState(
+    initialEvent?.payment_instructions || ''
+  )
+  
+  // Old payment fields (for backward compatibility)
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
   const [priceInfo, setPriceInfo] = useState(initialEvent?.price_info || '')
+  
   const [capacity, setCapacity] = useState<string>(initialEvent?.capacity?.toString() || '')
   const [status, setStatus] = useState<'draft' | 'published' | 'cancelled'>(
     initialEvent?.status || 'published'
@@ -81,8 +105,12 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       eventDate,
       startTime,
       endTime,
-      isPaid,
-      priceInfo: isPaid ? priceInfo : null,
+      // New payment fields
+      requiresPayment,
+      defaultPrice: requiresPayment && defaultPrice ? parseFloat(defaultPrice) : null,
+      currency: requiresPayment ? currency : null,
+      paymentDeadlineDays: requiresPayment && paymentDeadlineDays ? parseInt(paymentDeadlineDays) : null,
+      paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
@@ -272,33 +300,91 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Стоимость</CardTitle>
+              <CardTitle>Стоимость и оплата</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  id="isPaid"
-                  checked={isPaid}
-                  onChange={(e) => setIsPaid(e.target.checked)}
-                  className="mr-2"
+                  id="requiresPayment"
+                  checked={requiresPayment}
+                  onChange={(e) => setRequiresPayment(e.target.checked)}
+                  className="mr-2 h-4 w-4"
                 />
-                <label htmlFor="isPaid" className="text-sm font-medium">
+                <label htmlFor="requiresPayment" className="text-sm font-medium">
                   Платное событие
                 </label>
               </div>
 
-              {isPaid && (
-                <div>
-                  <label className="text-sm font-medium block mb-2">
-                    Информация о стоимости и оплате
-                  </label>
-                  <textarea
-                    value={priceInfo}
-                    onChange={(e) => setPriceInfo(e.target.value)}
-                    placeholder="Например: 500 рублей. Оплата по ссылке..."
-                    className="w-full min-h-[100px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+              {requiresPayment && (
+                <div className="space-y-4 pt-2 border-t border-neutral-200">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-2">
+                        Цена по умолчанию <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={defaultPrice}
+                        onChange={(e) => setDefaultPrice(e.target.value)}
+                        placeholder="1000"
+                        required={requiresPayment}
+                      />
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Можно изменить для каждого участника отдельно
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium block mb-2">
+                        Валюта
+                      </label>
+                      <select
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value)}
+                        className="w-full p-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="RUB">RUB (₽)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="KZT">KZT (₸)</option>
+                        <option value="BYN">BYN (Br)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-2">
+                      Крайний срок оплаты (дней до события)
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={paymentDeadlineDays}
+                      onChange={(e) => setPaymentDeadlineDays(e.target.value)}
+                      placeholder="3"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Участники должны оплатить за N дней до события
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-2">
+                      Инструкции по оплате
+                    </label>
+                    <textarea
+                      value={paymentInstructions}
+                      onChange={(e) => setPaymentInstructions(e.target.value)}
+                      placeholder="Реквизиты для оплаты, номер карты, ссылка на платежную систему..."
+                      className="w-full min-h-[100px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Будет отображаться участникам при регистрации
+                    </p>
+                  </div>
                 </div>
               )}
             </CardContent>

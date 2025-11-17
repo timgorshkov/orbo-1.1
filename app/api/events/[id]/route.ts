@@ -105,6 +105,12 @@ export async function PUT(
       endTime,
       isPaid,
       priceInfo,
+      // New payment fields
+      requiresPayment,
+      defaultPrice,
+      currency,
+      paymentDeadlineDays,
+      paymentInstructions,
       capacity,
       status,
       isPublic,
@@ -146,24 +152,41 @@ export async function PUT(
     }
 
     // Update event
+    const updateData: any = {
+      title,
+      description: description || null,
+      cover_image_url: coverImageUrl || null,
+      event_type: eventType,
+      location_info: locationInfo || null,
+      event_date: eventDate,
+      start_time: startTime,
+      end_time: endTime,
+      capacity: capacity || null,
+      status,
+      is_public: isPublic,
+      telegram_group_link: telegramGroupLink || null
+    }
+
+    // Handle payment fields (support both old and new formats)
+    if (requiresPayment !== undefined) {
+      updateData.requires_payment = requiresPayment
+      updateData.default_price = defaultPrice || null
+      updateData.currency = currency || 'RUB'
+      updateData.payment_deadline_days = paymentDeadlineDays !== undefined ? paymentDeadlineDays : 3
+      updateData.payment_instructions = paymentInstructions || null
+      
+      // Also update old fields for backward compatibility
+      updateData.is_paid = requiresPayment
+      updateData.price_info = defaultPrice ? `${defaultPrice} ${currency || 'RUB'}` : null
+    } else if (isPaid !== undefined) {
+      // Old format (for backward compatibility)
+      updateData.is_paid = isPaid
+      updateData.price_info = priceInfo || null
+    }
+
     const { data: event, error } = await supabase
       .from('events')
-      .update({
-        title,
-        description: description || null,
-        cover_image_url: coverImageUrl || null,
-        event_type: eventType,
-        location_info: locationInfo || null,
-        event_date: eventDate,
-        start_time: startTime,
-        end_time: endTime,
-        is_paid: isPaid,
-        price_info: priceInfo || null,
-        capacity: capacity || null,
-        status,
-        is_public: isPublic,
-        telegram_group_link: telegramGroupLink || null
-      })
+      .update(updateData)
       .eq('id', eventId)
       .select()
       .single()
@@ -186,10 +209,10 @@ export async function PUT(
 // DELETE /api/events/[id] - Delete event
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const eventId = params.id
+    const { id: eventId } = await params
     const supabase = await createClientServer()
 
     // Check if user has admin rights

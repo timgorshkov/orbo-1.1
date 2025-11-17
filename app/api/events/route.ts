@@ -85,6 +85,12 @@ export async function POST(request: NextRequest) {
       endTime,
       isPaid,
       priceInfo,
+      // New payment fields
+      requiresPayment,
+      defaultPrice,
+      currency,
+      paymentDeadlineDays,
+      paymentInstructions,
       capacity,
       status,
       isPublic,
@@ -121,27 +127,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Prepare event data
+    const eventData: any = {
+      org_id: orgId,
+      title,
+      description: description || null,
+      cover_image_url: coverImageUrl || null,
+      event_type: eventType,
+      location_info: locationInfo || null,
+      event_date: eventDate,
+      start_time: startTime,
+      end_time: endTime,
+      capacity: capacity || null,
+      status: status || 'draft', // Use status from form, default to draft
+      is_public: isPublic || false,
+      telegram_group_link: telegramGroupLink || null,
+      created_by: user.id
+    }
+
+    // Handle payment fields (support both old and new formats)
+    if (requiresPayment !== undefined) {
+      eventData.requires_payment = requiresPayment
+      eventData.default_price = defaultPrice || null
+      eventData.currency = currency || 'RUB'
+      eventData.payment_deadline_days = paymentDeadlineDays !== undefined ? paymentDeadlineDays : 3
+      eventData.payment_instructions = paymentInstructions || null
+      
+      // Also set old fields for backward compatibility
+      eventData.is_paid = requiresPayment
+      eventData.price_info = defaultPrice ? `${defaultPrice} ${currency || 'RUB'}` : null
+    } else {
+      // Old format (for backward compatibility)
+      eventData.is_paid = isPaid || false
+      eventData.price_info = priceInfo || null
+    }
+
     // Create event
     const { data: event, error } = await supabase
       .from('events')
-      .insert({
-        org_id: orgId,
-        title,
-        description: description || null,
-        cover_image_url: coverImageUrl || null,
-        event_type: eventType,
-        location_info: locationInfo || null,
-        event_date: eventDate,
-        start_time: startTime,
-        end_time: endTime,
-        is_paid: isPaid || false,
-        price_info: priceInfo || null,
-        capacity: capacity || null,
-        status: status || 'draft', // Use status from form, default to draft
-        is_public: isPublic || false,
-        telegram_group_link: telegramGroupLink || null,
-        created_by: user.id
-      })
+      .insert(eventData)
       .select()
       .single()
 
