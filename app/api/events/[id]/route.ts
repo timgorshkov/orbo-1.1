@@ -4,10 +4,10 @@ import { createClientServer } from '@/lib/server/supabaseServer'
 // GET /api/events/[id] - Get event details
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const eventId = params.id
+    const { id: eventId } = await params
     const supabase = await createClientServer()
 
     // Fetch event with registrations count
@@ -89,10 +89,10 @@ export async function GET(
 // PUT /api/events/[id] - Update event
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const eventId = params.id
+    const { id: eventId } = await params
     const body = await request.json()
     const {
       title,

@@ -20,12 +20,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   'other': 'Остальные'
 };
 
+// IMPORTANT: These colors MUST match members-filters-sidebar.tsx
 const COLORS: Record<string, string> = {
-  'core': '#10b981',        // green
-  'experienced': '#3b82f6', // blue
-  'newcomers': '#f59e0b',   // amber
-  'silent': '#ef4444',      // red
-  'other': '#6b7280'        // gray
+  'newcomers': '#3B82F6',   // blue (Newcomers)
+  'core': '#10B981',        // green (Core)
+  'experienced': '#F59E0B', // amber/orange (Experienced)
+  'silent': '#6B7280',      // gray (Silent)
+  'other': '#9CA3AF'        // light gray (Other)
 };
 
 export default function EngagementPie({ orgId }: Props) {
@@ -130,12 +131,12 @@ export default function EngagementPie({ orgId }: Props) {
         </div>
       </div>
 
-      {/* Categories explanation */}
+      {/* Categories explanation - MUST match getParticipantCategory logic */}
       <div className="mt-6 pt-4 border-t text-xs text-gray-500 space-y-1">
-        <p><strong>Ядро:</strong> Активность &gt; месяца + ≥3 сообщений/неделю</p>
-        <p><strong>Опытные:</strong> Активность &gt; месяца, но &lt;3 сообщений/неделю</p>
-        <p><strong>Новички:</strong> Присоединились менее месяца назад (через Telegram)</p>
-        <p><strong>Молчуны:</strong> Нет сообщений за 30 дней</p>
+        <p><strong>Новички:</strong> Присоединились менее 30 дней назад</p>
+        <p><strong>Ядро:</strong> Оценка активности ≥ 60 (самые активные)</p>
+        <p><strong>Опытные:</strong> Оценка активности ≥ 30 (умеренно активные)</p>
+        <p><strong>Молчуны:</strong> Нет активности более 30 дней</p>
       </div>
     </div>
   );
