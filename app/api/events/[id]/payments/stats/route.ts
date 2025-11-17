@@ -67,6 +67,19 @@ export async function GET(
       return NextResponse.json({ error: statsError.message }, { status: 500 })
     }
 
+    // Type assertion for RPC result
+    interface PaymentStats {
+      total_registrations: number
+      total_expected_amount: number
+      total_paid_amount: number
+      paid_count: number
+      pending_count: number
+      overdue_count: number
+      payment_completion_percent: number
+    }
+    
+    const paymentStats = stats as PaymentStats | null
+
     // Get breakdown by status (more detailed)
     const { data: statusBreakdown, error: breakdownError } = await supabase
       .from('event_registrations')
@@ -94,13 +107,13 @@ export async function GET(
         currency: event.currency
       },
       stats: {
-        total_registrations: stats?.total_registrations || 0,
-        total_expected_amount: stats?.total_expected_amount || 0,
-        total_paid_amount: stats?.total_paid_amount || 0,
-        paid_count: stats?.paid_count || 0,
-        pending_count: stats?.pending_count || 0,
-        overdue_count: stats?.overdue_count || 0,
-        payment_completion_percent: stats?.payment_completion_percent || 0,
+        total_registrations: paymentStats?.total_registrations || 0,
+        total_expected_amount: paymentStats?.total_expected_amount || 0,
+        total_paid_amount: paymentStats?.total_paid_amount || 0,
+        paid_count: paymentStats?.paid_count || 0,
+        pending_count: paymentStats?.pending_count || 0,
+        overdue_count: paymentStats?.overdue_count || 0,
+        payment_completion_percent: paymentStats?.payment_completion_percent || 0,
         breakdown_by_status: breakdownCounts
       }
     })
