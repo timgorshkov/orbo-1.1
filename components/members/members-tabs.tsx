@@ -51,36 +51,32 @@ export default function MembersTabs({
   return (
     <div>
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200 mb-6">
-        <button
-          onClick={() => handleTabChange('list')}
-          className={`px-4 py-2 font-medium transition-colors relative ${
-            activeTab === 'list'
-              ? 'text-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Список
-          {activeTab === 'list' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
-          )}
-        </button>
-
-        {showAdminFeatures && (
+      <div className="mb-6">
+        <div className="inline-flex h-10 items-center justify-center rounded-md bg-gray-100 p-1 text-gray-600">
           <button
-            onClick={() => handleTabChange('invites')}
-            className={`px-4 py-2 font-medium transition-colors relative ${
-              activeTab === 'invites'
-                ? 'text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
+            onClick={() => handleTabChange('list')}
+            className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+              activeTab === 'list'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'hover:bg-white/50 hover:text-gray-900'
             }`}
           >
-            Приглашения
-            {activeTab === 'invites' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
-            )}
+            Список
           </button>
-        )}
+
+          {showAdminFeatures && (
+            <button
+              onClick={() => handleTabChange('invites')}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                activeTab === 'invites'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'hover:bg-white/50 hover:text-gray-900'
+              }`}
+            >
+              Приглашения
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab Content */}

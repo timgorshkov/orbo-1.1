@@ -254,7 +254,6 @@ export default async function MembersPage({ params, searchParams }: {
       <div className="mx-auto max-w-7xl">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Участники</h1>
-          <p className="text-gray-600 mt-1">Участники пространства и приглашения</p>
         </div>
 
         <Suspense fallback={<div className="text-center py-8">Загрузка...</div>}>

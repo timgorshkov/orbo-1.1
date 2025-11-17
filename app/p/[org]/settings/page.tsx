@@ -221,9 +221,6 @@ export default async function OrganizationSettingsPage({
         <div className="bg-white border-b border-gray-200">
           <div className="px-6 py-6">
             <h1 className="text-2xl font-semibold">Настройки пространства</h1>
-            <p className="text-gray-600 mt-1">
-              Управление настройками организации
-            </p>
           </div>
           
           {/* Tabs */}
