@@ -1,14 +1,42 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { notFound } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
+import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import DigestSettingsForm from '@/components/settings/digest-settings-form'
+import InvitesManager from '@/components/settings/invites-manager'
+import dynamic from 'next/dynamic'
 
-export default async function OrganizationSettingsPage({ params }: { params: Promise<{ org: string }> }) {
+// Dynamic import for tags page (it's a client component)
+const TagsManagementContent = dynamic(() => import('@/components/settings/tags-management-content'), {
+  ssr: false,
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false
+    }
+  }
+);
+
+export default async function OrganizationSettingsPage({ 
+  params,
+  searchParams 
+}: { 
+  params: Promise<{ org: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   try {
     const { org: orgId } = await params
+    const { tab } = await searchParams
+    const activeTab: SettingsTab = (tab as SettingsTab) || 'team'
+    
     const { supabase, user } = await requireOrgAccess(orgId)
     const adminSupabase = createAdminServer()
     
@@ -35,119 +63,176 @@ export default async function OrganizationSettingsPage({ params }: { params: Pro
       return notFound()
     }
 
-    // Get team members using admin client to bypass RLS
-    const { data: team, error: teamError } = await adminSupabase
-      .from('organization_admins')
-      .select('*')
-      .eq('org_id', orgId)
-      .order('role', { ascending: false })
-      .order('created_at', { ascending: true })
+    // Fetch data based on active tab (lazy loading approach)
+    let tabContent = null
 
-    if (teamError) {
-      console.error('Error fetching team:', teamError)
+    switch (activeTab) {
+      case 'team': {
+        // Get team members
+        const { data: team } = await adminSupabase
+          .from('organization_admins')
+          .select('*')
+          .eq('org_id', orgId)
+          .order('role', { ascending: false })
+          .order('created_at', { ascending: true })
+
+        const teamWithGroups = (team || []).map((member: any) => {
+          if (member.role === 'admin' && member.role_source === 'telegram_admin') {
+            const groupIds = member.metadata?.telegram_groups || []
+            const groupTitles = member.metadata?.telegram_group_titles || []
+            
+            return {
+              ...member,
+              admin_groups: groupIds.map((id: number, index: number) => ({
+                id,
+                title: groupTitles[index] || `Group ${id}`
+              }))
+            }
+          }
+          
+          return {
+            ...member,
+            admin_groups: []
+          }
+        })
+
+        tabContent = (
+          <div className="p-6">
+            <OrganizationTeam
+              organizationId={orgId}
+              initialTeam={teamWithGroups}
+              userRole={membership.role as 'owner' | 'admin'}
+            />
+          </div>
+        )
+        break
+      }
+
+      case 'general': {
+        tabContent = (
+          <div className="p-6">
+            <OrganizationSettingsForm
+              organization={org}
+              userRole={membership.role as 'owner' | 'admin'}
+            />
+          </div>
+        )
+        break
+      }
+
+      case 'tags': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Теги участников</h2>
+              <p className="text-gray-600 mt-1">
+                Создавайте и управляйте тегами для CRM участников
+              </p>
+            </div>
+            <TagsManagementContent />
+          </div>
+        )
+        break
+      }
+
+      case 'digest': {
+        const initialSettings = {
+          enabled: org.digest_enabled ?? true,
+          day: org.digest_day ?? 1,
+          time: org.digest_time ?? '09:00:00',
+          lastSentAt: org.last_digest_sent_at,
+        }
+
+        tabContent = (
+          <div className="p-6 max-w-4xl">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Еженедельный дайджест</h2>
+              <p className="text-gray-600 mt-1">
+                Настройте автоматическую отправку дайджеста активности сообщества
+              </p>
+            </div>
+
+            <DigestSettingsForm
+              orgId={orgId}
+              initialSettings={initialSettings}
+            />
+
+            {/* Info block */}
+            <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h3 className="font-medium text-blue-900 mb-2">Что включает дайджест?</h3>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>📊 Метрики активности (сообщения, участники, реакции)</li>
+                <li>🌟 Топ-3 самых активных участников</li>
+                <li>⚠️ Зоны внимания (неактивные новички, молчащие участники)</li>
+                <li>📅 Ближайшие события</li>
+                <li>💡 AI-рекомендации по улучшению вовлечённости</li>
+              </ul>
+              <p className="text-sm text-blue-700 mt-3">
+                <strong>Стоимость генерации:</strong> ~$0.002-0.003 за дайджест (~0.19-0.29 ₽)
+              </p>
+            </div>
+
+            {/* Bot requirements */}
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <h3 className="font-medium text-yellow-900 mb-2">Требования</h3>
+              <p className="text-sm text-yellow-800">
+                Для получения дайджестов в Telegram необходимо:
+              </p>
+              <ol className="text-sm text-yellow-800 space-y-1 mt-2 ml-4 list-decimal">
+                <li>Запустить бота уведомлений Orbo в Telegram (отправьте /start)</li>
+                <li>Связать Telegram аккаунт в вашем профиле Orbo</li>
+              </ol>
+            </div>
+          </div>
+        )
+        break
+      }
+
+      case 'invites': {
+        // Fetch invites
+        const { data: invites } = await supabase
+          .from('organization_invites')
+          .select(`
+            *,
+            organization_invite_uses(count)
+          `)
+          .eq('org_id', orgId)
+          .order('created_at', { ascending: false })
+
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Приглашения</h2>
+              <p className="text-gray-600 mt-1">
+                Создавайте ссылки-приглашения для новых участников организации
+              </p>
+            </div>
+
+            <InvitesManager orgId={orgId} initialInvites={invites || []} />
+          </div>
+        )
+        break
+      }
     }
 
-    // Get group details for admins
-    const teamWithGroups = (team || []).map((member: any) => {
-      // View organization_admins уже содержит правильные значения
-      // для email_confirmed и has_verified_telegram, не переопределяем их
-      
-      if (member.role === 'admin' && member.role_source === 'telegram_admin') {
-        const groupIds = member.metadata?.telegram_groups || []
-        const groupTitles = member.metadata?.telegram_group_titles || []
-        
-        return {
-          ...member,
-          admin_groups: groupIds.map((id: number, index: number) => ({
-            id,
-            title: groupTitles[index] || `Group ${id}`
-          }))
-        }
-      }
-      
-      return {
-        ...member,
-        admin_groups: []
-      }
-    })
-
     return (
-      <div className="p-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Настройки пространства</h1>
-          <p className="text-neutral-600 mt-1">
-            Управление основными настройками и командой
-          </p>
+      <div className="min-h-screen bg-gray-50">
+        {/* Page Header */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="px-6 py-6">
+            <h1 className="text-2xl font-semibold">Настройки пространства</h1>
+            <p className="text-gray-600 mt-1">
+              Управление настройками организации
+            </p>
+          </div>
+          
+          {/* Tabs */}
+          <SettingsTabs activeTab={activeTab} orgId={orgId} />
         </div>
 
-        <div className="space-y-6">
-          {/* Quick Links */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Дополнительные настройки</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Link
-                  href={`/p/${orgId}/settings/digest`}
-                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">📊</div>
-                    <div>
-                      <h3 className="font-medium">Еженедельный дайджест</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Настройка автоматической отправки дайджеста активности
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-
-                <Link
-                  href={`/p/${orgId}/settings/invites`}
-                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">✉️</div>
-                    <div>
-                      <h3 className="font-medium">Приглашения</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Управление приглашениями в пространство
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-
-                <Link
-                  href={`/p/${orgId}/settings/tags`}
-                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">🏷️</div>
-                    <div>
-                      <h3 className="font-medium">Теги участников</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Создание и управление тегами для CRM
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Organization Settings */}
-          <OrganizationSettingsForm
-            organization={org}
-            userRole={membership.role as 'owner' | 'admin'}
-          />
-
-          {/* Team Management */}
-          <OrganizationTeam
-            organizationId={orgId}
-            initialTeam={teamWithGroups}
-            userRole={membership.role as 'owner' | 'admin'}
-          />
+        {/* Tab Content */}
+        <div className="mx-auto max-w-7xl">
+          {tabContent}
         </div>
       </div>
     )
@@ -156,4 +241,3 @@ export default async function OrganizationSettingsPage({ params }: { params: Pro
     return notFound()
   }
 }
-
