@@ -2,7 +2,7 @@
 
 ## 📋 Что сделано
 
-### 1. Database Schema (Migration 113)
+### 1. Database Schema (Migration 114)
 - ✅ Добавлены поля оплаты к таблице `events`:
   - `requires_payment` (boolean)
   - `default_price` (decimal)
@@ -47,7 +47,7 @@
    https://supabase.com/dashboard/project/YOUR_PROJECT/sql/new
 
 2. Скопируй и выполни содержимое файла:
-   `db/migrations/113_event_payments.sql`
+   `db/migrations/114_event_payments.sql`
 
 3. Проверь, что миграция применена успешно:
    ```sql
@@ -161,7 +161,8 @@ git push origin master
 
 ---
 
-**Status:** ✅ Ready for deployment
-**Tested:** Locally (schema + API + UI)
+**Status:** ✅ Ready for deployment  
+**Migration:** 114_event_payments.sql (note: 113 was used by engagement_breakdown)  
+**Tested:** Locally (schema + API + UI)  
 **Backward Compatible:** Yes (старые поля `is_paid`, `price_info` поддерживаются)
 
