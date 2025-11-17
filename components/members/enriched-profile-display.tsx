@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ParticipantRecord } from '@/lib/types/participant';
+import { filterCustomAttributes } from '@/lib/utils/profileFieldsVisibility';
 
 interface EnrichedProfileDisplayProps {
   participant: ParticipantRecord;
@@ -13,10 +14,14 @@ interface EnrichedProfileDisplayProps {
 /**
  * Component to display participant enrichment data from custom_attributes
  * 
- * Displays 3 sections:
- * 1. AI Insights (read-only) - auto-extracted data
- * 2. Goals & Offers (editable) - user-defined data
- * 3. Activity Patterns (read-only) - behavioral data
+ * Visibility rules:
+ * - Participants: Only see Goals & Offers (user-defined fields)
+ * - Admins: See AI Insights + Goals & Offers + Event Behavior
+ * 
+ * Displays sections:
+ * 1. AI Insights (admin-only, read-only) - auto-extracted data
+ * 2. Goals & Offers (all users, editable) - user-defined data
+ * 3. Event Behavior (admin-only, read-only) - event attendance patterns
  * 
  * Hides technical fields (weights, meta, timestamps)
  */
@@ -25,6 +30,8 @@ export function EnrichedProfileDisplay({
   isAdmin,
   onEdit 
 }: EnrichedProfileDisplayProps) {
+  // Filter custom_attributes based on viewer role
+  const filtered = filterCustomAttributes(participant.custom_attributes, isAdmin);
   const attrs = participant.custom_attributes || {};
   
   // Extract sections
@@ -107,24 +114,28 @@ export function EnrichedProfileDisplay({
   return (
     <div className="space-y-6">
       {/* ========================================
-          SECTION 1: AI INSIGHTS (Read-only)
+          AUTO-BADGES (Visible to all)
           ======================================== */}
-      {(aiInsights.interests.length > 0 || aiInsights.city || aiInsights.role) && (
+      <Card className="p-6">
+        <div className="mb-2">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">
+            Категория вовлечённости
+          </label>
+          <Badge className={`${engagementCategory.color} text-white border-0`}>
+            {engagementCategory.label}
+          </Badge>
+        </div>
+      </Card>
+
+      {/* ========================================
+          SECTION 1: AI INSIGHTS (Read-only, Admin-only)
+          ======================================== */}
+      {isAdmin && (aiInsights.interests.length > 0 || aiInsights.city || aiInsights.role) && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">AI Insights</h3>
             <Badge variant="secondary" className="text-xs">
               Автоматически
-            </Badge>
-          </div>
-          
-          {/* Engagement Category */}
-          <div className="mb-4">
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              Категория вовлечённости
-            </label>
-            <Badge className={`${engagementCategory.color} text-white border-0`}>
-              {engagementCategory.label}
             </Badge>
           </div>
           
@@ -342,9 +353,9 @@ export function EnrichedProfileDisplay({
       </Card>
       
       {/* ========================================
-          SECTION 3: EVENT BEHAVIOR (Read-only)
+          SECTION 3: EVENT BEHAVIOR (Read-only, Admin-only)
           ======================================== */}
-      {Object.keys(eventBehavior).length > 0 && (
+      {isAdmin && Object.keys(eventBehavior).length > 0 && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">Участие в мероприятиях</h3>

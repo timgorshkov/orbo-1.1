@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, LayoutGrid, Table as TableIcon, Filter } from 'lucide-react'
+import { Search, LayoutGrid, Table as TableIcon, Filter, Download, FileJson } from 'lucide-react'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
 import MembersTable from './members-table'
@@ -166,7 +166,7 @@ export default function MembersView({
       p.is_org_owner ? 'Владелец' : p.is_admin ? 'Администратор' : 'Участник',
       p.tags?.map((t) => t.name).join('; ') || '',
       p.created_at || '',
-      p.last_activity_at || '',
+      p.real_last_activity || p.last_activity_at || '',
     ])
 
     const csvContent =
@@ -176,10 +176,88 @@ export default function MembersView({
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `participants_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute('download', `participants_selected_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  const handleExportAll = (format: 'csv' | 'json') => {
+    const exportData = filteredParticipants.map((p) => ({
+      id: p.id,
+      full_name: p.full_name || '',
+      tg_username: p.tg_username || p.username || '',
+      tg_user_id: p.tg_user_id || '',
+      email: p.email || '',
+      phone: '',
+      bio: p.bio || '',
+      role: p.is_org_owner ? 'owner' : p.is_admin ? 'admin' : 'member',
+      tags: p.tags?.map((t) => t.name).join(', ') || '',
+      created_at: p.created_at || '',
+      real_join_date: p.real_join_date || '',
+      last_activity_at: p.last_activity_at || '',
+      real_last_activity: p.real_last_activity || '',
+      activity_score: p.activity_score || 0,
+      custom_attributes: p.custom_attributes || {},
+    }))
+
+    if (format === 'csv') {
+      const headers = [
+        'ID',
+        'Имя',
+        'Telegram Username',
+        'Telegram ID',
+        'Email',
+        'Телефон',
+        'Описание',
+        'Роль',
+        'Теги',
+        'Дата создания (запись)',
+        'Реальная дата присоединения',
+        'Последняя активность (метаданные)',
+        'Реальная последняя активность',
+        'Оценка активности',
+      ]
+      const rows = exportData.map((p) => [
+        p.id,
+        p.full_name,
+        p.tg_username,
+        p.tg_user_id,
+        p.email,
+        p.phone,
+        p.bio,
+        p.role,
+        p.tags,
+        p.created_at,
+        p.real_join_date,
+        p.last_activity_at,
+        p.real_last_activity,
+        p.activity_score,
+      ])
+
+      const csvContent =
+        'data:text/csv;charset=utf-8,\uFEFF' + // BOM for Excel UTF-8
+        [headers.join(','), ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n')
+
+      const encodedUri = encodeURI(csvContent)
+      const link = document.createElement('a')
+      link.setAttribute('href', encodedUri)
+      link.setAttribute('download', `participants_full_${new Date().toISOString().split('T')[0]}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } else if (format === 'json') {
+      const jsonContent = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([jsonContent], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `participants_full_${new Date().toISOString().split('T')[0]}.json`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }
   }
   
   // Show admin features only if user is admin AND in admin mode
@@ -314,7 +392,7 @@ export default function MembersView({
             />
           </div>
 
-          {/* Переключатель видов */}
+          {/* Переключатель видов + Export (Admin) */}
           <div className="flex items-center gap-2">
             <Button
               variant={viewMode === 'cards' ? 'default' : 'outline'}
@@ -327,15 +405,41 @@ export default function MembersView({
             </Button>
             
             {isAdmin && (
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'outline'}
-                size={'sm' as const}
-                onClick={() => setViewMode('table')}
-                className="gap-2"
-              >
-                <TableIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Таблица</span>
-              </Button>
+              <>
+                <Button
+                  variant={viewMode === 'table' ? 'default' : 'outline'}
+                  size={'sm' as const}
+                  onClick={() => setViewMode('table')}
+                  className="gap-2"
+                >
+                  <TableIcon className="h-4 w-4" />
+                  <span className="hidden sm:inline">Таблица</span>
+                </Button>
+
+                {/* Export Buttons */}
+                <div className="hidden md:flex items-center gap-2 ml-2 pl-2 border-l border-gray-300">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportAll('csv')}
+                    className="gap-2"
+                    title="Экспорт всех участников в CSV"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="hidden lg:inline">CSV</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportAll('json')}
+                    className="gap-2"
+                    title="Экспорт всех участников в JSON (бэкап)"
+                  >
+                    <FileJson className="h-4 w-4" />
+                    <span className="hidden lg:inline">JSON</span>
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </div>
