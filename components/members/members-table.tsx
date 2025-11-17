@@ -26,6 +26,7 @@ interface Participant {
   photo_url: string | null
   created_at?: string
   last_activity_at?: string | null
+  real_last_activity?: string | null // Real last activity from messages
   is_owner?: boolean // Для обратной совместимости (= is_org_owner)
   is_org_owner?: boolean // ✅ Владелец организации (фиолетовая корона)
   is_group_creator?: boolean // ✅ Создатель группы в Telegram (синий бейдж)
@@ -241,7 +242,7 @@ export default function MembersTable({
 
               {/* Последняя активность */}
               <TableCell className="text-right text-sm text-gray-600">
-                {formatLastActivity(participant.last_activity_at)}
+                {formatLastActivity(participant.real_last_activity || participant.last_activity_at)}
               </TableCell>
             </TableRow>
           ))}

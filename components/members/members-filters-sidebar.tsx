@@ -17,6 +17,8 @@ interface Participant {
   id: string
   created_at?: string
   last_activity_at?: string | null
+  real_join_date?: string // Real join date from first message or created_at
+  real_last_activity?: string | null // Real last activity from last message or last_activity_at
   activity_score?: number
   tags?: Array<{ id: string; name: string; color: string }>
   is_org_owner?: boolean
@@ -55,19 +57,22 @@ export default function MembersFiltersSidebar({
   // Calculate participant category (shared logic for counts and filtering)
   const getParticipantCategory = (p: Participant): AutoCategory | null => {
     const now = new Date()
-    const createdAt = p.created_at ? new Date(p.created_at) : null
-    const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
-    const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
+    // Use real join date (from first message or created_at)
+    const joinDate = p.real_join_date ? new Date(p.real_join_date) : (p.created_at ? new Date(p.created_at) : null)
+    // Use real last activity (from last message or last_activity_at)
+    const lastActivity = p.real_last_activity ? new Date(p.real_last_activity) : (p.last_activity_at ? new Date(p.last_activity_at) : null)
+    
+    const daysSinceJoined = joinDate ? (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24) : 999
     const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
     const activityScore = p.activity_score || 0
 
-    // Priority 1: Silent (no activity in 30 days OR never had activity and created >7 days ago)
-    if (daysSinceActivity > 30 || (!lastActivity && daysSinceCreated > 7)) {
+    // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
+    if (daysSinceActivity > 30 || (!lastActivity && daysSinceJoined > 7)) {
       return 'silent'
     }
 
     // Priority 2: Newcomers (joined <30 days ago AND not silent)
-    if (daysSinceCreated < 30) {
+    if (daysSinceJoined < 30) {
       return 'newcomer'
     }
 
@@ -352,19 +357,22 @@ export default function MembersFiltersSidebar({
 // Export the category calculation function for use in members-view
 export const getParticipantCategory = (p: Participant): AutoCategory | null => {
   const now = new Date()
-  const createdAt = p.created_at ? new Date(p.created_at) : null
-  const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
-  const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
+  // Use real join date (from first message or created_at)
+  const joinDate = p.real_join_date ? new Date(p.real_join_date) : (p.created_at ? new Date(p.created_at) : null)
+  // Use real last activity (from last message or last_activity_at)
+  const lastActivity = p.real_last_activity ? new Date(p.real_last_activity) : (p.last_activity_at ? new Date(p.last_activity_at) : null)
+  
+  const daysSinceJoined = joinDate ? (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24) : 999
   const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
   const activityScore = p.activity_score || 0
 
-  // Priority 1: Silent (no activity in 30 days OR never had activity and created >7 days ago)
-  if (daysSinceActivity > 30 || (!lastActivity && daysSinceCreated > 7)) {
+  // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
+  if (daysSinceActivity > 30 || (!lastActivity && daysSinceJoined > 7)) {
     return 'silent'
   }
 
   // Priority 2: Newcomers (joined <30 days ago AND not silent)
-  if (daysSinceCreated < 30) {
+  if (daysSinceJoined < 30) {
     return 'newcomer'
   }
 

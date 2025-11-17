@@ -25,6 +25,9 @@ interface Participant {
   is_org_owner?: boolean
   is_admin?: boolean
   source?: string | null
+  real_join_date?: string // Real join date from first message or created_at
+  real_last_activity?: string | null // Real last activity from last message or last_activity_at
+  first_message_at?: string | null // Date of first message ever
   tags?: Array<{
     id: string
     name: string
@@ -233,11 +236,13 @@ export default function MembersView({
     // Activity period filter
     if (filters.activityPeriod) {
       result = result.filter((p) => {
-        if (!p.last_activity_at && filters.activityPeriod === 'never') return true
-        if (!p.last_activity_at) return false
+        const activityDate = p.real_last_activity || p.last_activity_at
+        
+        if (!activityDate && filters.activityPeriod === 'never') return true
+        if (!activityDate) return false
 
         const now = new Date()
-        const lastActivity = new Date(p.last_activity_at)
+        const lastActivity = new Date(activityDate)
         const daysSince = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24)
 
         switch (filters.activityPeriod) {
