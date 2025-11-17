@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 
 /**
  * PATCH /api/events/[id]/payments/[registrationId]
@@ -36,6 +36,7 @@ export async function PATCH(
     } = body
 
     const supabase = await createClientServer()
+    const supabaseAdmin = createAdminServer()
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -43,8 +44,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify registration exists and belongs to this event
-    const { data: existingReg, error: regError } = await supabase
+    // Verify registration exists and belongs to this event (use admin client to bypass RLS)
+    const { data: existingReg, error: regError } = await supabaseAdmin
       .from('event_registrations')
       .select('id, event_id, participant_id, payment_status')
       .eq('id', registrationId)
@@ -58,8 +59,8 @@ export async function PATCH(
       )
     }
 
-    // Get event to check org_id and admin rights
-    const { data: event, error: eventError } = await supabase
+    // Get event to check org_id and admin rights (use admin client to bypass RLS)
+    const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
       .select('org_id, requires_payment')
       .eq('id', eventId)
@@ -69,8 +70,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Check admin rights
-    const { data: membership } = await supabase
+    // Check admin rights (use admin client to bypass RLS)
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -130,8 +131,8 @@ export async function PATCH(
       updateData.payment_notes = payment_notes
     }
 
-    // Update registration
-    const { data: updatedReg, error: updateError } = await supabase
+    // Update registration (use admin client to bypass RLS)
+    const { data: updatedReg, error: updateError } = await supabaseAdmin
       .from('event_registrations')
       .update(updateData)
       .eq('id', registrationId)
