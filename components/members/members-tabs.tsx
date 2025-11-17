@@ -23,6 +23,7 @@ interface MembersTabsProps {
   orgId: string
   initialParticipants: Participant[]
   initialInvites: any[]
+  availableTags?: any[]
   role: 'owner' | 'admin' | 'member' | 'guest'
   activeTab: string
 }
@@ -31,6 +32,7 @@ export default function MembersTabs({
   orgId,
   initialParticipants,
   initialInvites,
+  availableTags = [],
   role,
   activeTab: initialTab,
 }: MembersTabsProps) {
@@ -86,6 +88,7 @@ export default function MembersTabs({
         <MembersView
           orgId={orgId}
           initialParticipants={initialParticipants}
+          availableTags={availableTags}
           isAdmin={isAdmin}
           adminMode={adminMode}
         />

@@ -162,6 +162,19 @@ export default async function MembersPage({ params, searchParams }: {
 
   console.log(`[Members Page] Fetched ${participants?.length || 0} participants for org ${orgId}`)
 
+  // Fetch tag statistics (admin only)
+  let tagStats: any[] = []
+  if (isAdmin) {
+    const { data: tagsData, error: tagsError } = await adminSupabase
+      .rpc('get_tag_stats', { p_org_id: orgId })
+    
+    if (tagsError) {
+      console.error('[Members Page] Error fetching tag stats:', tagsError)
+    } else {
+      tagStats = tagsData || []
+    }
+  }
+
   // Fetch invites if admin
   let invites: any[] = []
   if (isAdmin) {
@@ -190,6 +203,7 @@ export default async function MembersPage({ params, searchParams }: {
             orgId={orgId}
             initialParticipants={participants || []}
             initialInvites={invites}
+            availableTags={tagStats}
             role={role as 'owner' | 'admin' | 'member' | 'guest'}
             activeTab={tab}
           />

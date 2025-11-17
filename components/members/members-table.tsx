@@ -40,9 +40,19 @@ interface Participant {
 
 interface MembersTableProps {
   participants: Participant[]
+  selectedParticipants?: Set<string>
+  onToggleParticipant?: (id: string) => void
+  onToggleAll?: () => void
+  showBulkActions?: boolean
 }
 
-export default function MembersTable({ participants }: MembersTableProps) {
+export default function MembersTable({
+  participants,
+  selectedParticipants = new Set(),
+  onToggleParticipant,
+  onToggleAll,
+  showBulkActions = false,
+}: MembersTableProps) {
   const params = useParams()
   const router = useRouter()
   const orgId = params?.org as string
@@ -86,11 +96,27 @@ export default function MembersTable({ participants }: MembersTableProps) {
     })
   }
 
+  const allSelected = participants.length > 0 && selectedParticipants.size === participants.length
+  const someSelected = selectedParticipants.size > 0 && !allSelected
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
+            {showBulkActions && (
+              <TableHead className="w-12">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected
+                  }}
+                  onChange={onToggleAll}
+                  className="rounded border-gray-300"
+                />
+              </TableHead>
+            )}
             <TableHead className="w-[300px]">Участник</TableHead>
             <TableHead>Telegram</TableHead>
             <TableHead>Email</TableHead>
@@ -106,6 +132,16 @@ export default function MembersTable({ participants }: MembersTableProps) {
               className="cursor-pointer hover:bg-gray-50"
               onClick={() => handleRowClick(participant.id)}
             >
+              {showBulkActions && (
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedParticipants.has(participant.id)}
+                    onChange={() => onToggleParticipant?.(participant.id)}
+                    className="rounded border-gray-300"
+                  />
+                </TableCell>
+              )}
               {/* Участник (Фото + Имя) */}
               <TableCell>
                 <div className="flex items-center gap-3">
