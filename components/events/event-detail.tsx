@@ -312,7 +312,6 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           {showAdminFeatures && <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>}
           {showAdminFeatures && (event.requires_payment || event.is_paid) && (
             <TabsTrigger value="payments">
-              <DollarSign className="w-4 h-4 mr-2" />
               Оплаты
             </TabsTrigger>
           )}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 
 /**
  * GET /api/events/[id]/payments
@@ -24,6 +24,7 @@ export async function GET(
     const statusFilter = searchParams.get('status') // optional filter
     
     const supabase = await createClientServer()
+    const supabaseAdmin = createAdminServer()
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -31,8 +32,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get event and check if user is admin
-    const { data: event, error: eventError } = await supabase
+    // Get event and check if user is admin (use admin client to bypass RLS)
+    const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
       .select('id, title, org_id, requires_payment, default_price, currency, payment_deadline_days, payment_instructions, event_date')
       .eq('id', eventId)
@@ -42,8 +43,8 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Check admin rights
-    const { data: membership } = await supabase
+    // Check admin rights (use admin client to bypass RLS)
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -57,8 +58,8 @@ export async function GET(
       )
     }
 
-    // Fetch registrations with payment info and participant details
-    let query = supabase
+    // Fetch registrations with payment info and participant details (use admin client to bypass RLS)
+    let query = supabaseAdmin
       .from('event_registrations')
       .select(`
         id,
