@@ -112,15 +112,15 @@ export default function MembersView({
   const handleAssignTags = async (tagIds: string[]) => {
     try {
       const selectedIds = Array.from(selectedParticipants)
-      const promises = selectedIds.map(async (participantId) => {
-        for (const tagId of tagIds) {
-          await fetch(`/api/participants/${participantId}/tags`, {
+      const promises = selectedIds.flatMap((participantId) =>
+        tagIds.map((tagId) =>
+          fetch(`/api/participants/${participantId}/tags`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tagIds: [tagId] }),
+            body: JSON.stringify({ tag_id: tagId }),
           })
-        }
-      })
+        )
+      )
       await Promise.all(promises)
       alert(`Теги назначены для ${selectedIds.length} участников`)
       // Reload page to show updated tags

@@ -395,17 +395,16 @@ export default function ParticipantProfileCard({
           </div>
 
           {/* AI Enrichment Data (if available) */}
-          {isAdmin && (
-            <div className="mb-6">
-              {participant.custom_attributes && Object.keys(participant.custom_attributes).length > 0 && !editing ? (
-                <EnrichedProfileDisplay 
-                  participant={detail.participant}
-                  isAdmin={isAdmin}
-                />
-              ) : null}
-              
-              {/* Editable Goals & Offers (when editing) */}
-              {editing && (
+          <div className="mb-6">
+            {participant.custom_attributes && Object.keys(participant.custom_attributes).length > 0 && !editing ? (
+              <EnrichedProfileDisplay 
+                participant={detail.participant}
+                isAdmin={isAdmin}
+              />
+            ) : null}
+            
+            {/* Editable Goals & Offers (when editing) */}
+            {isAdmin && editing && (
                 <div className="space-y-4 p-6 border-2 border-blue-200 rounded-xl bg-blue-50">
                   <h3 className="text-lg font-semibold text-gray-900">Цели и Предложения</h3>
                   
@@ -473,8 +472,8 @@ export default function ParticipantProfileCard({
                 </div>
               )}
               
-              {/* AI Analysis Button */}
-              {!editing && (
+              {/* AI Analysis Button (Admin only) */}
+              {isAdmin && !editing && (
                 <div className="mt-4">
                   <AIEnrichmentButton 
                     participantId={participant.id}
@@ -490,7 +489,6 @@ export default function ParticipantProfileCard({
                 </div>
               )}
             </div>
-          )}
 
           {/* Custom Attributes */}
           <div>
