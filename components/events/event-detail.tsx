@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
+import PaymentsTab from './payments-tab'
 
 type Event = {
   id: string
@@ -21,6 +22,12 @@ type Event = {
   end_time: string
   is_paid: boolean
   price_info: string | null
+  // New payment fields
+  requires_payment?: boolean
+  default_price?: number | null
+  currency?: string
+  payment_deadline_days?: number | null
+  payment_instructions?: string | null
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -303,6 +310,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         <TabsList className="mb-6">
           <TabsTrigger value="overview">Обзор</TabsTrigger>
           {showAdminFeatures && <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>}
+          {showAdminFeatures && (event.requires_payment || event.is_paid) && (
+            <TabsTrigger value="payments">
+              <DollarSign className="w-4 h-4 mr-2" />
+              Оплаты
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview">
@@ -516,6 +529,24 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+        )}
+
+        {showAdminFeatures && (event.requires_payment || event.is_paid) && (
+          <TabsContent value="payments">
+            <PaymentsTab
+              eventId={event.id}
+              event={{
+                id: event.id,
+                title: event.title,
+                requires_payment: event.requires_payment ?? event.is_paid ?? false,
+                default_price: event.default_price ?? null,
+                currency: event.currency || 'RUB',
+                payment_deadline_days: event.payment_deadline_days ?? null,
+                payment_instructions: event.payment_instructions ?? null,
+                event_date: event.event_date
+              }}
+            />
           </TabsContent>
         )}
       </Tabs>
