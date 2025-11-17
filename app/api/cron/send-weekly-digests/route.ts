@@ -70,6 +70,14 @@ export async function GET(request: NextRequest) {
 
     for (const org of orgs) {
       try {
+        // Log org settings for debugging
+        console.log(`[Cron] Checking ${org.name}:`, {
+          digest_day: org.digest_day,
+          digest_time: org.digest_time,
+          timezone: org.timezone,
+          last_digest_sent_at: org.last_digest_sent_at
+        });
+
         // Check if digest should be sent today
         const shouldSend = await shouldSendDigestNow(org, now);
 
@@ -78,7 +86,7 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        console.log(`[Cron] Processing ${org.name}...`);
+        console.log(`[Cron] ✅ Processing ${org.name}...`);
 
         // Get recipients (owners/admins with digest_notifications enabled)
         // Step 1: Fetch memberships
@@ -101,13 +109,35 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Step 2: Fetch participants for these users
+        // Step 2: Fetch telegram accounts for these users
         const userIds = memberships.map(m => m.user_id);
+        const { data: telegramAccounts, error: telegramError } = await supabaseAdmin
+          .from('user_telegram_accounts')
+          .select('user_id, telegram_user_id')
+          .eq('org_id', org.id)
+          .in('user_id', userIds);
+
+        if (telegramError) {
+          console.error(`[Cron] Failed to fetch telegram accounts for ${org.name}:`, telegramError);
+          results.push({ orgId: org.id, orgName: org.name, success: false, error: 'Failed to fetch telegram accounts' });
+          continue;
+        }
+
+        if (!telegramAccounts || telegramAccounts.length === 0) {
+          console.warn(`[Cron] No telegram accounts found for ${org.name}`);
+          results.push({ orgId: org.id, orgName: org.name, success: false, error: 'No telegram accounts' });
+          continue;
+        }
+
+        // Step 3: Get telegram user IDs
+        const tgUserIds = telegramAccounts.map(ta => ta.telegram_user_id);
+        
+        // Step 4: Fetch participants for these telegram users
         const { data: participants, error: participantsError } = await supabaseAdmin
           .from('participants')
-          .select('id, tg_user_id, full_name, username')
+          .select('tg_user_id, full_name, username')
           .eq('org_id', org.id)
-          .in('id', userIds);
+          .in('tg_user_id', tgUserIds);
 
         if (participantsError) {
           console.error(`[Cron] Failed to fetch participants for ${org.name}:`, participantsError);
@@ -115,24 +145,21 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Step 3: Map participants by user_id
+        // Step 5: Map telegram user id to participant name
         const participantMap = new Map(
-          (participants || []).map(p => [p.id, p])
+          (participants || []).map(p => [p.tg_user_id, p])
         );
 
-        // Step 4: Build valid recipients list
-        const validRecipients = memberships
-          .map(m => {
-            const participant = participantMap.get(m.user_id);
-            if (participant && participant.tg_user_id) {
-              return {
-                tgUserId: participant.tg_user_id,
-                name: participant.full_name || participant.username || 'Участник'
-              };
-            }
-            return null;
+        // Step 6: Build valid recipients list (using telegram accounts)
+        const validRecipients = telegramAccounts
+          .map(ta => {
+            const participant = participantMap.get(ta.telegram_user_id);
+            return {
+              tgUserId: ta.telegram_user_id,
+              name: participant?.full_name || participant?.username || 'Участник'
+            };
           })
-          .filter((r): r is { tgUserId: number; name: string } => r !== null);
+          .filter((r): r is { tgUserId: number; name: string } => r.tgUserId !== null && r.tgUserId !== undefined);
 
         if (validRecipients.length === 0) {
           console.warn(`[Cron] No valid recipients for ${org.name}`);
@@ -221,14 +248,26 @@ async function shouldSendDigestNow(
   // Parse digest_time (format: "HH:MM:SS")
   const [digestHour, digestMinute] = org.digest_time.split(':').map(Number);
 
+  console.log(`[Cron] shouldSendDigestNow check:`, {
+    orgTime: orgTime.toISOString(),
+    orgDay,
+    orgHour,
+    digestDay: org.digest_day,
+    digestHour,
+    dayMatch: orgDay === org.digest_day,
+    hourMatch: orgHour === digestHour
+  });
+
   // Check if today is the scheduled day
   if (orgDay !== org.digest_day) {
+    console.log(`[Cron] Day mismatch: org day ${orgDay} !== digest day ${org.digest_day}`);
     return false;
   }
 
   // Check if current time is close to scheduled time (within 1 hour window)
   // This accounts for cron running once per hour
   if (orgHour !== digestHour) {
+    console.log(`[Cron] Hour mismatch: org hour ${orgHour} !== digest hour ${digestHour}`);
     return false;
   }
 
@@ -237,16 +276,28 @@ async function shouldSendDigestNow(
     const lastSent = new Date(org.last_digest_sent_at);
     const lastSentOrgTime = new Date(lastSent.toLocaleString('en-US', { timeZone: org.timezone || 'UTC' }));
     
+    console.log(`[Cron] Last sent check:`, {
+      lastSent: lastSent.toISOString(),
+      lastSentOrgTime: lastSentOrgTime.toISOString(),
+      lastSentDate: lastSentOrgTime.getDate(),
+      currentDate: orgTime.getDate(),
+      sameDay: lastSentOrgTime.getDate() === orgTime.getDate() &&
+               lastSentOrgTime.getMonth() === orgTime.getMonth() &&
+               lastSentOrgTime.getFullYear() === orgTime.getFullYear()
+    });
+    
     // If last sent was today (same day), skip
     if (
       lastSentOrgTime.getDate() === orgTime.getDate() &&
       lastSentOrgTime.getMonth() === orgTime.getMonth() &&
       lastSentOrgTime.getFullYear() === orgTime.getFullYear()
     ) {
+      console.log(`[Cron] Already sent today, skipping`);
       return false;
     }
   }
 
+  console.log(`[Cron] ✅ Should send digest NOW`);
   return true;
 }
 

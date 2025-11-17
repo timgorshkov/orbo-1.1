@@ -79,13 +79,31 @@ export default function ProfilePage() {
   // Custom attributes as array (to avoid losing focus when editing keys)
   const [customAttributesArray, setCustomAttributesArray] = useState<Array<{ id: string; key: string; value: string }>>([])
   
-  // Convert custom_attributes object to array for editing
+  // System fields that shouldn't be edited manually (AI-generated or technical)
+  const systemFields = [
+    // AI-extracted fields
+    'interests_keywords', 'recent_asks', 'city_inferred', 'city_confidence',
+    'topics_discussed', 'behavioral_role', 'role_confidence', 'reaction_patterns',
+    'communication_style',
+    // User-defined fields (shown in "Goals & Offers" section - можно показать позже)
+    'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
+    // Technical/meta fields (should only be in logs)
+    'last_enriched_at', 'enrichment_source', 'enrichment_version', 
+    'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
+    'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
+    // Event behavior (shown in separate section)
+    'event_attendance'
+  ];
+  
+  // Convert custom_attributes object to array for editing (excluding system fields)
   const attributesToArray = (attrs: Record<string, any>) => {
-    return Object.entries(attrs).map(([key, value]) => ({
-      id: `attr_${Date.now()}_${Math.random()}`,
-      key,
-      value: String(value)
-    }))
+    return Object.entries(attrs)
+      .filter(([key]) => !systemFields.includes(key)) // Filter out system fields
+      .map(([key, value]) => ({
+        id: `attr_${Date.now()}_${Math.random()}`,
+        key,
+        value: String(value)
+      }))
   }
   
   // Convert array back to object for saving
@@ -172,10 +190,23 @@ export default function ProfilePage() {
     setSaving(true)
     setError(null)
     try {
-      // Convert array back to object for saving
+      // Preserve system fields from original custom_attributes
+      const originalAttrs = profile?.participant?.custom_attributes || {};
+      const systemFieldsToPreserve: Record<string, any> = {};
+      
+      systemFields.forEach(field => {
+        if (originalAttrs[field] !== undefined) {
+          systemFieldsToPreserve[field] = originalAttrs[field];
+        }
+      });
+      
+      // Merge system fields with user-edited attributes
       const dataToSave = {
         ...editForm,
-        custom_attributes: arrayToAttributes(customAttributesArray)
+        custom_attributes: {
+          ...systemFieldsToPreserve, // Keep system fields
+          ...arrayToAttributes(customAttributesArray) // Add user-edited fields
+        }
       }
       
       const response = await fetch(`/api/user/profile?orgId=${org}`, {
