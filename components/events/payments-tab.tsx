@@ -72,9 +72,15 @@ export default function PaymentsTab({ eventId, event }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [editingRegistration, setEditingRegistration] = useState<Registration | null>(null)
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    price: string
+    payment_status: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded'
+    payment_method: string
+    paid_amount: string
+    payment_notes: string
+  }>({
     price: '',
-    payment_status: 'pending' as const,
+    payment_status: 'pending',
     payment_method: '',
     paid_amount: '',
     payment_notes: ''
