@@ -38,6 +38,8 @@ interface MembersFiltersSidebarProps {
   filters: MembersFilters
   onFiltersChange: (filters: MembersFilters) => void
   isAdmin: boolean
+  isOpen: boolean
+  onClose: () => void
 }
 
 export default function MembersFiltersSidebar({
@@ -46,12 +48,45 @@ export default function MembersFiltersSidebar({
   filters,
   onFiltersChange,
   isAdmin,
+  isOpen,
+  onClose,
 }: MembersFiltersSidebarProps) {
-  const [isOpen, setIsOpen] = useState(false)
+
+  // Calculate participant category (shared logic for counts and filtering)
+  const getParticipantCategory = (p: Participant): AutoCategory | null => {
+    const now = new Date()
+    const createdAt = p.created_at ? new Date(p.created_at) : null
+    const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
+    const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
+    const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
+    const activityScore = p.activity_score || 0
+
+    // Priority 1: Silent (no activity in 30 days OR never had activity and created >7 days ago)
+    if (daysSinceActivity > 30 || (!lastActivity && daysSinceCreated > 7)) {
+      return 'silent'
+    }
+
+    // Priority 2: Newcomers (joined <30 days ago AND not silent)
+    if (daysSinceCreated < 30) {
+      return 'newcomer'
+    }
+
+    // Priority 3: Core (activity_score >= 60)
+    if (activityScore >= 60) {
+      return 'core'
+    }
+
+    // Priority 4: Experienced (activity_score >= 30)
+    if (activityScore >= 30) {
+      return 'experienced'
+    }
+
+    // Default: no specific category (will not be counted in any auto-category)
+    return null
+  }
 
   // Calculate auto-category counts
   const categoryCounts = useMemo(() => {
-    const now = new Date()
     const counts = {
       all: participants.length,
       newcomer: 0,
@@ -61,29 +96,9 @@ export default function MembersFiltersSidebar({
     }
 
     participants.forEach((p) => {
-      const createdAt = p.created_at ? new Date(p.created_at) : null
-      const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
-      const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
-      const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
-      const activityScore = p.activity_score || 0
-
-      // Priority 1: Silent (no activity in 30 days)
-      if (daysSinceActivity > 30) {
-        counts.silent++
-        return
-      }
-
-      // Priority 2: Newcomers (joined <30 days ago)
-      if (daysSinceCreated < 30) {
-        counts.newcomer++
-        return
-      }
-
-      // Priority 3 & 4: Core/Experienced based on activity_score
-      if (activityScore >= 60) {
-        counts.core++
-      } else if (activityScore >= 30) {
-        counts.experienced++
+      const category = getParticipantCategory(p)
+      if (category) {
+        counts[category]++
       }
     })
 
@@ -130,28 +145,12 @@ export default function MembersFiltersSidebar({
 
   return (
     <>
-      {/* Mobile Filter Button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden flex items-center gap-2"
-      >
-        <Filter className="w-4 h-4" />
-        Фильтры
-        {activeFiltersCount > 0 && (
-          <span className="ml-1 px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded-full">
-            {activeFiltersCount}
-          </span>
-        )}
-      </Button>
-
-      {/* Sidebar */}
+      {/* Sidebar (hidden by default on all devices) */}
       <div
         className={`
-          fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 
+          fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 
           transform transition-transform duration-200 ease-in-out overflow-y-auto
-          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         <div className="p-4 space-y-6">
@@ -170,7 +169,7 @@ export default function MembersFiltersSidebar({
                   Сбросить
                 </button>
               )}
-              <button onClick={() => setIsOpen(false)} className="lg:hidden">
+              <button onClick={onClose}>
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
@@ -178,10 +177,10 @@ export default function MembersFiltersSidebar({
 
           {/* Auto Categories */}
           <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Категории вовлечённости
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <FilterOption
                 label="Все участники"
                 count={categoryCounts.all}
@@ -194,28 +193,28 @@ export default function MembersFiltersSidebar({
                 count={categoryCounts.newcomer}
                 active={filters.autoCategories.includes('newcomer')}
                 onClick={() => toggleFilter('autoCategories', 'newcomer')}
-                color="blue"
+                color="#3B82F6"
               />
               <FilterOption
                 label="🟢 Ядро"
                 count={categoryCounts.core}
                 active={filters.autoCategories.includes('core')}
                 onClick={() => toggleFilter('autoCategories', 'core')}
-                color="green"
+                color="#10B981"
               />
               <FilterOption
                 label="🟡 Опытные"
                 count={categoryCounts.experienced}
                 active={filters.autoCategories.includes('experienced')}
                 onClick={() => toggleFilter('autoCategories', 'experienced')}
-                color="yellow"
+                color="#F59E0B"
               />
               <FilterOption
                 label="⚫ Молчуны"
                 count={categoryCounts.silent}
                 active={filters.autoCategories.includes('silent')}
                 onClick={() => toggleFilter('autoCategories', 'silent')}
-                color="gray"
+                color="#6B7280"
               />
             </div>
           </div>
@@ -223,10 +222,10 @@ export default function MembersFiltersSidebar({
           {/* Custom Tags (Admin only) */}
           {isAdmin && availableTags.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Ваши теги
               </h4>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="space-y-1 max-h-64 overflow-y-auto">
                 {availableTags.map((tag) => (
                   <FilterOption
                     key={tag.tag_id}
@@ -244,10 +243,10 @@ export default function MembersFiltersSidebar({
           {/* Roles (Admin only) */}
           {isAdmin && (
             <div>
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Роль
               </h4>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <FilterOption
                   label="👑 Владельцы"
                   count={roleCounts.owner}
@@ -275,10 +274,10 @@ export default function MembersFiltersSidebar({
 
           {/* Activity Period */}
           <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Активность
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <FilterOption
                 label="Сегодня"
                 active={filters.activityPeriod === 'today'}
@@ -339,15 +338,48 @@ export default function MembersFiltersSidebar({
         </div>
       </div>
 
-      {/* Overlay for mobile */}
+      {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setIsOpen(false)}
+          className="fixed inset-0 bg-black bg-opacity-50 z-30"
+          onClick={onClose}
         />
       )}
     </>
   )
+}
+
+// Export the category calculation function for use in members-view
+export const getParticipantCategory = (p: Participant): AutoCategory | null => {
+  const now = new Date()
+  const createdAt = p.created_at ? new Date(p.created_at) : null
+  const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
+  const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
+  const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
+  const activityScore = p.activity_score || 0
+
+  // Priority 1: Silent (no activity in 30 days OR never had activity and created >7 days ago)
+  if (daysSinceActivity > 30 || (!lastActivity && daysSinceCreated > 7)) {
+    return 'silent'
+  }
+
+  // Priority 2: Newcomers (joined <30 days ago AND not silent)
+  if (daysSinceCreated < 30) {
+    return 'newcomer'
+  }
+
+  // Priority 3: Core (activity_score >= 60)
+  if (activityScore >= 60) {
+    return 'core'
+  }
+
+  // Priority 4: Experienced (activity_score >= 30)
+  if (activityScore >= 30) {
+    return 'experienced'
+  }
+
+  // Default: no specific category
+  return null
 }
 
 // Helper component for filter options
@@ -362,6 +394,13 @@ interface FilterOptionProps {
 function FilterOption({ label, count, active, onClick, color }: FilterOptionProps) {
   const getBgColor = () => {
     if (!active) return 'hover:bg-gray-100 dark:hover:bg-gray-700'
+    
+    // If color is a hex code, use inline styles
+    if (color?.startsWith('#')) {
+      return 'border-gray-300 dark:border-gray-600'
+    }
+    
+    // Otherwise use predefined Tailwind colors
     switch (color) {
       case 'blue':
         return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
@@ -379,14 +418,17 @@ function FilterOption({ label, count, active, onClick, color }: FilterOptionProp
     }
   }
 
+  const style = active && color?.startsWith('#') ? { backgroundColor: `${color}10`, borderColor: `${color}50` } : {}
+
   return (
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm
+        w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm
         transition-colors border
         ${active ? getBgColor() : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'}
       `}
+      style={style}
     >
       <span className={`font-medium ${active ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}`}>
         {label}

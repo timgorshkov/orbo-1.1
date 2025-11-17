@@ -1,11 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, LayoutGrid, Table as TableIcon } from 'lucide-react'
+import { Search, LayoutGrid, Table as TableIcon, Filter } from 'lucide-react'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
 import MembersTable from './members-table'
-import MembersFiltersSidebar, { type MembersFilters } from './members-filters-sidebar'
+import MembersFiltersSidebar, { type MembersFilters, getParticipantCategory } from './members-filters-sidebar'
 import BulkActionsBar from './bulk-actions-bar'
 
 interface Participant {
@@ -69,9 +69,17 @@ export default function MembersView({
     sources: [],
     activityPeriod: null,
   })
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Bulk selection state
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set())
+
+  const activeFiltersCount =
+    filters.roles.length +
+    filters.tags.length +
+    filters.autoCategories.length +
+    filters.sources.length +
+    (filters.activityPeriod ? 1 : 0)
 
   const toggleParticipantSelection = (participantId: string) => {
     setSelectedParticipants((prev) => {
@@ -217,32 +225,8 @@ export default function MembersView({
     // Auto-category filter
     if (filters.autoCategories.length > 0 && !filters.autoCategories.includes('all')) {
       result = result.filter((p) => {
-        const now = new Date()
-        const createdAt = p.created_at ? new Date(p.created_at) : null
-        const lastActivity = p.last_activity_at ? new Date(p.last_activity_at) : null
-        const daysSinceCreated = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24) : 999
-        const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
-        const activityScore = p.activity_score || 0
-
-        // Priority 1: Silent
-        if (daysSinceActivity > 30 && filters.autoCategories.includes('silent')) {
-          return true
-        }
-
-        // Priority 2: Newcomers
-        if (daysSinceCreated < 30 && filters.autoCategories.includes('newcomer')) {
-          return true
-        }
-
-        // Priority 3 & 4: Core/Experienced
-        if (activityScore >= 60 && filters.autoCategories.includes('core')) {
-          return true
-        }
-        if (activityScore >= 30 && activityScore < 60 && filters.autoCategories.includes('experienced')) {
-          return true
-        }
-
-        return false
+        const category = getParticipantCategory(p)
+        return category && filters.autoCategories.includes(category)
       })
     }
 
@@ -277,7 +261,7 @@ export default function MembersView({
   }, [participants, searchQuery, filters])
 
   return (
-    <div className="flex gap-6">
+    <>
       {/* Filters Sidebar (Admin only) */}
       {isAdmin && (
         <MembersFiltersSidebar
@@ -286,15 +270,35 @@ export default function MembersView({
           filters={filters}
           onFiltersChange={setFilters}
           isAdmin={isAdmin}
+          isOpen={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
         />
       )}
 
       {/* Main Content */}
-      <div className="flex-1 min-w-0">
+      <div className="w-full">
         {/* Поиск и переключатель видов */}
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="mb-6 flex items-center gap-3">
+          {/* Кнопка фильтров (Admin only) */}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen(!filtersOpen)}
+              className="flex items-center gap-2 shrink-0"
+            >
+              <Filter className="w-4 h-4" />
+              <span className="hidden sm:inline">Фильтры</span>
+              {activeFiltersCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded-full">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </Button>
+          )}
+
           {/* Поиск */}
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -387,7 +391,7 @@ export default function MembersView({
         />
       )}
       </div>
-    </div>
+    </>
   )
 }
 
