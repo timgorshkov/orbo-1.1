@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon } from 'lucide-react'
+import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
@@ -319,7 +319,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
 
         <TabsContent value="overview">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Content */}
+            {/* Main Content - Left */}
             <div className="lg:col-span-2 space-y-6">
               {event.description && (
                 <Card>
@@ -332,19 +332,83 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 </Card>
               )}
 
-              {event.is_paid && event.price_info && (
+              {/* Registration Card - Moved to left, prominent */}
+              {event.status === 'published' && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Стоимость и оплата</CardTitle>
+                    <CardTitle>Регистрация</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="whitespace-pre-wrap">{event.price_info}</p>
+                  <CardContent className="space-y-4">
+                    {isRegistered ? (
+                      <>
+                        <div className="text-center py-2">
+                          <div className="text-green-600 font-medium mb-1">
+                            ✓ Вы зарегистрированы
+                          </div>
+                          <div className="text-sm text-neutral-600">
+                            Мы напомним вам о событии
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleDownloadICS}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Добавить в календарь
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleUnregister}
+                            disabled={isPending}
+                          >
+                            {isPending ? 'Отмена...' : 'Отменить регистрацию'}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {event.available_spots === 0 ? (
+                          <div className="text-center py-4">
+                            <div className="text-red-600 font-medium mb-1">
+                              Мест нет
+                            </div>
+                            <div className="text-sm text-neutral-600">
+                              Все места заняты
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {event.available_spots && event.available_spots <= 5 && (
+                              <div className="text-center text-sm text-amber-600 mb-3">
+                                Осталось всего {event.available_spots} мест!
+                              </div>
+                            )}
+                            <Button
+                              className="w-full"
+                              onClick={handleRegister}
+                              disabled={isPending}
+                            >
+                              {isPending ? 'Регистрация...' : 'Зарегистрироваться'}
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                    
+                    {registrationError && (
+                      <div className="mt-3 text-sm text-red-500 text-center">
+                        {registrationError}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
             </div>
 
-            {/* Sidebar */}
+            {/* Sidebar - Right */}
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -392,91 +456,43 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     </div>
                   </div>
 
-                  {event.is_paid && (
-                    <div className="flex items-start">
-                      <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
-                      <div>
-                        <div className="font-medium">Платное</div>
-                        <div className="text-sm text-neutral-600">
-                          См. информацию о стоимости ниже
+                  {/* Payment Info - Moved here, combined */}
+                  {(event.requires_payment || event.is_paid) && (
+                    <div className="pt-4 border-t border-neutral-200">
+                      <div className="flex items-start mb-3">
+                        <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                        <div className="flex-1">
+                          <div className="font-medium">Платное событие</div>
+                          {(event.default_price !== null && event.default_price !== undefined) && (
+                            <div className="text-lg font-semibold text-neutral-900 mt-1">
+                              {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                            </div>
+                          )}
                         </div>
                       </div>
+                      
+                      {/* Payment Instructions */}
+                      {event.payment_instructions && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="text-sm font-medium text-blue-900 mb-2">
+                            Инструкции по оплате:
+                          </div>
+                          <div className="text-sm text-blue-800 whitespace-pre-wrap">
+                            {event.payment_instructions}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Legacy price_info fallback */}
+                      {!event.payment_instructions && event.price_info && (
+                        <div className="mt-3 text-sm text-neutral-700 whitespace-pre-wrap">
+                          {event.price_info}
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
               </Card>
-
-              {/* Registration */}
-              {event.status === 'published' && (
-                <Card>
-                  <CardContent className="pt-6">
-                    {isRegistered ? (
-                      <div>
-                        <div className="mb-4 text-center">
-                          <div className="text-green-600 font-medium mb-1">
-                            ✓ Вы зарегистрированы
-                          </div>
-                          <div className="text-sm text-neutral-600">
-                            Мы напомним вам о событии
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleDownloadICS}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Добавить в календарь
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleUnregister}
-                            disabled={isPending}
-                          >
-                            {isPending ? 'Отмена...' : 'Отменить регистрацию'}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        {event.available_spots === 0 ? (
-                          <div className="text-center py-4">
-                            <div className="text-red-600 font-medium mb-1">
-                              Мест нет
-                            </div>
-                            <div className="text-sm text-neutral-600">
-                              Все места заняты
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            {event.available_spots && event.available_spots <= 5 && (
-                              <div className="mb-3 text-center text-sm text-amber-600">
-                                Осталось всего {event.available_spots} мест!
-                              </div>
-                            )}
-                            <Button
-                              className="w-full"
-                              onClick={handleRegister}
-                              disabled={isPending}
-                            >
-                              {isPending ? 'Регистрация...' : 'Зарегистрироваться'}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {registrationError && (
-                      <div className="mt-3 text-sm text-red-500 text-center">
-                        {registrationError}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </div>
         </TabsContent>
@@ -556,24 +572,53 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Поделиться событием</h3>
             
-            <p className="text-sm text-neutral-600 mb-4">
-              Выберите группы, в которые хотите отправить анонс события:
-            </p>
+            {/* Copy Link Button */}
+            <div className="mb-4">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleCopyPublicLink}
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Ссылка скопирована!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Скопировать ссылку
+                  </>
+                )}
+              </Button>
+            </div>
 
-            <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
-              {telegramGroups.map(group => (
-                <label key={group.id} className="flex items-center p-3 border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedGroups.includes(group.id)}
-                    onChange={() => toggleGroup(group.id)}
-                    className="mr-3"
-                  />
-                  <span className="text-sm">
-                    {group.title || `Группа ${group.tg_chat_id}`}
-                  </span>
-                </label>
-              ))}
+            <div className="border-t border-neutral-200 pt-4 mb-4">
+              <p className="text-sm text-neutral-600 mb-4">
+                Или отправьте анонс в группы Telegram:
+              </p>
+
+              <div className="space-y-2 mb-6 max-h-60 overflow-y-auto">
+                {telegramGroups.length === 0 ? (
+                  <p className="text-sm text-neutral-500 text-center py-4">
+                    Нет подключенных Telegram групп
+                  </p>
+                ) : (
+                  telegramGroups.map(group => (
+                    <label key={group.id} className="flex items-center p-3 border border-neutral-200 rounded-lg hover:bg-neutral-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroups.includes(group.id)}
+                        onChange={() => toggleGroup(group.id)}
+                        className="mr-3"
+                      />
+                      <span className="text-sm">
+                        {group.title || `Группа ${group.tg_chat_id}`}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
 
             {notifyError && (
@@ -588,7 +633,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 disabled={isPending || selectedGroups.length === 0}
                 className="flex-1"
               >
-                {isPending ? 'Отправка...' : 'Отправить'}
+                {isPending ? 'Отправка...' : 'Отправить в группы'}
               </Button>
               <Button
                 variant="outline"
@@ -596,11 +641,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   setShowNotifyDialog(false)
                   setNotifyError(null)
                   setSelectedGroups([])
+                  setLinkCopied(false)
                 }}
                 disabled={isPending}
                 className="flex-1"
               >
-                Отмена
+                Закрыть
               </Button>
             </div>
           </div>

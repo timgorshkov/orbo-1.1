@@ -51,7 +51,15 @@ export async function generateMetadata({
       org.logo_url
     )
     
-    const absoluteOgImage = getAbsoluteOGImageUrl(ogImage)
+    // Ensure absolute URL for OG image
+    // If cover_image_url is from Supabase Storage, it's already absolute
+    // If it's relative, make it absolute
+    let absoluteOgImage: string
+    if (ogImage.startsWith('http://') || ogImage.startsWith('https://')) {
+      absoluteOgImage = ogImage
+    } else {
+      absoluteOgImage = getAbsoluteOGImageUrl(ogImage)
+    }
     
     // Format event date
     const eventDate = event.event_date 
@@ -64,8 +72,24 @@ export async function generateMetadata({
     
     const eventTime = event.start_time?.substring(0, 5) || ''
     
-    const description = event.description || 
-      `${event.event_type === 'online' ? 'Онлайн' : 'Оффлайн'} событие от ${org.name}${eventDate ? ` • ${eventDate}` : ''}${eventTime ? ` в ${eventTime}` : ''}`
+    // Create description: prefer event description, fallback to structured info
+    let description: string
+    if (event.description && event.description.trim().length > 0) {
+      // Use event description, but truncate if too long (OG limit ~200 chars)
+      description = event.description.length > 200 
+        ? event.description.substring(0, 197) + '...'
+        : event.description
+    } else {
+      // Fallback: structured description
+      const parts = [
+        event.event_type === 'online' ? 'Онлайн' : 'Оффлайн',
+        'событие',
+        eventDate && `на ${eventDate}`,
+        eventTime && `в ${eventTime}`,
+        `от ${org.name}`
+      ].filter(Boolean)
+      description = parts.join(' ')
+    }
     
     return {
       title: `${event.title} | ${org.name}`,
@@ -76,7 +100,7 @@ export async function generateMetadata({
         url: `https://app.orbo.ru/p/${orgId}/events/${eventId}`,
         title: event.title,
         description,
-        siteName: 'Orbo',
+        siteName: org.name,
         images: [
           {
             url: absoluteOgImage,
