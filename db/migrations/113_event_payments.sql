@@ -189,8 +189,10 @@ CREATE POLICY "Admins can update payment info"
   FOR UPDATE
   USING (
     EXISTS (
-      SELECT 1 FROM memberships m
-      WHERE m.org_id = event_registrations.org_id
+      SELECT 1 
+      FROM events e
+      INNER JOIN memberships m ON m.org_id = e.org_id
+      WHERE e.id = event_registrations.event_id
         AND m.user_id = auth.uid()
         AND m.role IN ('owner', 'admin')
     )
