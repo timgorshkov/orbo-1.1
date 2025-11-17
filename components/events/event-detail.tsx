@@ -345,9 +345,34 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <div className="text-green-600 font-medium mb-1">
                             ✓ Вы зарегистрированы
                           </div>
-                          <div className="text-sm text-neutral-600">
+                          <div className="text-sm text-neutral-600 mb-3">
                             Мы напомним вам о событии
                           </div>
+                          
+                          {/* Payment Info for Registered Users */}
+                          {(event.requires_payment || event.is_paid) && (
+                            <div className="mt-4 pt-4 border-t border-neutral-200">
+                              {(event.default_price !== null && event.default_price !== undefined) && (
+                                <div className="text-lg font-semibold text-neutral-900 mb-2">
+                                  К оплате: {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                </div>
+                              )}
+                              {event.payment_instructions && (
+                                <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
+                                  {event.payment_instructions}
+                                </div>
+                              )}
+                              {!event.payment_instructions && event.price_info && (
+                                <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
+                                  {event.price_info}
+                                </div>
+                              )}
+                              {/* Placeholder for future payment link */}
+                              {/* <Button className="w-full mt-3" size="sm">
+                                Оплатить онлайн
+                              </Button> */}
+                            </div>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Button
@@ -456,10 +481,10 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     </div>
                   </div>
 
-                  {/* Payment Info - Moved here, combined */}
+                  {/* Payment Info - Simplified display */}
                   {(event.requires_payment || event.is_paid) && (
                     <div className="pt-4 border-t border-neutral-200">
-                      <div className="flex items-start mb-3">
+                      <div className="flex items-start mb-2">
                         <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
                         <div className="flex-1">
                           <div className="font-medium">Платное событие</div>
@@ -471,21 +496,16 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                         </div>
                       </div>
                       
-                      {/* Payment Instructions */}
+                      {/* Payment Instructions - Simplified, no background */}
                       {event.payment_instructions && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <div className="text-sm font-medium text-blue-900 mb-2">
-                            Инструкции по оплате:
-                          </div>
-                          <div className="text-sm text-blue-800 whitespace-pre-wrap">
-                            {event.payment_instructions}
-                          </div>
+                        <div className="mt-2 text-xs text-neutral-500 whitespace-pre-wrap">
+                          {event.payment_instructions}
                         </div>
                       )}
                       
                       {/* Legacy price_info fallback */}
                       {!event.payment_instructions && event.price_info && (
-                        <div className="mt-3 text-sm text-neutral-700 whitespace-pre-wrap">
+                        <div className="mt-2 text-xs text-neutral-500 whitespace-pre-wrap">
                           {event.price_info}
                         </div>
                       )}
