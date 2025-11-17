@@ -18,6 +18,11 @@ interface Participant {
   is_group_creator?: boolean // ✅ Создатель группы в Telegram (синий бейдж)
   is_admin?: boolean // Администратор (организации или группы)
   custom_title?: string | null
+  tags?: Array<{
+    id: string
+    name: string
+    color: string
+  }>
 }
 
 interface MemberCardProps {
@@ -70,6 +75,26 @@ export default function MemberCard({ participant }: MemberCardProps) {
         <p className="text-sm text-center text-gray-600 line-clamp-2">
           {participant.bio}
         </p>
+      )}
+
+      {/* Tags (admin only, max 2 displayed) */}
+      {participant.tags && participant.tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+          {participant.tags.slice(0, 2).map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              style={{ backgroundColor: tag.color }}
+            >
+              {tag.name}
+            </span>
+          ))}
+          {participant.tags.length > 2 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+              +{participant.tags.length - 2}
+            </span>
+          )}
+        </div>
       )}
     </Link>
   )

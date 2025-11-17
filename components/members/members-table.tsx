@@ -1,6 +1,6 @@
 'use client'
 
-import { User, Mail, AtSign, Calendar, Tag } from 'lucide-react'
+import { Mail, AtSign } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   Table,
@@ -17,6 +17,7 @@ interface Participant {
   id: string
   full_name: string | null
   tg_username: string | null
+  username?: string | null // Telegram username (alternative field name)
   tg_user_id: string | null
   email: string | null
   bio: string | null
@@ -24,11 +25,17 @@ interface Participant {
   participant_status: string
   photo_url: string | null
   created_at?: string
+  last_activity_at?: string | null
   is_owner?: boolean // Для обратной совместимости (= is_org_owner)
   is_org_owner?: boolean // ✅ Владелец организации (фиолетовая корона)
   is_group_creator?: boolean // ✅ Создатель группы в Telegram (синий бейдж)
   is_admin?: boolean // Администратор (организации или группы)
   custom_title?: string | null
+  tags?: Array<{
+    id: string
+    name: string
+    color: string
+  }>
 }
 
 interface MembersTableProps {
@@ -44,43 +51,39 @@ export default function MembersTable({ participants }: MembersTableProps) {
     router.push(`/p/${orgId}/members/${participantId}`)
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLastActivity = (dateString?: string | null) => {
     if (!dateString) return '—'
-    return new Date(dateString).toLocaleDateString('ru-RU', {
+    
+    const activityDate = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - activityDate.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    
+    // Today - show time
+    if (diffDays === 0) {
+      if (diffMins < 5) return 'только что'
+      if (diffMins < 60) return `${diffMins} мин назад`
+      return activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    }
+    
+    // Yesterday
+    if (diffDays === 1) {
+      return 'вчера'
+    }
+    
+    // Less than 7 days
+    if (diffDays < 7) {
+      return `${diffDays} дн назад`
+    }
+    
+    // More than 7 days - show date
+    return activityDate.toLocaleDateString('ru-RU', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     })
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'participant':
-        return 'Участник'
-      case 'event_attendee':
-        return 'Событие'
-      case 'candidate':
-        return 'Кандидат'
-      case 'excluded':
-        return 'Исключён'
-      default:
-        return status
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'participant':
-        return 'bg-green-100 text-green-800'
-      case 'event_attendee':
-        return 'bg-blue-100 text-blue-800'
-      case 'candidate':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'excluded':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
   }
 
   return (
@@ -92,8 +95,8 @@ export default function MembersTable({ participants }: MembersTableProps) {
             <TableHead>Telegram</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Роль</TableHead>
-            <TableHead>Статус</TableHead>
-            <TableHead className="text-right">Добавлен</TableHead>
+            <TableHead>Теги</TableHead>
+            <TableHead className="text-right">Последняя активность</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -128,16 +131,16 @@ export default function MembersTable({ participants }: MembersTableProps) {
 
               {/* Telegram */}
               <TableCell>
-                {participant.tg_username ? (
+                {(participant.tg_username || participant.username) ? (
                   <a
-                    href={`https://t.me/${participant.tg_username}`}
+                    href={`https://t.me/${participant.tg_username || participant.username}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <AtSign className="h-4 w-4" />
-                    {participant.tg_username}
+                    {participant.tg_username || participant.username}
                   </a>
                 ) : (
                   <span className="text-gray-400">—</span>
@@ -172,24 +175,37 @@ export default function MembersTable({ participants }: MembersTableProps) {
                 />
               </TableCell>
 
-              {/* Статус */}
+              {/* Теги */}
               <TableCell>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${getStatusColor(
-                    participant.participant_status
-                  )}`}
-                >
-                  <Tag className="h-3 w-3" />
-                  {getStatusLabel(participant.participant_status)}
-                </span>
+                {participant.tags && participant.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {participant.tags.slice(0, 2).map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                        title={tag.name}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                    {participant.tags.length > 2 && (
+                      <span
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700"
+                        title={`+${participant.tags.length - 2} ещё`}
+                      >
+                        +{participant.tags.length - 2}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
               </TableCell>
 
-              {/* Добавлен */}
+              {/* Последняя активность */}
               <TableCell className="text-right text-sm text-gray-600">
-                <div className="inline-flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  {formatDate(participant.created_at)}
-                </div>
+                {formatLastActivity(participant.last_activity_at)}
               </TableCell>
             </TableRow>
           ))}

@@ -10,6 +10,7 @@ import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Came
 import PhotoUploadModal from './photo-upload-modal'
 import { AIEnrichmentButton } from './ai-enrichment-button'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
+import ParticipantTagsManager from './participant-tags-manager'
 
 interface ParticipantProfileCardProps {
   orgId: string
@@ -628,6 +629,15 @@ export default function ParticipantProfileCard({
               )}
             </div>
           )}
+
+          {/* Participant Tags (Admin Only) */}
+          <div className="pt-4 border-t border-gray-200">
+            <ParticipantTagsManager
+              participantId={participant.id}
+              orgId={orgId}
+              isAdmin={isAdmin}
+            />
+          </div>
 
           {/* Groups - только для админа или самого участника */}
           {(isAdmin || canEdit) && detail.groups.length > 0 && (

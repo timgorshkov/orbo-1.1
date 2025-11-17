@@ -117,6 +117,21 @@ export default async function OrganizationSettingsPage({ params }: { params: Pro
                     </div>
                   </div>
                 </Link>
+
+                <Link
+                  href={`/p/${orgId}/settings/tags`}
+                  className="block p-4 border rounded-lg hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">🏷️</div>
+                    <div>
+                      <h3 className="font-medium">Теги участников</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Создание и управление тегами для CRM
+                      </p>
+                    </div>
+                  </div>
+                </Link>
               </div>
             </CardContent>
           </Card>

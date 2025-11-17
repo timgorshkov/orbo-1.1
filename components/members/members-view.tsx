@@ -17,6 +17,13 @@ interface Participant {
   participant_status: string
   photo_url: string | null
   created_at?: string
+  last_activity_at?: string | null
+  username?: string | null // Telegram username
+  tags?: Array<{
+    id: string
+    name: string
+    color: string
+  }>
 }
 
 interface MembersViewProps {
@@ -36,7 +43,8 @@ export default function MembersView({
 }: MembersViewProps) {
   const [participants] = useState<Participant[]>(initialParticipants)
   const [searchQuery, setSearchQuery] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('cards')
+  // Default view mode: table for admins, cards for others
+  const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'table' : 'cards')
   
   // Show admin features only if user is admin AND in admin mode
   const showAdminFeatures = isAdmin && adminMode

@@ -122,6 +122,44 @@ export default async function MembersPage({ params, searchParams }: {
     }
   }
 
+  // Fetch tags for all participants (admin only)
+  if (isAdmin && participants && participants.length > 0) {
+    const participantIds = participants.map(p => p.id)
+    
+    // Get all tag assignments for these participants
+    const { data: tagAssignments } = await adminSupabase
+      .from('participant_tag_assignments')
+      .select(`
+        participant_id,
+        tag:participant_tags(
+          id,
+          name,
+          color
+        )
+      `)
+      .in('participant_id', participantIds)
+    
+    if (tagAssignments) {
+      // Group tags by participant_id
+      const tagsByParticipant = new Map<string, any[]>()
+      
+      for (const assignment of tagAssignments) {
+        if (!assignment.tag) continue
+        
+        const participantId = assignment.participant_id
+        if (!tagsByParticipant.has(participantId)) {
+          tagsByParticipant.set(participantId, [])
+        }
+        tagsByParticipant.get(participantId)!.push(assignment.tag)
+      }
+      
+      // Attach tags to each participant
+      for (const participant of participants) {
+        participant.tags = tagsByParticipant.get(participant.id) || []
+      }
+    }
+  }
+
   console.log(`[Members Page] Fetched ${participants?.length || 0} participants for org ${orgId}`)
 
   // Fetch invites if admin
