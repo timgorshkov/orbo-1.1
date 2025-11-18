@@ -36,14 +36,51 @@ export async function POST(
     }
 
     // Получаем группу и проверяем доступ
+    // ⚠️ ID группы может быть отрицательным (после получения прав админа ботом)
+    // или положительным (в JSON экспорте), поэтому ищем по обоим вариантам
+    // Также groupId может быть как id (автоинкремент), так и tg_chat_id
     const supabaseAdmin = createAdminServer();
-    const { data: group, error: groupError } = await supabaseAdmin
-      .from('telegram_groups')
-      .select('*, org_telegram_groups!inner(org_id)')
-      .eq('id', groupId)
-      .single();
+    const numericGroupId = Number(groupId);
+    const absGroupId = Math.abs(numericGroupId);
+    
+    // Пробуем найти группу по разным вариантам (как в detail/route.ts)
+    const searchVariants = [
+      { column: 'id', value: numericGroupId, enabled: !Number.isNaN(numericGroupId) },
+      { column: 'id', value: groupId, enabled: true },
+      { column: 'tg_chat_id', value: groupId, enabled: true },
+      { column: 'tg_chat_id', value: numericGroupId, enabled: !Number.isNaN(numericGroupId) },
+      // Также пробуем по абсолютному значению для tg_chat_id (на случай изменения знака)
+      { column: 'tg_chat_id', value: absGroupId, enabled: !Number.isNaN(numericGroupId) },
+      { column: 'tg_chat_id', value: -absGroupId, enabled: !Number.isNaN(numericGroupId) },
+    ];
 
-    if (groupError || !group) {
+    let group: any = null;
+    let groupError: any = null;
+
+    for (const variant of searchVariants) {
+      if (!variant.enabled) continue;
+
+      const { data, error } = await supabaseAdmin
+        .from('telegram_groups')
+        .select('*, org_telegram_groups!inner(org_id)')
+        .eq(variant.column, variant.value)
+        .maybeSingle();
+
+      if (data) {
+        group = data;
+        break;
+      }
+
+      if (error?.code !== 'PGRST116') { // not-a-single-row error from maybeSingle
+        groupError = error;
+      }
+    }
+
+    if (groupError && !group) {
+      console.error('Group fetch error:', groupError);
+    }
+
+    if (!group) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
