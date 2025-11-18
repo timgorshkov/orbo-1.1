@@ -83,26 +83,8 @@ export async function POST(request: Request) {
       tg_chat_id: og.tg_chat_id
     })) || [];
     
-    // Fallback: пытаемся получить группы напрямую из telegram_groups
-    if (groups.length === 0) {
-      console.log('No groups found via org_telegram_groups, trying direct query...');
-      const { data: directGroups, error: groupsError } = await supabaseService
-        .from('telegram_groups')
-        .select('*')
-        .eq('org_id', orgId);
-      
-      if (groupsError) {
-        console.error('Error fetching groups:', groupsError);
-        return NextResponse.json({ 
-          error: 'Failed to fetch groups',
-          details: groupsError
-        }, { status: 500 });
-      }
-      
-      if (directGroups && directGroups.length > 0) {
-        groups.push(...directGroups);
-      }
-    }
+    // Note: No fallback to direct telegram_groups query - org_id column doesn't exist
+    // All groups must be linked via org_telegram_groups table
     
     if (groups.length === 0) {
       console.log(`No Telegram groups found for org ${orgId}`);

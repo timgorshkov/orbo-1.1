@@ -97,16 +97,30 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
   };
 
   // 1. Прямые связи через поле org_id (legacy-поведение)
-  const { data: directGroupsData, error: directError } = await supabase
-    .from('telegram_groups')
-    .select('*')
-    .eq('org_id', orgId);
+  // Note: org_id column may not exist in telegram_groups (new schema uses org_telegram_groups)
+  let directGroups: any[] = [];
+  try {
+    const { data: directGroupsData, error: directError } = await supabase
+      .from('telegram_groups')
+      .select('*')
+      .eq('org_id', orgId);
 
-  if (directError && directError.code !== '42703') {
-    console.error('Error fetching direct telegram groups:', directError);
+    if (directError) {
+      // Column doesn't exist (42703) - this is expected for new schema
+      if (directError.code === '42703') {
+        console.log('telegram_groups.org_id column does not exist, skipping direct query (using org_telegram_groups only)');
+      } else {
+        console.error('Error fetching direct telegram groups:', directError);
+      }
+    } else {
+      directGroups = filterActiveGroups(directGroupsData);
+    }
+  } catch (err: any) {
+    // Silently handle - org_id column may not exist
+    if (err?.code !== '42703') {
+      console.error('Unexpected error fetching direct groups:', err);
+    }
   }
-
-  const directGroups = filterActiveGroups(directGroupsData);
 
   directGroups.forEach(group => {
     const chatId = normalizeChatId(group.tg_chat_id);

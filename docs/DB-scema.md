@@ -1,61 +1,99 @@
-# Database Schema Snapshot (Supabase)
+# Database Schema Snapshot — Orbo 1.1 (Nov 2025)
 
-_Last updated: 2025-02-14_
+Source of truth: Supabase migrations (`db/migrations/*`). Types in `lib/database.types.ts` are outdated; regenerate after schema changes. Planned additions listed here align with `docs/ROADMAP_FINAL_NOV15_2025.md`.
 
 ## 1. Core Entities
+| Table | Key Columns | Description |
+| --- | --- | --- |
+| `organizations` | `id uuid PK`, `name`, `plan` | Tenant/workspace definition. `plan` unused currently. |
+| `memberships` | `(org_id, user_id) PK`, `role`, `created_at` | Links Supabase auth user to organization with role (`owner`, `admin`, `member`). |
+| `organization_invites` | `id uuid PK`, `org_id`, `email`, `role`, `invite_code`, `expires_at` | Email invites for admins/members. |
+| `organization_invite_uses` | `id`, `invite_id`, `user_id`, `used_at` | Tracks invite consumption. |
+| `superadmins` | `user_id PK` | Global admin list for `/superadmin` UI. |
+
+## 2. Participants & Activity
+| Table | Key Columns | Notes |
+| --- | --- | --- |
+| `participants` | `id uuid PK`, `org_id`, `tg_user_id`, `full_name`, `email`, `phone`, `participant_status`, `merged_into` | Records members imported from Telegram or created manually. `merged_into` indicates dedupe.
+| `participant_groups` | `(participant_id, tg_group_id) PK`, `joined_at`, `left_at` | Many-to-many between participants and Telegram groups. `tg_group_id` references `telegram_groups.tg_chat_id`.
+| `participant_messages` | `id`, `participant_id`, `tg_group_id`, `message_count`, `first_message_at`, `last_message_at` | Aggregate message stats per participant/group (from migration 38).
+| `participant_merge_history` | `id`, `org_id`, `source_participant_id`, `target_participant_id`, `reason`, `created_at` | Audit merges (logging currently disabled in API).
+| `activity_events` | `id`, `org_id`, `event_type`, `tg_chat_id`, `participant_id`, `meta jsonb`, `created_at` | Normalized Telegram events (join/leave/message/checkin). Migration 42 renamed columns (`event_type`).
+| `group_metrics` | `id`, `org_id`, `tg_chat_id`, `date`, `message_count`, `join_count`, `leave_count`, `active_members` | Daily aggregates for dashboard heatmaps.
+
+## 3. Telegram Integration
+| Table | Key Columns | Notes |
+| --- | --- | --- |
+| `telegram_groups` | `id serial PK`, `org_id`, `tg_chat_id unique`, `title`, `bot_status`, `last_sync_at`, `analytics_enabled`, `added_by_user_id` | Canonical list of chats. When webhook sees new chat it inserts row with `org_id = null` until mapped.
+| `org_telegram_groups` | `id`, `org_id`, `tg_chat_id`, `added_by` | Junction table connecting groups to orgs (with metadata such as `connected_at`).
+| `telegram_group_admins` | `id`, `tg_chat_id`, `tg_user_id`, `is_owner`, `is_admin`, `custom_title`, `expires_at` | Cached Telegram admin status (migration 43).
+| `user_group_admin_status` | `id`, `user_id`, `tg_chat_id`, `is_admin`, `checked_at` | Tracks whether a Supabase user is admin in Telegram group.
+| `telegram_auth_codes` | `code`, `org_id`, `user_id`, `telegram_user_id`, `expires_at`, `consumed_at` | DM verification codes (migration 33).
+| `telegram_chat_migrations` | `id`, `old_chat_id`, `new_chat_id`, `migrated_at` | Handles chat migration events (migration 69).
+| `telegram_import_batches` | `id`, `org_id`, `status`, `created_at`, `error` | Tracks bulk import jobs (migration 57).
+| `telegram_bots` | `id`, `bot_type`, `token`, `status`, `last_health_check` | Optional management table (migration 04).
+
+## 4. Events & Attendance
+| Table | Key Columns | Notes |
+| --- | --- | --- |
+| `events` | `id uuid PK`, `org_id`, `title`, `event_type`, `location_info`, `event_date`, `start_time`, `end_time`, `capacity`, `status`, `is_public`, `created_by`, `updated_at` | Created via UI `/app/app/[org]/events`. Columns `event_date`, `start_time`, `end_time` from migration 19.
+| `event_registrations` | `id uuid PK`, `event_id`, `participant_id`, `status`, `registration_source`, `registered_at`, `qr_token` | `qr_token` hashed planned; currently stored plain.
+| `event_telegram_notifications` | `id uuid PK`, `event_id`, `tg_group_id`, `notification_type`, `scheduled_at`, `sent_at`, `status`, `error_message` | Cron `/api/cron/event-notifications` manages records.
+
+## 5. Materials & Knowledge Base
+| Table | Key Columns | Notes |
+| --- | --- | --- |
+| `material_folders` | `id uuid PK`, `org_id`, `parent_id`, `name`, `created_at` | Hierarchical tree (depth limited to 3 via `MaterialService`).
+| `material_items` | `id uuid PK`, `org_id`, `folder_id`, `kind`, `title`, `content_md`, `file_path`, `url`, `created_by`, `created_at` | `content_md` column introduced after migration 42; ensure types updated.
+| `material_access` | `id serial PK`, `org_id`, `item_id`, `participant_id`, `tg_group_id` | Access control entries. Unique constraint on `(item_id, tg_group_id, participant_id)`.
+
+## 6. Auth & Profiles
+| Table | Key Columns | Notes |
+| --- | --- | --- |
+| `profiles` | `id uuid PK`, `full_name`, `username`, `telegram_user_id`, `avatar_url`, `bio` | Mirror of Supabase auth profile (custom table).
+| `user_telegram_accounts` | `user_id PK`, `org_id`, `telegram_user_id`, `telegram_username`, `is_verified`, `verification_code`, `verification_expires_at`, `updated_at` | Links Supabase user to Telegram identity per org.
+| `user_organizations` (view) | Combines memberships  roles for quick lookup in UI.
+
+## 7. Supporting Tables
+| Table | Purpose |
+| --- | --- |
+| `system_heartbeats` *(planned)* | Wave 0 addition for cron health.
+| `admin_action_log` *(planned)* | Wave 0 addition to record admin actions.
+| `telegram_update_receipts` *(planned)* | Wave 0 dedupe table for webhook idempotency.
+| `subscriptions`, `payment_intents`, `payment_events`, `org_ledger_entries` *(planned)* | Wave 1 payments.
+| `extensions`, `extension_installations`, `extension_events`, `extension_api_keys` *(planned)* | Wave 2 marketplace.
+| `org_referrals`, `churn_alerts` *(planned)* | Wave 2 growth hooks.
+
+## 8. Relationships Diagram
 ```mermaid
 erDiagram
-  organizations ||--o{ memberships : contains
-  organizations ||--o{ participants : contains
-  organizations ||--o{ telegram_groups : contains
-  organizations ||--o{ events : schedules
-  organizations ||--o{ materials : owns
-  participants ||--o{ participant_groups : joins
-  participants ||--o{ event_registrations : registers
-  telegram_groups ||--o{ participant_groups : tracks
-  telegram_groups ||--o{ group_metrics : aggregates
-  events ||--o{ event_registrations : tickets
+  organizations ||--o{ memberships : "has"
+  organizations ||--o{ participants : "has"
+  organizations ||--o{ telegram_groups : "connects"
+  organizations ||--o{ events : "hosts"
+  organizations ||--o{ material_items : "owns"
+  organizations ||--o{ material_folders : "owns"
+  organizations ||--o{ activity_events : "logs"
+  organizations ||--o{ group_metrics : "aggregates"
+  participants ||--o{ participant_groups : "joins"
+  participants ||--o{ event_registrations : "registers"
+  telegram_groups ||--o{ participant_groups : "maps"
+  telegram_groups ||--o{ event_telegram_notifications : "announce"
+  events ||--o{ event_registrations : "collects"
+  material_folders ||--o{ material_items : "contains"
+  users ||--o{ memberships : "belongs"
+  users ||--o{ user_telegram_accounts : "links"
 ```
 
-## 2. Key Tables
-| Table | Purpose | Notable Columns |
-| --- | --- | --- |
-| `organizations` | Tenant container | `id`, `name`, `plan`, `created_at` |
-| `memberships` | User roles per org | `org_id`, `user_id`, `role`, `created_at` |
-| `telegram_groups` | Canonical chat registry | `id`, `org_id`, `tg_chat_id`, `title`, `bot_status`, `analytics_enabled`, `last_sync_at` |
-| `org_telegram_groups` | Many-to-many mapping between orgs and chats | `org_id`, `tg_chat_id`, `status`, `archived_at` |
-| `participants` | CRM participant profiles | `id`, `org_id`, `tg_user_id`, `full_name`, `email`, `participant_status`, `custom_attributes`, `merged_into` |
-| `participant_groups` | Membership per Telegram group | `participant_id`, `tg_chat_id`, `joined_at`, `left_at` |
-| `activity_events` | Activity feed (join/leave/message/checkin) | `id`, `org_id`, `type`, `participant_id`, `tg_chat_id`, `meta`, `created_at` |
-| `group_metrics` | Daily aggregates per chat | `org_id`, `tg_chat_id`, `date`, `message_count`, `join_count`, `leave_count` |
-| `events` | Events with scheduling metadata | `id`, `org_id`, `title`, `event_date`, `start_time`, `capacity`, `status`, `location`, `description`, `calendar_url` |
-| `event_registrations` | RSVP  attendance | `id`, `org_id`, `event_id`, `participant_id`, `status`, `qr_token`, `registered_at` |
-| `telegram_group_admins` | Cached admin snapshots | `tg_chat_id`, `tg_user_id`, `is_owner`, `is_admin`, `custom_title`, `expires_at` |
-| `user_telegram_accounts` | Linked Telegram identities | `user_id`, `org_id`, `telegram_user_id`, `telegram_username`, `is_verified`, `verified_at` |
-| `telegram_auth_codes` | Temporary codes for DM auth | `code`, `telegram_user_id`, `org_id`, `expires_at`, `session_url` |
-| `organization_invites` | Invite links for onboarding | `id`, `org_id`, `token`, `role`, `expires_at`, `max_uses` |
-| `materials` / `material_items` | Knowledge base (folder  item) | folder tree  doc/file/link metadata |
+## 9. Migration Notes
+- Migration 42 removed `telegram_updates` (idempotency table) — Wave 0 will introduce replacement `telegram_update_receipts`.
+- Migration 43 fixes `telegram_group_admins` schema and introduces TTL for admin cache.
+- Migration 69 adds `telegram_chat_migrations` to map supergroup migrations; ensure webhook handles `migrate_to_chat_id` events.
+- Migration 73 (per docs) fixed member count triggers; verify deployed state to avoid stale triggers.
 
-## 3. Supporting Functions & Views
-| Object | Description |
-| --- | --- |
-| `is_org_member_rpc(org uuid)` | Security-definer RPC to validate membership (used in `requireOrgAccess`). |
-| `get_user_role_in_org(p_user_id uuid, p_org_id uuid)` | Returns role string for UI gating. |
-| `sync_telegram_admins(p_org_id uuid)` | Syncs Telegram admin cache into memberships/admin status tables. |
-| `participant_activity_summary` view | Aggregated activity metrics per participant (joins, messages). |
-| `org_dashboard_stats(_org uuid)` | Returns basic counts for dashboard (legacy). |
+## 10. Schema Maintenance Checklist
+- [ ] Regenerate `lib/database.types.ts` using `npx supabase gen types typescript ...`.
+- [ ] Document new tables in `/docs/Tech-Notes.md` after migrations.
+- [ ] Run Supabase migration diff before prod deploys; keep `db/create_tables_now.sql` aligned.
+- [ ] Add seeds for local dev (org  Telegram group stub) in `db/demo_data.sql`.
 
-## 4. Security & RLS
-- RLS enabled on core tables (`organizations`, `memberships`, `telegram_groups`, `participants`, `activity_events`, `events`, `event_registrations` etc.). Policies enforce membership by `org_id` with admin-only write access.
-- Service-role clients bypass RLS (used in server handlers). Guard by filtering `org_id` explicitly.
-- Sensitive operations (e.g., `sync_telegram_admins`) implemented as security-definer SQL functions.
-
-## 5. Upcoming Changes (Recommended)
-- **Payments**: Add `subscriptions`, `invoices`, `payment_events` tables with foreign keys to `organizations`.
-- **Audit Logging**: New `admin_action_log` (id, org_id, actor_id, action, target_type, target_id, payload JSONB, created_at).
-- **Telegram Health**: Add `telegram_webhook_events` (update_id, tg_chat_id, org_id, status, error_code, processed_at).
-- **Extensions**: Introduce `extensions`, `extension_installations`, `extension_permissions` for marketplace.
-
-## 6. Migration Hygiene
-- Use sequential SQL migrations in `db/migrations`. Latest migrations (40–57) clean up admin sync tables, add unique constraints, and import participant photos. Continue to keep change logs in `/docs` alongside migrations to ease audits.
-- When introducing hashed QR tokens, add migration converting existing plaintext tokens and backfilling `qr_token_hash` with safe fallback.

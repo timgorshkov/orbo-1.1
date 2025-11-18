@@ -1,167 +1,157 @@
-# Orbo 1.1 Functional Audit
-
-_Last reviewed: 2025-02-14_
+# Orbo 1.1 Functional Audit (November 2025)
 
 ## 1. Executive Summary
-- **Architecture**: Next.js 14 monolith deployed as Vercel-style serverless functions backed by Supabase (Postgres  Auth  Storage). Telegram ingestion, CRM operations, and dashboard APIs all run in-app using service-role Supabase clients for RLS bypass. No background job runner beyond cron-like API routes.
-- **Strengths**: Mature Telegram ingestion stack (group discovery, admin sync, activity fan-out), deep participant enrichment, rich dashboard heuristics, and end-to-end event registration  QR check-in flows. Documentation around Telegram ops is extensive.
-- **Weaknesses**: Lack of guardrails on service-role usage, missing webhook idempotency and rate protection, manual tenant mapping for groups, and no production-ready billing/payments. Observability (structured logs, metrics, tracing) is virtually absent; CI only provides linting.
-- **Opportunities**: Short-term stabilization around Telegram healthchecks, multi-tenant boundaries, and onboarding UX will unlock the roadmap. Mid-term, payments/events analytics and marketplace scaffolding require new services  governance.
+- **Architecture**: Single Next.js 14 application (App Router) hosted on Vercel with Supabase for auth/database. Telegram bots are driven through `/api/telegram/*` routes using long-lived service-role clients.
+- **Strengths**: Mature Supabase schema covering organizations, participants, materials, events, and Telegram analytics. Rich admin UI for members, dashboard, and Telegram operations. Event processing pipeline normalizes updates and tracks activity events.
+- **Key gaps**: Widespread service-role usage inside server components/API routes bypasses RLS; payments are unimplemented; webhook processing lacks idempotency and rate limiting; observability and test coverage are minimal; Supabase type definitions are stale relative to migrations.
+- **Strategic alignment**: Matches MVP focus on Telegram-first CRM and events, but corporate offboarding, growth hooks, and marketplace scaffolding remain conceptual. This audit now maps directly to `docs/ROADMAP_FINAL_NOV15_2025.md` (solo execution cadence) so that stabilization/security fixes block any Wave 1 scope.
 
-## 2. Architecture Overview
-
-### 2.1 System Context
+## 2. High-level Architecture
 ```mermaid
-flowchart LR
+graph TD
   subgraph Client
-    A[Next.js App Router UI]
-    B[Telegram Widgets]
+    Browser[Next.js App Router]
   end
-  subgraph Backend
-    C[Next.js Route Handlers]
-    D[Server Components]
+  subgraph Vercel
+    App[React Server Components]
+    API[API Routes / Server Actions]
   end
   subgraph Supabase
-    E[(Postgres  Functions)]
-    F[Auth]
-    G[Storage]
-  end
-  subgraph External
-    H[Telegram Bot API]
-    I[Mailgun]
-  end
-
-  A <--> C
-  B --> C
-  C <--> E
-  C --> F
-  C --> G
-  C <--> H
-  C --> I
-  D <--> E
-  D --> F
-```
-
-### 2.2 Domain Components
-```mermaid
-graph TB
-  subgraph Web
-    UI[App Router pages & components]
-    API[Route handlers /api/*]
-  end
-  subgraph Services
-    TPS[TelegramService]
-    EPS[EventProcessingService]
-    TAS[TelegramAuthService]
-    WRS[WebhookRecoveryService]
-  end
-  subgraph Data
-    DB[(Supabase Postgres)]
-    RPC[SQL Functions  RPC]
+    Auth[Supabase Auth]
+    DB[(Postgres with RLS)]
     Storage[(Supabase Storage)]
   end
+  subgraph Telegram
+    MainBot[Main Bot]
+    NotifyBot[Notifications Bot]
+  end
 
-  UI --> API
-  API --> Services
-  Services --> DB
-  API --> RPC
-  UI --> Storage
-  Services --> H[Telegram Bot API]
-  Services --> Mailgun
+  Browser -->|HTTP/S| App
+  App -->|Server fetch| API
+  API -->|Supabase JS| DB
+  App -->|Auth cookies| Auth
+  API -->|Storage upload| Storage
+  MainBot -->|Webhook| API
+  NotifyBot -->|Outgoing messages| TelegramUsers
+  API -->|HTTP| MainBot
+  API -->|HTTP| NotifyBot
 ```
 
-### 2.3 Telegram Update Sequence
+### Telegram Update Flow
+```mermaid
+flowchart LR
+  Telegram[Telegram Update] --> Webhook[/api/telegram/webhook]
+  Webhook -->|secret check  async| Recovery[webhookRecoveryService]
+  Webhook -->|service-role| EnsureGroup[ensureGroupRecord]
+  EnsureGroup --> OrgMap[org_telegram_groups]
+  Webhook -->|if mapped| EventSvc[eventProcessingService.processUpdate]
+  EventSvc --> Activity[(activity_events)]
+  EventSvc --> Participants[(participants, participant_groups)]
+  EventSvc --> Metrics[(group_metrics)]
+  Webhook -->|commands/auth codes| AuthSvc[telegramAuthService]
+  Webhook --> Response[200 OK]
+```
+
+### Nov 15 Architecture Findings
+- **Webhook privilege creep**: `/api/telegram/webhook` instantiates a global Supabase client with the service-role key (`supabaseServiceRole`), auto-inserts any new group into `telegram_groups`, and only later checks whether `org_telegram_groups` has a mapping before processing events. If a tenant misconfigures group assignments, updates still mutate global tables under the service role, so leaked metadata is possible.
+- **Missing idempotency**: `lib/services/eventProcessingService.ts` explicitly documents that `telegram_updates` was removed in migration 42 and "Idempotency is not currently implemented", meaning duplicate updates will replay joins/leaves and skew metrics whenever Telegram retries.
+- **Server components with service role**: `lib/server/supabaseServer.ts` exposes `createAdminServer()` which returns a service-role client and is consumed by dashboards and API routes; the key travels with each request, bypassing RLS enforcement entirely.
+- **Webhook recovery spam**: When the incoming secret mismatches, `webhookRecoveryService` auto-attempts to reset the webhook immediately within the same request; repeated mismatches (e.g., staging/prod mix-up) can hammer Telegram's API without backoff.
+
+### Admin ↔ Telegram Sequence
 ```mermaid
 sequenceDiagram
-  participant TG as Telegram Bot API
-  participant RH as /api/telegram/webhook
-  participant EPS as EventProcessingService
-  participant DB as Supabase
+  participant Admin
+  participant Web as Next.js UI (/app/[org]/telegram)
+  participant API as /api/telegram/accounts
+  participant Bot as Notifications Bot
+  participant Supabase
 
-  TG->>RH: POST update (secret header)
-  RH->>RH: validate secret / recover webhook
-  RH->>DB: upsert telegram_groups (service role)
-  RH->>DB: read org_telegram_groups mapping
-  alt mapped org
-    RH->>EPS: processUpdate(update)
-    EPS->>DB: ensure group record
-    EPS->>DB: fan-out activity (participants, activity_events, metrics)
-  else unmapped
-    RH->>RH: skip event processing
-  end
-  RH->>DB: handle auth codes (verify, create sessions)
-  RH-->>TG: 200 OK (always)
+  Admin->>Web: Submit Telegram ID  username
+  Web->>API: POST orgId  telegram_user_id
+  API->>Supabase: Upsert user_telegram_accounts (service role)
+  API-->>Bot: sendMessage(verification code)
+  Bot-->>Admin: DM verification code
+  Admin->>Web: Enter verification code
+  Web->>API: PUT orgId  code
+  API->>Supabase: Verify  mark is_verified
+  API-->>Web: Success  session flag
 ```
 
-## 3. Platform Pillars
-
-| Pillar | What Works | Gaps | Risks |
-| --- | --- | --- | --- |
-| **Core Infrastructure** | Next.js App Router with Supabase SSR helpers (`createClientServer`) and service-role admin client (`createAdminServer`). Health endpoints exist (`/api/healthz`). | No automated provisioning; secrets loaded via env without vault. No automated schema drift detection. | Service-role keys in runtime contexts expand blast radius. |
-| **Multi-tenancy & Auth** | Organizations  memberships enforce RLS; `requireOrgAccess` guards server components and triggers Telegram admin sync via RPC. Telegram login  auth code verification functioning. | Service-role bypass used broadly (participants fetches, dashboard metrics). No tenant-aware rate limits. Org onboarding manual. | Leakage of cross-tenant data if service-role queries not filtered carefully. |
-| **Telegram Integration** | Webhook ingestion, group auto-discovery, admin sync RPC, DM auth codes, notification bot endpoints. Manual recovery tool for webhook secret drift. | No dedupe/backpressure after removal of `telegram_updates`. Missing admin permission verification before mapping groups. Rate-limit/backoff is ad-hoc logging only. | Duplicate events, silent failures, Telegram ban risk. |
-| **CRM & Membership** | Participants list enriched with Telegram admin info, invite links, duplicate detection endpoint, enrichment flows. | Renewal reminders, membership statuses, and billing linkages missing. Manual tagging (custom attributes) but no automation. | Hard to maintain accurate membership lifecycle; risk of orphaned records. |
-| **Events & QR** | Event CRUD, registration route ensures capacity, QR check-in with hash, ICS export, Telegram notifications. | Attendance analytics manual; QR tokens stored in plain text, no offline fallback. No cancellation flows. | Duplicate or brute-force QR tokens; limited observability for attendance failures. |
-| **Analytics & Retention** | Dashboard API aggregates group_metrics, events risk heuristics, churn heuristics. Activity chart summarises 14-day window. | Lacks DAU/WAU baseline (counts messages only). No retention cohort export, no silent list segmentation surfaced. | Decisions rely on heuristics without validation, risk of incorrect escalations. |
-| **Growth & Marketplace** | Invite system, onboarding checklist, documentation for admins. Marketplace scaffold absent. | No referral mechanics, no extension registration model. Notification bot limited. | Growth features blocked, partner integrations impossible. |
-| **Operations** | Extensive runbooks for Telegram  migrations in `/docs`. Cron endpoints for webhook checks and sync. | No structured logging/metrics, no monitoring. CI only runs `next lint`. No automated tests. | Production incidents undetected, regressions slip through. |
+## 3. Codebase & Infrastructure Health
+| Area | Findings | Risks |
+| --- | --- | --- |
+| **App structure** | App Router with colocated server components per org (`app/app/[org]/*`). Shared Supabase server client factory (`lib/server/supabaseServer.ts`). | Clear separation, but many server components call `createAdminServer()` exposing service role keys to request scope. |
+| **Service boundaries** | Telegram logic centralized in `lib/services/telegramService.ts`, event normalization in `lib/services/eventProcessingService.ts`. UI fetches via API routes (e.g., dashboard, participants). | Event service lacks idempotency (migration 42 removed `telegram_updates` without replacement). Possibility of duplicate joins/leaves if Telegram retries. |
+| **Multi-tenancy** | Tables include `org_id`; SQL functions `is_org_member_rpc`, `get_user_role_in_org` enforce membership. Yet numerous admin flows use service-role client with manual filters (e.g., members page, participant enrichment). | Any bug in filters can leak cross-tenant data. No centralized guard to ensure org scope when using service role. |
+| **Database types** | `lib/database.types.ts` outdated: still references `starts_at`/`ends_at` on `events`, missing `event_date`, `start_time`, etc. (see migrations `19_events.sql`). | Type mismatches risk runtime bugs and incorrect validation. |
+| **Testing** | No automated tests (`npm test` placeholder). Complex logic (participant matcher, webhook) untested. | Regression risk high; no safety net for refactors. |
+| **CI/CD** | No pipeline config in repo. GitHub actions absent. Deploy likely manual or via Vercel auto-deploy without checks. | Production deploys lack lint/test gates. |
+| **Observability** | Basic `console.log` instrumentation; `/api/health` and `/api/healthz` provide coarse health. No structured logging, tracing, or metrics push. | Failures (e.g., webhook secret mismatch) rely on logs only; no alerting. |
+| **Configuration** | `.env.example` missing; env usage inconsistent (`TELEGRAM_BOT_TOKEN` vs `TELEGRAM_BOT_TOKEN_MAIN`). Secrets embedded in server route logs. | Risk of misconfiguration; secrets may leak via logs. |
 
 ## 4. Domain Deep Dive
+### Users & Tenants
+- Supabase Auth (email OTP) at `app/(auth)/signin`, `app/(auth)/signup`. Telegram login flow via `app/auth/telegram/route.ts` generates auth codes and binds to `user_telegram_accounts`.
+- `get_user_role_in_org` (migration 34) grants `member` access if user participates via Telegram or events even without explicit membership.
+- Role checks rely on server helper `requireOrgAccess` and `getUserRoleInOrg`, but UI pages still query with service role clients, reducing RLS effectiveness.
 
-### 4.1 Multi-tenancy & Auth
-- Organizations defined in Postgres with membership RLS; RPC `is_org_member_rpc` used in `requireOrgAccess` guard. Supabase service-role client used for admin operations, including Telegram admin sync via `sync_telegram_admins` RPC.
-- Telegram auth: `/api/auth/telegram-code/generate` issues codes, webhook path consumes codes and issues Supabase sessions; DM messaging handled through `createTelegramService`.
-- Risk areas: heavy reliance on service-role clients inside request handlers and server components; limited tenant isolation if filters not applied.
+### Telegram Integration
+- Webhook handler accepts updates, validates secret, auto-recovers via `webhookRecoveryService`. Creates `telegram_groups` rows without org binding (requires manual assignment in UI).
+- Event processing populates `participants`, `participant_groups`, `activity_events`, updates metrics; dedupe removed (no idempotency table).
+- Cron `/api/cron/sync-users` placeholder simply updates `last_sync_at`; `/api/cron/check-webhook` ensures configuration.
+- Admin UX under `/app/app/[org]/telegram` includes group discovery, admin checks (`syncOrgAdmins`), analytics views using service role.
+- Missing: rate limiting/backoff, message text storage intentionally omitted (only metadata stored).
 
-### 4.2 Telegram Integration
-- Webhook route ensures group record, but leaves `org_id` null until admins link manually. Event processing ensures canonical group record and updates `group_metrics`, `activity_events`, `participant_groups` via RPC functions.
-- Background sync triggered on every org access; admin status stored in `telegram_group_admins` / `user_group_admin_status` with TTL. No queue/backoff; logs rely on `console.*`.
-- Recovery service resets webhook secret when mismatch occurs. Cron endpoints check webhook status.
+### Participants CRM
+- `participants` table stores contact info; duplicates handled via `ParticipantMatcher` (exact  fuzzy matching). Merge history exists but audit logging disabled (migration 072 removed logs).
+- UI lists participants with admin flags by combining `memberships` and `telegram_group_admins` (service role queries).
+- Renewal states, reminders, and statuses beyond `participant_status` values not implemented. No automated expiry.
 
-### 4.3 Participant CRM
-- Participant fetch uses admin client (service role) bypassing RLS to enrich with membership roles and Telegram admin info. Duplicate detection route merges participants via migrations 25/26.
-- Custom attributes (JSONB) available; statuses exist but not surfaced in UI beyond filters. No automated renewal or payment ties.
+### Payments & Billing
+- No payment provider integration in code. `organizations.plan` and roadmap references exist but unused. Documentation `Tech-Notes.md` sketches tables, but schema lacks `subscriptions`/`invoices` tables.
+- No billing-related cron, webhook, or UI.
 
-### 4.4 Payments
-- No payment provider integration in codebase. `prd.md` references YooKassa/Tinkoff but no implementation. Billing plan column on organizations unused. Manual invites only.
+### Events & QR
+- Events API uses Supabase to create/list events; UI renders stats and allows manual notifications. Cron `/api/cron/event-notifications` sends Telegram messages using main bot token; relies on environment `TELEGRAM_BOT_TOKEN`.
+- QR check-in endpoint `app/api/events/checkin/route.ts` validates `qr_token` and marks registration attended.
+- Calendar links and exports absent; ICS generation not found.
 
-### 4.5 Events & QR
-- Event registration ensures participant linking (via Telegram account or email), updates `event_registrations`, and sends Telegram notifications. QR check-in endpoint updates status and logs to `activity_events`. ICS generation provided.
-- No rate limiting on QR endpoints; tokens hashed only for check but stored plain, so need hashed storage  TTL.
+### Materials / Knowledge Base
+- Material tree built from `material_folders` & `material_items`; service enforces depth of 3 and supports move/search operations (server-side `MaterialService`).
+- Storage integration for files is stubbed; upload/resume flows not present in repo.
 
-### 4.6 Analytics & Retention
-- Dashboard API aggregates `group_metrics` and `activity_events` for 14-day chart and heuristics (low registration events, churn risk). Onboarding checklist ensures base setup.
-- No WAU/DAU separation; silent list heuristics rely on `participant_activity_summary` views (present in migrations 21). Export/reporting absent.
+### Analytics & Retention
+- Dashboard fetch (`/api/dashboard/[orgId]`) aggregates last 14 days from `group_metrics`, counts participants, surfaces upcoming events and heuristics for churn/inactivity. Dependent on cron data quality.
+- `group_metrics` population path unclear; likely expected from `eventProcessingService` but aggregator logic limited to raw message counts.
+- No DAU/WAU pipeline, silent cohort export, or heatmap beyond simple counts.
 
-### 4.7 Admin UX & Operations
-- Onboarding checklist, Telegram setup pages, invites management. Manual mapping of groups. Documentation heavy but UI lacks step-by-step wizard.
-- Cron endpoints for webhook check, user sync; but no scheduling infrastructure—expected to be invoked by Vercel cron.
+### Marketplace / Extensions
+- No schema for extensions. `Tech-Notes.md` mentions future tables but nothing implemented. UI has `/app/app/[org]/integrations` placeholder to list connectors.
 
-## 5. Feature Status Table
-
+## 5. Feature Status Matrix
 | Feature | Status | Risk | Recommendation |
 | --- | --- | --- | --- |
-| Telegram onboarding skeleton | Partial – webhook  group discovery works; manual mapping & no admin permission validation | Bot removal or missing admin rights go unnoticed | Add healthcheck job, admin rights verification, guided UI wizard |
-| Multi-tenant role model | Partial – memberships  RPC  admin sync exist | Service-role bypass may leak data; no audit logs | Introduce scoped service tokens, add admin action audit log |
-| Participant CRM | Partial – list, invites, enrichment working | No renewal workflow, statuses ad-hoc | Implement membership lifecycle  reminders |
-| Payments | Missing | Revenue capture blocked | Integrate YooKassa/Tinkoff with webhook reconcile |
-| Events  QR | Partial – CRUD  registration  QR check-in | Tokens stored plain, no analytics | Hash tokens with TTL, build attendance dashboard |
-| Retention dashboard | Partial – heuristics exist | Metrics limited to message counts; silent list absent | Add DAU/WAU, churn risk feed, export |
-| Marketplace skeleton | Missing | Extensions roadmap blocked | Model extensions  permissions, internal modules first |
-| Observability & CI | Missing | Issues undetected; regressions slip | Add structured logging, metrics, tests, CI coverage |
+| Telegram group onboarding (bot admin, secret validation) | ✅ Basic flow works; manual group assignment required | Missing idempotency; recovery relies on logs; admin verification asynchronous | Reinstate update_id dedupe, add structured health metrics, surface admin check status in UI |
+| Multi-tenancy & roles | ⚠️ Functional but bypassed via service role | Data leakage if filters wrong; no audit trail | Introduce org-scoped service layer; log admin actions; restrict service role usage to isolated microservices |
+| Participant CRM | ⚠️ CRUD  enrichment works | No lifecycle automation; duplicate detection manual; no reminders | Implement renewal states and tasks; add nightly dedupe job; surface audit history |
+| Payments (YooKassa/T-Bank) | ❌ Not started | Blocks monetization; manual status tracking | Stand up payment tables, provider integration, webhook, reconcile job |
+| Events  QR | ⚠️ Core registration & check-in flows present | Notification cron brittle; ICS/export missing; analytics partial | Add ICS generation & exports; store notification logs; ensure timezone support |
+| Analytics dashboard | ⚠️ Onboarding metrics and message counts only | Dependent on group_metrics feed; churn heuristics ad hoc | Create aggregation jobs for DAU/WAU, retention; validate data pipeline |
+| Admin UX & Escalations | ⚠️ UI exists for groups/members | No alerting, offboarding automation | Add admin action log  notifications; build removal workflow syncing Telegram |
+| Marketplace skeleton | ❌ Not started | Growth roadmap blocked | Define schema  API scaffolding in Wave 2 |
+| Observability & CI | ❌ Logging only; no CI | Production blind spots; no deployment gates | Add lint/test pipeline, structured logs, error monitoring |
 
-## 6. Immediate Issues (Wave 0 Candidates)
-1. **Telegram webhook resilience** – add idempotency keyed by `update_id`, rate-limit/backoff, and DLQ logging table; integrate healthcheck cron.
-2. **Tenant safety** – audit service-role usage, introduce scoped RPC wrappers, enforce org filters everywhere, add admin action audit log.
-3. **Admin onboarding UX** – implement guided wizard for linking bots, verifying admin rights, and showing health status in UI.
-4. **Observability baseline** – structured logging (pino), Supabase edge function metrics, Sentry integration, minimal error alerts.
+## 6. Known Technical Debts & Risks
+- **Service-role sprawl**: `createAdminServer()` used in dashboard, members, analytics, participants; risk of credential leakage if route logs errors.
+- **Supabase type drift**: `lib/database.types.ts` lacks new columns and tables introduced after migration 42 onwards.
+- **Telegram throttling**: Cron tasks and recovery service do not consider rate limits; `sendMessage` calls per group without batching.
+- **Configuration drift**: `healthz` expects `TELEGRAM_BOT_TOKEN_MAIN` but webhook code uses `TELEGRAM_BOT_TOKEN`; unify env naming and document in Runbook.
+- **Testing void**: High-risk flows (webhook, participant merge) rely on manual QA.
+- **Webhook recovery loop**: Secret mismatch triggers `webhookRecoveryService` immediately and without cap, so a single misconfigured secret could trigger continuous `setWebhook` calls.
 
-## 7. Dependencies & External Services
-- **Supabase**: Auth, Postgres, Storage. Requires service-role key for admin operations; ensure rotation.
-- **Telegram Bot API**: `main` bot for auth  ingestion, optional notification bot. Subject to rate limits (30 rps) and admin permission requirements.
-- **Mailgun**: Outbound email for invites and notifications (not heavily used yet).
-- **Vercel Cron**: Expected to hit cron endpoints for sync (no configuration stored in repo).
-
-## 8. Documentation & Runbooks
-- `/docs` directory contains Telegram setup guides, migration summaries, and PRD references. Runbook (see `docs/Runbook.md`) explains local setup but lacks production deployment steps.
-
+## 7. Immediate Opportunities (Wave 0 Focus)
+1. **Lock down Supabase access**: introduce scoped Postgres functions, remove direct service-role usage from request lifecycle, add middleware verifying `org_id` for admin queries.
+2. **Webhook resilience**: implement update dedupe table, add exponential backoff, store webhook error metrics (Supabase table  `/api/healthz`).
+3. **Telemetry & CI**: add structured logger (pino), Sentry instrumentation, and GitHub Actions running `npm run lint && npm run build`.
+4. **Documentation alignment**: regenerate `lib/database.types.ts`, add `/docs/ROADMAP_FINAL_NOV15_2025.md` cross-links in Runbook & roadmap.
