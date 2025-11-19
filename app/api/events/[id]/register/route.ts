@@ -193,8 +193,8 @@ export async function POST(
       }
     }
 
-    // Check if already registered
-    const { data: existingRegistration } = await supabase
+    // Check if already registered (use admin client to bypass RLS)
+    const { data: existingRegistration } = await adminSupabase
       .from('event_registrations')
       .select('id, status')
       .eq('event_id', eventId)
@@ -231,7 +231,8 @@ export async function POST(
     }
 
     // Create new registration using admin client to bypass RLS
-    const { data: registration, error: registrationError } = await adminSupabase
+    // Don't use .select() to avoid RLS policy checks - fetch separately instead
+    const { error: insertError } = await adminSupabase
       .from('event_registrations')
       .insert({
         event_id: eventId,
@@ -241,11 +242,9 @@ export async function POST(
         registration_data: registrationData,
         quantity: quantity
       })
-      .select()
-      .single()
 
-    if (registrationError) {
-      console.error('Error creating registration:', registrationError)
+    if (insertError) {
+      console.error('Error creating registration:', insertError)
       
       // Handle duplicate key error gracefully
       if (registrationError.code === '23505') {
