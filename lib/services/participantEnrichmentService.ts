@@ -185,11 +185,24 @@ export async function enrichParticipant(
       }
       attributesUpdate.ai_analysis_cost = aiAnalysis.cost_usd;
       attributesUpdate.ai_analysis_tokens = aiAnalysis.tokens_used;
+      
+      // ⭐ Log AI analysis results for debugging
+      console.log(`[Enrichment] AI Analysis results for participant ${participantId}:`, {
+        interests_count: aiAnalysis.interests_keywords?.length || 0,
+        topics_count: Object.keys(aiAnalysis.topics_discussed || {}).length,
+        recent_asks_count: aiAnalysis.recent_asks?.length || 0,
+        city: aiAnalysis.city_inferred,
+        interests: aiAnalysis.interests_keywords,
+        topics: aiAnalysis.topics_discussed,
+        recent_asks: aiAnalysis.recent_asks
+      });
     }
     
     if (roleClassification) {
       attributesUpdate.behavioral_role = roleClassification.role;
       attributesUpdate.role_confidence = roleClassification.confidence;
+      
+      console.log(`[Enrichment] Role classification: ${roleClassification.role} (${roleClassification.confidence})`);
     }
     
     if (reactionPatterns) {
@@ -206,6 +219,14 @@ export async function enrichParticipant(
     attributesUpdate.enrichment_version = '1.0';
     attributesUpdate.enrichment_source = options.useAI ? 'ai' : 'rule-based';
     
+    // ⭐ Log what will be saved
+    console.log(`[Enrichment] Saving attributes update for participant ${participantId}:`, {
+      ...attributesUpdate,
+      interests_keywords_count: attributesUpdate.interests_keywords?.length || 0,
+      topics_discussed_count: Object.keys(attributesUpdate.topics_discussed || {}).length,
+      recent_asks_count: attributesUpdate.recent_asks?.length || 0
+    });
+    
     // 10. Save to database
     const currentAttributes = participant.custom_attributes || {};
     const mergedAttributes = mergeCustomAttributes(
@@ -213,6 +234,13 @@ export async function enrichParticipant(
       attributesUpdate,
       { allowSystemFields: true } // Allow system fields for enrichment
     );
+    
+    console.log(`[Enrichment] Merged attributes (after merge):`, {
+      interests_keywords: mergedAttributes.interests_keywords,
+      topics_discussed: mergedAttributes.topics_discussed,
+      recent_asks: mergedAttributes.recent_asks,
+      behavioral_role: mergedAttributes.behavioral_role
+    });
     
     const { error: updateError } = await supabaseAdmin
       .from('participants')
@@ -225,6 +253,8 @@ export async function enrichParticipant(
     if (updateError) {
       throw new Error(`Failed to update participant: ${updateError.message}`);
     }
+    
+    console.log(`[Enrichment] ✅ Successfully saved enrichment data for participant ${participantId}`);
     
     result.success = true;
     result.duration_ms = Date.now() - startTime;

@@ -42,6 +42,7 @@ export function EnrichedProfileDisplay({
     role: attrs.behavioral_role,
     roleConfidence: attrs.role_confidence,
     topicsDiscussed: attrs.topics_discussed || {},
+    recentAsks: attrs.recent_asks || [],
     communicationStyle: attrs.communication_style || {}
   };
   
@@ -130,7 +131,13 @@ export function EnrichedProfileDisplay({
       {/* ========================================
           SECTION 1: AI INSIGHTS (Read-only, Admin-only)
           ======================================== */}
-      {isAdmin && (aiInsights.interests.length > 0 || aiInsights.city || aiInsights.role) && (
+      {isAdmin && (
+        aiInsights.interests.length > 0 || 
+        aiInsights.city || 
+        aiInsights.role || 
+        aiInsights.recentAsks.length > 0 || 
+        Object.keys(aiInsights.topicsDiscussed).length > 0
+      ) && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">AI Insights</h3>
@@ -230,7 +237,7 @@ export function EnrichedProfileDisplay({
           
           {/* Topics Discussed */}
           {Object.keys(aiInsights.topicsDiscussed).length > 0 && (
-            <div>
+            <div className="mb-4">
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Обсуждаемые темы
               </label>
@@ -256,6 +263,22 @@ export function EnrichedProfileDisplay({
                       </div>
                     );
                   })}
+              </div>
+            </div>
+          )}
+          
+          {/* Recent Asks */}
+          {aiInsights.recentAsks.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                Актуальные запросы
+              </label>
+              <div className="space-y-2">
+                {aiInsights.recentAsks.map((ask: string, index: number) => (
+                  <div key={index} className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <p className="text-sm text-gray-900">{ask}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}

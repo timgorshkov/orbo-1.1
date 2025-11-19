@@ -479,10 +479,27 @@ export default function ParticipantProfileCard({
                     participantId={participant.id}
                     orgId={orgId}
                     participantName={participant.full_name || participant.username || 'Участник'}
-                    onEnrichmentComplete={() => {
+                    onEnrichmentComplete={async () => {
                       // Refresh detail to show new enrichment data
-                      if (onDetailUpdate) {
-                        onDetailUpdate();
+                      try {
+                        const response = await fetch(`/api/participants/${participant.id}?orgId=${orgId}`);
+                        if (response.ok) {
+                          const detail = await response.json();
+                          if (detail && onDetailUpdate) {
+                            onDetailUpdate(detail);
+                            // Also update local state
+                            setFields(prev => ({
+                              ...prev,
+                              custom_attributes: detail.participant?.custom_attributes || {}
+                            }));
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to refresh participant data after enrichment:', error);
+                        // Still call onDetailUpdate to trigger a refresh
+                        if (onDetailUpdate) {
+                          onDetailUpdate();
+                        }
                       }
                     }}
                   />
