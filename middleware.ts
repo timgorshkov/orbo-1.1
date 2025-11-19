@@ -9,7 +9,7 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // Создаем supabase клиент для проверки аутентификации
+  // Создаем supabase клиент для проверки аутентификации и обновления токена
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -59,6 +59,15 @@ export async function middleware(request: NextRequest) {
       },
     }
   )
+
+  // ⭐ Explicitly refresh session to update tokens before Server Components access them
+  // This prevents "Cookies can only be modified" errors in Server Components
+  try {
+    await supabase.auth.getSession()
+  } catch (error) {
+    // Ignore session refresh errors in middleware - they will be handled by Route Handlers
+    console.warn('[Middleware] Session refresh error (non-critical):', error)
+  }
 
   // Проверяем маршруты, требующие аутентификации
   const { pathname } = request.nextUrl

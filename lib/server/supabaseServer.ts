@@ -12,9 +12,24 @@ export async function createClientServer() {
       cookies: {
         get: name => cookieStore.get(name)?.value,
         set: (name, value, opts) => {
-          cookieStore.set({ name, value, ...opts })
+          try {
+            // ⚠️ Cookies can only be modified in Route Handlers or Server Actions
+            // In Server Components, this will fail silently to prevent errors
+            cookieStore.set({ name, value, ...opts })
+          } catch (error) {
+            // Silently ignore cookie modification errors in Server Components
+            // Token refresh will be handled by middleware or Route Handlers
+            // This is expected behavior - middleware handles token refresh for all requests
+          }
         },
-        remove: (name, opts) => { cookieStore.set({ name, value: "", ...opts }); },
+        remove: (name, opts) => {
+          try {
+            cookieStore.set({ name, value: "", ...opts })
+          } catch (error) {
+            // Silently ignore cookie removal errors in Server Components
+            // This is expected behavior - middleware handles token refresh for all requests
+          }
+        },
       }
     }
   )
