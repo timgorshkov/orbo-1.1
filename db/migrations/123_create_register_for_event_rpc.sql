@@ -78,8 +78,8 @@ BEGIN
     er.registration_data,
     er.quantity,
     er.registered_at
-  FROM event_registrations er
-  WHERE er.id = v_registration_id;
+  FROM public.event_registrations er
+  WHERE er.id = register_for_event.v_registration_id;
 END;
 $$;
 
