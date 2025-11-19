@@ -31,22 +31,20 @@ DECLARE
   v_registration_id UUID;
   v_registration RECORD;
 BEGIN
-  -- Disable RLS for this function's execution context
-  -- This allows SELECT queries to bypass RLS policies
-  PERFORM set_config('role', 'postgres', true);
-  
-  -- Verify participant and event belong to same organization
-  SELECT org_id INTO v_org_id
-  FROM public.participants
-  WHERE id = p_participant_id;
+  -- SECURITY DEFINER functions run with the privileges of the function owner
+  -- If RLS is still applied, we need to use direct SQL execution
+  -- Verify participant and event belong to same organization using direct SQL
+  EXECUTE format('SELECT org_id FROM %I.participants WHERE id = $1', 'public')
+    INTO v_org_id
+    USING p_participant_id;
   
   IF v_org_id IS NULL THEN
     RAISE EXCEPTION 'Participant not found';
   END IF;
   
-  SELECT org_id INTO v_event_org_id
-  FROM public.events
-  WHERE id = p_event_id;
+  EXECUTE format('SELECT org_id FROM %I.events WHERE id = $1', 'public')
+    INTO v_event_org_id
+    USING p_event_id;
   
   IF v_event_org_id IS NULL THEN
     RAISE EXCEPTION 'Event not found';
@@ -56,24 +54,22 @@ BEGIN
     RAISE EXCEPTION 'Participant and event must belong to the same organization';
   END IF;
   
-  -- Insert registration (bypasses RLS due to SECURITY DEFINER)
-  INSERT INTO public.event_registrations (
-    event_id,
-    participant_id,
-    registration_source,
-    status,
-    registration_data,
-    quantity
+  -- Insert registration using EXECUTE to bypass RLS
+  EXECUTE format('
+    INSERT INTO %I.event_registrations (
+      event_id,
+      participant_id,
+      registration_source,
+      status,
+      registration_data,
+      quantity
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING *',
+    'public'
   )
-  VALUES (
-    p_event_id,
-    p_participant_id,
-    'web',
-    'registered',
-    p_registration_data,
-    p_quantity
-  )
-  RETURNING * INTO v_registration;
+  INTO v_registration
+  USING p_event_id, p_participant_id, 'web', 'registered', p_registration_data, p_quantity;
   
   -- Return the created registration
   registration_id := v_registration.id;
