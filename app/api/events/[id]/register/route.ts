@@ -247,7 +247,7 @@ export async function POST(
       console.error('Error creating registration:', insertError)
       
       // Handle duplicate key error gracefully
-      if (registrationError.code === '23505') {
+      if (insertError.code === '23505') {
         // User is already registered (race condition)
         const { data: existingReg } = await adminSupabase
           .from('event_registrations')
@@ -266,8 +266,37 @@ export async function POST(
       }
       
       return NextResponse.json(
-        { error: registrationError.message },
+        { error: insertError.message },
         { status: 500 }
+      )
+    }
+
+    // Fetch the created registration separately (using admin client to bypass RLS)
+    const { data: registration, error: fetchError } = await adminSupabase
+      .from('event_registrations')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('participant_id', participant.id)
+      .eq('status', 'registered')
+      .order('registered_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (fetchError || !registration) {
+      console.error('Error fetching created registration:', fetchError)
+      // Still return success since insert succeeded
+      return NextResponse.json(
+        { 
+          registration: {
+            event_id: eventId,
+            participant_id: participant.id,
+            status: 'registered',
+            registration_data: registrationData,
+            quantity: quantity
+          },
+          message: 'Registration created successfully (fetch failed)' 
+        },
+        { status: 201 }
       )
     }
 
