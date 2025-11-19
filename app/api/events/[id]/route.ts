@@ -145,6 +145,7 @@ export async function PUT(
       capacity,
       capacityCountByPaid,
       showParticipantsList,
+      allowMultipleTickets,
       status,
       isPublic,
       telegramGroupLink
@@ -197,6 +198,7 @@ export async function PUT(
       capacity: capacity || null,
       capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
       show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
+      allow_multiple_tickets: allowMultipleTickets !== undefined ? allowMultipleTickets : false,
       status,
       is_public: isPublic,
       telegram_group_link: telegramGroupLink || null

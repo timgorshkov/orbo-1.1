@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
       capacity,
       capacityCountByPaid,
       showParticipantsList,
+      allowMultipleTickets,
       status,
       isPublic,
       telegramGroupLink
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
       capacity: capacity || null,
       capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
       show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
+      allow_multiple_tickets: allowMultipleTickets !== undefined ? allowMultipleTickets : false,
       status: status || 'draft', // Use status from form, default to draft
       is_public: isPublic || false,
       telegram_group_link: telegramGroupLink || null,

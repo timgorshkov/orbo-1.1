@@ -54,7 +54,7 @@ CREATE INDEX idx_event_registrations_registration_data ON event_registrations US
 
 COMMENT ON COLUMN event_registrations.registration_data IS 'Custom field values collected during registration: {"full_name": "Иван Иванов", "phone": "+7..."}';
 COMMENT ON COLUMN event_registrations.quantity IS 'Number of tickets/participants (1-5)';
-COMMENT ON COLUMN event_registrations.promo_code_id IS 'Promo code used for this registration';
+-- Note: promo_code_id column and comment will be added in migration 117 when event_promo_codes table is created
 
 -- ============================================
 -- STEP 4: Create function to update participant profile from registration data
@@ -67,6 +67,8 @@ DECLARE
   field_value TEXT;
   participant_record RECORD;
 BEGIN
+  -- Use SECURITY DEFINER to bypass RLS when updating participants
+  -- This prevents "argument of OR must not return a set" errors
   -- Only process if registration_data exists and has values
   IF NEW.registration_data IS NULL OR jsonb_object_keys(NEW.registration_data) IS NULL THEN
     RETURN NEW;
@@ -154,7 +156,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create trigger to update participant profile after registration
 CREATE TRIGGER trigger_update_participant_from_registration

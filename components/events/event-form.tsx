@@ -63,6 +63,9 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [paymentInstructions, setPaymentInstructions] = useState(
     initialEvent?.payment_instructions || ''
   )
+  const [allowMultipleTickets, setAllowMultipleTickets] = useState(
+    initialEvent?.allow_multiple_tickets ?? false
+  )
   
   // Old payment fields (for backward compatibility)
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
@@ -111,6 +114,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       currency: requiresPayment ? currency : null,
       paymentDeadlineDays: requiresPayment && paymentDeadlineDays ? parseInt(paymentDeadlineDays) : null,
       paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
+      allowMultipleTickets: allowMultipleTickets,
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
@@ -385,6 +389,22 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                       Будет отображаться участникам при регистрации
                     </p>
                   </div>
+
+                  <div className="flex items-center pt-2 border-t border-neutral-200">
+                    <input
+                      type="checkbox"
+                      id="allowMultipleTickets"
+                      checked={allowMultipleTickets}
+                      onChange={(e) => setAllowMultipleTickets(e.target.checked)}
+                      className="mr-2 h-4 w-4"
+                    />
+                    <label htmlFor="allowMultipleTickets" className="text-sm font-medium">
+                      Разрешить регистрацию нескольких билетов
+                    </label>
+                  </div>
+                  <p className="text-xs text-neutral-500 -mt-2">
+                    Участники смогут зарегистрировать несколько билетов (до 5) в одной регистрации
+                  </p>
                 </div>
               )}
             </CardContent>

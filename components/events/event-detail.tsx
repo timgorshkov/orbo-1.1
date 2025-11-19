@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
+import EventRegistrationForm from './event-registration-form'
 
 type Event = {
   id: string
@@ -28,6 +29,7 @@ type Event = {
   currency?: string
   payment_deadline_days?: number | null
   payment_instructions?: string | null
+  allow_multiple_tickets?: boolean
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -68,11 +70,42 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [notifyError, setNotifyError] = useState<string | null>(null)
   const [notifySuccess, setNotifySuccess] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false)
+  const [participantProfile, setParticipantProfile] = useState<{
+    full_name?: string | null
+    email?: string | null
+    phone?: string | null
+    bio?: string | null
+  } | null>(null)
   
   // Show admin features only if user is admin AND in admin mode
   const showAdminFeatures = isAdmin && adminMode
   // Allow edit mode only if admin features are shown and edit mode is requested
   const canEdit = showAdminFeatures && isEditMode
+
+  // Load participant profile for pre-filling registration form
+  useEffect(() => {
+    if (!showRegistrationForm) return
+
+    fetch(`/api/user/profile?orgId=${orgId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.participant) {
+          setParticipantProfile({
+            full_name: data.participant.full_name,
+            email: data.participant.email,
+            phone: data.participant.phone,
+            bio: data.participant.bio
+          })
+        } else {
+          setParticipantProfile(null)
+        }
+      })
+      .catch(err => {
+        console.error('Error loading participant profile:', err)
+        setParticipantProfile(null)
+      })
+  }, [orgId, showRegistrationForm])
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('ru-RU', {
@@ -87,26 +120,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   }
 
   const handleRegister = () => {
-    setRegistrationError(null)
-    
-    startTransition(async () => {
-      try {
-        const response = await fetch(`/api/events/${event.id}/register`, {
-          method: 'POST'
-        })
+    // Open registration form instead of direct registration
+    setShowRegistrationForm(true)
+  }
 
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Не удалось зарегистрироваться')
-        }
-
-        setIsRegistered(true)
-        router.refresh()
-      } catch (err: any) {
-        setRegistrationError(err.message)
-      }
-    })
+  const handleRegistrationSuccess = () => {
+    setIsRegistered(true)
+    setShowRegistrationForm(false)
+    router.refresh()
   }
 
   const handleUnregister = () => {
@@ -416,7 +437,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               onClick={handleRegister}
                               disabled={isPending}
                             >
-                              {isPending ? 'Регистрация...' : 'Зарегистрироваться'}
+                              Зарегистрироваться
                             </Button>
                           </>
                         )}
@@ -672,6 +693,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           </div>
         </div>
       )}
+
+      {/* Registration Form Modal */}
+      <EventRegistrationForm
+        eventId={event.id}
+        eventTitle={event.title}
+        requiresPayment={event.requires_payment || false}
+        defaultPrice={event.default_price}
+        currency={event.currency || 'RUB'}
+        allowMultipleTickets={event.allow_multiple_tickets || false}
+        open={showRegistrationForm}
+        onOpenChange={setShowRegistrationForm}
+        onSuccess={handleRegistrationSuccess}
+        participantProfile={participantProfile}
+      />
     </div>
   )
 }
