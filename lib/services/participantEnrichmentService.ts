@@ -78,18 +78,17 @@ export async function enrichParticipant(
       throw new Error('Participant not found');
     }
     
-    // 2. Fetch messages (last N days)
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+    // 2. Fetch messages (ALL available, not filtered by date)
+    // ⚠️ Don't filter by date - imported history may have old dates
+    // AI will prioritize recent messages anyway (last 50 messages in analyzeParticipantWithAI)
     
     const { data: messages, error: messagesError } = await supabaseAdmin
       .from('activity_events')
       .select('id, tg_user_id, message_id, event_type, created_at, meta')
       .eq('org_id', orgId)
       .eq('event_type', 'message')
-      .gte('created_at', cutoffDate.toISOString())
       .order('created_at', { ascending: false })
-      .limit(200);
+      .limit(500); // Increased limit to capture more history
     
     if (messagesError) {
       throw new Error(`Failed to fetch messages: ${messagesError.message}`);
@@ -98,14 +97,13 @@ export async function enrichParticipant(
     // Filter participant's messages
     const participantMessages = messages?.filter(m => m.tg_user_id === participant.tg_user_id) || [];
     
-    // 3. Fetch participant's reactions (last N days)
+    // 3. Fetch participant's reactions (ALL available, not filtered by date)
     const { data: reactions, error: reactionsError } = await supabaseAdmin
       .from('activity_events')
       .select('id, tg_user_id, message_id, event_type, created_at, meta')
       .eq('org_id', orgId)
       .eq('tg_user_id', participant.tg_user_id)
       .eq('event_type', 'reaction')
-      .gte('created_at', cutoffDate.toISOString())
       .order('created_at', { ascending: false });
     
     // 4. Fetch group keywords (for AI context)
@@ -430,8 +428,9 @@ export async function estimateEnrichmentCost(
   estimatedCostUsd: number;
   estimatedCostRub: number;
 }> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+  // ⚠️ Don't filter by date - use all available messages
+  // Imported history may have old dates, but we still want to analyze them
+  // AI will prioritize recent messages anyway (last 50 messages)
   
   const { data: participant } = await supabaseAdmin
     .from('participants')
@@ -443,13 +442,13 @@ export async function estimateEnrichmentCost(
     return { messageCount: 0, estimatedTokens: 0, estimatedCostUsd: 0, estimatedCostRub: 0 };
   }
   
+  // Count ALL messages for this participant in this org (no date filter)
   const { count } = await supabaseAdmin
     .from('activity_events')
     .select('id', { count: 'exact', head: true })
     .eq('org_id', orgId)
     .eq('tg_user_id', participant.tg_user_id)
-    .eq('event_type', 'message')
-    .gte('created_at', cutoffDate.toISOString());
+    .eq('event_type', 'message');
   
   const messageCount = count || 0;
   const estimate = estimateAICost(Math.min(messageCount, 50)); // We only send top 50 to AI
