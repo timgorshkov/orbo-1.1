@@ -9,14 +9,14 @@ CREATE OR REPLACE FUNCTION register_for_event(
   p_quantity INTEGER DEFAULT 1
 )
 RETURNS TABLE (
-  id UUID,
-  event_id UUID,
-  participant_id UUID,
-  status TEXT,
+  registration_id UUID,
+  registration_event_id UUID,
+  registration_participant_id UUID,
+  registration_status TEXT,
   registration_source TEXT,
   registration_data JSONB,
-  quantity INTEGER,
-  registered_at TIMESTAMPTZ
+  registration_quantity INTEGER,
+  registration_registered_at TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -26,10 +26,11 @@ DECLARE
   v_org_id UUID;
   v_event_org_id UUID;
   v_registration_id UUID;
+  v_registration RECORD;
 BEGIN
   -- Verify participant and event belong to same organization
   SELECT org_id INTO v_org_id
-  FROM participants
+  FROM public.participants
   WHERE id = p_participant_id;
   
   IF v_org_id IS NULL THEN
@@ -37,7 +38,7 @@ BEGIN
   END IF;
   
   SELECT org_id INTO v_event_org_id
-  FROM events
+  FROM public.events
   WHERE id = p_event_id;
   
   IF v_event_org_id IS NULL THEN
@@ -49,7 +50,7 @@ BEGIN
   END IF;
   
   -- Insert registration (bypasses RLS due to SECURITY DEFINER)
-  INSERT INTO event_registrations (
+  INSERT INTO public.event_registrations (
     event_id,
     participant_id,
     registration_source,
@@ -65,21 +66,19 @@ BEGIN
     p_registration_data,
     p_quantity
   )
-  RETURNING event_registrations.id INTO v_registration_id;
+  RETURNING * INTO v_registration;
   
   -- Return the created registration
-  RETURN QUERY
-  SELECT 
-    er.id AS id,
-    er.event_id AS event_id,
-    er.participant_id AS participant_id,
-    er.status AS status,
-    er.registration_source AS registration_source,
-    er.registration_data AS registration_data,
-    er.quantity AS quantity,
-    er.registered_at AS registered_at
-  FROM public.event_registrations er
-  WHERE er.id = register_for_event.v_registration_id;
+  registration_id := v_registration.id;
+  registration_event_id := v_registration.event_id;
+  registration_participant_id := v_registration.participant_id;
+  registration_status := v_registration.status;
+  registration_source := v_registration.registration_source;
+  registration_data := v_registration.registration_data;
+  registration_quantity := v_registration.quantity;
+  registration_registered_at := v_registration.registered_at;
+  
+  RETURN NEXT;
 END;
 $$;
 

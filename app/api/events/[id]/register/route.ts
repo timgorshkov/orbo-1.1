@@ -268,16 +268,28 @@ export async function POST(
     }
 
     // RPC function returns array, get first result
-    const registration = Array.isArray(registrationResult) && registrationResult.length > 0
+    const registrationRow = Array.isArray(registrationResult) && registrationResult.length > 0
       ? registrationResult[0]
       : registrationResult
 
-    if (!registration) {
+    if (!registrationRow) {
       console.error('RPC function returned no registration data')
       return NextResponse.json(
         { error: 'Registration failed - no data returned' },
         { status: 500 }
       )
+    }
+
+    // Map RPC function column names to expected format
+    const registration = {
+      id: registrationRow.registration_id,
+      event_id: registrationRow.registration_event_id,
+      participant_id: registrationRow.registration_participant_id,
+      status: registrationRow.registration_status,
+      registration_source: registrationRow.registration_source,
+      registration_data: registrationRow.registration_data,
+      quantity: registrationRow.registration_quantity,
+      registered_at: registrationRow.registration_registered_at
     }
 
     return NextResponse.json({ registration }, { status: 201 })
