@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       paymentDeadlineDays,
       paymentInstructions,
       capacity,
+      capacityCountByPaid,
+      showParticipantsList,
       status,
       isPublic,
       telegramGroupLink
@@ -139,6 +141,8 @@ export async function POST(request: NextRequest) {
       start_time: startTime,
       end_time: endTime,
       capacity: capacity || null,
+      capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
+      show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
       status: status || 'draft', // Use status from form, default to draft
       is_public: isPublic || false,
       telegram_group_link: telegramGroupLink || null,

@@ -18,9 +18,9 @@ export async function POST(
     }
 
     // Get event details
-    const { data: event, error: eventError } = await supabase
+    const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('*, event_registrations!event_registrations_event_id_fkey(id, status)')
+      .select('*, event_registrations!event_registrations_event_id_fkey(id, status, payment_status, quantity)')
       .eq('id', eventId)
       .single()
 
@@ -36,17 +36,50 @@ export async function POST(
       )
     }
 
-    // Check capacity
-    if (event.capacity) {
-      const registeredCount = event.event_registrations?.filter(
-        (reg: any) => reg.status === 'registered'
-      ).length || 0
+    // Parse request body for registration_data and quantity
+    const body = await request.json().catch(() => ({}))
+    const registrationData = body.registration_data || {}
+    const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5) // Clamp between 1 and 5
 
-      if (registeredCount >= event.capacity) {
-        return NextResponse.json(
-          { error: 'Event is full' },
-          { status: 400 }
-        )
+    // Check capacity using helper function
+    if (event.capacity) {
+      const countByPaid = event.capacity_count_by_paid || false
+      
+      // Use helper function to count registrations
+      const { data: countResult, error: countError } = await adminSupabase
+        .rpc('get_event_registered_count', {
+          event_uuid: eventId,
+          count_by_paid: countByPaid
+        })
+
+      if (countError) {
+        console.error('Error counting registrations:', countError)
+        // Fallback to manual count
+        let registeredCount = 0
+        if (countByPaid) {
+          registeredCount = event.event_registrations?.filter(
+            (reg: any) => reg.status === 'registered' && reg.payment_status === 'paid'
+          ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
+        } else {
+          registeredCount = event.event_registrations?.filter(
+            (reg: any) => reg.status === 'registered'
+          ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
+        }
+        
+        if (registeredCount + quantity > event.capacity) {
+          return NextResponse.json(
+            { error: 'Event is full' },
+            { status: 400 }
+          )
+        }
+      } else {
+        const currentCount = countResult || 0
+        if (currentCount + quantity > event.capacity) {
+          return NextResponse.json(
+            { error: 'Event is full' },
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -181,7 +214,9 @@ export async function POST(
         .from('event_registrations')
         .update({ 
           status: 'registered',
-          registered_at: new Date().toISOString()
+          registered_at: new Date().toISOString(),
+          registration_data: registrationData,
+          quantity: quantity
         })
         .eq('id', existingRegistration.id)
         .select()
@@ -202,7 +237,9 @@ export async function POST(
         event_id: eventId,
         participant_id: participant.id,
         registration_source: 'web',
-        status: 'registered'
+        status: 'registered',
+        registration_data: registrationData,
+        quantity: quantity
       })
       .select()
       .single()

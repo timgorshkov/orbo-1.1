@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -10,7 +10,9 @@ export async function GET(
     const { id: eventId } = await params
     const supabase = await createClientServer()
 
-    // Fetch event with registrations count
+    const adminSupabase = createAdminServer()
+    
+    // Fetch event with registrations
     const { data: event, error } = await supabase
       .from('events')
       .select(`
@@ -20,6 +22,8 @@ export async function GET(
           id,
           status,
           registered_at,
+          payment_status,
+          quantity,
           participants(
             id,
             full_name,
@@ -39,17 +43,43 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Calculate stats
-    const registeredCount = event.event_registrations?.filter(
-      (reg: any) => reg.status === 'registered'
-    ).length || 0
+    // Check if current user is admin
+    const { data: { user } } = await supabase.auth.getUser()
+    let isAdmin = false
+    let paidCount = null
 
-    const availableSpots = event.capacity
-      ? Math.max(0, event.capacity - registeredCount)
-      : null
+    if (user) {
+      const { data: membership } = await supabase
+        .from('memberships')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('org_id', event.org_id)
+        .single()
+
+      isAdmin = membership?.role === 'owner' || membership?.role === 'admin'
+    }
+
+    // Calculate registered count using helper function (includes quantity)
+    const countByPaid = event.capacity_count_by_paid || false
+    const { data: registeredCountResult } = await adminSupabase
+      .rpc('get_event_registered_count', {
+        event_uuid: eventId,
+        count_by_paid: false // Always count all registered for display
+      })
+
+    const registeredCount = registeredCountResult || 0
+
+    // For admins, also calculate paid count if event requires payment
+    if (isAdmin && event.requires_payment) {
+      const { data: paidCountResult } = await adminSupabase
+        .rpc('get_event_registered_count', {
+          event_uuid: eventId,
+          count_by_paid: true
+        })
+      paidCount = paidCountResult || 0
+    }
 
     // Check if current user is registered
-    const { data: { user } } = await supabase.auth.getUser()
     let isUserRegistered = false
 
     if (user) {
@@ -73,7 +103,8 @@ export async function GET(
       event: {
         ...event,
         registered_count: registeredCount,
-        available_spots: availableSpots,
+        paid_count: paidCount, // Only for admins, only for paid events
+        available_spots: null, // Don't show available spots on public page (as per requirements)
         is_user_registered: isUserRegistered
       }
     })
@@ -112,6 +143,8 @@ export async function PUT(
       paymentDeadlineDays,
       paymentInstructions,
       capacity,
+      capacityCountByPaid,
+      showParticipantsList,
       status,
       isPublic,
       telegramGroupLink
@@ -162,6 +195,8 @@ export async function PUT(
       start_time: startTime,
       end_time: endTime,
       capacity: capacity || null,
+      capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
+      show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
       status,
       is_public: isPublic,
       telegram_group_link: telegramGroupLink || null
