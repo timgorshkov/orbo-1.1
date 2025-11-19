@@ -324,11 +324,7 @@ export default function EventRegistrationForm({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-sm text-neutral-500 py-4">
-                Дополнительные поля не требуются
-              </div>
-            )}
+            ) : null}
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
