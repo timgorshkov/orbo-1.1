@@ -87,5 +87,19 @@ $$;
 
 COMMENT ON FUNCTION register_for_event IS 'Registers a participant for an event, bypassing RLS policies. Verifies participant and event belong to same organization.';
 
+-- Set function owner to postgres (superuser) to ensure RLS is bypassed
+-- This is required because SECURITY DEFINER functions still apply RLS unless owner is superuser
+DO $$
+BEGIN
+  -- Try to set owner to postgres if it exists
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+    ALTER FUNCTION register_for_event(UUID, UUID, JSONB, INTEGER) OWNER TO postgres;
+  END IF;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    -- If we can't change owner, function will still work but RLS may apply
+    RAISE NOTICE 'Could not set function owner to postgres - RLS may still apply';
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'Migration 123 Complete: Created register_for_event RPC function to bypass RLS.'; END $$;
 
