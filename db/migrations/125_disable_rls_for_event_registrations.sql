@@ -19,8 +19,7 @@ DROP POLICY IF EXISTS "Admins can update payment info" ON public.event_registrat
 ALTER TABLE public.event_registrations DISABLE ROW LEVEL SECURITY;
 
 COMMENT ON TABLE public.event_registrations IS 
-'RLS disabled due to persistent "argument of OR must not return a set" errors. ' ||
-'Security enforced through API layer and RPC functions.';
+'RLS disabled due to persistent OR errors in policies. Security enforced through API layer and RPC functions.';
 
 DO $$ BEGIN RAISE NOTICE 'Migration 125 Complete: Disabled RLS for event_registrations.'; END $$;
 
