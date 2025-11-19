@@ -210,7 +210,8 @@ export async function POST(
       }
       
       // Reactivate cancelled registration using admin client
-      const { data: registration, error: updateError } = await adminSupabase
+      // Don't use .select() to avoid RLS policy checks
+      const { error: updateError } = await adminSupabase
         .from('event_registrations')
         .update({ 
           status: 'registered',
@@ -219,13 +220,18 @@ export async function POST(
           quantity: quantity
         })
         .eq('id', existingRegistration.id)
-        .select()
-        .single()
 
       if (updateError) {
         console.error('Error updating registration:', updateError)
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
+
+      // Fetch updated registration separately
+      const { data: registration } = await adminSupabase
+        .from('event_registrations')
+        .select('*')
+        .eq('id', existingRegistration.id)
+        .single()
 
       return NextResponse.json({ registration }, { status: 200 })
     }
