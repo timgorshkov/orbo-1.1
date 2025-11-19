@@ -230,24 +230,20 @@ export async function POST(
       return NextResponse.json({ registration }, { status: 200 })
     }
 
-    // Create new registration using admin client to bypass RLS
-    // Don't use .select() to avoid RLS policy checks - fetch separately instead
-    const { error: insertError } = await adminSupabase
-      .from('event_registrations')
-      .insert({
-        event_id: eventId,
-        participant_id: participant.id,
-        registration_source: 'web',
-        status: 'registered',
-        registration_data: registrationData,
-        quantity: quantity
+    // Use RPC function to register (completely bypasses RLS via SECURITY DEFINER)
+    const { data: registrationResult, error: rpcError } = await adminSupabase
+      .rpc('register_for_event', {
+        p_event_id: eventId,
+        p_participant_id: participant.id,
+        p_registration_data: registrationData,
+        p_quantity: quantity
       })
 
-    if (insertError) {
-      console.error('Error creating registration:', insertError)
+    if (rpcError) {
+      console.error('Error creating registration via RPC:', rpcError)
       
       // Handle duplicate key error gracefully
-      if (insertError.code === '23505') {
+      if (rpcError.code === '23505' || rpcError.message?.includes('duplicate')) {
         // User is already registered (race condition)
         const { data: existingReg } = await adminSupabase
           .from('event_registrations')
@@ -266,37 +262,21 @@ export async function POST(
       }
       
       return NextResponse.json(
-        { error: insertError.message },
+        { error: rpcError.message || 'Failed to register for event' },
         { status: 500 }
       )
     }
 
-    // Fetch the created registration separately (using admin client to bypass RLS)
-    const { data: registration, error: fetchError } = await adminSupabase
-      .from('event_registrations')
-      .select('*')
-      .eq('event_id', eventId)
-      .eq('participant_id', participant.id)
-      .eq('status', 'registered')
-      .order('registered_at', { ascending: false })
-      .limit(1)
-      .single()
+    // RPC function returns array, get first result
+    const registration = Array.isArray(registrationResult) && registrationResult.length > 0
+      ? registrationResult[0]
+      : registrationResult
 
-    if (fetchError || !registration) {
-      console.error('Error fetching created registration:', fetchError)
-      // Still return success since insert succeeded
+    if (!registration) {
+      console.error('RPC function returned no registration data')
       return NextResponse.json(
-        { 
-          registration: {
-            event_id: eventId,
-            participant_id: participant.id,
-            status: 'registered',
-            registration_data: registrationData,
-            quantity: quantity
-          },
-          message: 'Registration created successfully (fetch failed)' 
-        },
-        { status: 201 }
+        { error: 'Registration failed - no data returned' },
+        { status: 500 }
       )
     }
 
