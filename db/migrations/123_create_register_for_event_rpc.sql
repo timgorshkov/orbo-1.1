@@ -31,6 +31,10 @@ DECLARE
   v_registration_id UUID;
   v_registration RECORD;
 BEGIN
+  -- Disable RLS for this function's execution context
+  -- This allows SELECT queries to bypass RLS policies
+  PERFORM set_config('role', 'postgres', true);
+  
   -- Verify participant and event belong to same organization
   SELECT org_id INTO v_org_id
   FROM public.participants
