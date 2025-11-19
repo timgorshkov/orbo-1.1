@@ -70,14 +70,14 @@ BEGIN
   -- Return the created registration
   RETURN QUERY
   SELECT 
-    er.id,
-    er.event_id,
-    er.participant_id,
-    er.status,
-    er.registration_source,
-    er.registration_data,
-    er.quantity,
-    er.registered_at
+    er.id AS id,
+    er.event_id AS event_id,
+    er.participant_id AS participant_id,
+    er.status AS status,
+    er.registration_source AS registration_source,
+    er.registration_data AS registration_data,
+    er.quantity AS quantity,
+    er.registered_at AS registered_at
   FROM public.event_registrations er
   WHERE er.id = register_for_event.v_registration_id;
 END;
