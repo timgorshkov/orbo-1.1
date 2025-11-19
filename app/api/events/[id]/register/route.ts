@@ -237,6 +237,13 @@ export async function POST(
     }
 
     // Use RPC function to register (completely bypasses RLS via SECURITY DEFINER)
+    console.log('[API] About to call register_for_event RPC with:', {
+      eventId,
+      participantId: participant.id,
+      quantity,
+      registrationDataKeys: Object.keys(registrationData)
+    })
+    
     const { data: registrationResult, error: rpcError } = await adminSupabase
       .rpc('register_for_event', {
         p_event_id: eventId,
@@ -244,6 +251,13 @@ export async function POST(
         p_registration_data: registrationData,
         p_quantity: quantity
       })
+
+    console.log('[API] RPC call returned:', { 
+      hasData: !!registrationResult, 
+      hasError: !!rpcError,
+      errorCode: rpcError?.code,
+      errorMessage: rpcError?.message
+    })
 
     if (rpcError) {
       console.error('Error creating registration via RPC:', rpcError)
