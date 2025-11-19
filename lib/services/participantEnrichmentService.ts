@@ -136,12 +136,20 @@ export async function enrichParticipant(
     // 6. AI Analysis (if requested and have messages)
     let aiAnalysis: AIEnrichmentResult | undefined;
     if (options.useAI && participantMessages.length > 0) {
+      console.log(`[Enrichment] Preparing ${participantMessages.length} participant messages for AI analysis...`);
+      
       // Prepare messages with context
       const messagesWithContext = await prepareMessagesWithContext(
         participantMessages,
         messages || [],
         participant.tg_user_id
       );
+      
+      console.log(`[Enrichment] Prepared ${messagesWithContext.length} messages with context (from ${participantMessages.length} raw messages)`);
+      
+      if (messagesWithContext.length === 0) {
+        console.warn(`[Enrichment] ⚠️ No messages with text found! Sample message meta:`, participantMessages[0]?.meta);
+      }
       
       aiAnalysis = await analyzeParticipantWithAI(
         messagesWithContext,
@@ -154,6 +162,8 @@ export async function enrichParticipant(
       
       result.ai_analysis = aiAnalysis;
       result.cost_usd = aiAnalysis.cost_usd;
+    } else if (options.useAI && participantMessages.length === 0) {
+      console.warn(`[Enrichment] ⚠️ AI analysis requested but no participant messages found!`);
     }
     
     // 7. Behavioral Role Classification (rule-based)
@@ -360,6 +370,9 @@ async function calculateActivityStats(
 
 /**
  * Prepare messages with context for AI analysis
+ * 
+ * ⚠️ IMPORTANT: Full text is stored in participant_messages table, not in activity_events.meta
+ * We need to fetch full texts from participant_messages, fallback to text_preview from meta
  */
 async function prepareMessagesWithContext(
   participantMessages: any[],
@@ -372,19 +385,87 @@ async function prepareMessagesWithContext(
   created_at: string;
   is_participant: boolean;
 }>> {
+  if (participantMessages.length === 0) {
+    return [];
+  }
+  
+  // ⭐ Fetch full message texts from participant_messages table
+  const messageIds = participantMessages
+    .map(m => m.message_id)
+    .filter(Boolean);
+  
+  let fullTextsMap = new Map<number, string>();
+  
+  if (messageIds.length > 0) {
+    const { data: fullMessages } = await supabaseAdmin
+      .from('participant_messages')
+      .select('message_id, message_text')
+      .eq('tg_user_id', participantTgUserId)
+      .in('message_id', messageIds);
+    
+    if (fullMessages) {
+      fullMessages.forEach((m: any) => {
+        if (m.message_text) {
+          fullTextsMap.set(m.message_id, m.message_text);
+        }
+      });
+    }
+    
+    console.log(`[Enrichment] Fetched ${fullTextsMap.size} full texts from participant_messages (out of ${messageIds.length} message IDs)`);
+  }
+  
   const result = [];
+  let skippedCount = 0;
   
   for (const msg of participantMessages) {
-    const text = msg.meta?.message?.text || msg.meta?.text || '';
-    if (!text) continue;
+    // ⚠️ Try multiple paths for text extraction:
+    // 1. Full text from participant_messages (preferred)
+    // 2. text_preview from meta (fallback)
+    // 3. Other possible locations
+    const fullText = msg.message_id ? fullTextsMap.get(msg.message_id) : null;
+    const text = 
+      fullText ||                                                    // ✅ Full text from participant_messages
+      msg.meta?.message?.text_preview ||                            // Preview format (first 500 chars)
+      msg.meta?.message?.text ||                                    // Standard format (if exists)
+      msg.meta?.text ||                                             // Direct text
+      msg.meta?.text_entities?.[0]?.text ||                         // Text entities format
+      (typeof msg.meta === 'string' ? msg.meta : '');              // Fallback: meta as string
+    
+    if (!text || text.trim().length === 0) {
+      skippedCount++;
+      if (skippedCount <= 3) {
+        // Log first few skipped messages for debugging
+        console.log(`[Enrichment] Skipping message ${msg.id} (message_id: ${msg.message_id}) - no text found. Meta structure:`, {
+          hasMeta: !!msg.meta,
+          metaKeys: msg.meta ? Object.keys(msg.meta) : [],
+          metaType: typeof msg.meta,
+          hasFullText: !!fullText,
+          sampleMeta: JSON.stringify(msg.meta).slice(0, 200)
+        });
+      }
+      continue;
+    }
+    
+    // Extract author name from various possible locations
+    const authorName = 
+      msg.meta?.user?.name ||
+      msg.meta?.message?.from?.first_name ||
+      msg.meta?.message?.from_name ||
+      msg.meta?.from_name ||
+      msg.meta?.author_name ||
+      'Unknown';
     
     result.push({
       id: msg.id.toString(),
-      text,
-      author_name: msg.meta?.message?.from?.first_name || 'Unknown',
+      text: text.trim(),
+      author_name: authorName,
       created_at: msg.created_at,
       is_participant: true
     });
+  }
+  
+  if (skippedCount > 0) {
+    console.warn(`[Enrichment] Skipped ${skippedCount} messages without text (out of ${participantMessages.length} total)`);
   }
   
   return result;
