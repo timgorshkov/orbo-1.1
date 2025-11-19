@@ -138,47 +138,59 @@ export async function analyzeParticipantWithAI(
   const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в Telegram-группе и выделить:
 
 1. **Интересы и экспертизу** (5-10 ключевых слов/фраз):
-   - О чём участник чаще всего говорит В СВОИХ СООБЩЕНИЯХ (помечены ➡️)
-   - В каких темах проявляет экспертизу (даёт советы, делится опытом)
-   - Только существительные или короткие фразы (например: "PPC", "веб-дизайн", "Python", "event-менеджмент")
-   - Исключи общие слова ("работа", "вопрос", "помощь", "группа", "чат")
-   - АНАЛИЗИРУЙ ТОЛЬКО сообщения самого участника (➡️), НЕ анализируй сообщения других
-   - Если участник написал мало (<3 сообщений) - верни пустой массив []
+   - О чём участник чаще всего говорит в своих сообщениях
+   - В каких темах проявляет экспертизу (даёт советы, делится опытом, упоминает профессиональные термины)
+   - Только существительные или короткие фразы (например: "PPC", "веб-дизайн", "Python", "event-менеджмент", "маркетинг", "программирование")
+   - Можешь включать общие темы, если они часто упоминаются ("работа", "бизнес", "обучение")
+   - Если участник упоминает конкретные технологии, инструменты, навыки - включи их
+   - Даже если сообщения короткие, попробуй найти хотя бы 2-3 интереса
+   - Если участник написал очень мало (<3 сообщений) - верни пустой массив []
 
 2. **Актуальные запросы/вопросы** (последние 1-2 недели):
-   - Что участник ищет или спрашивает В СВОИХ СООБЩЕНИЯХ (помечены ➡️)
+   - Что участник ищет или спрашивает в своих сообщениях
    - Формулируй кратко (1-2 предложения на запрос)
-   - Только если это явный запрос/вопрос ОТ ЭТОГО участника
+   - Включай как явные вопросы ("Где найти...?", "Как сделать...?"), так и неявные запросы ("Нужен...", "Ищу...")
    - Если не нашёл запросов - верни пустой массив []
 
 3. **Обсуждаемые темы** (topics_discussed):
-   - Темы, которые участник упоминает В СВОИХ сообщениях (помечены ➡️)
+   - Темы, которые участник упоминает в своих сообщениях
    - Подсчитай сколько раз участник упоминал каждую тему
-   - НЕ считай темы из сообщений других людей (без ➡️)
+   - Включай даже общие темы, если они упоминаются часто
    - Если участник почти не писал - верни пустой объект {}
 
 4. **Город/локация** (если упоминается):
-   - Определи город, если участник его упомянул В СВОИХ сообщениях (➡️)
+   - Определи город, если участник его упомянул
    - Уверенность: 0.9 если явно указал ("Я в Москве"), 0.5 если косвенно ("московские события")
 
-**КРИТИЧЕСКИ ВАЖНО:**
-- Анализируй ТОЛЬКО сообщения самого участника (помечены ➡️ в начале строки)
-- НЕ используй темы из сообщений других участников (без ➡️)
+**ВАЖНО:**
+- Все сообщения ниже - от самого участника (помечены ➡️)
 - Фокус на последние 2 недели для "актуальных запросов"
 - Интересы - из всего периода, но с приоритетом на свежие
-- Игнорируй служебные сообщения, приветствия, благодарности
-- Если участник написал мало - верни минимум данных
-- Возвращай только данные, без комментариев`;
+- Старайся найти хотя бы несколько интересов, даже если сообщения короткие
+- Возвращай только данные в формате JSON, без комментариев`;
 
+  const messagesToAnalyze = recentMessages.slice(0, 50);
+  
+  // ⭐ Log sample messages for debugging
+  console.log(`[AI Enrichment] Preparing prompt with ${messagesToAnalyze.length} messages`);
+  if (messagesToAnalyze.length > 0) {
+    console.log(`[AI Enrichment] Sample messages (first 3):`, messagesToAnalyze.slice(0, 3).map(m => ({
+      text: m.text.slice(0, 100),
+      date: m.created_at,
+      author: m.author_name,
+      is_participant: m.is_participant
+    })));
+  }
+  
   const userPrompt = `Участник: ${participantName}
 
-Сообщения (от новых к старым):
+Сообщения участника (от новых к старым):
 
-${recentMessages.slice(0, 50).map((m, i) => {
+${messagesToAnalyze.map((m, i) => {
   const date = new Date(m.created_at);
   const daysAgo = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  const marker = m.is_participant ? '➡️' : '  ';
-  return `${marker} [${daysAgo}д назад] ${m.author_name}: ${m.text.slice(0, 300)}${m.text.length > 300 ? '...' : ''}`;
+  // ⚠️ Все сообщения от участника, так как мы фильтруем только его сообщения
+  return `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
 }).join('\n\n')}
 
 Верни результат строго в формате JSON:
@@ -193,6 +205,9 @@ ${recentMessages.slice(0, 50).map((m, i) => {
   try {
     const startTime = Date.now();
     
+    // ⭐ Log prompt length for debugging
+    console.log(`[AI Enrichment] Prompt length: ${userPrompt.length} chars, ${messagesToAnalyze.length} messages`);
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini', // Cheaper model, good enough for extraction
       messages: [
@@ -204,7 +219,17 @@ ${recentMessages.slice(0, 50).map((m, i) => {
       response_format: { type: 'json_object' }
     });
     
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    const rawResponse = response.choices[0].message.content || '{}';
+    const result = JSON.parse(rawResponse);
+    
+    // ⭐ Log raw AI response for debugging
+    console.log(`[AI Enrichment] Raw AI response:`, rawResponse.slice(0, 500));
+    console.log(`[AI Enrichment] Parsed result:`, {
+      interests: result.interests,
+      topics_count: Object.keys(result.topics_discussed || {}).length,
+      recent_asks: result.recent_asks,
+      city: result.city
+    });
     
     // Calculate cost (gpt-4o-mini pricing: $0.15/1M input, $0.60/1M output)
     const inputTokens = response.usage?.prompt_tokens || 0;
