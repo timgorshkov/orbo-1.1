@@ -2,6 +2,9 @@
 -- Date: Nov 19, 2025
 -- Purpose: Use SECURITY DEFINER function to completely bypass RLS for event registration
 
+-- Drop existing function if it exists (needed when changing return type)
+DROP FUNCTION IF EXISTS register_for_event(UUID, UUID, JSONB, INTEGER);
+
 CREATE OR REPLACE FUNCTION register_for_event(
   p_event_id UUID,
   p_participant_id UUID,
