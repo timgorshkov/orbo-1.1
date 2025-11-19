@@ -31,20 +31,28 @@ DECLARE
   v_registration_id UUID;
   v_registration RECORD;
 BEGIN
+  RAISE NOTICE '[RPC] Starting register_for_event for event % participant %', p_event_id, p_participant_id;
+  
   -- SECURITY DEFINER functions run with the privileges of the function owner
   -- If RLS is still applied, we need to use direct SQL execution
+  RAISE NOTICE '[RPC] Step 1: Fetching participant org_id';
   -- Verify participant and event belong to same organization using direct SQL
   EXECUTE format('SELECT org_id FROM %I.participants WHERE id = $1', 'public')
     INTO v_org_id
     USING p_participant_id;
   
+  RAISE NOTICE '[RPC] Step 1 complete: participant org_id = %', v_org_id;
+  
   IF v_org_id IS NULL THEN
     RAISE EXCEPTION 'Participant not found';
   END IF;
   
+  RAISE NOTICE '[RPC] Step 2: Fetching event org_id';
   EXECUTE format('SELECT org_id FROM %I.events WHERE id = $1', 'public')
     INTO v_event_org_id
     USING p_event_id;
+  
+  RAISE NOTICE '[RPC] Step 2 complete: event org_id = %', v_event_org_id;
   
   IF v_event_org_id IS NULL THEN
     RAISE EXCEPTION 'Event not found';
@@ -54,6 +62,7 @@ BEGIN
     RAISE EXCEPTION 'Participant and event must belong to the same organization';
   END IF;
   
+  RAISE NOTICE '[RPC] Step 3: Inserting registration';
   -- Insert registration using EXECUTE to bypass RLS
   EXECUTE format('
     INSERT INTO %I.event_registrations (
@@ -71,6 +80,9 @@ BEGIN
   INTO v_registration
   USING p_event_id, p_participant_id, 'web', 'registered', p_registration_data, p_quantity;
   
+  RAISE NOTICE '[RPC] Step 3 complete: registration created with id = %', v_registration.id;
+  
+  RAISE NOTICE '[RPC] Step 4: Preparing return data';
   -- Return the created registration
   registration_id := v_registration.id;
   registration_event_id := v_registration.event_id;
@@ -81,7 +93,10 @@ BEGIN
   registration_quantity := v_registration.quantity;
   registration_registered_at := v_registration.registered_at;
   
+  RAISE NOTICE '[RPC] Step 4 complete: returning registration data';
   RETURN NEXT;
+  
+  RAISE NOTICE '[RPC] Function completed successfully';
 END;
 $$;
 
