@@ -121,18 +121,20 @@ export async function analyzeParticipantWithAI(
   participantId: string | null = null,
   groupKeywords: string[] = []
 ): Promise<AIEnrichmentResult> {
-  // Filter messages from the last 90 days, prioritize last 14 days
+  // ⚠️ Don't filter by date - imported history may have old dates
+  // Use all available messages, but prioritize recent ones
   const now = new Date();
-  const recentMessages = messages.filter(m => {
-    const msgDate = new Date(m.created_at);
-    const daysAgo = (now.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24);
-    return daysAgo <= 90;
-  });
   
-  // Sort by date (most recent first)
-  recentMessages.sort((a, b) => 
+  // Sort by date (most recent first) - this ensures recent messages are analyzed first
+  const sortedMessages = [...messages].sort((a, b) => 
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+  
+  // Use all messages, but limit to last 50 for token efficiency
+  // This allows analyzing imported history with old dates
+  const recentMessages = sortedMessages.slice(0, 50);
+  
+  console.log(`[AI Enrichment] Using ${recentMessages.length} messages (from ${messages.length} total, no date filter)`);
   
   // Prepare prompt
   const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в Telegram-группе и выделить:
