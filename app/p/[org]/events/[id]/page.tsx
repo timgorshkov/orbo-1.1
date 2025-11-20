@@ -158,8 +158,6 @@ export default async function EventDetailPage({
           id,
           full_name,
           username,
-          email,
-          phone_number,
           tg_user_id,
           merged_into
         )
@@ -169,12 +167,20 @@ export default async function EventDetailPage({
     .eq('id', eventId)
     .single()
 
+  if (error) {
+    console.error('[Event Detail Page] Error fetching event:', error)
+    console.error('[Event Detail Page] Event ID:', eventId, 'Org ID:', orgId)
+  }
+
   if (error || !event) {
     return (
       <div className="p-6">
         <div className="text-center py-8">
           <h2 className="text-xl font-semibold mb-2">Событие не найдено</h2>
           <p className="text-neutral-600">Это событие не существует или было удалено.</p>
+          {error && (
+            <p className="text-xs text-red-600 mt-2">Код ошибки: {error.code}</p>
+          )}
         </div>
       </div>
     )
