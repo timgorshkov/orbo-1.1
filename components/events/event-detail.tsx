@@ -44,10 +44,13 @@ type Event = {
     id: string
     status: string
     registered_at: string
+    payment_status?: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
     participants: {
       id: string
       full_name: string | null
       username: string | null
+      email?: string | null
+      phone_number?: string | null
       tg_user_id: number | null
       merged_into: string | null
     }
@@ -232,7 +235,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           p.username ? `@${p.username}` : '—',
           p.email || '—',
           p.phone_number || '—',
-          (reg as any).payment_status ? paymentStatusMap[(reg as any).payment_status] || (reg as any).payment_status : '—',
+          reg.payment_status ? paymentStatusMap[reg.payment_status] || reg.payment_status : '—',
           new Date(reg.registered_at).toLocaleString('ru-RU')
         ].join(',')
       })
@@ -749,15 +752,15 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 {registration.participants.username ? `@${registration.participants.username}` : '—'}
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
-                                {(registration.participants as any).email || '—'}
+                                {registration.participants.email || '—'}
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
-                                {(registration.participants as any).phone_number || '—'}
+                                {registration.participants.phone_number || '—'}
                               </td>
                               {(event.requires_payment || event.is_paid) && (
-                                <td className={`px-4 py-3 text-sm font-medium ${paymentStatusColorMap[(registration as any).payment_status] || 'text-neutral-500'}`}>
-                                  {(registration as any).payment_status 
-                                    ? paymentStatusMap[(registration as any).payment_status] || (registration as any).payment_status 
+                                <td className={`px-4 py-3 text-sm font-medium ${registration.payment_status ? paymentStatusColorMap[registration.payment_status] : 'text-neutral-500'}`}>
+                                  {registration.payment_status 
+                                    ? paymentStatusMap[registration.payment_status] || registration.payment_status 
                                     : '—'}
                                 </td>
                               )}
