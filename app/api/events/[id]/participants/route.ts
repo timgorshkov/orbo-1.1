@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
-import { createAdminServer } from '@/lib/server/admin'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 
 export async function GET(
   request: NextRequest,
