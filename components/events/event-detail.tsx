@@ -527,15 +527,6 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                           Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
                                         </div>
                                       )}
-                                      {userRegistration.payment_deadline && (
-                                        <div className="text-xs text-neutral-500 mt-1">
-                                          Оплатить до: {new Date(userRegistration.payment_deadline).toLocaleDateString('ru-RU', {
-                                            day: 'numeric',
-                                            month: 'long',
-                                            year: 'numeric'
-                                          })}
-                                        </div>
-                                      )}
                                     </div>
                                   )}
                                   

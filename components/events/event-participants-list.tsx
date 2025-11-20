@@ -54,11 +54,8 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-neutral-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-neutral-600" />
-          <h3 className="text-lg font-semibold">Участники</h3>
-        </div>
+      <div className="p-4">
+        <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-neutral-500">Загрузка...</div>
       </div>
     )
@@ -66,11 +63,8 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg border border-neutral-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-neutral-600" />
-          <h3 className="text-lg font-semibold">Участники</h3>
-        </div>
+      <div className="p-4">
+        <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-red-600">{error}</div>
       </div>
     )
@@ -78,31 +72,23 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (participants.length === 0) {
     return (
-      <div className="bg-white rounded-lg border border-neutral-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-neutral-600" />
-          <h3 className="text-lg font-semibold">Участники</h3>
-        </div>
+      <div className="p-4">
+        <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-neutral-500">Пока никто не зарегистрировался</div>
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-lg border border-neutral-200 p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="w-5 h-5 text-neutral-600" />
-        <h3 className="text-lg font-semibold">
-          Участники ({participants.length})
-        </h3>
-      </div>
+    <div className="p-4">
+      <h3 className="text-lg font-semibold mb-4">Принимают участие</h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {participants.map(participant => {
           const CardContent = (
-            <div className="flex flex-col items-center text-center p-4 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors">
+            <div className="flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded">
               {/* Photo */}
-              <div className="w-16 h-16 rounded-full bg-neutral-200 overflow-hidden mb-3 flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-neutral-200 overflow-hidden mb-2 flex-shrink-0">
                 {participant.photo_url ? (
                   <img
                     src={participant.photo_url}
@@ -110,20 +96,20 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-neutral-500 text-2xl font-semibold">
+                  <div className="w-full h-full flex items-center justify-center text-neutral-500 text-lg font-semibold">
                     {participant.full_name.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
 
               {/* Name */}
-              <div className="font-medium text-sm text-neutral-900 mb-1 line-clamp-2">
+              <div className="font-medium text-xs text-neutral-900 mb-0.5 line-clamp-2 leading-tight">
                 {participant.full_name}
               </div>
 
               {/* Bio */}
               {participant.bio && (
-                <div className="text-xs text-neutral-600 line-clamp-2">
+                <div className="text-xs text-neutral-600 line-clamp-1 leading-tight">
                   {participant.bio}
                 </div>
               )}

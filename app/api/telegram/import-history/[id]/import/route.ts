@@ -266,6 +266,9 @@ export async function POST(
       const BATCH_SIZE = 500;
       let importedCount = 0;
       let skippedCount = 0;
+      let duplicateCount = 0;
+      let messagesSavedCount = 0;
+      let messagesSkippedCount = 0;
 
       for (let i = 0; i < parsingResult.messages.length; i += BATCH_SIZE) {
         const messageBatch = parsingResult.messages.slice(i, i + BATCH_SIZE);
@@ -365,7 +368,9 @@ export async function POST(
             if (insertError.code === '23505') {
               console.warn('⚠️ Some messages were duplicates, continuing...');
               const insertedCount = data?.length || 0;
-              skippedCount += activityEvents.length - insertedCount;
+              const duplicateBatch = activityEvents.length - insertedCount;
+              skippedCount += duplicateBatch;
+              duplicateCount += duplicateBatch;
               importedCount += insertedCount;
             } else {
               throw insertError;
@@ -407,18 +412,23 @@ export async function POST(
               if (participantMessagesData.length > 0) {
                 console.log(`📝 Saving ${participantMessagesData.length} message texts to participant_messages...`);
                 
-                const { error: messagesError } = await supabaseAdmin
+                const { data: savedMessages, error: messagesError } = await supabaseAdmin
                   .from('participant_messages')
                   .upsert(participantMessagesData, {
                     onConflict: 'tg_chat_id,message_id',
                     ignoreDuplicates: true
-                  });
+                  })
+                  .select('id');
                 
                 if (messagesError) {
                   console.error('⚠️  Failed to save message texts:', messagesError);
                   // Non-critical error, continue
                 } else {
-                  console.log(`✅ Saved ${participantMessagesData.length} message texts`);
+                  const savedCount = savedMessages?.length || 0;
+                  const skippedMessagesCount = participantMessagesData.length - savedCount;
+                  messagesSavedCount += savedCount;
+                  messagesSkippedCount += skippedMessagesCount;
+                  console.log(`✅ Saved ${savedCount} message texts, skipped ${skippedMessagesCount} duplicates`);
                 }
               }
             }
@@ -458,7 +468,8 @@ export async function POST(
           .eq('id', batchId);
       }
 
-      console.log(`Import completed: ${importedCount} imported, ${skippedCount} skipped`);
+      console.log(`Import completed: ${importedCount} imported, ${skippedCount} skipped (${duplicateCount} duplicates)`);
+      console.log(`Messages saved: ${messagesSavedCount} saved, ${messagesSkippedCount} skipped (duplicates)`);
 
       // Пересчитываем метрики группы
       await recalculateGroupMetrics(supabaseAdmin, orgId, group.tg_chat_id);
@@ -481,6 +492,9 @@ export async function POST(
           batchId,
           importedMessages: importedCount,
           skippedMessages: skippedCount,
+          duplicateMessages: duplicateCount,
+          messagesSaved: messagesSavedCount,
+          messagesSkipped: messagesSkippedCount,
           newParticipants: newParticipantsCount,
           matchedParticipants: decisions.filter(d => d.action === 'merge').length,
         },
