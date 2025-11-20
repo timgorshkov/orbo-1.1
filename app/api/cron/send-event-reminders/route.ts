@@ -41,6 +41,8 @@ export async function GET(request: NextRequest) {
         event_date,
         start_time,
         org_id,
+        location_info,
+        requires_payment,
         organizations!inner(
           id,
           name
@@ -75,6 +77,7 @@ export async function GET(request: NextRequest) {
           .from('event_registrations')
           .select(`
             id,
+            payment_status,
             participants!inner(
               id,
               tg_user_id,
