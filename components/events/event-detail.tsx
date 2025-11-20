@@ -51,6 +51,17 @@ type Event = {
   }>
 }
 
+type UserRegistration = {
+  id: string
+  status: string
+  payment_status: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
+  price: number | null
+  paid_amount: number | null
+  quantity: number
+  registered_at: string
+  payment_deadline?: string | null
+}
+
 type Props = {
   event: Event
   orgId: string
@@ -65,6 +76,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [isPending, startTransition] = useTransition()
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [isRegistered, setIsRegistered] = useState(event.is_user_registered)
+  const [userRegistration, setUserRegistration] = useState<UserRegistration | null>(null)
+  const [loadingRegistration, setLoadingRegistration] = useState(false)
   const [showNotifyDialog, setShowNotifyDialog] = useState(false)
   const [selectedGroups, setSelectedGroups] = useState<number[]>([])
   const [notifyError, setNotifyError] = useState<string | null>(null)
@@ -82,6 +95,26 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const showAdminFeatures = isAdmin && adminMode
   // Allow edit mode only if admin features are shown and edit mode is requested
   const canEdit = showAdminFeatures && isEditMode
+
+  // Load user's registration details if registered
+  useEffect(() => {
+    if (!isRegistered || !event.requires_payment) return
+    
+    setLoadingRegistration(true)
+    fetch(`/api/events/${event.id}/my-registration`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.registration) {
+          setUserRegistration(data.registration)
+        }
+      })
+      .catch(err => {
+        console.error('Error loading registration details:', err)
+      })
+      .finally(() => {
+        setLoadingRegistration(false)
+      })
+  }, [event.id, isRegistered, event.requires_payment])
 
   // Load participant profile for pre-filling registration form
   useEffect(() => {
@@ -127,6 +160,25 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const handleRegistrationSuccess = () => {
     setIsRegistered(true)
     setShowRegistrationForm(false)
+    
+    // Load registration details if it's a paid event
+    if (event.requires_payment) {
+      setLoadingRegistration(true)
+      fetch(`/api/events/${event.id}/my-registration`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.registration) {
+            setUserRegistration(data.registration)
+          }
+        })
+        .catch(err => {
+          console.error('Error loading registration details:', err)
+        })
+        .finally(() => {
+          setLoadingRegistration(false)
+        })
+    }
+    
     router.refresh()
   }
 
@@ -372,26 +424,102 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           
                           {/* Payment Info for Registered Users */}
                           {(event.requires_payment || event.is_paid) && (
-                            <div className="mt-4 pt-4 border-t border-neutral-200">
-                              {(event.default_price !== null && event.default_price !== undefined) && (
-                                <div className="text-lg font-semibold text-neutral-900 mb-2">
-                                  К оплате: {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                </div>
+                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3">
+                              {loadingRegistration ? (
+                                <div className="text-sm text-neutral-500">Загрузка информации об оплате...</div>
+                              ) : userRegistration ? (
+                                <>
+                                  {/* Payment Status */}
+                                  {userRegistration.payment_status && (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                        userRegistration.payment_status === 'paid' 
+                                          ? 'bg-green-100 text-green-800'
+                                          : userRegistration.payment_status === 'partially_paid'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : userRegistration.payment_status === 'overdue'
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}>
+                                        {userRegistration.payment_status === 'paid' 
+                                          ? '✓ Оплачено'
+                                          : userRegistration.payment_status === 'partially_paid'
+                                          ? 'Частично оплачено'
+                                          : userRegistration.payment_status === 'overdue'
+                                          ? 'Просрочено'
+                                          : 'Ожидает оплаты'}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Amount to Pay */}
+                                  {userRegistration.price !== null && userRegistration.payment_status !== 'paid' && (
+                                    <div className="text-center">
+                                      <div className="text-lg font-semibold text-neutral-900">
+                                        К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                      </div>
+                                      {userRegistration.quantity > 1 && (
+                                        <div className="text-xs text-neutral-500 mt-1">
+                                          {userRegistration.quantity} {userRegistration.quantity === 1 ? 'билет' : userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                        </div>
+                                      )}
+                                      {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
+                                        <div className="text-sm text-neutral-600 mt-1">
+                                          Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                        </div>
+                                      )}
+                                      {userRegistration.payment_deadline && (
+                                        <div className="text-xs text-neutral-500 mt-1">
+                                          Оплатить до: {new Date(userRegistration.payment_deadline).toLocaleDateString('ru-RU', {
+                                            day: 'numeric',
+                                            month: 'long',
+                                            year: 'numeric'
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Payment Instructions */}
+                                  {userRegistration.payment_status !== 'paid' && event.payment_instructions && (
+                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
+                                      {event.payment_instructions}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Placeholder for future payment button */}
+                                  {userRegistration.payment_status === 'pending' && (
+                                    <div className="text-center">
+                                      <Button 
+                                        className="w-full" 
+                                        size="sm"
+                                        disabled
+                                      >
+                                        Оплатить онлайн (скоро)
+                                      </Button>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                // Fallback to default price if no registration details
+                                <>
+                                  {(event.default_price !== null && event.default_price !== undefined) && (
+                                    <div className="text-lg font-semibold text-neutral-900 mb-2">
+                                      К оплате: {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                    </div>
+                                  )}
+                                  {event.payment_instructions && (
+                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
+                                      {event.payment_instructions}
+                                    </div>
+                                  )}
+                                  {!event.payment_instructions && event.price_info && (
+                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
+                                      {event.price_info}
+                                    </div>
+                                  )}
+                                </>
                               )}
-                              {event.payment_instructions && (
-                                <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
-                                  {event.payment_instructions}
-                                </div>
-                              )}
-                              {!event.payment_instructions && event.price_info && (
-                                <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
-                                  {event.price_info}
-                                </div>
-                              )}
-                              {/* Placeholder for future payment link */}
-                              {/* <Button className="w-full mt-3" size="sm">
-                                Оплатить онлайн
-                              </Button> */}
                             </div>
                           )}
                         </div>
