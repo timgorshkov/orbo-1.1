@@ -7,8 +7,6 @@
 
 import { createAdminServer } from '@/lib/server/supabaseServer';
 
-const supabaseAdmin = createAdminServer();
-
 /**
  * Update participant's last activity timestamp
  * Called from webhook after processing message
@@ -18,6 +16,9 @@ export async function updateParticipantActivity(
   orgId: string
 ): Promise<void> {
   try {
+    // Create admin client per request (important for serverless)
+    const supabaseAdmin = createAdminServer();
+    
     // Update last_activity_at (triggers scoring via DB trigger)
     const { error } = await supabaseAdmin
       .from('participants')
@@ -29,10 +30,20 @@ export async function updateParticipantActivity(
       .eq('org_id', orgId);
     
     if (error) {
-      console.error('[Stats] Failed to update participant activity:', error);
+      console.error('[Stats] Failed to update participant activity:', {
+        message: error.message,
+        details: error.details || error,
+        hint: error.hint || '',
+        code: error.code || ''
+      });
     }
-  } catch (error) {
-    console.error('[Stats] Error updating participant activity:', error);
+  } catch (error: any) {
+    console.error('[Stats] Failed to update participant activity:', {
+      message: error?.message || String(error),
+      details: error?.stack || String(error),
+      hint: error?.hint || '',
+      code: error?.code || ''
+    });
   }
 }
 
@@ -44,6 +55,9 @@ export async function incrementGroupMessageCount(
   tgChatId: number
 ): Promise<void> {
   try {
+    // Create admin client per request (important for serverless)
+    const supabaseAdmin = createAdminServer();
+    
     // Group member_count is auto-updated by trigger
     // No need to manually increment
     
@@ -71,6 +85,9 @@ export async function getActiveParticipantsForEnrichment(
   limit: number = 100
 ): Promise<Array<{ id: string; org_id: string; tg_user_id: number }>> {
   try {
+    // Create admin client per request (important for serverless)
+    const supabaseAdmin = createAdminServer();
+    
     // Get participants who:
     // 1. Were active in last 7 days
     // 2. Haven't been enriched in last 24 hours (or never)
@@ -121,6 +138,9 @@ export async function getEnrichmentStats(): Promise<{
   avg_enrichment_age_hours: number;
 }> {
   try {
+    // Create admin client per request (important for serverless)
+    const supabaseAdmin = createAdminServer();
+    
     const { data: stats } = await supabaseAdmin.rpc('get_enrichment_stats');
     
     if (stats) {

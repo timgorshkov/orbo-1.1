@@ -111,9 +111,14 @@ export async function POST(
       .select('role')
       .eq('org_id', orgId)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
+      console.log('[Import History] Access denied:', {
+        userId: user.id,
+        orgId,
+        membership: membership?.role || 'none'
+      });
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
