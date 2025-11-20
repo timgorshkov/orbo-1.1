@@ -289,8 +289,23 @@ async getChatMember(chatId: number, userId: number) {
       }
 
       return await response.json();
-    } catch (error) {
-      console.error(`Error calling Telegram API (${method}):`, error);
+    } catch (error: any) {
+      // Gracefully handle expected errors (don't log as ERROR)
+      const errorMessage = error?.message || String(error);
+      const isExpectedError = 
+        errorMessage.includes('user not found') ||
+        errorMessage.includes('chat not found') ||
+        errorMessage.includes('USER_DELETED') ||
+        errorMessage.includes('bot was blocked');
+      
+      if (isExpectedError) {
+        // Log as info for expected errors (deleted users, blocked bots, etc.)
+        console.log(`[Telegram API] Expected error in ${method}:`, errorMessage);
+      } else {
+        // Log as error for unexpected issues
+        console.error(`Error calling Telegram API (${method}):`, error);
+      }
+      
       throw error;
     }
   }
