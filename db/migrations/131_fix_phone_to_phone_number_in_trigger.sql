@@ -43,7 +43,7 @@ BEGIN
   -- Process each field in registration_data
   -- Get field mappings using EXECUTE to bypass RLS
   FOR field_key_var, field_mapping_var IN
-    EXECUTE format('SELECT field_key, maps_to_participant_field FROM %I.event_registration_fields WHERE event_id = $1 AND maps_to_participant_field IS NOT NULL', 'public')
+    EXECUTE format('SELECT field_key, participant_field_mapping FROM %I.event_registration_fields WHERE event_id = $1 AND participant_field_mapping IS NOT NULL', 'public')
     USING NEW.event_id
   LOOP
     RAISE NOTICE '[TRIGGER update_participant] Processing field: % -> %', field_key_var, field_mapping_var;

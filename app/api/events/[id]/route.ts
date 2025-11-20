@@ -245,10 +245,10 @@ export async function PUT(
       const existingFieldKeys = existingFields?.map(f => f.field_key) || []
       
       const standardFields = [
-        { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', is_required: true, display_order: 1, maps_to_participant_field: 'full_name' },
-        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', is_required: false, display_order: 2, maps_to_participant_field: 'phone_number' },
-        { field_key: 'email', field_label: 'Email', field_type: 'email', is_required: false, display_order: 3, maps_to_participant_field: 'email' },
-        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', is_required: false, display_order: 4, maps_to_participant_field: 'bio' }
+        { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', required: true, field_order: 1, participant_field_mapping: 'full_name' },
+        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: false, field_order: 2, participant_field_mapping: 'phone_number' },
+        { field_key: 'email', field_label: 'Email', field_type: 'email', required: false, field_order: 3, participant_field_mapping: 'email' },
+        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: false, field_order: 4, participant_field_mapping: 'bio' }
       ]
 
       const fieldsToInsert = standardFields
