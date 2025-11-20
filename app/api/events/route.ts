@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       capacityCountByPaid,
       showParticipantsList,
       allowMultipleTickets,
+      requestContactInfo,
       status,
       isPublic,
       telegramGroupLink
@@ -178,6 +179,30 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating event:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Create standard registration fields if requested
+    if (requestContactInfo && event?.id) {
+      const standardFields = [
+        { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', is_required: true, display_order: 1, maps_to_participant_field: 'full_name' },
+        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', is_required: false, display_order: 2, maps_to_participant_field: 'phone_number' },
+        { field_key: 'email', field_label: 'Email', field_type: 'email', is_required: false, display_order: 3, maps_to_participant_field: 'email' },
+        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', is_required: false, display_order: 4, maps_to_participant_field: 'bio' }
+      ]
+
+      const fieldsToInsert = standardFields.map(field => ({
+        ...field,
+        event_id: event.id
+      }))
+
+      const { error: fieldsError } = await supabase
+        .from('event_registration_fields')
+        .insert(fieldsToInsert)
+
+      if (fieldsError) {
+        console.error('Error creating registration fields:', fieldsError)
+        // Don't fail the entire request, just log the error
+      }
     }
 
     return NextResponse.json({ event }, { status: 201 })

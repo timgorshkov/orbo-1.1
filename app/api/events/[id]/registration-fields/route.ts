@@ -46,14 +46,27 @@ export async function GET(
       .from('event_registration_fields')
       .select('*')
       .eq('event_id', eventId)
-      .order('field_order', { ascending: true })
+      .order('display_order', { ascending: true })
 
     if (error) {
       console.error('Error fetching registration fields:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ fields: fields || [] })
+    // Map database field names to frontend expected names
+    const mappedFields = (fields || []).map(field => ({
+      id: field.id,
+      event_id: field.event_id,
+      field_key: field.field_key,
+      field_label: field.field_label,
+      field_type: field.field_type,
+      required: field.is_required,
+      field_order: field.display_order,
+      participant_field_mapping: field.maps_to_participant_field,
+      options: field.options
+    }))
+
+    return NextResponse.json({ fields: mappedFields })
   } catch (error: any) {
     console.error('Error in GET /api/events/[id]/registration-fields:', error)
     return NextResponse.json(
@@ -149,9 +162,9 @@ export async function POST(
         field_key,
         field_label,
         field_type,
-        required,
-        field_order,
-        participant_field_mapping: participant_field_mapping || null,
+        is_required: required,
+        display_order: field_order,
+        maps_to_participant_field: participant_field_mapping || null,
         options: options || null
       })
       .select()
@@ -227,11 +240,11 @@ export async function PUT(
     // Update fields using admin client
     const updates = fields.map((field: any) => {
       const updateData: any = {}
-      if (field.field_order !== undefined) updateData.field_order = field.field_order
+      if (field.field_order !== undefined) updateData.display_order = field.field_order
       if (field.field_label !== undefined) updateData.field_label = field.field_label
-      if (field.required !== undefined) updateData.required = field.required
+      if (field.required !== undefined) updateData.is_required = field.required
       if (field.participant_field_mapping !== undefined) {
-        updateData.participant_field_mapping = field.participant_field_mapping
+        updateData.maps_to_participant_field = field.participant_field_mapping
       }
       if (field.options !== undefined) updateData.options = field.options
       updateData.updated_at = new Date().toISOString()
@@ -250,9 +263,22 @@ export async function PUT(
       .from('event_registration_fields')
       .select('*')
       .eq('event_id', eventId)
-      .order('field_order', { ascending: true })
+      .order('display_order', { ascending: true })
 
-    return NextResponse.json({ fields: updatedFields || [] })
+    // Map database field names to frontend expected names
+    const mappedFields = (updatedFields || []).map(field => ({
+      id: field.id,
+      event_id: field.event_id,
+      field_key: field.field_key,
+      field_label: field.field_label,
+      field_type: field.field_type,
+      required: field.is_required,
+      field_order: field.display_order,
+      participant_field_mapping: field.maps_to_participant_field,
+      options: field.options
+    }))
+
+    return NextResponse.json({ fields: mappedFields })
   } catch (error: any) {
     console.error('Error in PUT /api/events/[id]/registration-fields:', error)
     return NextResponse.json(

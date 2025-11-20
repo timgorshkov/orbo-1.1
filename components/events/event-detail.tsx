@@ -212,6 +212,42 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
     window.open(`/api/events/${event.id}/ics`, '_blank')
   }
 
+  const handleExportParticipants = () => {
+    // Generate CSV from participants data
+    const headers = ['ФИО', 'Username', 'Email', 'Телефон', 'Статус оплаты', 'Дата регистрации']
+    const csvRows = [
+      headers.join(','),
+      ...participants.map(reg => {
+        const p = reg.participants
+        const paymentStatusMap: Record<string, string> = {
+          'pending': 'Ожидается',
+          'paid': 'Оплачено',
+          'partially_paid': 'Частично',
+          'overdue': 'Просрочено',
+          'cancelled': 'Отменено',
+          'refunded': 'Возврат'
+        }
+        return [
+          `"${p.full_name || `ID: ${p.tg_user_id}`}"`,
+          p.username ? `@${p.username}` : '—',
+          p.email || '—',
+          p.phone_number || '—',
+          (reg as any).payment_status ? paymentStatusMap[(reg as any).payment_status] || (reg as any).payment_status : '—',
+          new Date(reg.registered_at).toLocaleString('ru-RU')
+        ].join(',')
+      })
+    ]
+    
+    const csvContent = csvRows.join('\n')
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }) // BOM for Excel
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `participants_${event.title.replace(/[^a-zA-Zа-яА-Я0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleCopyPublicLink = async () => {
     const publicUrl = `${window.location.origin}/p/${orgId}/events/${event.id}`
     try {
@@ -627,23 +663,31 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             </div>
           </div>
 
-          {/* Participants List (for non-admin view) */}
-          {!showAdminFeatures && (
-            <div className="mt-6">
-              <EventParticipantsList
-                eventId={event.id}
-                orgId={orgId}
-                showParticipantsList={event.show_participants_list ?? true}
-              />
-            </div>
-          )}
+          {/* Participants List (for all users) */}
+          <div className="mt-6">
+            <EventParticipantsList
+              eventId={event.id}
+              orgId={orgId}
+              showParticipantsList={event.show_participants_list ?? true}
+            />
+          </div>
         </TabsContent>
 
         {showAdminFeatures && (
           <TabsContent value="participants">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <CardTitle>Зарегистрированные участники</CardTitle>
+                {participants.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportParticipants}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Экспорт
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {participants.length === 0 ? (
@@ -662,24 +706,67 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Username
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
+                            Email
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
+                            Телефон
+                          </th>
+                          {(event.requires_payment || event.is_paid) && (
+                            <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
+                              Статус оплаты
+                            </th>
+                          )}
+                          <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                             Дата регистрации
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-neutral-200">
-                        {participants.map((registration) => (
-                          <tr key={registration.id}>
-                            <td className="px-4 py-3 text-sm">
-                              {registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-neutral-500">
-                              {registration.participants.username ? `@${registration.participants.username}` : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-neutral-500">
-                              {new Date(registration.registered_at).toLocaleString('ru-RU')}
-                            </td>
-                          </tr>
-                        ))}
+                        {participants.map((registration) => {
+                          const paymentStatusMap: Record<string, string> = {
+                            'pending': 'Ожидается',
+                            'paid': 'Оплачено',
+                            'partially_paid': 'Частично',
+                            'overdue': 'Просрочено',
+                            'cancelled': 'Отменено',
+                            'refunded': 'Возврат'
+                          }
+                          const paymentStatusColorMap: Record<string, string> = {
+                            'pending': 'text-yellow-600',
+                            'paid': 'text-green-600',
+                            'partially_paid': 'text-blue-600',
+                            'overdue': 'text-red-600',
+                            'cancelled': 'text-neutral-400',
+                            'refunded': 'text-purple-600'
+                          }
+                          
+                          return (
+                            <tr key={registration.id}>
+                              <td className="px-4 py-3 text-sm">
+                                {registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-neutral-500">
+                                {registration.participants.username ? `@${registration.participants.username}` : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-neutral-500">
+                                {(registration.participants as any).email || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-neutral-500">
+                                {(registration.participants as any).phone_number || '—'}
+                              </td>
+                              {(event.requires_payment || event.is_paid) && (
+                                <td className={`px-4 py-3 text-sm font-medium ${paymentStatusColorMap[(registration as any).payment_status] || 'text-neutral-500'}`}>
+                                  {(registration as any).payment_status 
+                                    ? paymentStatusMap[(registration as any).payment_status] || (registration as any).payment_status 
+                                    : '—'}
+                                </td>
+                              )}
+                              <td className="px-4 py-3 text-sm text-neutral-500">
+                                {new Date(registration.registered_at).toLocaleString('ru-RU')}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

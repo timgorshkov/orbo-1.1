@@ -33,7 +33,7 @@ interface RegistrationField {
 interface ParticipantProfile {
   full_name?: string | null
   email?: string | null
-  phone?: string | null
+  phone_number?: string | null
   bio?: string | null
 }
 
@@ -103,9 +103,9 @@ export default function EventRegistrationForm({
                   prefillData[field.field_key] = participantProfile.email
                 }
                 break
-              case 'phone':
-                if (participantProfile.phone) {
-                  prefillData[field.field_key] = participantProfile.phone
+              case 'phone_number':
+                if (participantProfile.phone_number) {
+                  prefillData[field.field_key] = participantProfile.phone_number
                 }
                 break
               case 'bio':

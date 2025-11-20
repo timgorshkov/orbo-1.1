@@ -24,6 +24,7 @@ type Event = {
   currency?: string
   payment_deadline_days?: number | null
   payment_instructions?: string | null
+  allow_multiple_tickets?: boolean
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -66,6 +67,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
   )
+  const [requestContactInfo, setRequestContactInfo] = useState(false)
   
   // Old payment fields (for backward compatibility)
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
@@ -115,6 +117,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       paymentDeadlineDays: requiresPayment && paymentDeadlineDays ? parseInt(paymentDeadlineDays) : null,
       paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
       allowMultipleTickets: allowMultipleTickets,
+      requestContactInfo: requestContactInfo,
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
@@ -407,6 +410,31 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                   </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Registration Fields Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Поля регистрации</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="requestContactInfo"
+                  checked={requestContactInfo}
+                  onChange={(e) => setRequestContactInfo(e.target.checked)}
+                  className="mr-2 h-4 w-4"
+                />
+                <label htmlFor="requestContactInfo" className="text-sm font-medium">
+                  Запрашивать контактную информацию
+                </label>
+              </div>
+              <p className="text-xs text-neutral-500 -mt-2">
+                При регистрации будут запрошены: ФИО, телефон, email и "Кратко о себе". 
+                Данные будут сохранены в профиле участника.
+              </p>
             </CardContent>
           </Card>
         </div>

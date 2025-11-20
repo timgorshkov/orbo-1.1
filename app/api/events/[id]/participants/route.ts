@@ -73,11 +73,21 @@ export async function GET(
       return NextResponse.json({ error: regError.message }, { status: 500 })
     }
 
+    console.log(`[Event Participants] Found ${registrations?.length || 0} registrations for event ${eventId}`)
+    
     // Transform data for frontend
     const participants = (registrations || [])
-      .filter(reg => reg.participants && Array.isArray(reg.participants) && reg.participants.length > 0)
       .map(reg => {
-        const participant = Array.isArray(reg.participants) ? reg.participants[0] : reg.participants
+        // Supabase returns participants as array when using !inner
+        const participant = Array.isArray(reg.participants) && reg.participants.length > 0
+          ? reg.participants[0]
+          : reg.participants
+        
+        if (!participant) {
+          console.log('[Event Participants] Skipping registration with no participant data:', reg.id)
+          return null
+        }
+        
         return {
           id: participant.id,
           full_name: participant.full_name || participant.username || 'Участник',
@@ -88,7 +98,10 @@ export async function GET(
           is_authenticated: !!user
         }
       })
+      .filter(p => p !== null)
 
+    console.log(`[Event Participants] Returning ${participants.length} participants`)
+    
     return NextResponse.json({ participants }, { status: 200 })
   } catch (error: any) {
     console.error('Error in GET /api/events/[id]/participants:', error)

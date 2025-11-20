@@ -153,10 +153,13 @@ export default async function EventDetailPage({
         id,
         status,
         registered_at,
+        payment_status,
         participants!inner(
           id,
           full_name,
           username,
+          email,
+          phone_number,
           tg_user_id,
           merged_into
         )
