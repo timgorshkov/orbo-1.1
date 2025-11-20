@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Calendar, MapPin, Users, DollarSign, Globe, Lock } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 
 type Event = {
@@ -163,7 +163,7 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
 
             {event.is_paid && (
               <div className="flex items-center">
-                <DollarSign className="w-4 h-4 mr-2" />
+                <Ticket className="w-4 h-4 mr-2" />
                 <span>Платное</span>
               </div>
             )}

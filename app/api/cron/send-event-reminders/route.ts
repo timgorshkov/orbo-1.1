@@ -119,14 +119,37 @@ export async function GET(request: NextRequest) {
             });
             const formattedTime = event.start_time.substring(0, 5);
 
-            const message = `🔔 Напоминание о событии!\n\n` +
-              `📅 *${event.title}*\n` +
-              `🗓 Завтра, ${formattedDate}\n` +
-              `🕐 ${formattedTime}\n\n` +
-              `Организатор: ${(event.organizations as any).name}\n\n` +
-              `До встречи на событии!`;
+            // Build event URL
+            const eventUrl = `https://app.orbo.ru/p/${event.org_id}/events/${event.id}`;
+            
+            // Check payment status
+            const isPaid = (event as any).requires_payment;
+            const paymentStatus = (registration as any).payment_status;
+            const needsPayment = isPaid && paymentStatus !== 'paid';
 
-            const result = await telegramService.sendMessage(tgUserId, message);
+            let message = `🔔 Напоминание о событии!\n\n` +
+              `*${event.title}*\n\n` +
+              `📅 Завтра, ${formattedDate}\n` +
+              `🕐 ${formattedTime}\n`;
+            
+            if (event.location_info) {
+              message += `📍 ${event.location_info}\n`;
+            }
+            
+            message += `\n`;
+            
+            if (needsPayment) {
+              message += `💳 Не забудьте оплатить участие!\n\n`;
+            }
+            
+            message += `Подробнее: ${eventUrl}\n\n`;
+            message += `Организатор: ${(event.organizations as any).name}\n\n`;
+            message += `До встречи на событии!`;
+
+            const result = await telegramService.sendMessage(tgUserId, message, {
+              parse_mode: 'Markdown',
+              disable_web_page_preview: false
+            });
 
             if (result.ok) {
               console.log(`[Event Reminders] ✅ Sent reminder to ${participant.full_name || tgUserId} for event ${event.title}`);

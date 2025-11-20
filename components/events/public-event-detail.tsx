@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Calendar, MapPin, Users, DollarSign, Globe, Download, X } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Download, X } from 'lucide-react'
 
 type Event = {
   id: string
@@ -200,7 +200,7 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
 
                 {event.is_paid && (
                   <div className="flex items-start">
-                    <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500 flex-shrink-0" />
+                    <Ticket className="w-5 h-5 mr-3 mt-0.5 text-neutral-500 flex-shrink-0" />
                     <div>
                       <div className="font-medium">Платное</div>
                     </div>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, MapPin, Users, DollarSign, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
@@ -380,6 +380,23 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             </span>
           )}
         </div>
+        
+        {/* Quick Action Button for Mobile - Scroll to Registration */}
+        {!showAdminFeatures && event.status === 'published' && !isRegistered && (
+          <div className="mt-4 lg:hidden">
+            <Button
+              className="w-full"
+              onClick={() => {
+                const registrationElement = document.getElementById('registration');
+                if (registrationElement) {
+                  registrationElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }}
+            >
+              Зарегистрироваться на событие
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="overview">
@@ -410,7 +427,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
 
               {/* Registration Card - Moved to left, prominent */}
               {event.status === 'published' && (
-                <Card>
+                <Card id="registration">
                   <CardHeader>
                     <CardTitle>Регистрация</CardTitle>
                   </CardHeader>
@@ -485,44 +502,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                   
                                   {/* Payment Instructions */}
                                   {userRegistration.payment_status !== 'paid' && event.payment_instructions && (
-                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
+                                    <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
                                       {event.payment_instructions}
                                     </div>
                                   )}
-                                  
-                                  {/* Placeholder for future payment button */}
-                                  {userRegistration.payment_status === 'pending' && (
-                                    <div className="text-center">
-                                      <Button 
-                                        className="w-full" 
-                                        size="sm"
-                                        disabled
-                                      >
-                                        Оплатить онлайн (скоро)
-                                      </Button>
-                                    </div>
-                                  )}
                                 </>
-                              ) : (
-                                // Fallback to default price if no registration details
-                                <>
-                                  {(event.default_price !== null && event.default_price !== undefined) && (
-                                    <div className="text-lg font-semibold text-neutral-900 mb-2">
-                                      К оплате: {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                    </div>
-                                  )}
-                                  {event.payment_instructions && (
-                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
-                                      {event.payment_instructions}
-                                    </div>
-                                  )}
-                                  {!event.payment_instructions && event.price_info && (
-                                    <div className="text-xs text-neutral-600 whitespace-pre-wrap text-left">
-                                      {event.price_info}
-                                    </div>
-                                  )}
-                                </>
-                              )}
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -620,24 +605,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     </div>
                   </div>
 
-                  <div className="flex items-start">
-                    <Users className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
-                    <div>
-                      <div className="font-medium">
-                        {event.registered_count} 
-                        {event.capacity && ` / ${event.capacity}`}
-                      </div>
-                      <div className="text-sm text-neutral-600">
-                        Зарегистрировано
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Payment Info - Simplified display */}
                   {(event.requires_payment || event.is_paid) && (
                     <div className="pt-4 border-t border-neutral-200">
-                      <div className="flex items-start mb-2">
-                        <DollarSign className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                      <div className="flex items-start">
+                        <Ticket className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
                         <div className="flex-1">
                           <div className="font-medium">Платное событие</div>
                           {(event.default_price !== null && event.default_price !== undefined) && (
@@ -647,20 +620,6 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           )}
                         </div>
                       </div>
-                      
-                      {/* Payment Instructions - Simplified, no background */}
-                      {event.payment_instructions && (
-                        <div className="mt-2 text-xs text-neutral-500 whitespace-pre-wrap">
-                          {event.payment_instructions}
-                        </div>
-                      )}
-                      
-                      {/* Legacy price_info fallback */}
-                      {!event.payment_instructions && event.price_info && (
-                        <div className="mt-2 text-xs text-neutral-500 whitespace-pre-wrap">
-                          {event.price_info}
-                        </div>
-                      )}
                     </div>
                   )}
                 </CardContent>
@@ -674,7 +633,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
               <EventParticipantsList
                 eventId={event.id}
                 orgId={orgId}
-                showParticipantsList={event.show_participants_list !== false}
+                showParticipantsList={event.show_participants_list ?? true}
               />
             </div>
           )}
