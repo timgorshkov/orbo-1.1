@@ -138,9 +138,10 @@ export default async function EventDetailPage({
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
   
-  // Check authentication
-  const { user } = await supabase.auth.getUser().then(res => res.data)
-  if (!user) {
+  // Check authentication - use await directly for better error handling
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  
+  if (authError || !user) {
     redirect('/signin')
   }
 
@@ -190,16 +191,23 @@ export default async function EventDetailPage({
   // For public events, allow any authenticated user
   let hasOrgAccess = true;
   if (!event.is_public) {
-    try {
-      await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member', 'viewer'])
-    } catch (error) {
-      hasOrgAccess = false;
-    }
+    // Check membership directly instead of using requireOrgAccess (which throws)
+    const { data: membership } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle()
+    
+    // Also check via RPC for more reliable check
+    const { data: rpcCheck } = await supabase.rpc('is_org_member_rpc', { _org: orgId })
+    
+    hasOrgAccess = !!(membership || rpcCheck)
   }
   
   // If user doesn't have access to private event, show auth form
   if (!hasOrgAccess) {
-    // Import the auth page component
+    // Fetch org name for display
     const { data: org } = await adminSupabase
       .from('organizations')
       .select('id, name')

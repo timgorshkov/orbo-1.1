@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
+  // Create response once - don't recreate it multiple times
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
@@ -19,18 +20,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set: (name, value, options) => {
-          // Устанавливаем куки в клиентской части
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          // Обновляем заголовки ответа
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
+          // Устанавливаем куки в ответе (не пересоздаем response)
           response.cookies.set({
             name,
             value,
@@ -38,18 +28,7 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove: (name, options) => {
-          // Удаляем куки в клиентской части
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          // Обновляем заголовки ответа
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
+          // Удаляем куки в ответе (не пересоздаем response)
           response.cookies.set({
             name,
             value: '',
@@ -60,31 +39,8 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // ⭐ Explicitly refresh session to update tokens before Server Components access them
-  // This prevents "Cookies can only be modified" errors in Server Components
-  try {
-    await supabase.auth.getSession()
-  } catch (error) {
-    // Ignore session refresh errors in middleware - they will be handled by Route Handlers
-    console.warn('[Middleware] Session refresh error (non-critical):', error)
-  }
-
   // Проверяем маршруты, требующие аутентификации
   const { pathname } = request.nextUrl
-
-  // Дополнительная проверка для отладки сессии
-  if (pathname.startsWith('/app') || pathname.startsWith('/superadmin')) {
-    console.log('Checking session for path:', pathname);
-    const { data } = await supabase.auth.getSession()
-    console.log('Session found:', !!data?.session);
-    
-    if (!data?.session) {
-      // Добавляем дебаг-инфо в заголовки
-      const redirectUrl = new URL('/signin', request.url)
-      redirectUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(redirectUrl)
-    }
-  }
   
   // Исключаем публичные пути и API маршруты из проверки аутентификации
   if (
@@ -94,14 +50,22 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/signup') ||
     pathname.startsWith('/auth-callback') || // Старый callback (для обратной совместимости)
     pathname.startsWith('/auth/callback') || // Новый server-side callback
-    pathname.startsWith('/p/') || // Публичные страницы
+    pathname.startsWith('/p/') || // Публичные страницы (проверка доступа внутри компонентов)
     pathname === '/' ||
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
   ) {
+    // ⭐ Refresh session for all requests to update tokens before Server Components access them
+    // This prevents "Cookies can only be modified" errors in Server Components
+    try {
+      await supabase.auth.getSession()
+    } catch (error) {
+      // Ignore session refresh errors in middleware - they will be handled by Route Handlers
+      console.warn('[Middleware] Session refresh error (non-critical):', error)
+    }
     return response
   }
 
-  // Проверяем пользовательскую сессию
+  // ⭐ Single session check for protected routes
   const {
     data: { session },
   } = await supabase.auth.getSession()
