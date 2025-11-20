@@ -74,15 +74,20 @@ export async function GET(
     }
 
     // Transform data for frontend
-    const participants = (registrations || []).map(reg => ({
-      id: reg.participants.id,
-      full_name: reg.participants.full_name || reg.participants.username || 'Участник',
-      bio: reg.participants.bio || null,
-      photo_url: reg.participants.photo_url || null,
-      registered_at: reg.registered_at,
-      // Include whether user is authenticated to control clickability
-      is_authenticated: !!user
-    }))
+    const participants = (registrations || [])
+      .filter(reg => reg.participants && Array.isArray(reg.participants) && reg.participants.length > 0)
+      .map(reg => {
+        const participant = Array.isArray(reg.participants) ? reg.participants[0] : reg.participants
+        return {
+          id: participant.id,
+          full_name: participant.full_name || participant.username || 'Участник',
+          bio: participant.bio || null,
+          photo_url: participant.photo_url || null,
+          registered_at: reg.registered_at,
+          // Include whether user is authenticated to control clickability
+          is_authenticated: !!user
+        }
+      })
 
     return NextResponse.json({ participants }, { status: 200 })
   } catch (error: any) {
