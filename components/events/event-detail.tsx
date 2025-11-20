@@ -10,6 +10,7 @@ import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
 import EventRegistrationForm from './event-registration-form'
+import EventParticipantsList from './event-participants-list'
 
 type Event = {
   id: string
@@ -30,6 +31,8 @@ type Event = {
   payment_deadline_days?: number | null
   payment_instructions?: string | null
   allow_multiple_tickets?: boolean
+  capacity_count_by_paid?: boolean
+  show_participants_list?: boolean
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -664,6 +667,17 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
               </Card>
             </div>
           </div>
+
+          {/* Participants List (for non-admin view) */}
+          {!showAdminFeatures && (
+            <div className="mt-6">
+              <EventParticipantsList
+                eventId={event.id}
+                orgId={orgId}
+                showParticipantsList={event.show_participants_list !== false}
+              />
+            </div>
+          )}
         </TabsContent>
 
         {showAdminFeatures && (
