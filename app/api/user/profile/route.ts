@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone_number, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
         .eq('org_id', orgId)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
         .is('merged_into', null)
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone_number, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
         .eq('org_id', orgId)
         .eq('user_id', user.id)
         .is('merged_into', null)
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
             source: telegramAccount ? 'telegram_admin' : 'manual',
             participant_status: membership.role === 'owner' ? 'owner' : 'admin'
           })
-          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone_number, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
           .single();
         
         if (createError) {
@@ -285,7 +285,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { full_name, bio, phone, custom_attributes } = body;
+    const { full_name, bio, phone_number, phone, custom_attributes } = body;
 
     console.log(`[Profile API] Updating profile for user ${user.id} in org ${orgId}`);
 
@@ -352,7 +352,9 @@ export async function PATCH(request: NextRequest) {
 
     if (full_name !== undefined) updateData.full_name = full_name;
     if (bio !== undefined) updateData.bio = bio;
-    if (phone !== undefined) updateData.phone = phone;
+    // Support both phone_number and phone for backward compatibility
+    if (phone_number !== undefined) updateData.phone_number = phone_number;
+    else if (phone !== undefined) updateData.phone_number = phone;
     if (custom_attributes !== undefined) updateData.custom_attributes = custom_attributes;
 
     const { data: participant, error: updateError } = await adminSupabase

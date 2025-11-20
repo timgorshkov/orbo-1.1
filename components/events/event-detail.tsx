@@ -93,7 +93,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [participantProfile, setParticipantProfile] = useState<{
     full_name?: string | null
     email?: string | null
-    phone?: string | null
+    phone_number?: string | null
     bio?: string | null
   } | null>(null)
   
@@ -129,12 +129,13 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
     fetch(`/api/user/profile?orgId=${orgId}`)
       .then(res => res.json())
       .then(data => {
-        if (data.participant) {
+        if (data.profile?.participant) {
+          const participant = data.profile.participant
           setParticipantProfile({
-            full_name: data.participant.full_name,
-            email: data.participant.email,
-            phone: data.participant.phone,
-            bio: data.participant.bio
+            full_name: participant.full_name,
+            email: participant.email,
+            phone_number: participant.phone_number || participant.phone, // Support both for backward compatibility
+            bio: participant.bio
           })
         } else {
           setParticipantProfile(null)
