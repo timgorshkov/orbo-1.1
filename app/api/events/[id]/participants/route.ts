@@ -79,9 +79,8 @@ export async function GET(
     const participants = (registrations || [])
       .map(reg => {
         // Supabase returns participants as array when using !inner
-        const participant = Array.isArray(reg.participants) && reg.participants.length > 0
-          ? reg.participants[0]
-          : reg.participants
+        const participantsArray = Array.isArray(reg.participants) ? reg.participants : [reg.participants]
+        const participant = participantsArray[0]
         
         if (!participant) {
           console.log('[Event Participants] Skipping registration with no participant data:', reg.id)
@@ -98,7 +97,7 @@ export async function GET(
           is_authenticated: !!user
         }
       })
-      .filter(p => p !== null)
+      .filter((p): p is NonNullable<typeof p> => p !== null)
 
     console.log(`[Event Participants] Returning ${participants.length} participants`)
     
