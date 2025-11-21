@@ -8,15 +8,35 @@ interface DialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: React.ReactNode
+  onInteractOutside?: (e: Event) => void
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, onInteractOutside }: DialogProps) {
   if (!open) return null
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    // Only close if clicking directly on backdrop, not on content
+    if (e.target === e.currentTarget) {
+      if (onInteractOutside) {
+        onInteractOutside(e.nativeEvent)
+      } else {
+        onOpenChange(false)
+      }
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onOpenChange(false)
+    }
+  }
 
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={() => onOpenChange(false)}
+      onClick={handleBackdropClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
     >
       <div 
         className="bg-white rounded-xl shadow-xl w-full max-w-lg"

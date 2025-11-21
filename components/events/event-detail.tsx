@@ -45,12 +45,14 @@ type Event = {
     status: string
     registered_at: string
     payment_status?: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
+    registration_data?: Record<string, any> | null
     participants: {
       id: string
       full_name: string | null
       username: string | null
       email?: string | null
-      phone_number?: string | null
+      phone?: string | null
+      bio?: string | null
       tg_user_id: number | null
       merged_into: string | null
     }
@@ -218,11 +220,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
 
   const handleExportParticipants = () => {
     // Generate CSV from participants data
-    const headers = ['ФИО', 'Username', 'Email', 'Телефон', 'Статус оплаты', 'Дата регистрации']
+    const headers = ['ФИО', 'Username', 'Email', 'Телефон', 'Кратко о себе', 'Статус оплаты', 'Дата регистрации']
     const csvRows = [
       headers.join(','),
       ...participants.map(reg => {
         const p = reg.participants
+        const regData = reg.registration_data || {}
         const paymentStatusMap: Record<string, string> = {
           'pending': 'Ожидается',
           'paid': 'Оплачено',
@@ -231,11 +234,18 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           'cancelled': 'Отменено',
           'refunded': 'Возврат'
         }
+        // Use registration_data if available, otherwise fallback to participant profile
+        const displayFullName = regData.full_name || p.full_name || `ID: ${p.tg_user_id}`
+        const displayEmail = regData.email || p.email || '—'
+        const displayPhone = regData.phone_number || regData.phone || p.phone || '—'
+        const displayBio = regData.bio || p.bio || '—'
+        
         return [
-          `"${p.full_name || `ID: ${p.tg_user_id}`}"`,
+          `"${displayFullName}"`,
           p.username ? `@${p.username}` : '—',
-          p.email || '—',
-          p.phone_number || '—',
+          displayEmail,
+          displayPhone,
+          `"${displayBio}"`,
           reg.payment_status ? paymentStatusMap[reg.payment_status] || reg.payment_status : '—',
           new Date(reg.registered_at).toLocaleString('ru-RU')
         ].join(',')
@@ -706,6 +716,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                             Телефон
                           </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
+                            Кратко о себе
+                          </th>
                           {(event.requires_payment || event.is_paid) && (
                             <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                               Статус оплаты
@@ -735,19 +748,32 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             'refunded': 'text-purple-600'
                           }
                           
+                          // Get data from registration_data if available, otherwise from participant profile
+                          const regData = registration.registration_data || {}
+                          const displayEmail = regData.email || registration.participants.email || '—'
+                          const displayPhone = regData.phone_number || regData.phone || registration.participants.phone || '—'
+                          const displayBio = regData.bio || registration.participants.bio || null
+                          
                           return (
                             <tr key={registration.id}>
                               <td className="px-4 py-3 text-sm">
-                                {registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
+                                {regData.full_name || registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
                                 {registration.participants.username ? `@${registration.participants.username}` : '—'}
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
-                                {registration.participants.email || '—'}
+                                {displayEmail}
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
-                                {registration.participants.phone_number || '—'}
+                                {displayPhone}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-neutral-500">
+                                {displayBio ? (
+                                  <span className="line-clamp-2" title={displayBio}>
+                                    {displayBio}
+                                  </span>
+                                ) : '—'}
                               </td>
                               {(event.requires_payment || event.is_paid) && (
                                 <td className={`px-4 py-3 text-sm font-medium ${registration.payment_status ? paymentStatusColorMap[registration.payment_status] : 'text-neutral-500'}`}>

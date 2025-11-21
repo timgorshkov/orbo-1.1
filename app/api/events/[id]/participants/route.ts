@@ -55,6 +55,7 @@ export async function GET(
       .select(`
         id,
         registered_at,
+        registration_data,
         participants!inner (
           id,
           full_name,
@@ -87,10 +88,15 @@ export async function GET(
           return null
         }
         
+        // Use registration_data if available, otherwise fallback to participant profile
+        const regData = reg.registration_data || {}
+        const displayBio = regData.bio || participant.bio || null
+        const displayFullName = regData.full_name || participant.full_name || participant.username || 'Участник'
+        
         return {
           id: participant.id,
-          full_name: participant.full_name || participant.username || 'Участник',
-          bio: participant.bio || null,
+          full_name: displayFullName,
+          bio: displayBio,
           photo_url: participant.photo_url || null,
           registered_at: reg.registered_at,
           // Include whether user is authenticated to control clickability

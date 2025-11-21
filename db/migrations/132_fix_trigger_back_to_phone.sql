@@ -75,8 +75,17 @@ BEGIN
             USING field_value, NEW.participant_id;
         END IF;
 
-      WHEN 'phone_number', 'phone' THEN
-        -- Support both phone_number and phone mappings, but update 'phone' column
+      WHEN 'phone_number' THEN
+        -- Support phone_number mapping, but update 'phone' column
+        -- Only update if participant.phone is empty
+        IF participant_phone IS NULL OR participant_phone = '' THEN
+          RAISE NOTICE '[TRIGGER update_participant] Updating phone to %', field_value;
+          EXECUTE format('UPDATE %I.participants SET phone = $1 WHERE id = $2', 'public')
+            USING field_value, NEW.participant_id;
+        END IF;
+
+      WHEN 'phone' THEN
+        -- Support phone mapping, update 'phone' column
         -- Only update if participant.phone is empty
         IF participant_phone IS NULL OR participant_phone = '' THEN
           RAISE NOTICE '[TRIGGER update_participant] Updating phone to %', field_value;

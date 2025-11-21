@@ -273,7 +273,14 @@ export default function EventRegistrationForm({
     : null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog 
+      open={open} 
+      onOpenChange={onOpenChange}
+      onInteractOutside={(e) => {
+        // Prevent closing on outside click - only close via Cancel button or Esc
+        e.preventDefault()
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Регистрация на событие</DialogTitle>
