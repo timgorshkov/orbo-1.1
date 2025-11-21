@@ -477,7 +477,7 @@ export default function MembersView({
           showBulkActions={isAdmin && adminMode}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
           {filteredParticipants.map((participant) => (
             <MemberCard key={participant.id} participant={participant} />
           ))}

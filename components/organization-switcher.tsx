@@ -103,7 +103,7 @@ export default function OrganizationSwitcher({
       >
         <span className="font-semibold">Orbo</span>
         <span className="text-neutral-500 mx-1">|</span>
-        <span className="text-neutral-600 truncate max-w-[120px]">{currentOrg.name}</span>
+        <span className="text-neutral-600 truncate max-w-[140px]" title={currentOrg.name}>{currentOrg.name}</span>
         <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'transform rotate-180' : ''}`} />
       </button>
       

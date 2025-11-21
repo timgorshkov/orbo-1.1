@@ -350,7 +350,7 @@ export default function CollapsibleSidebar({
               {orgName.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="font-semibold text-gray-900 truncate flex-1 text-left">{orgName}</span>
+          <span className="font-semibold text-gray-900 truncate flex-1 text-left max-w-[140px]" title={orgName}>{orgName}</span>
           <ChevronDown className={`h-4 w-4 text-gray-400 flex-shrink-0 transition-transform ${showOrgDropdown ? 'rotate-180' : ''}`} />
         </button>
 

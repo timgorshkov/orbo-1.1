@@ -38,60 +38,64 @@ export default function MemberCard({ participant }: MemberCardProps) {
   return (
     <Link
       href={`/p/${orgId}/members/${participant.id}`}
-      className="group flex flex-col items-center rounded-lg border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-lg"
+      className="group flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded"
     >
       {/* Фото или placeholder */}
-      <div className="mb-4">
-        <ParticipantAvatar
-          participantId={participant.id}
-          photoUrl={participant.photo_url}
-          tgUserId={participant.tg_user_id}
-          displayName={displayName}
-          size="lg"
-        />
+      <div className="w-12 h-12 rounded-full bg-neutral-200 overflow-hidden mb-2 flex-shrink-0">
+        {participant.photo_url ? (
+          <img
+            src={participant.photo_url}
+            alt={displayName}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-neutral-500 text-lg font-semibold">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+        )}
       </div>
 
       {/* Имя */}
-      <h3 className="mb-2 text-center text-lg font-semibold text-gray-900 group-hover:text-blue-600">
+      <div className="font-medium text-xs text-neutral-900 mb-0.5 line-clamp-2 leading-tight">
         {displayName}
-      </h3>
+      </div>
 
-      {/* Admin badge */}
+      {/* Admin badge - компактный */}
       {(participant.is_org_owner || participant.is_group_creator || participant.is_admin) && (
-        <div className="mb-2 flex justify-center">
+        <div className="mb-0.5 flex justify-center">
           <AdminBadge 
             isOrgOwner={participant.is_org_owner}
             isGroupCreator={participant.is_group_creator}
             isAdmin={participant.is_admin}
             customTitle={participant.custom_title}
             size="sm"
-            showLabel={true}
+            showLabel={false}
           />
         </div>
       )}
 
       {/* Краткое описание (bio) */}
       {participant.bio && (
-        <p className="text-sm text-center text-gray-600 line-clamp-2">
+        <div className="text-xs text-neutral-600 line-clamp-1 leading-tight">
           {participant.bio}
-        </p>
+        </div>
       )}
 
-      {/* Tags (admin only, max 2 displayed) */}
+      {/* Tags (admin only, max 1 displayed) */}
       {participant.tags && participant.tags.length > 0 && (
-        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-          {participant.tags.slice(0, 2).map((tag) => (
+        <div className="mt-1 flex flex-wrap justify-center gap-1">
+          {participant.tags.slice(0, 1).map((tag) => (
             <span
               key={tag.id}
-              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white"
               style={{ backgroundColor: tag.color }}
             >
               {tag.name}
             </span>
           ))}
-          {participant.tags.length > 2 && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
-              +{participant.tags.length - 2}
+          {participant.tags.length > 1 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-200 text-gray-700">
+              +{participant.tags.length - 1}
             </span>
           )}
         </div>

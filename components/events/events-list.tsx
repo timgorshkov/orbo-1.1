@@ -44,23 +44,37 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
   const showAdminFeatures = isAdmin && adminMode
 
   // Calculate event categories
+  // Event is considered past only on the next day (not on the same day)
   const now = new Date()
-  const upcomingEvents = events.filter(
-    e => e.status === 'published' && new Date(e.event_date) >= now
-  )
-  const pastEvents = events.filter(
-    e => e.status === 'published' && new Date(e.event_date) < now
-  )
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  
+  const upcomingEvents = events.filter(e => {
+    if (e.status !== 'published') return false
+    const eventDate = new Date(e.event_date)
+    // Include events today and future dates
+    return eventDate >= today
+  })
+  
+  const pastEvents = events.filter(e => {
+    if (e.status !== 'published') return false
+    const eventDate = new Date(e.event_date)
+    // Only consider past if event date is before today (i.e., yesterday or earlier)
+    return eventDate < today
+  })
   const draftEvents = events.filter(e => e.status === 'draft')
 
   // Filter events by status
   let filteredEvents = events.filter(event => {
     if (statusFilter === 'all') return true
     if (statusFilter === 'upcoming') {
-      return event.status === 'published' && new Date(event.event_date) >= now
+      const eventDate = new Date(event.event_date)
+      return event.status === 'published' && eventDate >= today
     }
     if (statusFilter === 'past') {
-      return event.status === 'published' && new Date(event.event_date) < now
+      const eventDate = new Date(event.event_date)
+      return event.status === 'published' && eventDate < today
     }
     return event.status === statusFilter
   })
