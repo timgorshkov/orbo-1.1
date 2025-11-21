@@ -93,7 +93,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [participantProfile, setParticipantProfile] = useState<{
     full_name?: string | null
     email?: string | null
-    phone_number?: string | null
+    phone?: string | null
     bio?: string | null
   } | null>(null)
   
@@ -134,7 +134,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           setParticipantProfile({
             full_name: participant.full_name,
             email: participant.email,
-            phone_number: participant.phone_number || participant.phone, // Support both for backward compatibility
+            phone: participant.phone,
             bio: participant.bio
           })
         } else {
