@@ -449,14 +449,17 @@ export async function POST(
                 }
               });
               
-              const insertedCount = matchedEvents.length;
-              const duplicateBatch = activityEvents.length - insertedCount;
+              const existingCount = matchedEvents.length;
+              // All events in this batch are duplicates (already exist in DB)
+              // None of them should count as "imported" since they weren't newly added
+              const allDuplicates = activityEvents.length;
               
-              console.log(`📊 Duplicate batch: ${insertedCount} found existing, ${duplicateBatch} new duplicates`);
+              console.log(`📊 Duplicate batch: ${existingCount} found existing out of ${allDuplicates} total (all are duplicates)`);
               
-              skippedCount += duplicateBatch;
-              duplicateCount += duplicateBatch;
-              importedCount += insertedCount;
+              // All events are duplicates - none were newly imported
+              skippedCount += allDuplicates;
+              duplicateCount += allDuplicates;
+              // DO NOT increment importedCount - these are existing records, not new imports
               
               // Try to save message texts for existing events
               if (matchedEvents.length > 0) {
