@@ -438,28 +438,78 @@ export async function POST(
               
               console.log(`🔍 Found ${existingEventsMap.size} existing records by message_id out of ${activityEvents.length} attempted`);
               
-              // Match existing events with our activity events by message_id
+              // Match existing events with our activity events
+              // First by message_id (most precise), then by composite key for unmatched events
               const matchedEvents: any[] = [];
+              const unmatchedEvents: Array<{ event: any; idx: number }> = [];
+              
+              // Step 1: Match by message_id
               activityEvents.forEach((event: any, idx: number) => {
                 if (event.message_id) {
                   const existing = existingEventsMap.get(event.message_id.toString());
                   if (existing) {
+                    // Confirmed duplicate - found in DB by message_id
                     matchedEvents.push({ ...existing, _originalIndex: idx });
+                  } else {
+                    // Event with message_id but not found - check composite key
+                    unmatchedEvents.push({ event, idx });
                   }
+                } else {
+                  // Event without message_id - check composite key
+                  unmatchedEvents.push({ event, idx });
                 }
               });
               
-              const existingCount = matchedEvents.length;
-              // All events in this batch are duplicates (already exist in DB)
-              // None of them should count as "imported" since they weren't newly added
-              const allDuplicates = activityEvents.length;
+              // Step 2: For unmatched events, check by composite key (tg_chat_id, tg_user_id, created_at, chars_count)
+              // This matches the unique index idx_activity_dedup_imported
+              if (unmatchedEvents.length > 0) {
+                const compositeKeyQueries = unmatchedEvents.map(async ({ event, idx }) => {
+                  if (!event.tg_user_id || !event.created_at || event.chars_count === undefined) {
+                    return null; // Cannot check composite key without required fields
+                  }
+                  
+                  const { data: existing, error } = await supabaseAdmin
+                    .from('activity_events')
+                    .select('id, tg_chat_id, tg_user_id, created_at, chars_count, message_id')
+                    .eq('tg_chat_id', event.tg_chat_id)
+                    .eq('tg_user_id', event.tg_user_id)
+                    .eq('created_at', event.created_at)
+                    .eq('chars_count', event.chars_count)
+                    .eq('event_type', 'message')
+                    .eq('import_source', 'html_import')
+                    .maybeSingle();
+                  
+                  if (!error && existing) {
+                    return { existing, idx };
+                  }
+                  return null;
+                });
+                
+                const compositeMatches = await Promise.all(compositeKeyQueries);
+                compositeMatches.forEach((match) => {
+                  if (match) {
+                    matchedEvents.push({ ...match.existing, _originalIndex: match.idx });
+                  }
+                });
+              }
               
-              console.log(`📊 Duplicate batch: ${existingCount} found existing out of ${allDuplicates} total (all are duplicates)`);
+              const confirmedDuplicates = matchedEvents.length;
+              const unconfirmedCount = activityEvents.length - confirmedDuplicates;
               
-              // All events are duplicates - none were newly imported
-              skippedCount += allDuplicates;
-              duplicateCount += allDuplicates;
-              // DO NOT increment importedCount - these are existing records, not new imports
+              console.log(`📊 Duplicate batch analysis:`);
+              console.log(`  - Confirmed duplicates (found in DB): ${confirmedDuplicates}`);
+              console.log(`  - Unconfirmed (not found in DB): ${unconfirmedCount}`);
+              console.log(`  - Total in batch: ${activityEvents.length}`);
+              
+              // Only count confirmed duplicates (found in DB) as duplicates
+              duplicateCount += confirmedDuplicates;
+              
+              // Events not found in DB are skipped (cannot confirm if they're duplicates)
+              // They failed to insert but we couldn't find existing records to confirm
+              skippedCount += unconfirmedCount;
+              
+              // DO NOT increment importedCount - none were newly imported
+              // (either confirmed duplicates or unconfirmed, but all failed to insert)
               
               // Try to save message texts for existing events
               if (matchedEvents.length > 0) {
