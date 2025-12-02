@@ -191,11 +191,41 @@ export class TelegramJsonParser {
       }
     }
 
-    // Parse timestamp
-    const timestamp = new Date(msg.date);
-    if (isNaN(timestamp.getTime())) {
+    // Parse timestamp and normalize to UTC
+    // Telegram JSON exports use ISO string format (e.g., "2025-10-23T16:27:49")
+    // We need to ensure it's parsed as UTC to avoid timezone issues
+    let timestamp: Date;
+    if (typeof msg.date === 'string') {
+      // If date is ISO string without timezone, assume UTC
+      // If it has timezone info, Date will parse it correctly
+      timestamp = new Date(msg.date);
+      // Normalize to UTC to avoid timezone-related duplicates
+      if (!msg.date.includes('Z') && !msg.date.includes('+') && !msg.date.includes('-', 10)) {
+        // Date string without timezone - assume UTC
+        timestamp = new Date(msg.date + 'Z');
+      }
+    } else if (typeof msg.date === 'number') {
+      // Unix timestamp (seconds) - convert to milliseconds and create UTC date
+      timestamp = new Date(msg.date * 1000);
+    } else {
       return null;
     }
+    
+    if (isNaN(timestamp.getTime())) {
+      console.warn(`Invalid date format: ${msg.date}`);
+      return null;
+    }
+    
+    // Ensure timestamp is in UTC (normalize)
+    timestamp = new Date(Date.UTC(
+      timestamp.getUTCFullYear(),
+      timestamp.getUTCMonth(),
+      timestamp.getUTCDate(),
+      timestamp.getUTCHours(),
+      timestamp.getUTCMinutes(),
+      timestamp.getUTCSeconds(),
+      timestamp.getUTCMilliseconds()
+    ));
 
     // Extract text
     let text = '';

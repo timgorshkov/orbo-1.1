@@ -199,11 +199,30 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
       }
 
       const result = await response.json();
-      setSuccess(
-        `Импортировано ${result.data.importedMessages} сообщений, ` +
-        `создано ${result.data.newParticipants} новых участников, ` +
-        `${result.data.matchedParticipants} участников связано с существующими.`
-      );
+      
+      // Build detailed success message with all statistics
+      const stats = result.data || {};
+      const parts = [
+        `Импортировано: ${stats.importedMessages || 0} сообщений`,
+      ];
+      
+      if (stats.duplicateMessages > 0) {
+        parts.push(`Пропущено дубликатов: ${stats.duplicateMessages}`);
+      }
+      if (stats.skippedMessages > 0) {
+        parts.push(`Пропущено: ${stats.skippedMessages}`);
+      }
+      if (stats.messagesSaved > 0) {
+        parts.push(`Сохранено текстов: ${stats.messagesSaved}`);
+      }
+      if (stats.newParticipants > 0) {
+        parts.push(`Создано участников: ${stats.newParticipants}`);
+      }
+      if (stats.matchedParticipants > 0) {
+        parts.push(`Связано с существующими: ${stats.matchedParticipants}`);
+      }
+      
+      setSuccess(parts.join(' • '));
       setPreview(null);
       setFile(null);
       setProgress(100);

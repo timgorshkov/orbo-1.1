@@ -291,6 +291,19 @@ export async function POST(
             const tgUserId = (msg as any).authorUserId || null;
             const messageId = (msg as any).messageId || null;
             
+            // Normalize timestamp to UTC to avoid timezone-related duplicates
+            // Store original timestamp for debugging
+            const originalTimestamp = msg.timestamp;
+            const normalizedTimestamp = new Date(Date.UTC(
+              msg.timestamp.getUTCFullYear(),
+              msg.timestamp.getUTCMonth(),
+              msg.timestamp.getUTCDate(),
+              msg.timestamp.getUTCHours(),
+              msg.timestamp.getUTCMinutes(),
+              msg.timestamp.getUTCSeconds(),
+              msg.timestamp.getUTCMilliseconds()
+            ));
+            
             return {
               org_id: orgId,
               event_type: 'message',
@@ -302,7 +315,7 @@ export async function POST(
               mentions_count: msg.mentionsCount,
               reply_to_message_id: (msg as any).replyToMessageId || null,
               has_media: false, // TODO: detect media from parsed data
-              created_at: msg.timestamp.toISOString(),
+              created_at: normalizedTimestamp.toISOString(),
               import_source: 'html_import', // Используем 'html_import' для любых файловых импортов (JSON/HTML)
               import_batch_id: batchId,
               meta: {
@@ -328,7 +341,9 @@ export async function POST(
               },
               // ⭐ Store full text and participant_id for participant_messages insert
               _fullText: msg.text,
-              _participantId: participantId
+              _participantId: participantId,
+              // Store original timestamp for debugging timezone issues
+              _originalTimestamp: originalTimestamp.toISOString()
             };
           })
           .filter((e: any): e is NonNullable<typeof e> => e !== null);
@@ -353,7 +368,30 @@ export async function POST(
             delete event._participantId;
           });
           
-          console.log(`📝 First event sample:`, JSON.stringify(activityEvents[0], null, 2));
+          // Log first event with timezone info for debugging
+          if (activityEvents.length > 0) {
+            const firstEvent = activityEvents[0];
+            const timezoneDebug = {
+              originalTimestamp: firstEvent._originalTimestamp,
+              normalizedTimestamp: firstEvent.created_at,
+              timeDifference: firstEvent._originalTimestamp !== firstEvent.created_at ? 
+                `${Math.abs(new Date(firstEvent.created_at).getTime() - new Date(firstEvent._originalTimestamp).getTime()) / 1000 / 60} minutes` : 
+                'none'
+            };
+            
+            // Remove debug fields before logging
+            const { _originalTimestamp, ...eventForLog } = firstEvent;
+            
+            console.log(`📝 First event sample:`, JSON.stringify({
+              ...eventForLog,
+              _timezoneDebug: timezoneDebug
+            }, null, 2));
+            
+            // Remove debug field before DB insert
+            activityEvents.forEach((event: any) => {
+              delete event._originalTimestamp;
+            });
+          }
           
           const { data, error: insertError } = await supabaseAdmin
             .from('activity_events')
