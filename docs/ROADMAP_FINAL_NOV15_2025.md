@@ -512,6 +512,10 @@
 5. ✅ Unisender Go **вместо** Mailgun
 6. ✅ Testing & Optimization как отдельная фаза (Week 13-14)
 
+**Обновлено (21 ноября 2025):**
+- ⭐ **Telegram-разметка в описании событий** → повышен приоритет (Week 1, client request)
+- 📋 Детальный план исправлений: см. `docs/USER_FEEDBACK_ANALYSIS_NOV_2025.md`
+
 **Отложено:**
 - ❌ AI-powered Community Insights → Backlog
 - ❌ Marketplace foundation → Backlog
