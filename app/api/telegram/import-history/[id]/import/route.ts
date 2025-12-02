@@ -404,12 +404,109 @@ export async function POST(
             console.error('❌ Error inserting activity events:', insertError);
             // Проверяем дубликаты
             if (insertError.code === '23505') {
-              console.warn('⚠️ Some messages were duplicates, continuing...');
-              const insertedCount = data?.length || 0;
+              console.warn('⚠️ Some messages were duplicates, attempting to find existing records...');
+              
+              // Try to find existing records for duplicate messages
+              // Query all potential duplicates in one batch query
+              const existingEventsMap = new Map<string, any>();
+              
+              // Build a query to find all existing events matching our batch
+              // Use message_id for precise matching (more reliable than composite key)
+              const chatId = group.tg_chat_id;
+              const messageIds = activityEvents
+                .map((e: any) => e.message_id)
+                .filter((id: any): id is number => id !== null && id !== undefined);
+              
+              // Query existing events by message_id (most precise match)
+              const { data: existingEvents, error: findError } = await supabaseAdmin
+                .from('activity_events')
+                .select('id, tg_chat_id, tg_user_id, created_at, chars_count, message_id')
+                .eq('tg_chat_id', chatId)
+                .in('message_id', messageIds.length > 0 ? messageIds : [-1]) // Use -1 if empty to avoid SQL error
+                .eq('event_type', 'message')
+                .eq('import_source', 'html_import');
+              
+              if (!findError && existingEvents) {
+                // Build map by message_id (most precise)
+                existingEvents.forEach((existing: any) => {
+                  if (existing.message_id) {
+                    existingEventsMap.set(existing.message_id.toString(), existing);
+                  }
+                });
+              }
+              
+              console.log(`🔍 Found ${existingEventsMap.size} existing records by message_id out of ${activityEvents.length} attempted`);
+              
+              // Match existing events with our activity events by message_id
+              const matchedEvents: any[] = [];
+              activityEvents.forEach((event: any, idx: number) => {
+                if (event.message_id) {
+                  const existing = existingEventsMap.get(event.message_id.toString());
+                  if (existing) {
+                    matchedEvents.push({ ...existing, _originalIndex: idx });
+                  }
+                }
+              });
+              
+              const insertedCount = matchedEvents.length;
               const duplicateBatch = activityEvents.length - insertedCount;
+              
+              console.log(`📊 Duplicate batch: ${insertedCount} found existing, ${duplicateBatch} new duplicates`);
+              
               skippedCount += duplicateBatch;
               duplicateCount += duplicateBatch;
               importedCount += insertedCount;
+              
+              // Try to save message texts for existing events
+              if (matchedEvents.length > 0) {
+                const participantMessagesData = matchedEvents
+                  .map((existingEvent: any) => {
+                    const messageData = messageTextsMap.get(existingEvent._originalIndex);
+                    if (!messageData || !messageData.text || !existingEvent.id) return null;
+                    
+                    const wordsCount = messageData.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+                    
+                    return {
+                      org_id: orgId,
+                      participant_id: messageData.participantId,
+                      tg_user_id: messageData.tgUserId,
+                      tg_chat_id: group.tg_chat_id,
+                      activity_event_id: existingEvent.id,
+                      message_id: messageData.messageId,
+                      message_text: messageData.text,
+                      message_thread_id: null,
+                      reply_to_message_id: null,
+                      has_media: false,
+                      media_type: null,
+                      chars_count: messageData.text.length,
+                      words_count: wordsCount,
+                      sent_at: messageData.timestamp
+                    };
+                  })
+                  .filter((m: any): m is NonNullable<typeof m> => m !== null);
+                
+                if (participantMessagesData.length > 0) {
+                  console.log(`📝 Attempting to save ${participantMessagesData.length} message texts for existing events...`);
+                  
+                  const { data: savedMessages, error: messagesError } = await supabaseAdmin
+                    .from('participant_messages')
+                    .upsert(participantMessagesData, {
+                      onConflict: 'tg_chat_id,message_id',
+                      ignoreDuplicates: true
+                    })
+                    .select('id');
+                  
+                  if (messagesError) {
+                    console.error('⚠️  Failed to save message texts for existing events:', messagesError);
+                  } else {
+                    const savedCount = savedMessages?.length || 0;
+                    const skippedMessagesCount = participantMessagesData.length - savedCount;
+                    messagesSavedCount += savedCount;
+                    messagesSkippedCount += skippedMessagesCount;
+                    console.log(`✅ Saved ${savedCount} message texts for existing events, skipped ${skippedMessagesCount} duplicates`);
+                  }
+                }
+              }
             } else {
               throw insertError;
             }
