@@ -197,7 +197,8 @@ export async function POST(
       for (const [authorKey, author] of Array.from(authors.entries())) {
         const decision = decisionsMap.get(authorKey);
         if (!decision) {
-          console.warn(`No decision for author: ${authorKey}`);
+          // Author was filtered out (bot) or not included in decisions - skip silently
+          console.log(`ℹ️ Skipping author without decision: ${authorKey} (likely filtered as bot or not selected)`);
           continue;
         }
 
