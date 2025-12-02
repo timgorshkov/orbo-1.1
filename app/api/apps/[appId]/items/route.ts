@@ -218,7 +218,7 @@ export async function GET(
 
     return NextResponse.json({ 
       items: filteredItems || [], 
-      total: filteredItems?.length || 0,
+      total: count || 0, // ✅ Use count from query, not filteredItems.length (for accurate pagination)
       limit,
       offset
     });

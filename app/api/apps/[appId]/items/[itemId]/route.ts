@@ -210,6 +210,7 @@ export async function PATCH(
   
   try {
     const supabase = await createClientServer();
+    const adminSupabase = createAdminServer(); // ✅ For participant lookup (bypass RLS)
     const body = await request.json();
     const { 
       data, 
@@ -251,7 +252,17 @@ export async function PATCH(
     }
 
     // Only owner can edit data/images, admins/moderators can change status
-    const isOwner = existingItem.creator_id === user.id;
+    // ✅ creator_id stores participant_id, not user_id - need to lookup participant
+    let isOwner = false;
+    if (existingItem.creator_id) {
+      const { data: participant } = await adminSupabase
+        .from('participants')
+        .select('user_id')
+        .eq('id', existingItem.creator_id)
+        .eq('org_id', existingItem.org_id)
+        .maybeSingle();
+      isOwner = !!(participant && participant.user_id === user.id);
+    }
     const isModerator = ['owner', 'admin', 'moderator'].includes(membership.role);
 
     if (!isOwner && !isModerator) {
@@ -375,7 +386,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const isOwner = existingItem.creator_id === user.id;
+    // ✅ creator_id stores participant_id, not user_id - need to lookup participant
+    let isOwner = false;
+    if (existingItem.creator_id) {
+      const { data: participant } = await adminSupabase
+        .from('participants')
+        .select('user_id')
+        .eq('id', existingItem.creator_id)
+        .eq('org_id', existingItem.org_id)
+        .maybeSingle();
+      isOwner = !!(participant && participant.user_id === user.id);
+    }
     const isAdmin = ['owner', 'admin'].includes(membership.role);
 
     if (!isOwner && !isAdmin) {
