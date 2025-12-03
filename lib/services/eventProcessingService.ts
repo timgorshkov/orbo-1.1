@@ -889,62 +889,62 @@ export class EventProcessingService {
       console.log('[EventProcessing] Attempting insert to activity_events...');
       // ✅ Check if event already exists (prevent duplicates when group belongs to multiple orgs)
       // One message should create only ONE activity_event, regardless of how many orgs the group belongs to
-      const { data: existingEvent } = await this.supabase
-        .from('activity_events')
-        .select('id, org_id')
-        .eq('tg_chat_id', chatId)
-        .eq('message_id', message.message_id)
-        .eq('event_type', 'message')
-        .maybeSingle();
-      
-      let insertedEvent: any = null;
-      
-      if (existingEvent) {
-        // Event already exists - reuse it instead of creating duplicate
-        console.log(`[EventProcessing] ⚠️ Activity event already exists (ID: ${existingEvent.id}) for message ${message.message_id}, skipping duplicate insert`);
-        insertedEvent = existingEvent;
-      } else {
-        // Пробуем добавить дополнительные поля, если они существуют в таблице
-        try {
-          // Вставляем событие и получаем ID для связи с participant_messages
-          const { data: newEvent, error } = await this.supabase
-            .from('activity_events')
-            .insert(baseEventData)
-            .select('id')
-            .single();
+      try {
+        const { data: existingEvent } = await this.supabase
+          .from('activity_events')
+          .select('id, org_id')
+          .eq('tg_chat_id', chatId)
+          .eq('message_id', message.message_id)
+          .eq('event_type', 'message')
+          .maybeSingle();
         
-          if (error) {
-            console.error('[EventProcessing] ❌ Error inserting activity event with base data:', error);
-            throw error;
-          } else {
-            insertedEvent = newEvent;
-            console.log('[EventProcessing] ✅ Activity event recorded successfully with ID:', insertedEvent?.id);
-          }
-        } catch (insertError: any) {
-          // If insert fails due to duplicate key (shouldn't happen with our check, but handle gracefully)
-          if (insertError?.code === '23505') {
-            console.log('[EventProcessing] ⚠️ Duplicate key error, attempting to find existing event...');
-            const { data: foundEvent } = await this.supabase
+        let insertedEvent: any = null;
+        
+        if (existingEvent) {
+          // Event already exists - reuse it instead of creating duplicate
+          console.log(`[EventProcessing] ⚠️ Activity event already exists (ID: ${existingEvent.id}) for message ${message.message_id}, skipping duplicate insert`);
+          insertedEvent = existingEvent;
+        } else {
+          // Пробуем добавить дополнительные поля, если они существуют в таблице
+          try {
+            // Вставляем событие и получаем ID для связи с participant_messages
+            const { data: newEvent, error } = await this.supabase
               .from('activity_events')
+              .insert(baseEventData)
               .select('id')
-              .eq('tg_chat_id', chatId)
-              .eq('message_id', message.message_id)
-              .eq('event_type', 'message')
-              .maybeSingle();
-            if (foundEvent) {
-              insertedEvent = foundEvent;
-              console.log('[EventProcessing] ✅ Found existing event (ID:', foundEvent.id, ')');
+              .single();
+          
+            if (error) {
+              console.error('[EventProcessing] ❌ Error inserting activity event with base data:', error);
+              throw error;
+            } else {
+              insertedEvent = newEvent;
+              console.log('[EventProcessing] ✅ Activity event recorded successfully with ID:', insertedEvent?.id);
+            }
+          } catch (insertError: any) {
+            // If insert fails due to duplicate key (shouldn't happen with our check, but handle gracefully)
+            if (insertError?.code === '23505') {
+              console.log('[EventProcessing] ⚠️ Duplicate key error, attempting to find existing event...');
+              const { data: foundEvent } = await this.supabase
+                .from('activity_events')
+                .select('id')
+                .eq('tg_chat_id', chatId)
+                .eq('message_id', message.message_id)
+                .eq('event_type', 'message')
+                .maybeSingle();
+              if (foundEvent) {
+                insertedEvent = foundEvent;
+                console.log('[EventProcessing] ✅ Found existing event (ID:', foundEvent.id, ')');
+              } else {
+                throw insertError;
+              }
             } else {
               throw insertError;
             }
-          } else {
-            throw insertError;
           }
         }
-      }
-      
-      if (insertedEvent) {
-          
+        
+        if (insertedEvent) {
           // Phase 2: Save full message text to participant_messages for analysis
           if (messageText && insertedEvent?.id && participantId) {
             const wordsCount = messageText.trim().split(/\s+/).filter(w => w.length > 0).length;
