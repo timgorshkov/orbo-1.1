@@ -50,6 +50,7 @@ interface PreviewData {
 interface ImportHistoryProps {
   groupId: string;
   orgId: string;
+  onImportSuccess?: () => void; // ✅ Callback для уведомления об успешном импорте
 }
 
 type ImportDecision = {
@@ -60,7 +61,7 @@ type ImportDecision = {
   targetParticipantId?: string;
 };
 
-export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
+export default function ImportHistory({ groupId, orgId, onImportSuccess }: ImportHistoryProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -226,6 +227,13 @@ export default function ImportHistory({ groupId, orgId }: ImportHistoryProps) {
       setPreview(null);
       setFile(null);
       setProgress(100);
+      
+      // ✅ Уведомляем родительский компонент об успешном импорте
+      if (onImportSuccess) {
+        setTimeout(() => {
+          onImportSuccess();
+        }, 2000); // Даем время пользователю увидеть сообщение об успехе
+      }
     } catch (err: any) {
       setError(err.message || 'Import failed');
     } finally {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
@@ -10,8 +10,46 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export default function CreateOrganization() {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Start with loading true to check org count
   const [error, setError] = useState<string | null>(null)
+  const [orgCount, setOrgCount] = useState<number | null>(null)
+
+  // Check organization count on mount
+  useEffect(() => {
+    async function checkOrgCount() {
+      try {
+        const supabase = createClientBrowser()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          router.push('/signin')
+          return
+        }
+
+        // Get organization count
+        const { data: memberships } = await supabase
+          .from('memberships')
+          .select('org_id')
+          .eq('user_id', user.id)
+
+        const count = memberships?.length || 0
+        setOrgCount(count)
+
+        // If user has 0 organizations, redirect to welcome page
+        if (count === 0) {
+          router.push('/welcome')
+          return
+        }
+
+        setLoading(false)
+      } catch (err) {
+        console.error('Error checking organization count:', err)
+        setLoading(false)
+      }
+    }
+
+    checkOrgCount()
+  }, [router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -54,13 +92,26 @@ export default function CreateOrganization() {
     }
   }
 
+  // Show loading state while checking org count
+  if (loading || orgCount === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-6">
+            <div className="text-center">Загрузка...</div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Создать пространство</CardTitle>
           <CardDescription>
-            Создайте свое пространство для управления сообществом через Telegram
+            Создайте новое пространство для управления сообществом через Telegram
           </CardDescription>
         </CardHeader>
         <CardContent>

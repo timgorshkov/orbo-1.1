@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import TelegramMarkdownEditor from './telegram-markdown-editor'
 
 type Event = {
   id?: string
@@ -182,11 +183,10 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                 <label className="text-sm font-medium block mb-2">
                   Описание
                 </label>
-                <textarea
+                <TelegramMarkdownEditor
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={setDescription}
                   placeholder="Расскажите о событии, программе, спикерах..."
-                  className="w-full min-h-[150px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 

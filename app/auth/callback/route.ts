@@ -56,8 +56,9 @@ export async function GET(request: NextRequest) {
     console.log('[Auth Callback] Found', orgs?.length || 0, 'organizations')
 
     // Редиректим в зависимости от наличия организаций
+    // ✅ Если организаций нет - редирект на welcome страницу (не на форму создания)
     if (!orgs || orgs.length === 0) {
-      return NextResponse.redirect(`${requestUrl.origin}/orgs/new`)
+      return NextResponse.redirect(`${requestUrl.origin}/welcome`)
     } else {
       return NextResponse.redirect(`${requestUrl.origin}/orgs`)
     }

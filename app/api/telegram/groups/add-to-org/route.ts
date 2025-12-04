@@ -282,11 +282,13 @@ export async function POST(request: Request) {
       if (existingMapping) {
         console.log(`Mapping already exists for group ${tgChatIdStr} in org ${orgId}, created at: ${existingMapping.created_at}`);
         // Группа уже добавлена - возвращаем успех
+        // ✅ Добавляем флаг suggestImport даже для уже добавленных групп
         return NextResponse.json({
           success: true,
           message: 'Group already linked to this organization',
           groupId: group.id,
-          tgChatId: tgChatIdStr
+          tgChatId: tgChatIdStr,
+          suggestImport: true // ✅ Флаг для показа предложения импорта истории
         });
       } else {
         console.log(`Creating new mapping for group ${tgChatIdStr} in org ${orgId}`);
@@ -322,11 +324,13 @@ export async function POST(request: Request) {
     // Копируем участников группы в новую организацию
     await copyGroupParticipantsToOrg(supabaseService, tgChatIdStr, orgId);
 
+    // ✅ Добавляем флаг suggestImport для показа предложения импорта истории
     return NextResponse.json({
       success: true,
       message: 'Group linked to organization',
       groupId: group.id,
-      tgChatId: tgChatIdStr
+      tgChatId: tgChatIdStr,
+      suggestImport: true // ✅ Флаг для показа предложения импорта истории
     });
   } catch (error: any) {
     console.error('Error in add-to-org:', error);

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import ImportHistory from '@/components/telegram/import-history'
 
 type TelegramGroup = {
   id: string
@@ -25,6 +27,8 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
   const [availableGroups, setAvailableGroups] = useState<TelegramGroup[]>([])
   const [error, setError] = useState<string | null>(null)
   const [addingGroup, setAddingGroup] = useState<string | null>(null)
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [addedGroupId, setAddedGroupId] = useState<string | null>(null)
   
   useEffect(() => {
     // Создаем переменную для отслеживания, монтирован ли еще компонент
@@ -172,13 +176,17 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       // Обновляем данные на странице
       router.refresh()
       
-      // Показываем сообщение об успехе
-      alert('Группа успешно добавлена в организацию!')
-      
-      // Перенаправляем на страницу Telegram
-      setTimeout(() => {
-        router.push(`/app/${params.org}/telegram`)
-      }, 500)
+      // ✅ Если API вернул флаг suggestImport - показываем модальное окно с предложением импорта
+      if (data.suggestImport) {
+        setAddedGroupId(groupId)
+        setShowImportDialog(true)
+      } else {
+        // Показываем сообщение об успехе и перенаправляем
+        alert('Группа успешно добавлена в организацию!')
+        setTimeout(() => {
+          router.push(`/app/${params.org}/telegram`)
+        }, 500)
+      }
     } catch (e: any) {
       console.error('Error adding group to organization:', e)
       setError(e.message || 'Failed to add group to organization')
@@ -305,6 +313,48 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           </div>
         </div>
       )}
+
+      {/* ✅ Модальное окно с предложением импорта истории */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Импорт истории переписки</DialogTitle>
+            <DialogDescription>
+              Группа успешно добавлена! Хотите импортировать историю переписки для анализа активности участников?
+            </DialogDescription>
+          </DialogHeader>
+          
+          {addedGroupId && (
+            <div className="mt-4">
+              <ImportHistory 
+                groupId={addedGroupId} 
+                orgId={params.org}
+                onImportSuccess={() => {
+                  // ✅ Закрываем диалог и перенаправляем на страницу Telegram после успешного импорта
+                  setShowImportDialog(false)
+                  setTimeout(() => {
+                    router.push(`/app/${params.org}/telegram`)
+                  }, 500)
+                }}
+              />
+            </div>
+          )}
+          
+          <div className="mt-6 flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowImportDialog(false)
+                setTimeout(() => {
+                  router.push(`/app/${params.org}/telegram`)
+                }, 300)
+              }}
+            >
+              Пропустить
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

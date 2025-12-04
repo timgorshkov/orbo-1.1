@@ -61,10 +61,10 @@ export default function AuthCallback() {
           }));
           
           // Умный редирект
+          // ✅ Если организаций нет - редирект на welcome страницу (не на форму создания)
           if (!orgs || orgs.length === 0) {
-            // Нет организаций → создание новой
-            console.log('No organizations, redirecting to create...')
-            setTimeout(() => router.push('/orgs/new'), 500)
+            console.log('No organizations, redirecting to welcome...')
+            setTimeout(() => router.push('/welcome'), 500)
           } else {
             // Есть организации → список для выбора
             console.log(`Has ${orgs.length} organizations, redirecting to list...`)
