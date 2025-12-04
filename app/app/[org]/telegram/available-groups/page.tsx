@@ -29,6 +29,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
   const [addingGroup, setAddingGroup] = useState<string | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [addedGroupId, setAddedGroupId] = useState<string | null>(null)
+  const [addedGroupTitle, setAddedGroupTitle] = useState<string | null>(null)
   
   useEffect(() => {
     // Создаем переменную для отслеживания, монтирован ли еще компонент
@@ -178,7 +179,9 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       
       // ✅ Если API вернул флаг suggestImport - показываем модальное окно с предложением импорта
       if (data.suggestImport) {
+        const addedGroup = availableGroups.find(g => g.id === groupId)
         setAddedGroupId(groupId)
+        setAddedGroupTitle(addedGroup?.title || null)
         setShowImportDialog(true)
       } else {
         // Показываем сообщение об успехе и перенаправляем
@@ -316,11 +319,16 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
 
       {/* ✅ Модальное окно с предложением импорта истории */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Импорт истории переписки</DialogTitle>
             <DialogDescription>
-              Группа успешно добавлена! Хотите импортировать историю переписки для анализа активности участников?
+              {addedGroupTitle && (
+                <span className="block mb-2 font-medium text-gray-900">
+                  Группа "{addedGroupTitle}" успешно добавлена!
+                </span>
+              )}
+              Загрузите историю чата группы, чтобы составить профили участников и их интересы.
             </DialogDescription>
           </DialogHeader>
           
@@ -329,6 +337,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
               <ImportHistory 
                 groupId={addedGroupId} 
                 orgId={params.org}
+                simplified={true}
                 onImportSuccess={() => {
                   // ✅ Закрываем диалог и перенаправляем на страницу Telegram после успешного импорта
                   setShowImportDialog(false)

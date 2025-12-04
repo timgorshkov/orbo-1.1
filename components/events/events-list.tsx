@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Calendar, MapPin, Users, Ticket, Globe, Lock } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
+import { stripTelegramMarkdown } from '@/lib/utils/telegramMarkdownToHtml'
 
 type Event = {
   id: string
@@ -143,7 +144,7 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
           
           {event.description && (
             <p className="text-sm text-neutral-600 mb-3 line-clamp-2">
-              {event.description}
+              {stripTelegramMarkdown(event.description)}
             </p>
           )}
 

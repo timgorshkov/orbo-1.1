@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
 import EventRegistrationForm from './event-registration-form'
 import EventParticipantsList from './event-participants-list'
+import AddParticipantDialog from './add-participant-dialog'
+import EditParticipantDialog from './edit-participant-dialog'
 
 type Event = {
   id: string
@@ -93,6 +95,16 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [notifySuccess, setNotifySuccess] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [showRegistrationForm, setShowRegistrationForm] = useState(false)
+  const [showAddParticipantDialog, setShowAddParticipantDialog] = useState(false)
+  const [showEditParticipantDialog, setShowEditParticipantDialog] = useState(false)
+  const [editingRegistration, setEditingRegistration] = useState<{
+    id: string
+    full_name: string
+    email: string | null
+    phone: string | null
+    bio: string | null
+    payment_status?: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
+  } | null>(null)
   const [participantProfile, setParticipantProfile] = useState<{
     full_name?: string | null
     email?: string | null
@@ -686,16 +698,26 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <CardTitle>Зарегистрированные участники</CardTitle>
-                {participants.length > 0 && (
+                <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleExportParticipants}
+                    onClick={() => setShowAddParticipantDialog(true)}
                   >
-                    <Download className="w-4 h-4 mr-2" />
-                    Экспорт
+                    <Users className="w-4 h-4 mr-2" />
+                    Добавить участника
                   </Button>
-                )}
+                  {participants.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportParticipants}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Экспорт
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {participants.length === 0 ? (
@@ -730,6 +752,11 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                             Дата регистрации
                           </th>
+                          {showAdminFeatures && (
+                            <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
+                              Действия
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-neutral-200">
@@ -788,6 +815,29 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               <td className="px-4 py-3 text-sm text-neutral-500">
                                 {new Date(registration.registered_at).toLocaleString('ru-RU')}
                               </td>
+                              {showAdminFeatures && (
+                                <td className="px-4 py-3 text-sm">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const regData = registration.registration_data || {}
+                                      setEditingRegistration({
+                                        id: registration.id,
+                                        full_name: regData.full_name || registration.participants.full_name || '',
+                                        email: regData.email || registration.participants.email || null,
+                                        phone: regData.phone_number || regData.phone || registration.participants.phone || null,
+                                        bio: regData.bio || registration.participants.bio || null,
+                                        payment_status: registration.payment_status || null
+                                      })
+                                      setShowEditParticipantDialog(true)
+                                    }}
+                                    className="p-1.5 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="Редактировать регистрацию"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           )
                         })}
@@ -919,6 +969,37 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         onSuccess={handleRegistrationSuccess}
         participantProfile={participantProfile}
       />
+
+      {/* Add Participant Dialog (Admin only) */}
+      {isAdmin && (
+        <AddParticipantDialog
+          open={showAddParticipantDialog}
+          onOpenChange={setShowAddParticipantDialog}
+          eventId={event.id}
+          orgId={orgId}
+          onSuccess={() => {
+            router.refresh()
+          }}
+        />
+      )}
+
+      {/* Edit Participant Dialog (Admin only) */}
+      {isAdmin && editingRegistration && (
+        <EditParticipantDialog
+          open={showEditParticipantDialog}
+          onOpenChange={setShowEditParticipantDialog}
+          eventId={event.id}
+          orgId={orgId}
+          registrationId={editingRegistration.id}
+          initialData={editingRegistration}
+          hasPayment={!!(event.requires_payment || event.is_paid)}
+          onSuccess={() => {
+            setShowEditParticipantDialog(false)
+            setEditingRegistration(null)
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

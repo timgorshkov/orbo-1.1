@@ -501,6 +501,22 @@ export async function GET(request: Request) {
       }
     }
 
+    // Create a map of tg_user_id to participant_id and photo_url for quick lookup
+    const participantIdMap = new Map<number, { id: string; photo_url: string | null }>()
+    const { data: participantIdsData } = await supabase
+      .from('participants')
+      .select('id, tg_user_id, photo_url')
+      .eq('org_id', orgId)
+      .in('tg_user_id', participantList.map(p => p.tg_user_id))
+    
+    if (participantIdsData) {
+      participantIdsData.forEach(p => {
+        if (p.tg_user_id) {
+          participantIdMap.set(p.tg_user_id, { id: p.id, photo_url: p.photo_url })
+        }
+      })
+    }
+
     const participantsResponse = participantList
       .slice()
       .sort(
@@ -510,8 +526,10 @@ export async function GET(request: Request) {
       )
       .map(record => {
         const adminInfo = adminMap.get(record.tg_user_id)
+        const participantInfo = participantIdMap.get(record.tg_user_id)
         return {
           tg_user_id: record.tg_user_id,
+          participant_id: participantInfo?.id || null,
           username: record.username,
           full_name: record.full_name,
           message_count: record.message_count,
@@ -519,7 +537,8 @@ export async function GET(request: Request) {
           risk_score: calculateRiskScore(record.last_activity, record.risk_score ?? null),
           is_owner: adminInfo?.isOwner || false,
           is_admin: adminInfo?.isAdmin || false,
-          custom_title: adminInfo?.customTitle || null
+          custom_title: adminInfo?.customTitle || null,
+          photo_url: participantInfo?.photo_url || null
         }
       })
 

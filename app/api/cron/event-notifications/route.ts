@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
+import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
 
 // Force dynamic rendering for cron endpoints
 export const dynamic = 'force-dynamic'
@@ -111,7 +112,9 @@ export async function GET(request: NextRequest) {
         const shortDescription = event.description.length > 150 
           ? event.description.substring(0, 150) + '...'
           : event.description
-        message += `${shortDescription}\n\n`
+        // ✅ Конвертируем Telegram Markdown в HTML для Telegram API
+        const descriptionHtml = telegramMarkdownToHtml(shortDescription)
+        message += `${descriptionHtml}\n\n`
       }
 
       message += `🗓 ${eventDateStr}\n`

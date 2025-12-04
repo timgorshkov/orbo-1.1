@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
 
 // POST /api/events/[id]/notify - Send Telegram notification for event
 export async function POST(
@@ -135,7 +136,13 @@ export async function POST(
       const shortDescription = event.description.length > 200 
         ? event.description.substring(0, 200) + '...'
         : event.description
-      message += `${shortDescription}\n\n`
+      // ✅ Конвертируем Telegram Markdown в HTML для Telegram API
+      // Функция сохраняет уже существующие HTML теги (например, <b>, <a>)
+      const descriptionHtml = telegramMarkdownToHtml(shortDescription)
+      message += `${descriptionHtml}\n\n`
+      
+      // Логируем для отладки (первые 200 символов)
+      console.log('[Events] Message description after conversion:', descriptionHtml.substring(0, 200))
     }
 
     message += `🗓 ${dateStr}\n`
@@ -211,6 +218,16 @@ export async function POST(
             success: true
           })
         } else {
+          // Log error details for debugging
+          console.error('[Events] Failed to send Telegram notification:', {
+            group_id: group.id,
+            group_title: group.title,
+            chat_id: group.tg_chat_id,
+            error_code: telegramData.error_code,
+            description: telegramData.description,
+            message_preview: message.substring(0, 100)
+          })
+
           // Save failed notification using admin client
           await adminSupabase
             .from('event_telegram_notifications')
@@ -230,12 +247,18 @@ export async function POST(
           })
         }
       } catch (error: any) {
-        console.error(`Error sending to group ${group.id}:`, error)
+        console.error(`[Events] Error sending notification to group ${group.id}:`, {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          group_id: group.id,
+          group_title: group.title,
+          chat_id: group.tg_chat_id
+        })
         results.push({
           group_id: group.id,
           group_title: group.title,
           success: false,
-          error: error.message
+          error: error instanceof Error ? error.message : 'Unknown error'
         })
       }
     }

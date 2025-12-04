@@ -1,6 +1,279 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 
+// POST /api/events/[id]/participants - Manually add participant to event (admin only)
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: eventId } = await params
+    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
+
+    // Check authentication
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get event details
+    const { data: event, error: eventError } = await adminSupabase
+      .from('events')
+      .select('org_id, status')
+      .eq('id', eventId)
+      .single()
+
+    if (eventError || !event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    // Check admin permissions
+    const { data: membership } = await adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', event.org_id)
+      .maybeSingle()
+
+    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    }
+
+    // Parse request body
+    const body = await request.json()
+    const { org_id, full_name, email, phone, bio } = body
+
+    if (!full_name || !full_name.trim()) {
+      return NextResponse.json({ error: 'Full name is required' }, { status: 400 })
+    }
+
+    if (org_id !== event.org_id) {
+      return NextResponse.json({ error: 'Organization mismatch' }, { status: 400 })
+    }
+
+    // Find or create participant
+    let participantId: string | null = null
+
+    // Try to find existing participant by email first
+    if (email) {
+      const { data: existingByEmail } = await adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('email', email.trim())
+        .is('merged_into', null)
+        .maybeSingle()
+
+      if (existingByEmail) {
+        participantId = existingByEmail.id
+        console.log(`[Add Participant] Found existing participant by email: ${participantId}`)
+      }
+    }
+
+    // If not found by email, try by phone
+    if (!participantId && phone) {
+      const { data: existingByPhone } = await adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('phone', phone.trim())
+        .is('merged_into', null)
+        .maybeSingle()
+
+      if (existingByPhone) {
+        participantId = existingByPhone.id
+        console.log(`[Add Participant] Found existing participant by phone: ${participantId}`)
+      }
+    }
+
+    // If not found, create a "shadow" participant
+    if (!participantId) {
+      console.log(`[Add Participant] Creating shadow participant for ${full_name}`)
+      
+      const { data: newParticipant, error: createError } = await adminSupabase
+        .from('participants')
+        .insert({
+          org_id: event.org_id,
+          full_name: full_name.trim(),
+          email: email?.trim() || null,
+          phone: phone?.trim() || null,
+          bio: bio?.trim() || null,
+          source: 'admin',
+          participant_status: 'event_attendee'
+        })
+        .select('id')
+        .single()
+
+      if (createError) {
+        console.error('[Add Participant] Error creating participant:', createError)
+        
+        // Handle duplicate email/phone case
+        if (createError.code === '23505') {
+          // Try to find the participant that was just created
+          if (email) {
+            const { data: existingByEmail } = await adminSupabase
+              .from('participants')
+              .select('id')
+              .eq('org_id', event.org_id)
+              .eq('email', email.trim())
+              .is('merged_into', null)
+              .maybeSingle()
+            
+            if (existingByEmail) {
+              participantId = existingByEmail.id
+            }
+          }
+          
+          if (!participantId && phone) {
+            const { data: existingByPhone } = await adminSupabase
+              .from('participants')
+              .select('id')
+              .eq('org_id', event.org_id)
+              .eq('phone', phone.trim())
+              .is('merged_into', null)
+              .maybeSingle()
+            
+            if (existingByPhone) {
+              participantId = existingByPhone.id
+            }
+          }
+          
+          if (!participantId) {
+            return NextResponse.json(
+              { error: 'Error creating participant' },
+              { status: 500 }
+            )
+          }
+        } else {
+          return NextResponse.json(
+            { error: 'Error creating participant' },
+            { status: 500 }
+          )
+        }
+      } else {
+        participantId = newParticipant.id
+      }
+    } else {
+      // Update existing participant with new data (only if fields are empty)
+      const { data: existingParticipant } = await adminSupabase
+        .from('participants')
+        .select('full_name, email, phone, bio')
+        .eq('id', participantId)
+        .single()
+
+      if (existingParticipant) {
+        const updates: any = {}
+        
+        if (!existingParticipant.full_name && full_name) {
+          updates.full_name = full_name.trim()
+        }
+        if (!existingParticipant.email && email) {
+          updates.email = email.trim()
+        }
+        if (!existingParticipant.phone && phone) {
+          updates.phone = phone.trim()
+        }
+        if (!existingParticipant.bio && bio) {
+          updates.bio = bio.trim()
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await adminSupabase
+            .from('participants')
+            .update(updates)
+            .eq('id', participantId)
+        }
+      }
+    }
+
+    // Check if already registered
+    const { data: existingRegistration } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status')
+      .eq('event_id', eventId)
+      .eq('participant_id', participantId)
+      .maybeSingle()
+
+    if (existingRegistration) {
+      if (existingRegistration.status === 'registered') {
+        return NextResponse.json(
+          { error: 'Participant is already registered for this event' },
+          { status: 400 }
+        )
+      }
+      
+      // Reactivate cancelled registration
+      const { error: updateError } = await adminSupabase
+        .from('event_registrations')
+        .update({ 
+          status: 'registered',
+          registered_at: new Date().toISOString(),
+          registration_source: 'admin',
+          registration_data: {
+            full_name: full_name.trim(),
+            email: email?.trim() || null,
+            phone: phone?.trim() || null,
+            bio: bio?.trim() || null
+          }
+        })
+        .eq('id', existingRegistration.id)
+
+      if (updateError) {
+        console.error('[Add Participant] Error updating registration:', updateError)
+        return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({ 
+        success: true,
+        message: 'Participant added successfully',
+        registration_id: existingRegistration.id
+      }, { status: 200 })
+    }
+
+    // Register participant using RPC function
+    const { data: registrationResult, error: rpcError } = await adminSupabase
+      .rpc('register_for_event', {
+        p_event_id: eventId,
+        p_participant_id: participantId,
+        p_registration_data: {
+          full_name: full_name.trim(),
+          email: email?.trim() || null,
+          phone: phone?.trim() || null,
+          bio: bio?.trim() || null
+        },
+        p_quantity: 1
+      })
+
+    if (rpcError) {
+      console.error('[Add Participant] RPC error:', rpcError)
+      return NextResponse.json({ error: rpcError.message }, { status: 500 })
+    }
+
+    // Update registration_source to 'admin' (RPC defaults to 'web')
+    if (registrationResult && registrationResult.length > 0) {
+      const registrationId = registrationResult[0].registration_id
+      
+      await adminSupabase
+        .from('event_registrations')
+        .update({ registration_source: 'admin' })
+        .eq('id', registrationId)
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Participant added successfully',
+      registration_id: registrationResult?.[0]?.registration_id
+    }, { status: 200 })
+  } catch (error: any) {
+    console.error('Error in POST /api/events/[id]/participants:', error)
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

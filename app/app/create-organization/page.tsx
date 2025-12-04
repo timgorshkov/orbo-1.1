@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-export const revalidate = 0; // Отключаем кэширование страницы
-
 export default function CreateOrganizationPage() {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)

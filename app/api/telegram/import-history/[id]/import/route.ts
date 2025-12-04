@@ -22,10 +22,12 @@ interface ImportRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const groupId = params.id;
+    const { id: groupId } = await params
+    const requestUrl = new URL(request.url)
+    const expectedOrgId = requestUrl.searchParams.get('orgId') // ✅ Получаем orgId из query параметров
 
     // Проверяем авторизацию
     const supabase = await createClientServer();
@@ -33,6 +35,26 @@ export async function POST(
 
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // ✅ Если передан orgId, сначала проверяем доступ к организации
+    if (expectedOrgId) {
+      const supabaseAdmin = createAdminServer();
+      const { data: membership } = await supabaseAdmin
+        .from('memberships')
+        .select('role')
+        .eq('org_id', expectedOrgId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!membership || !['owner', 'admin'].includes(membership.role)) {
+        console.log('[Import History] Access denied (pre-check):', {
+          userId: user.id,
+          orgId: expectedOrgId,
+          membership: membership?.role || 'none'
+        });
+        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+      }
     }
 
     // Получаем группу и проверяем доступ
@@ -84,21 +106,47 @@ export async function POST(
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    const orgId = (group as any).org_telegram_groups?.[0]?.org_id;
-    if (!orgId) {
-      return NextResponse.json({ error: 'Group not linked to organization' }, { status: 400 });
-    }
+    // ✅ Получаем все организации, связанные с группой
+    const orgTelegramGroups = (group as any).org_telegram_groups || [];
+    
+    // ✅ Если передан expectedOrgId, используем его (уже проверили доступ выше)
+    // Иначе берем первую организацию и проверяем доступ
+    let orgId: string | null = null;
+    
+    if (expectedOrgId) {
+      // Проверяем, что группа действительно связана с ожидаемой организацией
+      const orgLink = orgTelegramGroups.find((link: any) => link.org_id === expectedOrgId);
+      if (orgLink) {
+        orgId = expectedOrgId;
+      } else {
+        return NextResponse.json({ 
+          error: 'Group not linked to specified organization',
+          message: 'Группа не связана с указанной организацией'
+        }, { status: 400 });
+      }
+    } else {
+      // Если orgId не передан, берем первую организацию и проверяем доступ
+      orgId = orgTelegramGroups[0]?.org_id;
+      if (!orgId) {
+        return NextResponse.json({ error: 'Group not linked to organization' }, { status: 400 });
+      }
 
-    // Проверяем права пользователя
-    const { data: membership } = await supabaseAdmin
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+      // Проверяем права пользователя в организации
+      const { data: membership } = await supabaseAdmin
+        .from('memberships')
+        .select('role')
+        .eq('org_id', orgId)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+      if (!membership || !['owner', 'admin'].includes(membership.role)) {
+        console.log('[Import History] Access denied:', {
+          userId: user.id,
+          orgId,
+          membership: membership?.role || 'none'
+        });
+        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+      }
     }
 
     // Получаем данные из FormData

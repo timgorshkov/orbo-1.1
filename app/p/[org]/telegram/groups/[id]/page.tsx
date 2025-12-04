@@ -14,6 +14,7 @@ import ActivityTimeline from '@/components/analytics/activity-timeline'
 import TopContributors from '@/components/analytics/top-contributors'
 import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
+import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
 type TelegramGroupSettings = {
   id: number;
@@ -95,6 +96,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, i
 const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: string | null; username: string | null; message_count: number; last_activity?: string }>>([])
   const [participants, setParticipants] = useState<Array<{ 
     tg_user_id: number | null; 
+    participant_id: string | null;
     full_name: string | null; 
     username: string | null; 
     last_activity: string | null; 
@@ -103,6 +105,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     is_owner?: boolean;
     is_admin?: boolean;
     custom_title?: string | null;
+    photo_url?: string | null;
   }>>([])
   const [loadingAnalytics, setLoadingAnalytics] = useState(true)
 
@@ -221,11 +224,16 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
             setParticipants(
               (analyticsData.participants || []).map((participant: any) => ({
                 tg_user_id: participant.tg_user_id ?? null,
+                participant_id: participant.participant_id ?? null,
                 full_name: participant.full_name ?? null,
                 username: participant.username ?? null,
                 last_activity: participant.last_activity ?? null,
                 risk_score: participant.risk_score ?? null,
-                message_count: participant.message_count ?? 0
+                message_count: participant.message_count ?? 0,
+                is_owner: participant.is_owner ?? false,
+                is_admin: participant.is_admin ?? false,
+                custom_title: participant.custom_title ?? null,
+                photo_url: participant.photo_url ?? null
               }))
             )
           }
@@ -676,10 +684,35 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                               const key = participant.tg_user_id
                                 ? `tg-${participant.tg_user_id}`
                                 : `anon-${participant.username ?? participant.full_name ?? Math.random().toString(36).slice(2)}`;
+                              const displayName = participant.full_name || (participant.username ? `@${participant.username}` : participant.tg_user_id ? `ID: ${participant.tg_user_id}` : 'Неизвестный пользователь');
+                              const handleRowClick = () => {
+                                if (participant.participant_id) {
+                                  router.push(`/p/${params.org}/members/${participant.participant_id}`);
+                                }
+                              };
                               return (
-                                <tr key={key}>
+                                <tr 
+                                  key={key}
+                                  className={participant.participant_id ? "cursor-pointer hover:bg-gray-50" : ""}
+                                  onClick={participant.participant_id ? handleRowClick : undefined}
+                                >
                                   <td className="px-4 py-3 text-sm text-neutral-900">
-                                    {participant.full_name || (participant.username ? `@${participant.username}` : participant.tg_user_id ? `ID: ${participant.tg_user_id}` : 'Неизвестный пользователь')}
+                                    <div className="flex items-center gap-3">
+                                      {participant.participant_id ? (
+                                        <ParticipantAvatar
+                                          participantId={participant.participant_id}
+                                          photoUrl={participant.photo_url || null}
+                                          tgUserId={participant.tg_user_id ? String(participant.tg_user_id) : null}
+                                          displayName={displayName}
+                                          size="sm"
+                                        />
+                                      ) : (
+                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                                          {displayName.charAt(0).toUpperCase()}
+                                        </div>
+                                      )}
+                                      <span>{displayName}</span>
+                                    </div>
                                   </td>
                                   <td className="px-4 py-3 text-sm text-neutral-500">
                                     {participant.username ? `@${participant.username}` : '—'}

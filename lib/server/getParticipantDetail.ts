@@ -135,67 +135,210 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     let accessibleChatIds: string[] = [];
 
     try {
+      // Загружаем все группы организации для активности участника
+      // Не фильтруем по status, чтобы показывать всю активность
       const { data: accessibleChats, error: chatsError } = await supabase
         .from('org_telegram_groups')
-        .select('tg_chat_id, status')
+        .select('tg_chat_id')
         .eq('org_id', orgId);
 
       if (chatsError) {
         if (chatsError.code !== '42703' && chatsError.code !== '42P01') {
           console.error('Error loading accessible chats for participant:', chatsError);
-          throw chatsError;
+          // Не бросаем ошибку, продолжаем с группами из participant_groups
         }
+      } else {
+        (accessibleChats || []).forEach(chat => {
+          if (chat?.tg_chat_id) {
+            accessibleChatIds.push(String(chat.tg_chat_id));
+          }
+        });
       }
-
-      (accessibleChats || []).forEach(chat => {
-        if (!chat?.tg_chat_id) return;
-        if (!chat.status || chat.status === 'active') {
-          accessibleChatIds.push(String(chat.tg_chat_id));
-        }
-      });
     } catch (chatError) {
       console.error('Unexpected error while loading accessible chats:', chatError);
+      // Продолжаем с группами из participant_groups
     }
 
+    // Добавляем группы из participant_groups
     groups.forEach(group => {
       accessibleChatIds.push(String(group.tg_chat_id));
     });
 
     accessibleChatIds = Array.from(new Set(accessibleChatIds));
 
-    if (accessibleChatIds.length > 0) {
-      const numericChatIds = accessibleChatIds
-        .map(id => Number(id))
-        .filter(id => !Number.isNaN(id));
+    // Если нет групп из org_telegram_groups, но есть группы из participant_groups, используем их
+    // Если вообще нет групп, загружаем события для всех групп организации
+    if (accessibleChatIds.length === 0) {
+      console.log(`[getParticipantDetail] No accessible chat IDs found, loading all org groups for activity`);
+      try {
+        const { data: allOrgChats } = await supabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', orgId);
+        
+        if (allOrgChats && allOrgChats.length > 0) {
+          allOrgChats.forEach(chat => {
+            if (chat?.tg_chat_id) {
+              accessibleChatIds.push(String(chat.tg_chat_id));
+            }
+          });
+          console.log(`[getParticipantDetail] Fallback: loaded ${accessibleChatIds.length} org groups`);
+        } else {
+          console.log(`[getParticipantDetail] No org groups found, will load events without chat_id filter`);
+        }
+      } catch (fallbackError) {
+        console.error('Error loading fallback org chats:', fallbackError);
+      }
+    } else {
+      console.log(`[getParticipantDetail] Found ${accessibleChatIds.length} accessible chat IDs`);
+    }
 
-      if (numericChatIds.length > 0) {
-        try {
-          // Use activity_events (not telegram_activity_events)
-          const { data: activityEvents, error: activityEventsError } = await supabase
+    // Загружаем события даже если нет групп - просто без фильтра по chat_id
+    // Загружаем события для всех доступных групп
+    const numericChatIds = accessibleChatIds
+      .map(id => Number(id))
+      .filter(id => !Number.isNaN(id));
+
+    console.log(`[getParticipantDetail] Loading activity events for tg_user_id=${tgUserId}, org_id=${orgId}, accessible_chat_ids=${accessibleChatIds.length}, numeric_chat_ids=${numericChatIds.length}`);
+    console.log(`[getParticipantDetail] Chat IDs to filter: ${JSON.stringify(numericChatIds)}`);
+
+    try {
+      // Сначала проверим, есть ли вообще события для этого пользователя и организации (без фильтра по chat_id)
+      const { data: allEventsCheck, error: checkError } = await supabase
+        .from('activity_events')
+        .select('tg_chat_id, created_at, org_id')
+        .eq('tg_user_id', tgUserId)
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (checkError) {
+        console.error(`[getParticipantDetail] Error checking events:`, checkError);
+      } else {
+        const uniqueChatIds = Array.from(new Set((allEventsCheck || []).map(e => e.tg_chat_id)));
+        console.log(`[getParticipantDetail] Found ${allEventsCheck?.length || 0} total events for user in org, in ${uniqueChatIds.length} different chats: ${JSON.stringify(uniqueChatIds)}`);
+        
+        // Проверим пересечение
+        const matchingChatIds = uniqueChatIds.filter(id => numericChatIds.includes(Number(id)));
+        console.log(`[getParticipantDetail] Matching chat IDs: ${JSON.stringify(matchingChatIds)}`);
+        
+        // Если событий нет, проверим, есть ли события для этого tg_user_id в других организациях
+        if (allEventsCheck?.length === 0) {
+          const { data: otherOrgEvents, error: otherOrgError } = await supabase
             .from('activity_events')
-            .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id')
+            .select('org_id, tg_chat_id, created_at')
             .eq('tg_user_id', tgUserId)
-            .eq('org_id', orgId)
-            .in('tg_chat_id', numericChatIds)
             .order('created_at', { ascending: false })
-            .limit(200);
-
-          if (activityEventsError) {
-            console.error('Error loading activity events:', activityEventsError);
-            throw activityEventsError;
-          } else if (activityEvents) {
-            eventsData = activityEvents.map(event => ({
-              id: event.id,
-              event_type: event.event_type,
-              created_at: event.created_at,
-              tg_chat_id: String(event.tg_chat_id),
-              meta: event.meta || null
-            }));
+            .limit(5);
+          
+          if (!otherOrgError && otherOrgEvents && otherOrgEvents.length > 0) {
+            const otherOrgIds = Array.from(new Set(otherOrgEvents.map(e => e.org_id)));
+            console.log(`[getParticipantDetail] ⚠️ Found ${otherOrgEvents.length} events for tg_user_id=${tgUserId} in OTHER orgs: ${JSON.stringify(otherOrgIds)}`);
+          } else {
+            console.log(`[getParticipantDetail] ⚠️ No events found for tg_user_id=${tgUserId} in ANY organization`);
           }
-        } catch (activityError) {
-          console.error('Error loading activity events:', activityError);
+          
+          // Проверим, есть ли события для этой организации с другими tg_user_id
+          const { data: orgEvents, error: orgEventsError } = await supabase
+            .from('activity_events')
+            .select('tg_user_id, tg_chat_id, created_at')
+            .eq('org_id', orgId)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          
+          if (!orgEventsError && orgEvents && orgEvents.length > 0) {
+            const otherUserIds = Array.from(new Set(orgEvents.map(e => e.tg_user_id)));
+            console.log(`[getParticipantDetail] ⚠️ Found ${orgEvents.length} events for org_id=${orgId} with OTHER tg_user_ids: ${JSON.stringify(otherUserIds)}`);
+          } else {
+            console.log(`[getParticipantDetail] ⚠️ No events found for org_id=${orgId} with ANY tg_user_id`);
+          }
         }
       }
+
+      // Use activity_events (not telegram_activity_events)
+      // ВАЖНО: Не фильтруем по org_id, так как группы и участники могут быть в разных организациях
+      // Показываем события для участника, если группа добавлена в текущую организацию
+      let query = supabase
+        .from('activity_events')
+        .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id, org_id')
+        .eq('tg_user_id', tgUserId);
+      
+      // Добавляем фильтр по chat_id только если есть валидные группы
+      // Это гарантирует, что показываем только события из групп, добавленных в текущую организацию
+      if (numericChatIds.length > 0) {
+        query = query.in('tg_chat_id', numericChatIds);
+        console.log(`[getParticipantDetail] Filtering by ${numericChatIds.length} chat IDs (ignoring org_id filter): ${JSON.stringify(numericChatIds)}`);
+      } else {
+        console.log(`[getParticipantDetail] No valid chat IDs, loading all events without chat filter`);
+      }
+      
+      const { data: activityEvents, error: activityEventsError } = await query
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      console.log(`[getParticipantDetail] Loaded ${activityEvents?.length || 0} activity events`);
+      if (activityEventsError) {
+        console.error(`[getParticipantDetail] Query error:`, activityEventsError);
+      }
+
+      if (activityEventsError) {
+        console.error('Error loading activity events:', activityEventsError);
+        throw activityEventsError;
+      } else if (activityEvents) {
+            // Load message texts from participant_messages for message events
+            const messageEventIds = activityEvents
+              .filter(e => e.event_type === 'message' && e.message_id)
+              .map(e => ({ chatId: e.tg_chat_id, messageId: e.message_id }));
+            
+            let messageTextsMap = new Map<string, string>();
+            
+            if (messageEventIds.length > 0) {
+              const chatMessagePairs = messageEventIds.map(({ chatId, messageId }) => 
+                `(${chatId}, ${messageId})`
+              );
+              
+              // Load messages in batches
+              for (const { chatId, messageId } of messageEventIds) {
+                const { data: messageData } = await supabase
+                  .from('participant_messages')
+                  .select('message_text')
+                  .eq('tg_chat_id', chatId)
+                  .eq('message_id', messageId)
+                  .eq('org_id', orgId)
+                  .maybeSingle();
+                
+                if (messageData?.message_text) {
+                  messageTextsMap.set(`${chatId}_${messageId}`, messageData.message_text);
+                }
+              }
+            }
+            
+            eventsData = activityEvents.map(event => {
+              const eventMeta = event.meta || {};
+              
+              // Enhance meta with message text from participant_messages if available
+              if (event.event_type === 'message' && event.message_id) {
+                const messageKey = `${event.tg_chat_id}_${event.message_id}`;
+                const messageText = messageTextsMap.get(messageKey);
+                
+                if (messageText && !eventMeta.message?.text_preview && !eventMeta.message?.text) {
+                  eventMeta.message = eventMeta.message || {};
+                  eventMeta.message.text_preview = messageText.slice(0, 500);
+                  eventMeta.message.text = messageText;
+                }
+              }
+              
+              return {
+                id: event.id,
+                event_type: event.event_type,
+                created_at: event.created_at,
+                tg_chat_id: String(event.tg_chat_id),
+                meta: eventMeta
+              };
+            });
+      }
+    } catch (activityError) {
+      console.error('Error loading activity events:', activityError);
     }
   }
 

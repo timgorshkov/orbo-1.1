@@ -51,6 +51,7 @@ interface ImportHistoryProps {
   groupId: string;
   orgId: string;
   onImportSuccess?: () => void; // ✅ Callback для уведомления об успешном импорте
+  simplified?: boolean; // ✅ Упрощенный режим для диалога (без лишних инструкций)
 }
 
 type ImportDecision = {
@@ -61,7 +62,7 @@ type ImportDecision = {
   targetParticipantId?: string;
 };
 
-export default function ImportHistory({ groupId, orgId, onImportSuccess }: ImportHistoryProps) {
+export default function ImportHistory({ groupId, orgId, onImportSuccess, simplified = false }: ImportHistoryProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +93,8 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess }: Impor
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await fetch(`/api/telegram/import-history/${groupId}/parse`, {
+      // ✅ Передаем orgId в query параметрах для правильной проверки доступа
+      const response = await fetch(`/api/telegram/import-history/${groupId}/parse?orgId=${orgId}`, {
         method: 'POST',
         body: formData,
       });
@@ -189,7 +191,8 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess }: Impor
       formData.append('file', file);
       formData.append('decisions', JSON.stringify(Array.from(decisions.values())));
 
-      const response = await fetch(`/api/telegram/import-history/${groupId}/import`, {
+      // ✅ Передаем orgId в query параметрах для правильной проверки доступа
+      const response = await fetch(`/api/telegram/import-history/${groupId}/import?orgId=${orgId}`, {
         method: 'POST',
         body: formData,
       });
@@ -244,53 +247,81 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess }: Impor
   return (
     <div className="space-y-6">
       {/* Инструкция */}
-      <Card>
-        <CardHeader>
-          <CardTitle>📤 Как экспортировать историю чата</CardTitle>
-          <CardDescription>
-            Следуйте инструкциям для экспорта истории из Telegram
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Alert className="bg-green-50 border-green-200">
-              <AlertDescription className="text-sm text-green-800">
-                ✅ <strong>Рекомендуем JSON формат:</strong> содержит ID участников для точной идентификации!
-              </AlertDescription>
-            </Alert>
+      {!simplified && (
+        <Card>
+          <CardHeader>
+            <CardTitle>📤 Как экспортировать историю чата</CardTitle>
+            <CardDescription>
+              Следуйте инструкциям для экспорта истории из Telegram
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <Alert className="bg-green-50 border-green-200">
+                <AlertDescription className="text-sm text-green-800">
+                  ✅ <strong>Рекомендуем JSON формат:</strong> содержит ID участников для точной идентификации!
+                </AlertDescription>
+              </Alert>
 
-            <div>
-              <h3 className="font-semibold mb-2 text-green-700">📱 JSON (рекомендуется)</h3>
-              <ol className="list-decimal list-inside space-y-2 text-sm ml-4">
-                <li>Откройте группу в <strong>Telegram Desktop</strong></li>
-                <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
-                <li>Выберите формат: <strong>JSON</strong> ✨</li>
-                <li className="text-amber-600 font-medium">
-                  ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
-                </li>
-                <li>Нажмите <strong>Export</strong> и дождитесь завершения</li>
-                <li>Загрузите полученный <code className="bg-neutral-100 px-2 py-1 rounded">result.json</code> сюда</li>
-              </ol>
-            </div>
+              <div>
+                <h3 className="font-semibold mb-2 text-green-700">📱 JSON (рекомендуется)</h3>
+                <ol className="list-decimal list-inside space-y-2 text-sm ml-4">
+                  <li>Откройте группу в <strong>Telegram Desktop</strong></li>
+                  <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
+                  <li>Выберите формат: <strong>JSON</strong> ✨</li>
+                  <li className="text-amber-600 font-medium">
+                    ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
+                  </li>
+                  <li>Нажмите <strong>Export</strong> и дождитесь завершения</li>
+                  <li>Загрузите полученный <code className="bg-neutral-100 px-2 py-1 rounded">result.json</code> сюда</li>
+                </ol>
+              </div>
 
-            <div className="pt-2 border-t">
-              <h3 className="font-semibold mb-2 text-neutral-600">📄 HTML (запасной вариант)</h3>
-              <p className="text-sm text-neutral-600 ml-4">
-                Если JSON недоступен, можно использовать HTML формат. 
-                Выполните те же шаги, но выберите <strong>HTML</strong> вместо JSON.
-                Загрузите файл <code className="bg-neutral-100 px-2 py-1 rounded">messages.html</code>.
-              </p>
+              <div className="pt-2 border-t">
+                <h3 className="font-semibold mb-2 text-neutral-600">📄 HTML (запасной вариант)</h3>
+                <p className="text-sm text-neutral-600 ml-4">
+                  Если JSON недоступен, можно использовать HTML формат. 
+                  Выполните те же шаги, но выберите <strong>HTML</strong> вместо JSON.
+                  Загрузите файл <code className="bg-neutral-100 px-2 py-1 rounded">messages.html</code>.
+                </p>
+              </div>
+              
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertDescription className="text-sm text-blue-800">
+                  💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB. 
+                  Если получилось несколько файлов, загружайте их по одному. Система автоматически пропустит дубликаты.
+                </AlertDescription>
+              </Alert>
             </div>
-            
-            <Alert className="bg-blue-50 border-blue-200">
-              <AlertDescription className="text-sm text-blue-800">
-                💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB. 
-                Если получилось несколько файлов, загружайте их по одному. Система автоматически пропустит дубликаты.
-              </AlertDescription>
-            </Alert>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Упрощенная инструкция для диалога */}
+      {simplified && (
+        <Card>
+          <CardHeader>
+            <CardTitle>📤 Как экспортировать историю чата</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold mb-2">📱 Экспорт из Telegram Desktop</h3>
+                <ol className="list-decimal list-inside space-y-1.5 text-sm ml-4">
+                  <li>Откройте группу в <strong>Telegram Desktop</strong></li>
+                  <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
+                  <li>Выберите формат: <strong>JSON</strong></li>
+                  <li className="text-amber-600 font-medium">
+                    ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
+                  </li>
+                  <li>Нажмите <strong>Export</strong> и дождитесь завершения</li>
+                  <li>Загрузите полученный <code className="bg-neutral-100 px-2 py-1 rounded">result.json</code> ниже</li>
+                </ol>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Drag & Drop зона */}
       {!preview && (
@@ -298,7 +329,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess }: Impor
           <CardHeader>
             <CardTitle>Загрузить файл истории</CardTitle>
             <CardDescription>
-              Макс. размер: 5MB. Поддерживаются JSON и HTML файлы экспорта из Telegram.
+              Макс. размер: 5MB{simplified ? '.' : '. Поддерживаются JSON и HTML файлы экспорта из Telegram.'}
             </CardDescription>
           </CardHeader>
           <CardContent>

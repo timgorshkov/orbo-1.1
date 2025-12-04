@@ -13,6 +13,7 @@ export default function CreateOrganization() {
   const [loading, setLoading] = useState(true) // Start with loading true to check org count
   const [error, setError] = useState<string | null>(null)
   const [orgCount, setOrgCount] = useState<number | null>(null)
+  const [isFirstOrg, setIsFirstOrg] = useState(false)
 
   // Check organization count on mount
   useEffect(() => {
@@ -34,11 +35,19 @@ export default function CreateOrganization() {
 
         const count = memberships?.length || 0
         setOrgCount(count)
+        setIsFirstOrg(count === 0)
 
-        // If user has 0 organizations, redirect to welcome page
-        if (count === 0) {
-          router.push('/welcome')
+        // ✅ If user already has organizations, redirect to orgs list
+        // Users with 0 organizations should be able to create their first org via /orgs/new
+        // (they can also access it from /welcome page)
+        if (count > 0) {
+          router.push('/orgs')
           return
+        }
+
+        // ✅ Pre-fill name for first organization
+        if (count === 0) {
+          setName('Моё сообщество')
         }
 
         setLoading(false)
@@ -118,7 +127,7 @@ export default function CreateOrganization() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="name" className="text-sm font-medium">
-                Название пространства
+                Название пространства {isFirstOrg && <span className="text-gray-400 font-normal">(можно изменить позже)</span>}
               </label>
               <Input
                 id="name"
@@ -130,9 +139,15 @@ export default function CreateOrganization() {
                 minLength={3}
                 maxLength={100}
               />
-              <p className="text-xs text-gray-500">
-                После создания вы сможете настроить пространство
-              </p>
+              {isFirstOrg ? (
+                <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  💡 <strong>Совет:</strong> Название поможет вам отличать это пространство от других. Например: "Московское сообщество", "IT-клуб", "Книжный клуб". Вы всегда сможете изменить его в настройках.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  После создания вы сможете настроить пространство
+                </p>
+              )}
             </div>
 
             {error && (
