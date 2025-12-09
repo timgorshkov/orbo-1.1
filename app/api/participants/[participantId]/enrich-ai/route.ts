@@ -17,9 +17,10 @@ import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/partic
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { participantId: string } }
+  { params }: { params: Promise<{ participantId: string }> }
 ) {
   try {
+    const { participantId } = await params;
     const supabase = await createClientServer();
     const searchParams = request.nextUrl.searchParams;
     const orgId = searchParams.get('orgId');
@@ -47,10 +48,10 @@ export async function GET(
     }
     
     // Estimate cost
-    const estimate = await estimateEnrichmentCost(params.participantId, orgId, daysBack);
+    const estimate = await estimateEnrichmentCost(participantId, orgId, daysBack);
     
     return NextResponse.json({
-      participantId: params.participantId,
+      participantId,
       messageCount: estimate.messageCount,
       estimatedTokens: estimate.estimatedTokens,
       estimatedCostUsd: estimate.estimatedCostUsd,
@@ -68,9 +69,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { participantId: string } }
+  { params }: { params: Promise<{ participantId: string }> }
 ) {
   try {
+    const { participantId } = await params;
     const supabase = await createClientServer();
     const body = await request.json();
     const { orgId, useAI = true, includeBehavior = true, includeReactions = true, daysBack = 90 } = body;
@@ -106,7 +108,7 @@ export async function POST(
     
     // Run enrichment
     const result = await enrichParticipant(
-      params.participantId, 
+      participantId, 
       orgId, 
       {
         useAI,

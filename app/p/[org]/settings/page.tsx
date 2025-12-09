@@ -6,7 +6,7 @@ import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
 import DigestSettingsForm from '@/components/settings/digest-settings-form'
-import InvitesManager from '@/components/settings/invites-manager'
+// InvitesManager moved to /p/[org]/members page
 import dynamic from 'next/dynamic'
 
 // Dynamic import for tags page (it's a client component)
@@ -188,31 +188,7 @@ export default async function OrganizationSettingsPage({
         break
       }
 
-      case 'invites': {
-        // Fetch invites
-        const { data: invites } = await supabase
-          .from('organization_invites')
-          .select(`
-            *,
-            organization_invite_uses(count)
-          `)
-          .eq('org_id', orgId)
-          .order('created_at', { ascending: false })
-
-        tabContent = (
-          <div className="p-6">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold">Приглашения</h2>
-              <p className="text-gray-600 mt-1">
-                Создавайте ссылки-приглашения для новых участников организации
-              </p>
-            </div>
-
-            <InvitesManager orgId={orgId} initialInvites={invites || []} />
-          </div>
-        )
-        break
-      }
+      // 'invites' tab moved to /p/[org]/members page
     }
 
     return (

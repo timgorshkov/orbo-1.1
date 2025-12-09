@@ -76,14 +76,19 @@ async function logOpenAICall(params: {
 /**
  * Message with context for AI analysis
  */
-interface MessageWithContext {
+export interface MessageWithContext {
   id: string;
   text: string;
   author_name: string;
   created_at: string;
   is_participant: boolean; // true if this message is from the analyzed participant
-  context_before?: string; // Previous messages for context
-  context_after?: string;  // Next messages for context
+  
+  // Контекст ответа (reply_to)
+  reply_to_text?: string;       // Текст сообщения, на которое отвечает
+  reply_to_author?: string;     // Автор оригинального сообщения
+  
+  // Контекст треда (сообщения до/после)
+  thread_context?: string[];    // 2-3 сообщения до/после для контекста
 }
 
 /**
@@ -111,6 +116,7 @@ export interface AIEnrichmentResult {
  * @param userId - User ID who triggered the analysis (for logging)
  * @param participantId - Participant ID (for metadata)
  * @param groupKeywords - Keywords from telegram_groups table (for context)
+ * @param reactedMessages - Messages the participant reacted to (interest signals)
  * @returns AI enrichment result
  */
 export async function analyzeParticipantWithAI(
@@ -119,7 +125,8 @@ export async function analyzeParticipantWithAI(
   orgId: string,
   userId: string | null = null,
   participantId: string | null = null,
-  groupKeywords: string[] = []
+  groupKeywords: string[] = [],
+  reactedMessages: Array<{ text: string; emoji: string; author?: string }> = []
 ): Promise<AIEnrichmentResult> {
   // ⚠️ Don't filter by date - imported history may have old dates
   // Use all available messages, but prioritize recent ones
@@ -164,11 +171,18 @@ export async function analyzeParticipantWithAI(
    - Определи город, если участник его упомянул
    - Уверенность: 0.9 если явно указал ("Я в Москве"), 0.5 если косвенно ("московские события")
 
+**ФОРМАТ СООБЩЕНИЙ:**
+- ➡️ - сообщение самого участника (анализируй в первую очередь)
+- ↩️ - сообщение, на которое участник отвечал (используй как контекст для понимания темы)
+- 🔥 - сообщение, на которое участник поставил реакцию (сигнал об интересах)
+- 💬 - контекст обсуждения (соседние сообщения в треде)
+
 **ВАЖНО:**
-- Все сообщения ниже - от самого участника (помечены ➡️)
+- Используй контекст ответов и реакций для более точного определения интересов
+- Если участник отвечает на вопрос о Python - значит он интересуется/разбирается в Python
+- Если участник ставит 🔥 на пост о маркетинге - это сигнал интереса к маркетингу
 - Фокус на последние 2 недели для "актуальных запросов"
 - Интересы - из всего периода, но с приоритетом на свежие
-- Старайся найти хотя бы несколько интересов, даже если сообщения короткие
 - Возвращай только данные в формате JSON, без комментариев`;
 
   const messagesToAnalyze = recentMessages.slice(0, 50);
@@ -184,16 +198,44 @@ export async function analyzeParticipantWithAI(
     })));
   }
   
+  // Build reacted messages section if available
+  const reactedSection = reactedMessages.length > 0 
+    ? `\n\n--- СООБЩЕНИЯ, НА КОТОРЫЕ УЧАСТНИК ПОСТАВИЛ РЕАКЦИИ (сигнал интересов) ---\n\n${
+        reactedMessages.map(r => {
+          const authorInfo = r.author ? ` (${r.author})` : '';
+          return `🔥 ${r.emoji}${authorInfo}: ${r.text}`;
+        }).join('\n\n')
+      }`
+    : '';
+
   const userPrompt = `Участник: ${participantName}
 
-Сообщения участника (от новых к старым):
+Сообщения участника с контекстом (от новых к старым):
 
 ${messagesToAnalyze.map((m, i) => {
   const date = new Date(m.created_at);
   const daysAgo = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  // ⚠️ Все сообщения от участника, так как мы фильтруем только его сообщения
-  return `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
-}).join('\n\n')}
+  
+  let messageBlock = '';
+  
+  // Добавляем контекст ответа (если есть)
+  if (m.reply_to_text) {
+    const authorInfo = m.reply_to_author ? ` (${m.reply_to_author})` : '';
+    messageBlock += `↩️${authorInfo}: ${m.reply_to_text.slice(0, 200)}${m.reply_to_text.length > 200 ? '...' : ''}\n`;
+  }
+  
+  // Добавляем контекст треда (если есть)
+  if (m.thread_context && m.thread_context.length > 0) {
+    m.thread_context.forEach(ctx => {
+      messageBlock += `💬 ${ctx.slice(0, 150)}${ctx.length > 150 ? '...' : ''}\n`;
+    });
+  }
+  
+  // Само сообщение участника
+  messageBlock += `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
+  
+  return messageBlock;
+}).join('\n\n')}${reactedSection}
 
 Верни результат строго в формате JSON:
 {

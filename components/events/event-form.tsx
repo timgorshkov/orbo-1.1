@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import TelegramMarkdownEditor from './telegram-markdown-editor'
+import CoverImageUpload from './cover-image-upload'
 
 type Event = {
   id?: string
@@ -15,6 +16,7 @@ type Event = {
   event_type: 'online' | 'offline'
   location_info: string | null
   event_date: string
+  end_date?: string | null
   start_time: string
   end_time: string
   is_paid: boolean
@@ -26,6 +28,9 @@ type Event = {
   payment_deadline_days?: number | null
   payment_instructions?: string | null
   allow_multiple_tickets?: boolean
+  // Registration fields
+  request_contact_info?: boolean
+  require_all_contact_fields?: boolean
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -44,10 +49,11 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   
   const [title, setTitle] = useState(initialEvent?.title || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
-  const [coverImageUrl, setCoverImageUrl] = useState(initialEvent?.cover_image_url || '')
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(initialEvent?.cover_image_url || null)
   const [eventType, setEventType] = useState<'online' | 'offline'>(initialEvent?.event_type || 'online')
   const [locationInfo, setLocationInfo] = useState(initialEvent?.location_info || '')
   const [eventDate, setEventDate] = useState(initialEvent?.event_date || '')
+  const [endDate, setEndDate] = useState(initialEvent?.end_date || initialEvent?.event_date || '')
   const [startTime, setStartTime] = useState(initialEvent?.start_time || '')
   const [endTime, setEndTime] = useState(initialEvent?.end_time || '')
   
@@ -68,7 +74,12 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
   )
-  const [requestContactInfo, setRequestContactInfo] = useState(false)
+  const [requestContactInfo, setRequestContactInfo] = useState(
+    initialEvent?.request_contact_info ?? false
+  )
+  const [requireAllContactFields, setRequireAllContactFields] = useState(
+    initialEvent?.require_all_contact_fields ?? false
+  )
   
   // Old payment fields (for backward compatibility)
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
@@ -95,8 +106,17 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       return
     }
 
+    // Validate date range
+    if (endDate && endDate < eventDate) {
+      setError('Дата окончания не может быть раньше даты начала')
+      return
+    }
+
     // Validate time range
-    if (startTime >= endTime) {
+    // If end_date is same as event_date, end_time must be after start_time
+    // If end_date is after event_date, end_time can be any time
+    const effectiveEndDate = endDate || eventDate
+    if (effectiveEndDate === eventDate && startTime >= endTime) {
       setError('Время окончания должно быть позже времени начала')
       return
     }
@@ -109,6 +129,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       eventType,
       locationInfo: locationInfo || null,
       eventDate,
+      endDate: endDate && endDate !== eventDate ? endDate : null,
       startTime,
       endTime,
       // New payment fields
@@ -119,6 +140,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
       allowMultipleTickets: allowMultipleTickets,
       requestContactInfo: requestContactInfo,
+      requireAllContactFields: requireAllContactFields,
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
@@ -192,24 +214,15 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
 
               <div>
                 <label className="text-sm font-medium block mb-2">
-                  URL обложки
+                  Обложка события
                 </label>
-                <Input
-                  type="url"
+                <CoverImageUpload
                   value={coverImageUrl}
-                  onChange={(e) => setCoverImageUrl(e.target.value)}
-                  placeholder="https://example.com/image.jpg"
+                  onChange={(url) => setCoverImageUrl(url)}
+                  eventId={initialEvent?.id}
+                  orgId={orgId}
+                  disabled={isPending}
                 />
-                {coverImageUrl && (
-                  <div className="mt-3">
-                    <img 
-                      src={coverImageUrl} 
-                      alt="Превью обложки"
-                      className="max-h-48 rounded-lg border border-neutral-200"
-                      onError={() => setCoverImageUrl('')}
-                    />
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -219,16 +232,46 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
               <CardTitle>Дата и время</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium block mb-2">
-                  Дата события <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium block mb-2">
+                    Дата начала <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="date"
+                    value={eventDate}
+                    onChange={(e) => {
+                      setEventDate(e.target.value)
+                      // If end_date is not set or same as old event_date, update it too
+                      if (!endDate || endDate === eventDate) {
+                        setEndDate(e.target.value)
+                      }
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium block mb-2">
+                    Дата окончания (опционально)
+                  </label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={eventDate}
+                    placeholder="Оставьте пустым для однодневного события"
+                  />
+                  {endDate && endDate === eventDate && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Событие в один день
+                    </p>
+                  )}
+                  {endDate && endDate > eventDate && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Многодневное событие
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -424,7 +467,12 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                   type="checkbox"
                   id="requestContactInfo"
                   checked={requestContactInfo}
-                  onChange={(e) => setRequestContactInfo(e.target.checked)}
+                  onChange={(e) => {
+                    setRequestContactInfo(e.target.checked)
+                    if (!e.target.checked) {
+                      setRequireAllContactFields(false)
+                    }
+                  }}
                   className="mr-2 h-4 w-4"
                 />
                 <label htmlFor="requestContactInfo" className="text-sm font-medium">
@@ -435,6 +483,21 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                 При регистрации будут запрошены: ФИО, телефон, email и "Кратко о себе". 
                 Данные будут сохранены в профиле участника.
               </p>
+              
+              {requestContactInfo && (
+                <div className="flex items-center ml-6">
+                  <input
+                    type="checkbox"
+                    id="requireAllContactFields"
+                    checked={requireAllContactFields}
+                    onChange={(e) => setRequireAllContactFields(e.target.checked)}
+                    className="mr-2 h-4 w-4"
+                  />
+                  <label htmlFor="requireAllContactFields" className="text-sm font-medium">
+                    Сделать все поля обязательными
+                  </label>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -32,6 +32,7 @@ interface RegistrationField {
 
 interface ParticipantProfile {
   full_name?: string | null
+  username?: string | null
   email?: string | null
   phone?: string | null
   bio?: string | null
@@ -332,7 +333,15 @@ export default function EventRegistrationForm({
                   </div>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              // Show user info when no registration fields are configured
+              <div className="p-4 bg-neutral-50 rounded-lg text-center">
+                <p className="text-sm text-neutral-600 mb-2">Вы регистрируетесь как:</p>
+                <p className="font-medium text-neutral-900">
+                  {participantProfile?.full_name || participantProfile?.username || 'Участник'}
+                </p>
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">

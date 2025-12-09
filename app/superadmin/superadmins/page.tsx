@@ -1,17 +1,22 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import SuperadminsTable from '@/components/superadmin/superadmins-table'
 
 export default async function SuperadminsSuperadminsPage() {
   await requireSuperadmin()
   
-  const supabase = await createClientServer()
+  // Используем admin клиент для обхода RLS
+  const supabaseAdmin = createAdminServer()
   
   // Получаем всех суперадминов
-  const { data: superadmins } = await supabase
+  const { data: superadmins, error } = await supabaseAdmin
     .from('superadmins')
     .select('*')
     .order('created_at', { ascending: false })
+  
+  if (error) {
+    console.error('[Superadmins Page] Error fetching superadmins:', error)
+  }
   
   return (
     <div>

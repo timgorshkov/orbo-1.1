@@ -6,9 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
-import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera } from 'lucide-react'
+import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import PhotoUploadModal from './photo-upload-modal'
-import { AIEnrichmentButton } from './ai-enrichment-button'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
 import ParticipantTagsManager from './participant-tags-manager'
 
@@ -306,206 +306,193 @@ export default function ParticipantProfileCard({
             </div>
           ) : null}
 
-          {/* Contact Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Contact Info - Compact vertical list */}
+          <div className="space-y-2">
             {/* Telegram */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-              <AtSign className="h-5 w-5 text-blue-600" />
-              <div className="flex-1">
-                <div className="text-xs text-gray-500">Telegram</div>
-                {participant.username ? (
-                  <a
-                    href={`https://t.me/${participant.username}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    @{participant.username}
-                  </a>
-                ) : (
-                  <span className="text-sm text-gray-400">Не указан</span>
-                )}
-              </div>
+            <div className="flex items-center gap-3">
+              <AtSign className="h-4 w-4 text-blue-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Telegram</span>
+              {participant.username ? (
+                <a
+                  href={`https://t.me/${participant.username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  @{participant.username}
+                </a>
+              ) : (
+                <span className="text-sm text-gray-400">Не указан</span>
+              )}
             </div>
 
             {/* Email */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-              <Mail className="h-5 w-5 text-green-600" />
-              <div className="flex-1">
-                <div className="text-xs text-gray-500">Email</div>
-                {editing ? (
-                  <Input
-                    type="email"
-                    value={fields.email}
-                    onChange={e => handleChange('email', e.target.value)}
-                    disabled={pending}
-                    className="mt-1 h-8"
-                    placeholder="email@example.com"
-                  />
-                ) : participant.email ? (
-                  <a
-                    href={`mailto:${participant.email}`}
-                    className="text-sm font-medium text-green-600 hover:text-green-800 hover:underline"
-                  >
-                    {participant.email}
-                  </a>
-                ) : (
-                  <span className="text-sm text-gray-400">Не указан</span>
-                )}
-              </div>
+            <div className="flex items-center gap-3">
+              <Mail className="h-4 w-4 text-green-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Email</span>
+              {editing ? (
+                <Input
+                  type="email"
+                  value={fields.email}
+                  onChange={e => handleChange('email', e.target.value)}
+                  disabled={pending}
+                  className="h-8 flex-1"
+                  placeholder="email@example.com"
+                />
+              ) : participant.email ? (
+                <a
+                  href={`mailto:${participant.email}`}
+                  className="text-sm font-medium text-green-600 hover:text-green-800 hover:underline"
+                >
+                  {participant.email}
+                </a>
+              ) : (
+                <span className="text-sm text-gray-400">Не указан</span>
+              )}
             </div>
 
             {/* Phone */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-              <Phone className="h-5 w-5 text-purple-600" />
-              <div className="flex-1">
-                <div className="text-xs text-gray-500">Телефон</div>
-                {editing ? (
-                  <Input
-                    type="tel"
-                    value={fields.phone}
-                    onChange={e => handleChange('phone', e.target.value)}
-                    disabled={pending}
-                    className="mt-1 h-8"
-                    placeholder="+7 (XXX) XXX-XX-XX"
-                  />
-                ) : participant.phone ? (
-                  <a
-                    href={`tel:${participant.phone}`}
-                    className="text-sm font-medium text-purple-600 hover:text-purple-800 hover:underline"
-                  >
-                    {participant.phone}
-                  </a>
-                ) : (
-                  <span className="text-sm text-gray-400">Не указан</span>
-                )}
-              </div>
+            <div className="flex items-center gap-3">
+              <Phone className="h-4 w-4 text-purple-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Телефон</span>
+              {editing ? (
+                <Input
+                  type="tel"
+                  value={fields.phone}
+                  onChange={e => handleChange('phone', e.target.value)}
+                  disabled={pending}
+                  className="h-8 flex-1"
+                  placeholder="+7 (XXX) XXX-XX-XX"
+                />
+              ) : participant.phone ? (
+                <a
+                  href={`tel:${participant.phone}`}
+                  className="text-sm font-medium text-purple-600 hover:text-purple-800 hover:underline"
+                >
+                  {participant.phone}
+                </a>
+              ) : (
+                <span className="text-sm text-gray-400">Не указан</span>
+              )}
             </div>
 
             {/* Created At */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-              <Calendar className="h-5 w-5 text-orange-600" />
-              <div className="flex-1">
-                <div className="text-xs text-gray-500">Добавлен</div>
-                <div className="text-sm font-medium text-gray-900">
-                  {formatDate(participant.created_at)}
-                </div>
-              </div>
+            <div className="flex items-center gap-3">
+              <Calendar className="h-4 w-4 text-orange-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Добавлен</span>
+              <span className="text-sm font-medium text-gray-900">
+                {formatDate(participant.created_at)}
+              </span>
+            </div>
+
+            {/* Engagement Category */}
+            <div className="flex items-center gap-3">
+              <Activity className="h-4 w-4 text-indigo-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Категория</span>
+              <EngagementBadge participant={participant} events={detail.events} />
             </div>
           </div>
 
-          {/* AI Enrichment Data (if available) */}
+          {/* AI Enrichment Data (if available) - now includes AI analysis button */}
           <div className="mb-6">
-            {participant.custom_attributes && Object.keys(participant.custom_attributes).length > 0 && !editing ? (
+            {!editing && (
               <EnrichedProfileDisplay 
                 participant={detail.participant}
                 isAdmin={isAdmin}
+                orgId={orgId}
+                onEnrichmentComplete={async () => {
+                  // Refresh detail to show new enrichment data
+                  try {
+                    const response = await fetch(`/api/participants/${participant.id}?orgId=${orgId}`);
+                    if (response.ok) {
+                      const refreshedDetail = await response.json();
+                      if (refreshedDetail && onDetailUpdate) {
+                        onDetailUpdate(refreshedDetail);
+                        setFields(prev => ({
+                          ...prev,
+                          custom_attributes: refreshedDetail.participant?.custom_attributes || {}
+                        }));
+                      }
+                    }
+                  } catch (error) {
+                    console.error('Failed to refresh participant data after enrichment:', error);
+                    if (onDetailUpdate) {
+                      onDetailUpdate();
+                    }
+                  }
+                }}
               />
-            ) : null}
+            )}
             
             {/* Editable Goals & Offers (when editing) */}
             {isAdmin && editing && (
-                <div className="space-y-4 p-6 border-2 border-blue-200 rounded-xl bg-blue-50">
-                  <h3 className="text-lg font-semibold text-gray-900">Цели и Предложения</h3>
-                  
-                  {/* Goals */}
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-2 block">
-                      Мои цели в сообществе
-                    </label>
-                    <Textarea
-                      value={fields.custom_attributes.goals_self || ''}
-                      onChange={e => setFields(prev => ({
-                        ...prev,
-                        custom_attributes: {
-                          ...prev.custom_attributes,
-                          goals_self: e.target.value
-                        }
-                      }))}
-                      disabled={pending}
-                      placeholder="Например: Найти партнеров для стартапа, Изучить новые технологии"
-                      rows={3}
-                    />
-                  </div>
-                  
-                  {/* Offers */}
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-2 block">
-                      Чем могу помочь (через запятую)
-                    </label>
-                    <Input
-                      value={Array.isArray(fields.custom_attributes.offers) 
-                        ? fields.custom_attributes.offers.join(', ')
-                        : fields.custom_attributes.offers || ''}
-                      onChange={e => setFields(prev => ({
-                        ...prev,
-                        custom_attributes: {
-                          ...prev.custom_attributes,
-                          offers: e.target.value
-                        }
-                      }))}
-                      disabled={pending}
-                      placeholder="Например: консультации по маркетингу, помощь с дизайном"
-                    />
-                  </div>
-                  
-                  {/* Asks */}
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-2 block">
-                      Что мне нужно (через запятую)
-                    </label>
-                    <Input
-                      value={Array.isArray(fields.custom_attributes.asks) 
-                        ? fields.custom_attributes.asks.join(', ')
-                        : fields.custom_attributes.asks || ''}
-                      onChange={e => setFields(prev => ({
-                        ...prev,
-                        custom_attributes: {
-                          ...prev.custom_attributes,
-                          asks: e.target.value
-                        }
-                      }))}
-                      disabled={pending}
-                      placeholder="Например: инвестор, ментор по продажам"
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {/* AI Analysis Button (Admin only) */}
-              {isAdmin && !editing && (
-                <div className="mt-4">
-                  <AIEnrichmentButton 
-                    participantId={participant.id}
-                    orgId={orgId}
-                    participantName={participant.full_name || participant.username || 'Участник'}
-                    onEnrichmentComplete={async () => {
-                      // Refresh detail to show new enrichment data
-                      try {
-                        const response = await fetch(`/api/participants/${participant.id}?orgId=${orgId}`);
-                        if (response.ok) {
-                          const detail = await response.json();
-                          if (detail && onDetailUpdate) {
-                            onDetailUpdate(detail);
-                            // Also update local state
-                            setFields(prev => ({
-                              ...prev,
-                              custom_attributes: detail.participant?.custom_attributes || {}
-                            }));
-                          }
-                        }
-                      } catch (error) {
-                        console.error('Failed to refresh participant data after enrichment:', error);
-                        // Still call onDetailUpdate to trigger a refresh
-                        if (onDetailUpdate) {
-                          onDetailUpdate();
-                        }
+              <div className="space-y-4 p-6 border-2 border-blue-200 rounded-xl bg-blue-50">
+                <h3 className="text-lg font-semibold text-gray-900">Цели и Предложения</h3>
+                
+                {/* Goals */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Мои цели в сообществе
+                  </label>
+                  <Textarea
+                    value={fields.custom_attributes.goals_self || ''}
+                    onChange={e => setFields(prev => ({
+                      ...prev,
+                      custom_attributes: {
+                        ...prev.custom_attributes,
+                        goals_self: e.target.value
                       }
-                    }}
+                    }))}
+                    disabled={pending}
+                    placeholder="Например: Найти партнеров для стартапа, Изучить новые технологии"
+                    rows={3}
                   />
                 </div>
-              )}
-            </div>
+                
+                {/* Offers */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Чем могу помочь (через запятую)
+                  </label>
+                  <Input
+                    value={Array.isArray(fields.custom_attributes.offers) 
+                      ? fields.custom_attributes.offers.join(', ')
+                      : fields.custom_attributes.offers || ''}
+                    onChange={e => setFields(prev => ({
+                      ...prev,
+                      custom_attributes: {
+                        ...prev.custom_attributes,
+                        offers: e.target.value
+                      }
+                    }))}
+                    disabled={pending}
+                    placeholder="Например: консультации по маркетингу, помощь с дизайном"
+                  />
+                </div>
+                
+                {/* Asks */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Что мне нужно (через запятую)
+                  </label>
+                  <Input
+                    value={Array.isArray(fields.custom_attributes.asks) 
+                      ? fields.custom_attributes.asks.join(', ')
+                      : fields.custom_attributes.asks || ''}
+                    onChange={e => setFields(prev => ({
+                      ...prev,
+                      custom_attributes: {
+                        ...prev.custom_attributes,
+                        asks: e.target.value
+                      }
+                    }))}
+                    disabled={pending}
+                    placeholder="Например: инвестор, ментор по продажам"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Custom Attributes */}
           <div>
@@ -735,5 +722,79 @@ export default function ParticipantProfileCard({
       />
     </Card>
   )
+}
+
+// Engagement Badge Component - unified logic matching members-filters-sidebar.tsx
+// Uses events array to calculate real_join_date and real_last_activity (same as members list)
+function EngagementBadge({ participant, events }: { participant: any; events?: any[] }) {
+  const now = new Date();
+  const createdAt = new Date(participant.created_at);
+  const lastActivityFromParticipant = participant.last_activity_at ? new Date(participant.last_activity_at) : null;
+  
+  // Calculate real dates from events (like members list does from participant_messages)
+  let realJoinDate: Date = createdAt;
+  let realLastActivity: Date | null = lastActivityFromParticipant;
+  
+  if (events && events.length > 0) {
+    // Find first and last event dates
+    const eventDates = events
+      .filter(e => e.created_at)
+      .map(e => new Date(e.created_at))
+      .sort((a, b) => a.getTime() - b.getTime());
+    
+    if (eventDates.length > 0) {
+      const firstEventDate = eventDates[0];
+      const lastEventDate = eventDates[eventDates.length - 1];
+      
+      // Real join date: earliest of first event or created_at
+      if (firstEventDate < realJoinDate) {
+        realJoinDate = firstEventDate;
+      }
+      
+      // Real last activity: latest of last event or last_activity_at
+      if (!realLastActivity || lastEventDate > realLastActivity) {
+        realLastActivity = lastEventDate;
+      }
+    }
+  }
+  
+  const daysSinceJoined = (now.getTime() - realJoinDate.getTime()) / (1000 * 60 * 60 * 24);
+  const daysSinceActivity = realLastActivity ? (now.getTime() - realLastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999;
+  const activityScore = participant.activity_score || 0;
+  
+  let label: string;
+  let colorClass: string;
+  
+  // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
+  if (daysSinceActivity > 30 || (!realLastActivity && daysSinceJoined > 7)) {
+    label = 'Молчун';
+    colorClass = 'bg-gray-500';
+  }
+  // Priority 2: Newcomers (joined <30 days ago AND not silent)
+  else if (daysSinceJoined < 30) {
+    label = 'Новичок';
+    colorClass = 'bg-blue-500';
+  }
+  // Priority 3: Core (activity_score >= 60)
+  else if (activityScore >= 60) {
+    label = 'Ядро';
+    colorClass = 'bg-green-600';
+  }
+  // Priority 4: Experienced (activity_score >= 30)
+  else if (activityScore >= 30) {
+    label = 'Опытный';
+    colorClass = 'bg-yellow-500';
+  }
+  // Default: Other
+  else {
+    label = 'Остальные';
+    colorClass = 'bg-gray-400';
+  }
+  
+  return (
+    <Badge className={`${colorClass} text-white border-0 text-xs`}>
+      {label}
+    </Badge>
+  );
 }
 

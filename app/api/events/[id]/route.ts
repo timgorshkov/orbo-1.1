@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -132,6 +133,7 @@ export async function PUT(
       eventType,
       locationInfo,
       eventDate,
+      endDate,
       startTime,
       endTime,
       isPaid,
@@ -147,6 +149,7 @@ export async function PUT(
       showParticipantsList,
       allowMultipleTickets,
       requestContactInfo,
+      requireAllContactFields,
       status,
       isPublic,
       telegramGroupLink
@@ -160,10 +163,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get event to check org_id
+    // Get event to check org_id and current cover_image_url
     const { data: existingEvent, error: fetchError } = await supabase
       .from('events')
-      .select('org_id')
+      .select('org_id, cover_image_url')
       .eq('id', eventId)
       .single()
 
@@ -186,6 +189,24 @@ export async function PUT(
       )
     }
 
+    // Delete old cover image if it's being replaced or removed, and it's from our bucket
+    if (existingEvent.cover_image_url && 
+        existingEvent.cover_image_url !== coverImageUrl &&
+        existingEvent.cover_image_url.includes('/event-covers/')) {
+      const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+      
+      const urlParts = existingEvent.cover_image_url.split('/event-covers/')
+      if (urlParts.length > 1) {
+        const oldPath = urlParts[1].split('?')[0] // Remove query params
+        await adminSupabase.storage
+          .from('event-covers')
+          .remove([oldPath])
+      }
+    }
+
     // Update event
     const updateData: any = {
       title,
@@ -194,6 +215,7 @@ export async function PUT(
       event_type: eventType,
       location_info: locationInfo || null,
       event_date: eventDate,
+      end_date: endDate || null, // null means same day as event_date
       start_time: startTime,
       end_time: endTime,
       capacity: capacity || null,
@@ -236,6 +258,9 @@ export async function PUT(
 
     // Create/update standard registration fields if requested
     if (requestContactInfo && event?.id) {
+      // If requireAllContactFields is true, all fields are required
+      const allRequired = requireAllContactFields === true
+      
       // First check if fields already exist
       const { data: existingFields } = await supabase
         .from('event_registration_fields')
@@ -246,11 +271,12 @@ export async function PUT(
       
       const standardFields = [
         { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', required: true, field_order: 1, participant_field_mapping: 'full_name' },
-        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: false, field_order: 2, participant_field_mapping: 'phone_number' },
-        { field_key: 'email', field_label: 'Email', field_type: 'email', required: false, field_order: 3, participant_field_mapping: 'email' },
-        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: false, field_order: 4, participant_field_mapping: 'bio' }
+        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: allRequired, field_order: 2, participant_field_mapping: 'phone_number' },
+        { field_key: 'email', field_label: 'Email', field_type: 'email', required: allRequired, field_order: 3, participant_field_mapping: 'email' },
+        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: allRequired, field_order: 4, participant_field_mapping: 'bio' }
       ]
 
+      // Insert new fields
       const fieldsToInsert = standardFields
         .filter(field => !existingFieldKeys.includes(field.field_key))
         .map(field => ({
@@ -265,7 +291,19 @@ export async function PUT(
 
         if (fieldsError) {
           console.error('Error creating registration fields:', fieldsError)
-          // Don't fail the entire request, just log the error
+        }
+      }
+
+      // Update required status for existing fields if requireAllContactFields changed
+      if (existingFieldKeys.length > 0) {
+        const { error: updateError } = await supabase
+          .from('event_registration_fields')
+          .update({ required: allRequired })
+          .eq('event_id', event.id)
+          .neq('field_key', 'full_name') // full_name is always required
+
+        if (updateError) {
+          console.error('Error updating registration field requirements:', updateError)
         }
       }
     }

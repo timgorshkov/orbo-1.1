@@ -138,14 +138,7 @@ export default async function EventDetailPage({
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
   
-  // Check authentication - use await directly for better error handling
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  
-  if (authError || !user) {
-    redirect('/signin')
-  }
-
-  // Fetch event first to check if it's public
+  // Fetch event FIRST to check if it's public (before auth check)
   const { data: event, error } = await adminSupabase
     .from('events')
     .select(`
@@ -191,7 +184,16 @@ export default async function EventDetailPage({
     )
   }
 
-  // For private events, require org membership or show auth form
+  // Check authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  
+  // For unauthenticated users - redirect to Telegram auth (not email signin)
+  if (authError || !user) {
+    // Redirect to Telegram auth page with return URL
+    redirect(`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${eventId}`)}`)
+  }
+
+  // For private events, require org membership
   // For public events, allow any authenticated user
   let hasOrgAccess = true;
   if (!event.is_public) {

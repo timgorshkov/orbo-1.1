@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
 import EventForm from './event-form'
@@ -23,6 +23,7 @@ type Event = {
   event_type: 'online' | 'offline'
   location_info: string | null
   event_date: string
+  end_date?: string | null
   start_time: string
   end_time: string
   is_paid: boolean
@@ -364,9 +365,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            size="sm"
             onClick={() => router.push(`/p/${orgId}/events`)}
+            className="sm:px-4"
           >
-            ← Назад
+            <ArrowLeft className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Назад</span>
           </Button>
         </div>
         {showAdminFeatures && (
@@ -374,27 +378,33 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             {event.is_public && event.status === 'published' && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={handleCopyPublicLink}
+                className="sm:px-4"
               >
-                <LinkIcon className="w-4 h-4 mr-2" />
-                {linkCopied ? 'Скопировано!' : 'Скопировать ссылку'}
+                <LinkIcon className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">{linkCopied ? 'Скопировано!' : 'Ссылка'}</span>
               </Button>
             )}
             {telegramGroups.length > 0 && event.status === 'published' && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setShowNotifyDialog(true)}
+                className="sm:px-4"
               >
-                <Share2 className="w-4 h-4 mr-2" />
-                Поделиться в группах
+                <Share2 className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Поделиться</span>
               </Button>
             )}
             <Button
               variant="outline"
+              size="sm"
               onClick={() => router.push(`/p/${orgId}/events/${event.id}?edit=true`)}
+              className="sm:px-4"
             >
-              <Edit className="w-4 h-4 mr-2" />
-              Редактировать
+              <Edit className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Редактировать</span>
             </Button>
           </div>
         )}
@@ -636,9 +646,18 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   <div className="flex items-start">
                     <Calendar className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
                     <div>
-                      <div className="font-medium">{formatDate(event.event_date)}</div>
+                      <div className="font-medium">
+                        {event.end_date && event.end_date !== event.event_date
+                          ? `${formatDate(event.event_date)} - ${formatDate(event.end_date)}`
+                          : formatDate(event.event_date)}
+                      </div>
                       <div className="text-sm text-neutral-600">
                         {formatTime(event.start_time)} - {formatTime(event.end_time)}
+                        {event.end_date && event.end_date !== event.event_date && (
+                          <span className="ml-1 text-xs text-neutral-500">
+                            ({Math.ceil((new Date(event.end_date).getTime() - new Date(event.event_date).getTime()) / (1000 * 60 * 60 * 24))} {Math.ceil((new Date(event.end_date).getTime() - new Date(event.event_date).getTime()) / (1000 * 60 * 60 * 24)) === 1 ? 'день' : 'дней'})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -19,8 +19,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
     }
     
-    const supabase = await createClientServer()
     const supabaseAdmin = createAdminServer()
+    const supabase = await createClientServer()
     
     // Получаем current user
     const { data: { user } } = await supabase.auth.getUser()
@@ -28,18 +28,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    // Ищем пользователя по email в auth
-    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
-    const targetUser = authUsers.users.find(u => u.email === email)
+    // Ищем пользователя по email в auth через RPC функцию
+    const normalizedEmail = email.toLowerCase().trim()
     
-    if (!targetUser) {
+    const { data: authUserData, error: rpcError } = await supabaseAdmin
+      .rpc('get_user_by_email', { user_email: normalizedEmail })
+    
+    if (rpcError) {
+      console.error('[Superadmin Add] Error finding user by email:', rpcError)
+      return NextResponse.json({ 
+        error: 'Ошибка при поиске пользователя' 
+      }, { status: 500 })
+    }
+    
+    if (!authUserData || authUserData.length === 0) {
+      console.log(`[Superadmin Add] User not found with email: ${normalizedEmail}`)
       return NextResponse.json({ 
         error: 'Пользователь с таким email не найден. Сначала он должен зарегистрироваться.' 
       }, { status: 404 })
     }
     
-    // Проверяем что ещё не суперадмин
-    const { data: existing } = await supabase
+    const targetUser = {
+      id: authUserData[0].id,
+      email: authUserData[0].email
+    }
+    
+    console.log(`[Superadmin Add] Found user: ${targetUser.id} with email: ${targetUser.email}`)
+    
+    // Проверяем что ещё не суперадмин (используем admin клиент для обхода RLS)
+    const { data: existing } = await supabaseAdmin
       .from('superadmins')
       .select('id')
       .eq('user_id', targetUser.id)
@@ -49,12 +66,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Уже является суперадмином' }, { status: 400 })
     }
     
-    // Добавляем
-    const { error: insertError } = await supabase
+    // Добавляем (используем admin клиент для обхода RLS рекурсии)
+    const { error: insertError } = await supabaseAdmin
       .from('superadmins')
       .insert({
         user_id: targetUser.id,
-        email: email,
+        email: normalizedEmail,
         created_by: user.id,
         is_active: true
       })

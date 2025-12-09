@@ -16,6 +16,7 @@ type Event = {
   event_type: 'online' | 'offline'
   location_info: string | null
   event_date: string
+  end_date?: string | null
   start_time: string
   end_time: string
   is_paid: boolean
@@ -151,7 +152,11 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
           <div className="space-y-2 text-sm text-neutral-600">
             <div className="flex items-center">
               <Calendar className="w-4 h-4 mr-2" />
-              <span>{formatDate(event.event_date)}, {formatTime(event.start_time)} - {formatTime(event.end_time)}</span>
+              <span>
+                {event.end_date && event.end_date !== event.event_date
+                  ? `${formatDate(event.event_date)} - ${formatDate(event.end_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`
+                  : `${formatDate(event.event_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
+              </span>
             </div>
 
             <div className="flex items-center">

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { X, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type AutoCategory = 'newcomer' | 'core' | 'experienced' | 'silent' | 'all'
+type AutoCategory = 'newcomer' | 'core' | 'experienced' | 'silent' | 'other' | 'all'
 
 interface Tag {
   tag_id: string
@@ -86,8 +86,8 @@ export default function MembersFiltersSidebar({
       return 'experienced'
     }
 
-    // Default: no specific category (will not be counted in any auto-category)
-    return null
+    // Default: Other category
+    return 'other'
   }
 
   // Calculate auto-category counts
@@ -98,12 +98,15 @@ export default function MembersFiltersSidebar({
       core: 0,
       experienced: 0,
       silent: 0,
+      other: 0,
     }
 
     participants.forEach((p) => {
       const category = getParticipantCategory(p)
-      if (category) {
+      if (category && category !== 'all') {
         counts[category]++
+      } else if (!category) {
+        counts.other++
       }
     })
 
@@ -220,6 +223,13 @@ export default function MembersFiltersSidebar({
                 active={filters.autoCategories.includes('silent')}
                 onClick={() => toggleFilter('autoCategories', 'silent')}
                 color="#6B7280"
+              />
+              <FilterOption
+                label="⚪ Остальные"
+                count={categoryCounts.other}
+                active={filters.autoCategories.includes('other')}
+                onClick={() => toggleFilter('autoCategories', 'other')}
+                color="#9CA3AF"
               />
             </div>
           </div>
@@ -386,8 +396,8 @@ export const getParticipantCategory = (p: Participant): AutoCategory | null => {
     return 'experienced'
   }
 
-  // Default: no specific category
-  return null
+  // Default: Other category (not fitting into main categories)
+  return 'other'
 }
 
 // Helper component for filter options

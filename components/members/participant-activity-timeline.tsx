@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown } from 'lucide-react';
 
 interface ParticipantActivityTimelineProps {
   detail: ParticipantDetailResult;
@@ -12,13 +14,35 @@ interface ParticipantActivityTimelineProps {
   compact?: boolean;
 }
 
-export default function ParticipantActivityTimeline({ detail, limit, compact }: ParticipantActivityTimelineProps) {
-  const events = useMemo(() => {
-    const list = detail.events || [];
-    return typeof limit === 'number' ? list.slice(0, limit) : list;
-  }, [detail.events, limit]);
+// Default items per page
+const ITEMS_PER_PAGE = 50;
+const MAX_EVENTS_LOADED = 200; // Server-side limit
 
-  if (events.length === 0) {
+export default function ParticipantActivityTimeline({ detail, limit, compact }: ParticipantActivityTimelineProps) {
+  const [visibleCount, setVisibleCount] = useState(limit || ITEMS_PER_PAGE);
+  
+  // Build a map of chat_id -> group_title from detail.groups
+  const groupNamesMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (detail.groups) {
+      detail.groups.forEach(g => {
+        if (g.tg_chat_id && g.title) {
+          map.set(String(g.tg_chat_id), g.title);
+        }
+      });
+    }
+    return map;
+  }, [detail.groups]);
+
+  const allEvents = detail.events || [];
+  const events = useMemo(() => {
+    return allEvents.slice(0, visibleCount);
+  }, [allEvents, visibleCount]);
+
+  const hasMore = visibleCount < allEvents.length;
+  const totalLoaded = allEvents.length;
+
+  if (allEvents.length === 0) {
     return (
       <Card>
         <CardContent className="py-6 text-sm text-neutral-500">
@@ -28,77 +52,139 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
     );
   }
 
+  const loadMore = () => {
+    setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, allEvents.length));
+  };
+
+  // Get event icon based on type
+  const getEventIcon = (eventType: string) => {
+    switch (eventType) {
+      case 'message':
+        return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />;
+      case 'join':
+        return <UserPlus className="h-3.5 w-3.5 text-green-500" />;
+      case 'leave':
+        return <UserMinus className="h-3.5 w-3.5 text-red-500" />;
+      case 'reaction':
+        return <Heart className="h-3.5 w-3.5 text-pink-500" />;
+      default:
+        return <div className="h-1.5 w-1.5 rounded-full bg-gray-400" />;
+    }
+  };
+
+  // Get label only for non-message events
+  const getEventLabel = (eventType: string) => {
+    switch (eventType) {
+      case 'join':
+        return 'Вступил в группу';
+      case 'leave':
+        return 'Вышел из группы';
+      case 'reaction':
+        return 'Поставил реакцию';
+      default:
+        return null; // No label for messages - text is enough
+    }
+  };
+
   return (
     <Card>
       {!compact && (
-        <CardHeader>
-          <CardTitle>Активность</CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle>Активность</CardTitle>
+            <span className="text-xs text-gray-500">
+              {totalLoaded >= MAX_EVENTS_LOADED 
+                ? `последние ${MAX_EVENTS_LOADED} событий` 
+                : `${totalLoaded} событий`}
+            </span>
+          </div>
         </CardHeader>
       )}
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          {events.map(event => {
-            const formatted = event.created_at
-              ? format(new Date(event.created_at), 'dd MMM yyyy, HH:mm', { locale: ru })
-              : '';
+      <CardContent className="space-y-2 pt-2">
+        {events.map(event => {
+          const formatted = event.created_at
+            ? format(new Date(event.created_at), 'd MMM, HH:mm', { locale: ru })
+            : '';
 
-            const label = event.event_type === 'message'
-              ? 'Сообщение'
-              : event.event_type === 'join'
-              ? 'Вступление'
-              : event.event_type === 'leave'
-              ? 'Выход'
-              : event.event_type === 'reaction'
-              ? 'Реакция'
-              : event.event_type;
-
-            // Extract useful info from meta
-            let messageText = '';
-            let replyToId = '';
-            let groupName = '';
-            
-            if (event.meta) {
-              // Try to get message text
-              if (event.meta.message?.text_preview) {
-                messageText = event.meta.message.text_preview.slice(0, 60);
-                if (event.meta.message.text_preview.length > 60) messageText += '...';
-              } else if (event.meta.message?.text) {
-                messageText = String(event.meta.message.text).slice(0, 60);
-                if (String(event.meta.message.text).length > 60) messageText += '...';
-              }
-              
-              // Try to get reply info (thread)
-              if (event.meta.message?.reply_to_id) {
-                replyToId = `#${event.meta.message.reply_to_id}`;
-              } else if (event.meta.reply_to_message_id) {
-                replyToId = `#${event.meta.reply_to_message_id}`;
-              }
-              
-              // Try to get group name
-              if (event.meta.group_title) {
-                groupName = String(event.meta.group_title);
-              } else if (event.meta.chat?.title) {
-                groupName = String(event.meta.chat.title);
-              }
+          // Extract useful info from meta
+          let messageText = '';
+          let replyIndicator = '';
+          
+          if (event.meta) {
+            // Try to get message text
+            if (event.meta.message?.text_preview) {
+              messageText = event.meta.message.text_preview.slice(0, 80);
+              if (event.meta.message.text_preview.length > 80) messageText += '...';
+            } else if (event.meta.message?.text) {
+              messageText = String(event.meta.message.text).slice(0, 80);
+              if (String(event.meta.message.text).length > 80) messageText += '...';
             }
+            
+            // Check if it's a reply
+            if (event.meta.message?.reply_to_id || event.meta.reply_to_message_id) {
+              replyIndicator = '↩';
+            }
+          }
 
-            // Build compact one-line description
-            const parts = [formatted, label];
-            if (groupName) parts.push(groupName);
-            else if (event.tg_chat_id) parts.push(`ID: ${event.tg_chat_id}`);
-            if (replyToId) parts.push(`→ ${replyToId}`);
-            if (messageText) parts.push(`"${messageText}"`);
+          // Get group name: first from map, then from meta, then show nothing
+          let groupName = '';
+          if (event.tg_chat_id) {
+            groupName = groupNamesMap.get(String(event.tg_chat_id)) || '';
+          }
+          if (!groupName && event.meta?.group_title) {
+            groupName = String(event.meta.group_title);
+          } else if (!groupName && event.meta?.chat?.title) {
+            groupName = String(event.meta.chat.title);
+          }
 
-            return (
-              <div key={event.id} className="flex items-start gap-2 text-sm text-gray-700 py-1 hover:bg-gray-50 rounded px-2">
-                <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                <div className="flex-1 truncate">
-                  {parts.join(' • ')}
-                </div>
+          const eventLabel = getEventLabel(event.event_type);
+
+          return (
+            <div key={event.id} className="flex items-start gap-2 text-sm py-1.5 hover:bg-gray-50 rounded px-2 -mx-2">
+              <div className="mt-0.5 flex-shrink-0">
+                {getEventIcon(event.event_type)}
               </div>
-            );
-          })}
-        </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs text-gray-400 flex-shrink-0">{formatted}</span>
+                  {groupName && (
+                    <span className="text-xs text-gray-500 truncate">• {groupName}</span>
+                  )}
+                  {replyIndicator && (
+                    <span className="text-xs text-blue-500">{replyIndicator}</span>
+                  )}
+                </div>
+                {eventLabel ? (
+                  <div className="text-gray-600">{eventLabel}</div>
+                ) : messageText ? (
+                  <div className="text-gray-700 truncate">{messageText}</div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Load More Button */}
+        {hasMore && (
+          <div className="pt-2 flex justify-center">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={loadMore}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <ChevronDown className="h-4 w-4 mr-1" />
+              Показать ещё ({Math.min(ITEMS_PER_PAGE, allEvents.length - visibleCount)})
+            </Button>
+          </div>
+        )}
+
+        {/* Info about limit */}
+        {!hasMore && totalLoaded >= MAX_EVENTS_LOADED && (
+          <p className="text-xs text-center text-gray-400 pt-2">
+            Показаны последние {MAX_EVENTS_LOADED} событий
+          </p>
+        )}
       </CardContent>
     </Card>
   );

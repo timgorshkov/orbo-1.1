@@ -4,11 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ParticipantRecord } from '@/lib/types/participant';
 import { filterCustomAttributes } from '@/lib/utils/profileFieldsVisibility';
+import { AIEnrichmentButton } from './ai-enrichment-button';
 
 interface EnrichedProfileDisplayProps {
   participant: ParticipantRecord;
   isAdmin: boolean;
+  orgId?: string;
   onEdit?: () => void;
+  onEnrichmentComplete?: () => void;
 }
 
 /**
@@ -28,7 +31,9 @@ interface EnrichedProfileDisplayProps {
 export function EnrichedProfileDisplay({ 
   participant, 
   isAdmin,
-  onEdit 
+  orgId,
+  onEdit,
+  onEnrichmentComplete
 }: EnrichedProfileDisplayProps) {
   // Filter custom_attributes based on viewer role
   const filtered = filterCustomAttributes(participant.custom_attributes, isAdmin);
@@ -82,205 +87,213 @@ export function EnrichedProfileDisplay({
   };
   
   // Helper: Calculate engagement category
+  // UNIFIED logic matching members-filters-sidebar.tsx and get_engagement_breakdown SQL
   const getEngagementCategory = () => {
     const now = new Date();
-    const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null;
     const createdAt = new Date(participant.created_at);
-    const daysSinceCreated = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null;
+    
+    const daysSinceJoined = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
     const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999;
-    
-    // Priority 1: Silent (no activity in 30 days)
-    if (daysSinceActivity > 30) {
-      return { label: 'Молчун', color: 'bg-gray-500' };
-    }
-    
-    // Priority 2: Newcomers (joined <30 days ago)
-    if (daysSinceCreated < 30) {
-      return { label: 'Новичок', color: 'bg-blue-500' };
-    }
-    
-    // Priority 3 & 4: Core/Experienced based on activity_score
     const activityScore = participant.activity_score || 0;
-    if (activityScore >= 60) {
-      return { label: 'Ядро', color: 'bg-green-600' };
-    } else if (activityScore >= 30) {
-      return { label: 'Опытный', color: 'bg-yellow-500' };
+    
+    // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
+    if (daysSinceActivity > 30 || (!lastActivity && daysSinceJoined > 7)) {
+      return { label: 'Молчун', color: 'bg-gray-500', key: 'silent' };
     }
     
-    return { label: 'Остальные', color: 'bg-gray-400' };
+    // Priority 2: Newcomers (joined <30 days ago AND not silent)
+    if (daysSinceJoined < 30) {
+      return { label: 'Новичок', color: 'bg-blue-500', key: 'newcomer' };
+    }
+    
+    // Priority 3: Core (activity_score >= 60)
+    if (activityScore >= 60) {
+      return { label: 'Ядро', color: 'bg-green-600', key: 'core' };
+    }
+    
+    // Priority 4: Experienced (activity_score >= 30)
+    if (activityScore >= 30) {
+      return { label: 'Опытный', color: 'bg-yellow-500', key: 'experienced' };
+    }
+    
+    // Default: Other
+    return { label: 'Остальные', color: 'bg-gray-400', key: 'other' };
   };
   
   const engagementCategory = getEngagementCategory();
+  
+  // Check if there are any AI insights to show
+  const hasAIInsights = aiInsights.interests.length > 0 || 
+    aiInsights.city || 
+    aiInsights.role || 
+    aiInsights.recentAsks.length > 0 || 
+    Object.keys(aiInsights.topicsDiscussed).length > 0;
 
   return (
     <div className="space-y-6">
       {/* ========================================
-          AUTO-BADGES (Visible to all)
-          ======================================== */}
-      <Card className="p-6">
-        <div className="mb-2">
-          <label className="text-sm font-medium text-gray-700 mb-2 block">
-            Категория вовлечённости
-          </label>
-          <Badge className={`${engagementCategory.color} text-white border-0`}>
-            {engagementCategory.label}
-          </Badge>
-        </div>
-      </Card>
-
-      {/* ========================================
-          SECTION 1: AI INSIGHTS (Read-only, Admin-only)
+          SECTION 1: AI-АНАЛИЗ УЧАСТНИКА (Admin-only)
+          Combined AI Insights + Enrichment Button
           ======================================== */}
       {isAdmin && (
-        aiInsights.interests.length > 0 || 
-        aiInsights.city || 
-        aiInsights.role || 
-        aiInsights.recentAsks.length > 0 || 
-        Object.keys(aiInsights.topicsDiscussed).length > 0
-      ) && (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">AI Insights</h3>
-            <Badge variant="secondary" className="text-xs">
-              Автоматически
-            </Badge>
+            <h3 className="text-lg font-semibold text-gray-900">🤖 AI-анализ участника</h3>
+            {orgId && (
+              <AIEnrichmentButton
+                participantId={participant.id}
+                orgId={orgId}
+                participantName={participant.full_name || participant.username || 'Участник'}
+                onEnrichmentComplete={onEnrichmentComplete}
+              />
+            )}
           </div>
           
-          {/* Interests */}
-          {aiInsights.interests.length > 0 && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Интересы
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {aiInsights.interests.map((interest: string) => (
-                  <Badge key={interest} variant="outline">
-                    {interest}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* City */}
-          {aiInsights.city && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Город (определён)
-              </label>
-              <div className="flex items-center gap-2">
-                <Badge variant={getConfidenceColor(aiInsights.cityConfidence)}>
-                  {aiInsights.city}
-                </Badge>
-                {aiInsights.cityConfidence && (
-                  <span className="text-xs text-gray-500">
-                    Уверенность: {formatConfidence(aiInsights.cityConfidence)}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Behavioral Role */}
-          {aiInsights.role && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Роль в сообществе
-              </label>
-              <div className="flex items-center gap-2">
-                <Badge variant="default">
-                  {getRoleLabel(aiInsights.role)}
-                </Badge>
-                {aiInsights.roleConfidence && (
-                  <span className="text-xs text-gray-500">
-                    {formatConfidence(aiInsights.roleConfidence)}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Communication Style */}
-          {Object.keys(aiInsights.communicationStyle).length > 0 && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Стиль общения
-              </label>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                {aiInsights.communicationStyle.asks_questions !== undefined && (
-                  <div>
-                    <span className="text-gray-600">Задаёт вопросы:</span>
-                    <span className="font-medium ml-2">
-                      {Math.round(aiInsights.communicationStyle.asks_questions * 100)}%
-                    </span>
+          {/* Show AI insights if available */}
+          {hasAIInsights ? (
+            <div className="space-y-4">
+              {/* Interests */}
+              {aiInsights.interests.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Интересы
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {aiInsights.interests.map((interest: string) => (
+                      <Badge key={interest} variant="outline">
+                        {interest}
+                      </Badge>
+                    ))}
                   </div>
-                )}
-                {aiInsights.communicationStyle.gives_answers !== undefined && (
-                  <div>
-                    <span className="text-gray-600">Даёт ответы:</span>
-                    <span className="font-medium ml-2">
-                      {Math.round(aiInsights.communicationStyle.gives_answers * 100)}%
-                    </span>
+                </div>
+              )}
+              
+              {/* City */}
+              {aiInsights.city && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Город (определён)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={getConfidenceColor(aiInsights.cityConfidence)}>
+                      {aiInsights.city}
+                    </Badge>
+                    {aiInsights.cityConfidence && (
+                      <span className="text-xs text-gray-500">
+                        Уверенность: {formatConfidence(aiInsights.cityConfidence)}
+                      </span>
+                    )}
                   </div>
-                )}
-                {aiInsights.communicationStyle.reply_rate !== undefined && (
-                  <div>
-                    <span className="text-gray-600">Отвечает другим:</span>
-                    <span className="font-medium ml-2">
-                      {Math.round(aiInsights.communicationStyle.reply_rate * 100)}%
-                    </span>
+                </div>
+              )}
+              
+              {/* Behavioral Role */}
+              {aiInsights.role && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Роль в сообществе
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default">
+                      {getRoleLabel(aiInsights.role)}
+                    </Badge>
+                    {aiInsights.roleConfidence && (
+                      <span className="text-xs text-gray-500">
+                        {formatConfidence(aiInsights.roleConfidence)}
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Topics Discussed */}
-          {Object.keys(aiInsights.topicsDiscussed).length > 0 && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Обсуждаемые темы
-              </label>
-              <div className="space-y-2">
-                {Object.entries(aiInsights.topicsDiscussed)
-                  .sort(([, a], [, b]) => (b as number) - (a as number))
-                  .slice(0, 5)
-                  .map(([topic, count]) => {
-                    const countNum = count as number;
-                    const maxCount = Math.max(...(Object.values(aiInsights.topicsDiscussed) as number[]));
-                    const widthPercent = Math.min(100, (countNum / maxCount) * 100);
-                    
-                    return (
-                      <div key={topic} className="flex items-center gap-2">
-                        <span className="text-sm text-gray-700 w-32 truncate">{topic}</span>
-                        <div className="flex-1 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-500 rounded-full h-2" 
-                            style={{ width: `${widthPercent}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-gray-500 w-8 text-right">{countNum}</span>
+                </div>
+              )}
+              
+              {/* Communication Style */}
+              {Object.keys(aiInsights.communicationStyle).length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Стиль общения
+                  </label>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    {aiInsights.communicationStyle.asks_questions !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Задаёт вопросы:</span>
+                        <span className="font-medium ml-2">
+                          {Math.round(aiInsights.communicationStyle.asks_questions * 100)}%
+                        </span>
                       </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-          
-          {/* Recent Asks */}
-          {aiInsights.recentAsks.length > 0 && (
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Актуальные запросы
-              </label>
-              <div className="space-y-2">
-                {aiInsights.recentAsks.map((ask: string, index: number) => (
-                  <div key={index} className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-                    <p className="text-sm text-gray-900">{ask}</p>
+                    )}
+                    {aiInsights.communicationStyle.gives_answers !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Даёт ответы:</span>
+                        <span className="font-medium ml-2">
+                          {Math.round(aiInsights.communicationStyle.gives_answers * 100)}%
+                        </span>
+                      </div>
+                    )}
+                    {aiInsights.communicationStyle.reply_rate !== undefined && (
+                      <div>
+                        <span className="text-gray-600">Отвечает другим:</span>
+                        <span className="font-medium ml-2">
+                          {Math.round(aiInsights.communicationStyle.reply_rate * 100)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+              
+              {/* Topics Discussed */}
+              {Object.keys(aiInsights.topicsDiscussed).length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Обсуждаемые темы
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(aiInsights.topicsDiscussed)
+                      .sort(([, a], [, b]) => (b as number) - (a as number))
+                      .slice(0, 5)
+                      .map(([topic, count]) => {
+                        const countNum = count as number;
+                        const maxCount = Math.max(...(Object.values(aiInsights.topicsDiscussed) as number[]));
+                        const widthPercent = Math.min(100, (countNum / maxCount) * 100);
+                        
+                        return (
+                          <div key={topic} className="flex items-center gap-2">
+                            <span className="text-sm text-gray-700 w-32 truncate">{topic}</span>
+                            <div className="flex-1 bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-500 rounded-full h-2" 
+                                style={{ width: `${widthPercent}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-500 w-8 text-right">{countNum}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Recent Asks */}
+              {aiInsights.recentAsks.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">
+                    Актуальные запросы
+                  </label>
+                  <div className="space-y-2">
+                    {aiInsights.recentAsks.map((ask: string, index: number) => (
+                      <div key={index} className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <p className="text-sm text-gray-900">{ask}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+          ) : (
+            <p className="text-sm text-gray-600">
+              Нажмите «Запустить анализ» для определения интересов и запросов на основе сообщений участника.
+            </p>
           )}
         </Card>
       )}

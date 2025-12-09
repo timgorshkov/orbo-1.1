@@ -140,19 +140,40 @@ export async function GET(request: NextRequest) {
       // Send to all groups
       for (const group of groups) {
         try {
-          const telegramResponse = await fetch(
-            `https://api.telegram.org/bot${botToken}/sendMessage`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: group.tg_chat_id,
-                text: message,
-                parse_mode: 'HTML',
-                disable_web_page_preview: false
-              })
-            }
-          )
+          // Determine API endpoint and payload based on whether event has cover image
+          let telegramResponse
+          if (event.cover_image_url) {
+            // Send photo with caption if cover image exists
+            telegramResponse = await fetch(
+              `https://api.telegram.org/bot${botToken}/sendPhoto`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: group.tg_chat_id,
+                  photo: event.cover_image_url,
+                  caption: message,
+                  parse_mode: 'HTML',
+                  disable_web_page_preview: false
+                })
+              }
+            )
+          } else {
+            // Send text message if no cover image
+            telegramResponse = await fetch(
+              `https://api.telegram.org/bot${botToken}/sendMessage`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: group.tg_chat_id,
+                  text: message,
+                  parse_mode: 'HTML',
+                  disable_web_page_preview: false
+                })
+              }
+            )
+          }
 
           const telegramData = await telegramResponse.json()
 

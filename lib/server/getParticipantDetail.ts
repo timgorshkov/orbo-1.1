@@ -286,30 +286,31 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         throw activityEventsError;
       } else if (activityEvents) {
             // Load message texts from participant_messages for message events
+            // ⚠️ OPTIMIZED: Single batch query instead of N individual queries
             const messageEventIds = activityEvents
               .filter(e => e.event_type === 'message' && e.message_id)
-              .map(e => ({ chatId: e.tg_chat_id, messageId: e.message_id }));
+              .map(e => e.message_id);
             
             let messageTextsMap = new Map<string, string>();
             
-            if (messageEventIds.length > 0) {
-              const chatMessagePairs = messageEventIds.map(({ chatId, messageId }) => 
-                `(${chatId}, ${messageId})`
-              );
+            if (messageEventIds.length > 0 && numericChatIds.length > 0) {
+              // Single batch query for all message texts
+              const { data: messageTexts, error: textsError } = await supabase
+                .from('participant_messages')
+                .select('tg_chat_id, message_id, message_text')
+                .eq('tg_user_id', tgUserId)
+                .in('tg_chat_id', numericChatIds)
+                .in('message_id', messageEventIds);
               
-              // Load messages in batches
-              for (const { chatId, messageId } of messageEventIds) {
-                const { data: messageData } = await supabase
-                  .from('participant_messages')
-                  .select('message_text')
-                  .eq('tg_chat_id', chatId)
-                  .eq('message_id', messageId)
-                  .eq('org_id', orgId)
-                  .maybeSingle();
-                
-                if (messageData?.message_text) {
-                  messageTextsMap.set(`${chatId}_${messageId}`, messageData.message_text);
-                }
+              if (textsError) {
+                console.warn('[getParticipantDetail] Error loading message texts:', textsError);
+              } else if (messageTexts) {
+                messageTexts.forEach((m: any) => {
+                  if (m.message_text) {
+                    messageTextsMap.set(`${m.tg_chat_id}_${m.message_id}`, m.message_text);
+                  }
+                });
+                console.log(`[getParticipantDetail] Loaded ${messageTextsMap.size} message texts in single batch`);
               }
             }
             

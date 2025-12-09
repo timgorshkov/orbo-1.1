@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       eventType,
       locationInfo,
       eventDate,
+      endDate,
       startTime,
       endTime,
       isPaid,
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
       showParticipantsList,
       allowMultipleTickets,
       requestContactInfo,
+      requireAllContactFields,
       status,
       isPublic,
       telegramGroupLink
@@ -140,6 +142,7 @@ export async function POST(request: NextRequest) {
       event_type: eventType,
       location_info: locationInfo || null,
       event_date: eventDate,
+      end_date: endDate || null, // null means same day as event_date
       start_time: startTime,
       end_time: endTime,
       capacity: capacity || null,
@@ -183,11 +186,13 @@ export async function POST(request: NextRequest) {
 
     // Create standard registration fields if requested
     if (requestContactInfo && event?.id) {
+      // If requireAllContactFields is true, all fields are required
+      const allRequired = requireAllContactFields === true
       const standardFields = [
         { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', required: true, field_order: 1, participant_field_mapping: 'full_name' },
-        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: false, field_order: 2, participant_field_mapping: 'phone_number' },
-        { field_key: 'email', field_label: 'Email', field_type: 'email', required: false, field_order: 3, participant_field_mapping: 'email' },
-        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: false, field_order: 4, participant_field_mapping: 'bio' }
+        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: allRequired, field_order: 2, participant_field_mapping: 'phone_number' },
+        { field_key: 'email', field_label: 'Email', field_type: 'email', required: allRequired, field_order: 3, participant_field_mapping: 'email' },
+        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: allRequired, field_order: 4, participant_field_mapping: 'bio' }
       ]
 
       const fieldsToInsert = standardFields.map(field => ({

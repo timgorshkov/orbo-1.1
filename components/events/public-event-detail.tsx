@@ -178,9 +178,28 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                       {event.event_type === 'online' ? 'Онлайн' : 'Офлайн'}
                     </div>
                     {event.location_info && (
-                      <div className="text-sm text-neutral-600 break-words">
-                        {event.location_info}
-                      </div>
+                      event.event_type === 'online' ? (
+                        // For online events, show link only to registered users
+                        isRegistered ? (
+                          <a 
+                            href={event.location_info.startsWith('http') ? event.location_info : `https://${event.location_info}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                          >
+                            {event.location_info}
+                          </a>
+                        ) : (
+                          <div className="text-sm text-neutral-500 italic">
+                            Ссылка будет доступна после регистрации
+                          </div>
+                        )
+                      ) : (
+                        // For offline events, always show address
+                        <div className="text-sm text-neutral-600 break-words">
+                          {event.location_info}
+                        </div>
+                      )
                     )}
                   </div>
                 </div>
