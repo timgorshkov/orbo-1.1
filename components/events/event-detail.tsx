@@ -34,6 +34,7 @@ type Event = {
   currency?: string
   payment_deadline_days?: number | null
   payment_instructions?: string | null
+  payment_link?: string | null
   allow_multiple_tickets?: boolean
   capacity_count_by_paid?: boolean
   show_participants_list?: boolean
@@ -983,6 +984,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         defaultPrice={event.default_price}
         currency={event.currency || 'RUB'}
         allowMultipleTickets={event.allow_multiple_tickets || false}
+        paymentLink={event.payment_link}
+        paymentInstructions={event.payment_instructions}
         open={showRegistrationForm}
         onOpenChange={setShowRegistrationForm}
         onSuccess={handleRegistrationSuccess}

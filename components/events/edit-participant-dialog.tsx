@@ -79,7 +79,7 @@ export default function EditParticipantDialog({
           email: formData.email.trim() || null,
           phone: formData.phone.trim() || null,
           bio: formData.bio.trim() || null,
-          payment_status: hasPayment ? (formData.payment_status || null) : undefined,
+          // Note: payment_status is no longer editable here - use Payments tab instead
         }),
       })
 
@@ -161,24 +161,20 @@ export default function EditParticipantDialog({
             />
           </div>
 
-          {hasPayment && (
-            <div className="space-y-2">
-              <Label htmlFor="payment_status">Статус оплаты</Label>
-              <select
-                id="payment_status"
-                value={formData.payment_status || ''}
-                onChange={(e) => setFormData({ ...formData, payment_status: e.target.value as any || null })}
-                className="w-full p-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={loading}
-              >
-                <option value="">Не указано</option>
-                <option value="pending">Ожидается</option>
-                <option value="paid">Оплачено</option>
-                <option value="partially_paid">Частично</option>
-                <option value="overdue">Просрочено</option>
-                <option value="cancelled">Отменено</option>
-                <option value="refunded">Возврат</option>
-              </select>
+          {hasPayment && formData.payment_status && (
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-600">
+              <span className="font-medium">Статус оплаты:</span>{' '}
+              {{
+                pending: 'Ожидается',
+                paid: 'Оплачено',
+                partially_paid: 'Частично оплачено',
+                overdue: 'Просрочено',
+                cancelled: 'Отменено',
+                refunded: 'Возврат'
+              }[formData.payment_status] || formData.payment_status}
+              <p className="text-xs text-neutral-500 mt-1">
+                Для изменения статуса оплаты используйте вкладку "Оплаты"
+              </p>
             </div>
           )}
 

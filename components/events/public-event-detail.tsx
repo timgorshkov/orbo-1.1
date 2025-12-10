@@ -18,6 +18,14 @@ type Event = {
   end_time: string
   is_paid: boolean
   price_info: string | null
+  // New payment fields
+  requires_payment?: boolean
+  default_price?: number | null
+  currency?: string
+  payment_link?: string | null
+  payment_instructions?: string | null
+  // Registration status
+  user_payment_status?: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
   capacity: number | null
   registered_count: number
   available_spots: number | null
@@ -255,6 +263,45 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                         Мы напомним вам о событии
                       </div>
                     </div>
+
+                    {/* Payment section for registered but unpaid users */}
+                    {(event.requires_payment || event.is_paid) && 
+                     event.user_payment_status && 
+                     event.user_payment_status !== 'paid' && 
+                     event.user_payment_status !== 'refunded' && (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                        <div className="text-center">
+                          <div className="text-amber-700 font-medium mb-1">
+                            💳 Требуется оплата
+                          </div>
+                          {event.default_price && (
+                            <div className="text-lg font-bold text-amber-800">
+                              {event.default_price.toLocaleString('ru-RU')} {event.currency || '₽'}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Payment link button */}
+                        {event.payment_link && (
+                          <a
+                            href={event.payment_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+                          >
+                            💳 Перейти к оплате
+                          </a>
+                        )}
+                        
+                        {/* Payment instructions */}
+                        {event.payment_instructions && (
+                          <div className="text-sm text-amber-800 whitespace-pre-wrap">
+                            {event.payment_instructions}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <Button
                       variant="outline"
                       className="w-full"

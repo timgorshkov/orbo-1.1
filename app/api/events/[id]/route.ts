@@ -80,8 +80,9 @@ export async function GET(
       paidCount = paidCountResult || 0
     }
 
-    // Check if current user is registered
+    // Check if current user is registered and get their payment status
     let isUserRegistered = false
+    let userPaymentStatus: string | null = null
 
     if (user) {
       const { data: participant } = await supabase
@@ -92,11 +93,13 @@ export async function GET(
         .single()
 
       if (participant) {
-        isUserRegistered = event.event_registrations?.some(
+        const userRegistration = event.event_registrations?.find(
           (reg: any) => 
             reg.participants?.id === participant.id && 
             reg.status === 'registered'
-        ) || false
+        )
+        isUserRegistered = !!userRegistration
+        userPaymentStatus = userRegistration?.payment_status || null
       }
     }
 
@@ -106,7 +109,8 @@ export async function GET(
         registered_count: registeredCount,
         paid_count: paidCount, // Only for admins, only for paid events
         available_spots: null, // Don't show available spots on public page (as per requirements)
-        is_user_registered: isUserRegistered
+        is_user_registered: isUserRegistered,
+        user_payment_status: userPaymentStatus
       }
     })
   } catch (error: any) {
@@ -144,12 +148,13 @@ export async function PUT(
       currency,
       paymentDeadlineDays,
       paymentInstructions,
+      paymentLink,
       capacity,
       capacityCountByPaid,
       showParticipantsList,
       allowMultipleTickets,
-      requestContactInfo,
-      requireAllContactFields,
+      // Registration fields config (JSONB)
+      registrationFieldsConfig,
       status,
       isPublic,
       telegramGroupLink
@@ -222,6 +227,7 @@ export async function PUT(
       capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
       show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
       allow_multiple_tickets: allowMultipleTickets !== undefined ? allowMultipleTickets : false,
+      registration_fields_config: registrationFieldsConfig || null,
       status,
       is_public: isPublic,
       telegram_group_link: telegramGroupLink || null
@@ -234,6 +240,7 @@ export async function PUT(
       updateData.currency = currency || 'RUB'
       updateData.payment_deadline_days = paymentDeadlineDays !== undefined ? paymentDeadlineDays : 3
       updateData.payment_instructions = paymentInstructions || null
+      updateData.payment_link = paymentLink || null
       
       // Also update old fields for backward compatibility
       updateData.is_paid = requiresPayment
@@ -256,54 +263,54 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Create/update standard registration fields if requested
-    if (requestContactInfo && event?.id) {
-      // If requireAllContactFields is true, all fields are required
-      const allRequired = requireAllContactFields === true
-      
-      // First check if fields already exist
-      const { data: existingFields } = await supabase
+    // Sync registration fields based on registrationFieldsConfig
+    if (event?.id) {
+      // First, delete all existing standard fields for this event
+      await supabase
         .from('event_registration_fields')
-        .select('field_key')
+        .delete()
         .eq('event_id', event.id)
-
-      const existingFieldKeys = existingFields?.map(f => f.field_key) || []
+        .in('field_key', ['full_name', 'phone_number', 'email', 'bio'])
       
-      const standardFields = [
-        { field_key: 'full_name', field_label: 'Полное имя', field_type: 'text', required: true, field_order: 1, participant_field_mapping: 'full_name' },
-        { field_key: 'phone_number', field_label: 'Телефон', field_type: 'text', required: allRequired, field_order: 2, participant_field_mapping: 'phone_number' },
-        { field_key: 'email', field_label: 'Email', field_type: 'email', required: allRequired, field_order: 3, participant_field_mapping: 'email' },
-        { field_key: 'bio', field_label: 'Кратко о себе', field_type: 'textarea', required: allRequired, field_order: 4, participant_field_mapping: 'bio' }
-      ]
-
-      // Insert new fields
-      const fieldsToInsert = standardFields
-        .filter(field => !existingFieldKeys.includes(field.field_key))
-        .map(field => ({
-          ...field,
-          event_id: event.id
-        }))
-
-      if (fieldsToInsert.length > 0) {
-        const { error: fieldsError } = await supabase
-          .from('event_registration_fields')
-          .insert(fieldsToInsert)
-
-        if (fieldsError) {
-          console.error('Error creating registration fields:', fieldsError)
+      // If we have a config, create fields based on it
+      if (registrationFieldsConfig) {
+        const fieldsToInsert: any[] = []
+        let order = 1
+        
+        // Field definitions with their default labels and types
+        const fieldDefs: Record<string, { defaultLabel: string; fieldType: string; mapping: string }> = {
+          full_name: { defaultLabel: 'Полное имя', fieldType: 'text', mapping: 'full_name' },
+          phone_number: { defaultLabel: 'Телефон', fieldType: 'text', mapping: 'phone_number' },
+          email: { defaultLabel: 'Email', fieldType: 'email', mapping: 'email' },
+          bio: { defaultLabel: 'Кратко о себе', fieldType: 'textarea', mapping: 'bio' }
         }
-      }
-
-      // Update required status for existing fields if requireAllContactFields changed
-      if (existingFieldKeys.length > 0) {
-        const { error: updateError } = await supabase
-          .from('event_registration_fields')
-          .update({ required: allRequired })
-          .eq('event_id', event.id)
-          .neq('field_key', 'full_name') // full_name is always required
-
-        if (updateError) {
-          console.error('Error updating registration field requirements:', updateError)
+        
+        // Process each field in config
+        for (const [fieldKey, configRaw] of Object.entries(registrationFieldsConfig)) {
+          const config = configRaw as { status?: string; label?: string } | null
+          if (config && config.status && config.status !== 'disabled' && fieldDefs[fieldKey]) {
+            const def = fieldDefs[fieldKey]
+            fieldsToInsert.push({
+              event_id: event.id,
+              field_key: fieldKey,
+              field_label: config.label || def.defaultLabel,
+              field_type: def.fieldType,
+              required: config.status === 'required',
+              field_order: order++,
+              participant_field_mapping: def.mapping
+            })
+          }
+        }
+        
+        // Insert enabled fields
+        if (fieldsToInsert.length > 0) {
+          const { error: fieldsError } = await supabase
+            .from('event_registration_fields')
+            .insert(fieldsToInsert)
+          
+          if (fieldsError) {
+            console.error('Error creating registration fields:', fieldsError)
+          }
         }
       }
     }

@@ -10,40 +10,81 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 /**
  * Update participant's last activity timestamp
  * Called from webhook after processing message
+ * 
+ * This is a non-critical operation - if it fails, we just log a warning.
+ * The main webhook processing should continue regardless.
  */
 export async function updateParticipantActivity(
   tgUserId: number,
   orgId: string
 ): Promise<void> {
-  try {
-    // Create admin client per request (important for serverless)
-    const supabaseAdmin = createAdminServer();
-    
-    // Update last_activity_at (triggers scoring via DB trigger)
-    const { error } = await supabaseAdmin
-      .from('participants')
-      .update({
-        last_activity_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('tg_user_id', tgUserId)
-      .eq('org_id', orgId);
-    
-    if (error) {
-      console.error('[Stats] Failed to update participant activity:', {
-        message: error.message,
-        details: error.details || error,
-        hint: error.hint || '',
-        code: error.code || ''
+  // Use a simple retry mechanism for transient failures
+  const maxRetries = 2;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Create admin client per request (important for serverless)
+      const supabaseAdmin = createAdminServer();
+      
+      // Update last_activity_at (triggers scoring via DB trigger)
+      const { error } = await supabaseAdmin
+        .from('participants')
+        .update({
+          last_activity_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('tg_user_id', tgUserId)
+        .eq('org_id', orgId);
+      
+      if (error) {
+        // Log as warning, not error - this is non-critical
+        console.warn('[Stats] Warning: Failed to update participant activity:', {
+          attempt,
+          tgUserId,
+          orgId,
+          message: error.message,
+          code: error.code || ''
+        });
+        
+        // Don't retry for specific error codes (e.g., not found)
+        if (error.code === 'PGRST116' || error.code === '42P01') {
+          break;
+        }
+        
+        // Retry for transient errors
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+          continue;
+        }
+      } else {
+        // Success - exit loop
+        return;
+      }
+    } catch (error: any) {
+      // Network/fetch errors - log as warning and possibly retry
+      const errorMessage = error?.message || String(error);
+      
+      // Check if this is a transient error worth retrying
+      const isTransient = errorMessage.includes('fetch failed') || 
+                          errorMessage.includes('ECONNRESET') ||
+                          errorMessage.includes('timeout');
+      
+      console.warn('[Stats] Warning: Participant activity update failed:', {
+        attempt,
+        tgUserId,
+        orgId,
+        error: errorMessage,
+        willRetry: isTransient && attempt < maxRetries
       });
+      
+      if (isTransient && attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        continue;
+      }
+      
+      // Final attempt failed - just log and return
+      break;
     }
-  } catch (error: any) {
-    console.error('[Stats] Failed to update participant activity:', {
-      message: error?.message || String(error),
-      details: error?.stack || String(error),
-      hint: error?.hint || '',
-      code: error?.code || ''
-    });
   }
 }
 

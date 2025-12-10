@@ -12,7 +12,8 @@ import {
   Edit2,
   Download,
   Filter,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react'
 
 type Registration = {
@@ -96,20 +97,25 @@ export default function PaymentsTab({ eventId, event }: Props) {
     setError(null)
     
     try {
-      // Fetch registrations
+      // Fetch registrations and stats in parallel for better performance
       const regUrl = statusFilter 
         ? `/api/events/${eventId}/payments?status=${statusFilter}`
         : `/api/events/${eventId}/payments`
       
-      const regResponse = await fetch(regUrl)
+      const [regResponse, statsResponse] = await Promise.all([
+        fetch(regUrl),
+        fetch(`/api/events/${eventId}/payments/stats`)
+      ])
+      
       if (!regResponse.ok) throw new Error('Failed to fetch registrations')
-      const regData = await regResponse.json()
-      setRegistrations(regData.registrations || [])
-
-      // Fetch stats
-      const statsResponse = await fetch(`/api/events/${eventId}/payments/stats`)
       if (!statsResponse.ok) throw new Error('Failed to fetch stats')
-      const statsData = await statsResponse.json()
+      
+      const [regData, statsData] = await Promise.all([
+        regResponse.json(),
+        statsResponse.json()
+      ])
+      
+      setRegistrations(regData.registrations || [])
       setStats(statsData.stats)
     } catch (err: any) {
       setError(err.message || 'Ошибка загрузки данных')
@@ -131,6 +137,18 @@ export default function PaymentsTab({ eventId, event }: Props) {
 
   const handleSavePayment = async () => {
     if (!editingRegistration) return
+
+    // Validation: if status is "paid", require payment_method and paid_amount > 0
+    if (editForm.payment_status === 'paid') {
+      if (!editForm.payment_method) {
+        alert('Укажите способ оплаты для статуса "Оплачено"')
+        return
+      }
+      if (!editForm.paid_amount || parseFloat(editForm.paid_amount) <= 0) {
+        alert('Укажите сумму оплаты для статуса "Оплачено"')
+        return
+      }
+    }
 
     try {
       const response = await fetch(
@@ -334,12 +352,24 @@ export default function PaymentsTab({ eventId, event }: Props) {
                   {registrations.map((reg) => (
                     <tr key={reg.id} className="border-b hover:bg-gray-50">
                       <td className="p-2">
-                        <div className="font-medium">
-                          {reg.participants.full_name || reg.participants.username || 'Без имени'}
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className="font-medium">
+                              {reg.participants.full_name || reg.participants.username || 'Без имени'}
+                            </div>
+                            {reg.participants.username && (
+                              <div className="text-sm text-gray-500">@{reg.participants.username}</div>
+                            )}
+                          </div>
+                          {reg.status !== 'registered' && (
+                            <span 
+                              className="inline-flex items-center text-amber-600" 
+                              title="Участник отменил регистрацию"
+                            >
+                              <AlertTriangle className="w-4 h-4" />
+                            </span>
+                          )}
                         </div>
-                        {reg.participants.username && (
-                          <div className="text-sm text-gray-500">@{reg.participants.username}</div>
-                        )}
                       </td>
                       <td className="text-right p-2 font-medium">
                         {formatCurrency(reg.price)}
@@ -431,7 +461,7 @@ export default function PaymentsTab({ eventId, event }: Props) {
 
               <div>
                 <label className="text-sm font-medium block mb-2">
-                  Способ оплаты
+                  Способ оплаты {editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
                 </label>
                 <select
                   className="w-full p-2 border rounded-lg"
@@ -440,24 +470,27 @@ export default function PaymentsTab({ eventId, event }: Props) {
                 >
                   <option value="">Не указан</option>
                   <option value="bank_transfer">Банковский перевод</option>
-                  <option value="cash">Наличные</option>
-                  <option value="card">Карта</option>
-                  <option value="online">Онлайн</option>
+                  <option value="cash">Наличными</option>
+                  <option value="payment_link">Платёжная ссылка</option>
                   <option value="other">Другое</option>
                 </select>
               </div>
 
               <div>
                 <label className="text-sm font-medium block mb-2">
-                  Сумма оплаты
+                  Сумма оплаты {editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
                 </label>
                 <Input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={editForm.paid_amount}
                   onChange={(e) => setEditForm({ ...editForm, paid_amount: e.target.value })}
                   placeholder="0"
                 />
+                {editForm.payment_status === 'paid' && (!editForm.paid_amount || parseFloat(editForm.paid_amount) <= 0) && (
+                  <p className="text-xs text-red-500 mt-1">Укажите сумму оплаты</p>
+                )}
               </div>
 
               <div>

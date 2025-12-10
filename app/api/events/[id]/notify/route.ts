@@ -178,14 +178,31 @@ export async function POST(
       )
     }
 
+    // Helper function to validate image URL for Telegram
+    const isValidTelegramImageUrl = (url: string): boolean => {
+      try {
+        const parsed = new URL(url)
+        // Telegram requires HTTPS and standard port (443 or no port specified)
+        if (parsed.protocol !== 'https:') return false
+        if (parsed.port && parsed.port !== '443') return false
+        // Reject localhost or internal URLs
+        if (parsed.hostname === 'localhost' || parsed.hostname.includes('127.0.0.1')) return false
+        return true
+      } catch {
+        return false
+      }
+    }
+
     // Send notifications to each group
     const results = []
     for (const group of groups) {
       try {
-        // Determine API endpoint and payload based on whether event has cover image
+        // Determine API endpoint and payload based on whether event has valid cover image
         let telegramResponse
-        if (event.cover_image_url) {
-          // Send photo with caption if cover image exists
+        const hasValidCoverImage = event.cover_image_url && isValidTelegramImageUrl(event.cover_image_url)
+        
+        if (hasValidCoverImage) {
+          // Send photo with caption if cover image exists and is valid
           telegramResponse = await fetch(
             `https://api.telegram.org/bot${botToken}/sendPhoto`,
             {

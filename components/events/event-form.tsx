@@ -8,6 +8,21 @@ import { Input } from '@/components/ui/input'
 import TelegramMarkdownEditor from './telegram-markdown-editor'
 import CoverImageUpload from './cover-image-upload'
 
+// Field status for registration form configuration
+type FieldStatus = 'disabled' | 'optional' | 'required'
+
+type FieldConfig = {
+  status: FieldStatus
+  label?: string // Custom label (mainly for bio field)
+}
+
+type RegistrationFieldsConfig = {
+  full_name?: FieldConfig
+  phone_number?: FieldConfig
+  email?: FieldConfig
+  bio?: FieldConfig
+}
+
 type Event = {
   id?: string
   title: string
@@ -27,10 +42,10 @@ type Event = {
   currency?: string
   payment_deadline_days?: number | null
   payment_instructions?: string | null
+  payment_link?: string | null
   allow_multiple_tickets?: boolean
-  // Registration fields
-  request_contact_info?: boolean
-  require_all_contact_fields?: boolean
+  // Registration fields config (JSONB)
+  registration_fields_config?: RegistrationFieldsConfig | null
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
@@ -71,15 +86,40 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [paymentInstructions, setPaymentInstructions] = useState(
     initialEvent?.payment_instructions || ''
   )
+  const [paymentLink, setPaymentLink] = useState(
+    initialEvent?.payment_link || ''
+  )
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
   )
-  const [requestContactInfo, setRequestContactInfo] = useState(
-    initialEvent?.request_contact_info ?? false
-  )
-  const [requireAllContactFields, setRequireAllContactFields] = useState(
-    initialEvent?.require_all_contact_fields ?? false
-  )
+  
+  // Registration fields configuration
+  const defaultFieldsConfig: RegistrationFieldsConfig = {
+    full_name: { status: 'disabled' },
+    phone_number: { status: 'disabled' },
+    email: { status: 'disabled' },
+    bio: { status: 'disabled', label: 'Кратко о себе' }
+  }
+  
+  const [requestContactInfo, setRequestContactInfo] = useState(() => {
+    // Check if any field is enabled in initial config
+    const config = initialEvent?.registration_fields_config
+    if (!config) return false
+    return Object.values(config).some(f => f?.status !== 'disabled')
+  })
+  
+  const [fieldsConfig, setFieldsConfig] = useState<RegistrationFieldsConfig>(() => {
+    const config = initialEvent?.registration_fields_config
+    if (config) {
+      return {
+        full_name: config.full_name || defaultFieldsConfig.full_name,
+        phone_number: config.phone_number || defaultFieldsConfig.phone_number,
+        email: config.email || defaultFieldsConfig.email,
+        bio: config.bio || defaultFieldsConfig.bio
+      }
+    }
+    return defaultFieldsConfig
+  })
   
   // Old payment fields (for backward compatibility)
   const [isPaid, setIsPaid] = useState(initialEvent?.is_paid || false)
@@ -138,9 +178,10 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       currency: requiresPayment ? currency : null,
       paymentDeadlineDays: requiresPayment && paymentDeadlineDays ? parseInt(paymentDeadlineDays) : null,
       paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
+      paymentLink: requiresPayment && paymentLink ? paymentLink : null,
       allowMultipleTickets: allowMultipleTickets,
-      requestContactInfo: requestContactInfo,
-      requireAllContactFields: requireAllContactFields,
+      // Registration fields config - only send if contact info is requested
+      registrationFieldsConfig: requestContactInfo ? fieldsConfig : null,
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
@@ -423,16 +464,31 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
 
                   <div>
                     <label className="text-sm font-medium block mb-2">
+                      Платёжная ссылка
+                    </label>
+                    <Input
+                      type="url"
+                      value={paymentLink}
+                      onChange={(e) => setPaymentLink(e.target.value)}
+                      placeholder="https://pay.example.com/..."
+                    />
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Ссылка на страницу оплаты в банке или платёжной системе. Участники смогут перейти по ней для оплаты.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium block mb-2">
                       Инструкции по оплате
                     </label>
                     <textarea
                       value={paymentInstructions}
                       onChange={(e) => setPaymentInstructions(e.target.value)}
-                      placeholder="Реквизиты для оплаты, номер карты, ссылка на платежную систему..."
+                      placeholder="Реквизиты для оплаты, номер карты, дополнительные указания..."
                       className="w-full min-h-[100px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <p className="text-xs text-neutral-500 mt-1">
-                      Будет отображаться участникам при регистрации
+                      Дополнительные инструкции, которые увидят участники
                     </p>
                   </div>
 
@@ -470,7 +526,14 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                   onChange={(e) => {
                     setRequestContactInfo(e.target.checked)
                     if (!e.target.checked) {
-                      setRequireAllContactFields(false)
+                      // Reset all fields to disabled
+                      setFieldsConfig(defaultFieldsConfig)
+                    } else {
+                      // Enable name as required by default
+                      setFieldsConfig({
+                        ...defaultFieldsConfig,
+                        full_name: { status: 'required' }
+                      })
                     }
                   }}
                   className="mr-2 h-4 w-4"
@@ -480,22 +543,122 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                 </label>
               </div>
               <p className="text-xs text-neutral-500 -mt-2">
-                При регистрации будут запрошены: ФИО, телефон, email и "Кратко о себе". 
-                Данные будут сохранены в профиле участника.
+                Настройте, какие данные запрашивать у участников при регистрации.
               </p>
               
               {requestContactInfo && (
-                <div className="flex items-center ml-6">
-                  <input
-                    type="checkbox"
-                    id="requireAllContactFields"
-                    checked={requireAllContactFields}
-                    onChange={(e) => setRequireAllContactFields(e.target.checked)}
-                    className="mr-2 h-4 w-4"
-                  />
-                  <label htmlFor="requireAllContactFields" className="text-sm font-medium">
-                    Сделать все поля обязательными
-                  </label>
+                <div className="mt-4 border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-neutral-50 border-b">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">Поле</th>
+                        <th className="text-left px-3 py-2 font-medium">Название</th>
+                        <th className="text-left px-3 py-2 font-medium">Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {/* Full Name */}
+                      <tr>
+                        <td className="px-3 py-2 text-neutral-600">Имя</td>
+                        <td className="px-3 py-2 text-neutral-500">Полное имя</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={fieldsConfig.full_name?.status || 'disabled'}
+                            onChange={(e) => setFieldsConfig({
+                              ...fieldsConfig,
+                              full_name: { status: e.target.value as FieldStatus }
+                            })}
+                            className="w-full p-1.5 text-sm border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="disabled">Отключено</option>
+                            <option value="optional">Опционально</option>
+                            <option value="required">Обязательно</option>
+                          </select>
+                        </td>
+                      </tr>
+                      
+                      {/* Phone */}
+                      <tr>
+                        <td className="px-3 py-2 text-neutral-600">Телефон</td>
+                        <td className="px-3 py-2 text-neutral-500">Телефон</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={fieldsConfig.phone_number?.status || 'disabled'}
+                            onChange={(e) => setFieldsConfig({
+                              ...fieldsConfig,
+                              phone_number: { status: e.target.value as FieldStatus }
+                            })}
+                            className="w-full p-1.5 text-sm border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="disabled">Отключено</option>
+                            <option value="optional">Опционально</option>
+                            <option value="required">Обязательно</option>
+                          </select>
+                        </td>
+                      </tr>
+                      
+                      {/* Email */}
+                      <tr>
+                        <td className="px-3 py-2 text-neutral-600">Email</td>
+                        <td className="px-3 py-2 text-neutral-500">Email</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={fieldsConfig.email?.status || 'disabled'}
+                            onChange={(e) => setFieldsConfig({
+                              ...fieldsConfig,
+                              email: { status: e.target.value as FieldStatus }
+                            })}
+                            className="w-full p-1.5 text-sm border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="disabled">Отключено</option>
+                            <option value="optional">Опционально</option>
+                            <option value="required">Обязательно</option>
+                          </select>
+                        </td>
+                      </tr>
+                      
+                      {/* Bio */}
+                      <tr>
+                        <td className="px-3 py-2 text-neutral-600">О себе</td>
+                        <td className="px-3 py-2">
+                          <Input
+                            value={fieldsConfig.bio?.label || 'Кратко о себе'}
+                            onChange={(e) => setFieldsConfig({
+                              ...fieldsConfig,
+                              bio: { 
+                                ...fieldsConfig.bio,
+                                status: fieldsConfig.bio?.status || 'disabled',
+                                label: e.target.value 
+                              }
+                            })}
+                            className="h-8 text-sm"
+                            placeholder="Кратко о себе"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={fieldsConfig.bio?.status || 'disabled'}
+                            onChange={(e) => setFieldsConfig({
+                              ...fieldsConfig,
+                              bio: { 
+                                ...fieldsConfig.bio,
+                                status: e.target.value as FieldStatus,
+                                label: fieldsConfig.bio?.label || 'Кратко о себе'
+                              }
+                            })}
+                            className="w-full p-1.5 text-sm border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="disabled">Отключено</option>
+                            <option value="optional">Опционально</option>
+                            <option value="required">Обязательно</option>
+                          </select>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-neutral-500 px-3 py-2 bg-neutral-50 border-t">
+                    <strong>Отключено</strong> — поле не показывается, используется значение из профиля участника
+                  </p>
                 </div>
               )}
             </CardContent>
