@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown } from 'lucide-react';
+import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown, Phone } from 'lucide-react';
 
 interface ParticipantActivityTimelineProps {
   detail: ParticipantDetailResult;
@@ -56,8 +56,13 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
     setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, allEvents.length));
   };
 
-  // Get event icon based on type
-  const getEventIcon = (eventType: string) => {
+  // Get event icon based on type and source
+  const getEventIcon = (eventType: string, source?: string) => {
+    // WhatsApp has special icon
+    if (source === 'whatsapp') {
+      return <Phone className="h-3.5 w-3.5 text-green-600" />;
+    }
+    
     switch (eventType) {
       case 'message':
         return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />;
@@ -109,10 +114,17 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           // Extract useful info from meta
           let messageText = '';
           let replyIndicator = '';
+          const source = event.meta?.source as string | undefined;
+          const isWhatsApp = source === 'whatsapp' || event.tg_chat_id === 'whatsapp';
           
           if (event.meta) {
-            // Try to get message text
-            if (event.meta.message?.text_preview) {
+            // Try to get message text - check multiple locations
+            // WhatsApp stores in meta.text directly
+            if (event.meta.text) {
+              const text = String(event.meta.text);
+              messageText = text.slice(0, 80);
+              if (text.length > 80) messageText += '...';
+            } else if (event.meta.message?.text_preview) {
               messageText = event.meta.message.text_preview.slice(0, 80);
               if (event.meta.message.text_preview.length > 80) messageText += '...';
             } else if (event.meta.message?.text) {
@@ -128,7 +140,10 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
 
           // Get group name: first from map, then from meta, then show nothing
           let groupName = '';
-          if (event.tg_chat_id) {
+          if (isWhatsApp) {
+            // WhatsApp: get group name from meta
+            groupName = event.meta?.group_name || 'WhatsApp';
+          } else if (event.tg_chat_id) {
             groupName = groupNamesMap.get(String(event.tg_chat_id)) || '';
           }
           if (!groupName && event.meta?.group_title) {
@@ -142,7 +157,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           return (
             <div key={event.id} className="flex items-start gap-2 text-sm py-1.5 hover:bg-gray-50 rounded px-2 -mx-2">
               <div className="mt-0.5 flex-shrink-0">
-                {getEventIcon(event.event_type)}
+                {getEventIcon(event.event_type, isWhatsApp ? 'whatsapp' : undefined)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">

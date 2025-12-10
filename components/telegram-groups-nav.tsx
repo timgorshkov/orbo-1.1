@@ -22,7 +22,7 @@ export default function TelegramGroupsNav({ groups, orgId, currentPath = '' }: T
     <div className="pt-4">
       <div className="flex items-center justify-between px-3 mb-2">
         <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">
-          Telegram группы
+          Группы
         </div>
         <Link
           href={`/p/${orgId}/telegram`}
@@ -32,7 +32,7 @@ export default function TelegramGroupsNav({ groups, orgId, currentPath = '' }: T
               ? "bg-black text-white"
               : "hover:bg-black/5 text-neutral-400 hover:text-neutral-600"
           )}
-          title="Настройки Telegram"
+          title="Настройки мессенджеров"
         >
           <svg 
             xmlns="http://www.w3.org/2000/svg" 

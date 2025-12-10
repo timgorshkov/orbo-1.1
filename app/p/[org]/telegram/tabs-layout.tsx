@@ -12,17 +12,27 @@ interface TabsLayoutProps {
 export default function TabsLayout({ orgId, children }: TabsLayoutProps) {
   const pathname = usePathname()
   
+  // Determine which tab is active based on pathname
+  const isWhatsAppActive = pathname.startsWith(`/p/${orgId}/telegram/whatsapp`)
+  const isMaxActive = pathname.startsWith(`/p/${orgId}/telegram/max`)
+  // Telegram is active if not WhatsApp and not Max
+  const isTelegramActive = !isWhatsAppActive && !isMaxActive
+  
   const tabs = [
     {
-      name: 'Настройки',
+      name: 'Telegram',
       href: `/p/${orgId}/telegram`,
-      isActive: pathname === `/p/${orgId}/telegram`
+      isActive: isTelegramActive
     },
-    // ✅ Вкладка "Группы" убрана - избыточна (только перенаправляла в "Доступные группы")
     {
-      name: 'Аналитика',
-      href: `/p/${orgId}/telegram/analytics`,
-      isActive: pathname === `/p/${orgId}/telegram/analytics`
+      name: 'WhatsApp',
+      href: `/p/${orgId}/telegram/whatsapp`,
+      isActive: isWhatsAppActive
+    },
+    {
+      name: 'Max',
+      href: `/p/${orgId}/telegram/max`,
+      isActive: isMaxActive
     }
   ]
   

@@ -210,7 +210,7 @@ export default function CollapsibleSidebar({
                   <span>Приложения</span>
                 </Link>
 
-                {/* Telegram группы (только для админов) */}
+                {/* Группы мессенджеров (только для админов) */}
                 {isAdmin && adminMode && (
                   <div className="border-t border-gray-100 my-1 pt-1">
                     <button
@@ -218,7 +218,7 @@ export default function CollapsibleSidebar({
                       className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
                     >
                       <MessageCircle className="h-4 w-4" />
-                      <span>Telegram группы</span>
+                      <span>Группы</span>
                       <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${showTelegramDropdown ? 'rotate-180' : ''}`} />
                     </button>
                     {showTelegramDropdown && (
@@ -408,12 +408,12 @@ export default function CollapsibleSidebar({
           <span>Приложения</span>
         </Link>
 
-        {/* Telegram группы (только для админов в режиме админа) */}
+        {/* Группы мессенджеров (только для админов в режиме админа) */}
         {isAdmin && adminMode && (
           <div className="mt-2 pt-2 border-t border-gray-200">
             <div className="flex items-center justify-between px-3 py-2">
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Telegram группы
+                Группы
               </div>
               <Link
                 href={`/p/${orgId}/telegram`}

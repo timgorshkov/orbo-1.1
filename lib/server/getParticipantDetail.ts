@@ -343,8 +343,40 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     }
   }
 
-  // Note: Fallback using participant_id removed in migration 071
-  // All events now loaded via tg_user_id (see lines 174-198 above)
+  // Load WhatsApp messages (stored with participant_id in meta)
+  // These don't have tg_user_id, so we query by meta->>'participant_id'
+  try {
+    const { data: whatsappEvents, error: waError } = await supabase
+      .from('activity_events')
+      .select('id, event_type, created_at, tg_chat_id, meta, org_id')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', 0) // WhatsApp marker
+      .filter('meta->>participant_id', 'eq', canonicalId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    
+    if (waError) {
+      console.warn('[getParticipantDetail] Error loading WhatsApp events:', waError);
+    } else if (whatsappEvents && whatsappEvents.length > 0) {
+      console.log(`[getParticipantDetail] Loaded ${whatsappEvents.length} WhatsApp events for participant ${canonicalId}`);
+      
+      // Add WhatsApp events to eventsData
+      const waEventsFormatted = whatsappEvents.map(event => ({
+        id: event.id,
+        event_type: event.event_type,
+        created_at: event.created_at,
+        tg_chat_id: 'whatsapp', // Mark as WhatsApp
+        meta: event.meta || {}
+      }));
+      
+      // Merge and sort by date
+      eventsData = [...eventsData, ...waEventsFormatted].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ).slice(0, 200);
+    }
+  } catch (waError) {
+    console.error('[getParticipantDetail] WhatsApp events error:', waError);
+  }
 
   const { data: externalIdsData, error: externalIdsError } = await supabase
     .from('participant_external_ids')

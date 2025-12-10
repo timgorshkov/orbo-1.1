@@ -71,7 +71,7 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     return (
       <div className="p-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Telegram</h1>
+          <h1 className="text-2xl font-semibold">Настройки мессенджеров</h1>
         </div>
         
         <TabsLayout orgId={orgId}>
