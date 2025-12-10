@@ -37,15 +37,7 @@ export default function CreateOrganization() {
         setOrgCount(count)
         setIsFirstOrg(count === 0)
 
-        // ✅ If user already has organizations, redirect to orgs list
-        // Users with 0 organizations should be able to create their first org via /orgs/new
-        // (they can also access it from /welcome page)
-        if (count > 0) {
-          router.push('/orgs')
-          return
-        }
-
-        // ✅ Pre-fill name for first organization
+        // Pre-fill name for first organization
         if (count === 0) {
           setName('Моё сообщество')
         }

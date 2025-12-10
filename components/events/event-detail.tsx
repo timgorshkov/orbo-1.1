@@ -376,18 +376,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         </div>
         {showAdminFeatures && (
           <div className="flex gap-2">
-            {event.is_public && event.status === 'published' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyPublicLink}
-                className="sm:px-4"
-              >
-                <LinkIcon className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">{linkCopied ? 'Скопировано!' : 'Ссылка'}</span>
-              </Button>
-            )}
-            {telegramGroups.length > 0 && event.status === 'published' && (
+            {event.status === 'published' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -473,18 +462,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         )}
       </div>
 
-      <Tabs defaultValue="overview">
-        <TabsList className="mb-6">
-          <TabsTrigger value="overview">Обзор</TabsTrigger>
-          {showAdminFeatures && <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>}
-          {showAdminFeatures && (event.requires_payment || event.is_paid) && (
-            <TabsTrigger value="payments">
-              Оплаты
-            </TabsTrigger>
-          )}
-        </TabsList>
+      {/* Show tabs only for admins, otherwise show content directly */}
+      {showAdminFeatures ? (
+        <Tabs defaultValue="overview">
+          <TabsList className="mb-6">
+            <TabsTrigger value="overview">Обзор</TabsTrigger>
+            <TabsTrigger value="participants">Участники ({participants.length})</TabsTrigger>
+            {(event.requires_payment || event.is_paid) && (
+              <TabsTrigger value="payments">
+                Оплаты
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        <TabsContent value="overview">
+          <TabsContent value="overview">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Content - Left */}
             <div className="lg:col-span-2 space-y-6">
@@ -870,24 +861,252 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
           </TabsContent>
         )}
 
-        {showAdminFeatures && (event.requires_payment || event.is_paid) && (
-          <TabsContent value="payments">
-            <PaymentsTab
+          {(event.requires_payment || event.is_paid) && (
+            <TabsContent value="payments">
+              <PaymentsTab
+                eventId={event.id}
+                event={{
+                  id: event.id,
+                  title: event.title,
+                  requires_payment: event.requires_payment ?? event.is_paid ?? false,
+                  default_price: event.default_price ?? null,
+                  currency: event.currency || 'RUB',
+                  payment_deadline_days: event.payment_deadline_days ?? null,
+                  payment_instructions: event.payment_instructions ?? null,
+                  event_date: event.event_date
+                }}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
+      ) : (
+        /* Non-admin view: show content directly without tabs */
+        <div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Content - Left */}
+            <div className="lg:col-span-2 space-y-6">
+              {event.description && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Описание</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+                      {renderTelegramMarkdownText(event.description)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Registration Card */}
+              {event.status === 'published' && (
+                <Card id="registration">
+                  <CardHeader>
+                    <CardTitle>Регистрация</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {isRegistered ? (
+                      <>
+                        <div className="text-center py-2">
+                          <div className="text-green-600 font-medium mb-1">
+                            ✓ Вы зарегистрированы
+                          </div>
+                          <div className="text-sm text-neutral-600 mb-3">
+                            Мы напомним вам о событии
+                          </div>
+                          
+                          {/* Payment Info for Registered Users */}
+                          {(event.requires_payment || event.is_paid) && (
+                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3">
+                              {loadingRegistration ? (
+                                <div className="text-sm text-neutral-500">Загрузка информации об оплате...</div>
+                              ) : userRegistration ? (
+                                <>
+                                  {userRegistration.payment_status && (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                        userRegistration.payment_status === 'paid' 
+                                          ? 'bg-green-100 text-green-800'
+                                          : userRegistration.payment_status === 'partially_paid'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : userRegistration.payment_status === 'overdue'
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}>
+                                        {userRegistration.payment_status === 'paid' 
+                                          ? '✓ Оплачено'
+                                          : userRegistration.payment_status === 'partially_paid'
+                                          ? 'Частично оплачено'
+                                          : userRegistration.payment_status === 'overdue'
+                                          ? 'Просрочено'
+                                          : 'Ожидает оплаты'}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {userRegistration.price !== null && userRegistration.payment_status !== 'paid' && (
+                                    <div className="text-center">
+                                      <div className="text-lg font-semibold text-neutral-900">
+                                        К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                      </div>
+                                      {userRegistration.quantity > 1 && (
+                                        <div className="text-xs text-neutral-500 mt-1">
+                                          {userRegistration.quantity} {userRegistration.quantity === 1 ? 'билет' : userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                        </div>
+                                      )}
+                                      {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
+                                        <div className="text-sm text-neutral-600 mt-1">
+                                          Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {userRegistration.payment_status !== 'paid' && event.payment_instructions && (
+                                    <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
+                                      {event.payment_instructions}
+                                    </div>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleDownloadICS}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Добавить в календарь
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleUnregister}
+                            disabled={isPending}
+                          >
+                            {isPending ? 'Отмена...' : 'Отменить регистрацию'}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {event.available_spots === 0 ? (
+                          <div className="text-center py-4">
+                            <div className="text-red-600 font-medium mb-1">
+                              Мест нет
+                            </div>
+                            <div className="text-sm text-neutral-600">
+                              Все места заняты
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {event.available_spots && event.available_spots <= 5 && (
+                              <div className="text-center text-sm text-amber-600 mb-3">
+                                Осталось всего {event.available_spots} мест!
+                              </div>
+                            )}
+                            <Button
+                              className="w-full"
+                              onClick={handleRegister}
+                              disabled={isPending}
+                            >
+                              Зарегистрироваться
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                    
+                    {registrationError && (
+                      <div className="mt-3 text-sm text-red-500 text-center">
+                        {registrationError}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Sidebar - Right */}
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Информация</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-start">
+                    <Calendar className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                    <div>
+                      <div className="font-medium">
+                        {event.end_date && event.end_date !== event.event_date
+                          ? `${formatDate(event.event_date)} - ${formatDate(event.end_date)}`
+                          : formatDate(event.event_date)}
+                      </div>
+                      <div className="text-sm text-neutral-600">
+                        {formatTime(event.start_time)} - {formatTime(event.end_time)}
+                        {event.end_date && event.end_date !== event.event_date && (
+                          <span className="ml-1 text-xs text-neutral-500">
+                            ({Math.ceil((new Date(event.end_date).getTime() - new Date(event.event_date).getTime()) / (1000 * 60 * 60 * 24))} {Math.ceil((new Date(event.end_date).getTime() - new Date(event.event_date).getTime()) / (1000 * 60 * 60 * 24)) === 1 ? 'день' : 'дней'})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    {event.event_type === 'online' ? (
+                      <Globe className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                    ) : (
+                      <MapPin className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                    )}
+                    <div>
+                      <div className="font-medium">
+                        {event.event_type === 'online' ? 'Онлайн' : 'Офлайн'}
+                      </div>
+                      {event.location_info && (
+                        <div className="text-sm text-neutral-600 break-words">
+                          {event.location_info}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+
+                  {/* Payment Info */}
+                  {(event.requires_payment || event.is_paid) && (
+                    <div className="pt-4 border-t border-neutral-200">
+                      <div className="flex items-start">
+                        <Ticket className="w-5 h-5 mr-3 mt-0.5 text-neutral-500" />
+                        <div className="flex-1">
+                          <div className="font-medium">Платное событие</div>
+                          {(event.default_price !== null && event.default_price !== undefined) && (
+                            <div className="text-lg font-semibold text-neutral-900 mt-1">
+                              {event.default_price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Participants List */}
+          <div className="mt-6">
+            <EventParticipantsList
               eventId={event.id}
-              event={{
-                id: event.id,
-                title: event.title,
-                requires_payment: event.requires_payment ?? event.is_paid ?? false,
-                default_price: event.default_price ?? null,
-                currency: event.currency || 'RUB',
-                payment_deadline_days: event.payment_deadline_days ?? null,
-                payment_instructions: event.payment_instructions ?? null,
-                event_date: event.event_date
-              }}
+              orgId={orgId}
+              showParticipantsList={event.show_participants_list ?? true}
             />
-          </TabsContent>
-        )}
-      </Tabs>
+          </div>
+        </div>
+      )}
 
       {/* Share Event Dialog */}
       {showNotifyDialog && (

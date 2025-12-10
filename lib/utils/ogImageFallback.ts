@@ -2,12 +2,12 @@
  * Cascading OG Image Selection Logic
  * 
  * Provides fallback chain for Open Graph images in Telegram/social sharing:
- * 1. Event: event cover → org logo → Orbo logo
- * 2. App Item: item image → app logo → org logo → Orbo logo
+ * 1. Event: event cover → org logo → null (no default Orbo branding)
+ * 2. App Item: item image → app logo → org logo → null
  */
 
-const ORBO_DEFAULT_OG_IMAGE = '/og-default.png' // 1200x630 for OG spec
-const ORBO_LOGO_FALLBACK = '/orbo-logo-2-no-bg.png' // Existing logo
+const ORBO_DEFAULT_OG_IMAGE = '/og-default.png' // 1200x630 for OG spec (not used for events)
+const ORBO_LOGO_FALLBACK = '/orbo-logo-2-no-bg.png' // Existing logo (not used for events)
 
 /**
  * Get OG image for an event
@@ -15,12 +15,12 @@ const ORBO_LOGO_FALLBACK = '/orbo-logo-2-no-bg.png' // Existing logo
  * Priority:
  * 1. event.cover_image_url
  * 2. organization.logo_url (if exists)
- * 3. Orbo default logo
+ * 3. null (no fallback to Orbo logo - let Telegram handle default)
  */
 export function getEventOGImage(
   eventCoverUrl: string | null | undefined,
   orgLogoUrl: string | null | undefined
-): string {
+): string | null {
   if (eventCoverUrl) {
     return eventCoverUrl
   }
@@ -29,7 +29,7 @@ export function getEventOGImage(
     return orgLogoUrl
   }
   
-  return ORBO_LOGO_FALLBACK
+  return null
 }
 
 /**

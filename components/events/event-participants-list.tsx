@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users } from 'lucide-react'
+import { Users, Link as LinkIcon, Check } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 type Participant = {
   id: string
@@ -23,6 +24,18 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const handleCopyParticipantsLink = async () => {
+    const url = `${window.location.origin}/p/${orgId}/events/${eventId}#participants`
+    try {
+      await navigator.clipboard.writeText(url)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy link:', err)
+    }
+  }
 
   useEffect(() => {
     if (!showParticipantsList) {
@@ -54,7 +67,7 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (loading) {
     return (
-      <div className="p-4">
+      <div id="participants" className="p-4 scroll-mt-4">
         <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-neutral-500">Загрузка...</div>
       </div>
@@ -63,7 +76,7 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (error) {
     return (
-      <div className="p-4">
+      <div id="participants" className="p-4 scroll-mt-4">
         <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-red-600">{error}</div>
       </div>
@@ -72,7 +85,7 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
   if (participants.length === 0) {
     return (
-      <div className="p-4">
+      <div id="participants" className="p-4 scroll-mt-4">
         <h3 className="text-lg font-semibold mb-3">Принимают участие</h3>
         <div className="text-sm text-neutral-500">Пока никто не зарегистрировался</div>
       </div>
@@ -80,8 +93,23 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
   }
 
   return (
-    <div className="p-4">
-      <h3 className="text-lg font-semibold mb-4">Принимают участие</h3>
+    <div id="participants" className="p-4 scroll-mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Принимают участие</h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleCopyParticipantsLink}
+          className="text-neutral-500 hover:text-neutral-700"
+          title="Скопировать ссылку на участников"
+        >
+          {linkCopied ? (
+            <Check className="w-4 h-4" />
+          ) : (
+            <LinkIcon className="w-4 h-4" />
+          )}
+        </Button>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {participants.map(participant => {

@@ -45,20 +45,20 @@ export async function generateMetadata({
       }
     }
     
-    // Apply cascading OG image logic
+    // Apply cascading OG image logic (event cover → org logo → null)
     const ogImage = getEventOGImage(
       event.cover_image_url,
       org.logo_url
     )
     
-    // Ensure absolute URL for OG image
-    // If cover_image_url is from Supabase Storage, it's already absolute
-    // If it's relative, make it absolute
-    let absoluteOgImage: string
-    if (ogImage.startsWith('http://') || ogImage.startsWith('https://')) {
-      absoluteOgImage = ogImage
-    } else {
-      absoluteOgImage = getAbsoluteOGImageUrl(ogImage)
+    // Ensure absolute URL for OG image (if exists)
+    let absoluteOgImage: string | null = null
+    if (ogImage) {
+      if (ogImage.startsWith('http://') || ogImage.startsWith('https://')) {
+        absoluteOgImage = ogImage
+      } else {
+        absoluteOgImage = getAbsoluteOGImageUrl(ogImage)
+      }
     }
     
     // Format event date
@@ -91,31 +91,44 @@ export async function generateMetadata({
       description = parts.join(' ')
     }
     
+    // Build openGraph config
+    const openGraphConfig: any = {
+      type: 'website',
+      locale: 'ru_RU',
+      url: `https://app.orbo.ru/p/${orgId}/events/${eventId}`,
+      title: event.title,
+      description,
+      siteName: org.name,
+    }
+    
+    // Only include images if we have one (event cover or org logo)
+    if (absoluteOgImage) {
+      openGraphConfig.images = [
+        {
+          url: absoluteOgImage,
+          width: 1200,
+          height: 630,
+          alt: event.title,
+        },
+      ]
+    }
+    
+    // Build twitter config
+    const twitterConfig: any = {
+      card: absoluteOgImage ? 'summary_large_image' : 'summary',
+      title: event.title,
+      description,
+    }
+    
+    if (absoluteOgImage) {
+      twitterConfig.images = [absoluteOgImage]
+    }
+    
     return {
       title: `${event.title} | ${org.name}`,
       description,
-      openGraph: {
-        type: 'website',
-        locale: 'ru_RU',
-        url: `https://app.orbo.ru/p/${orgId}/events/${eventId}`,
-        title: event.title,
-        description,
-        siteName: org.name,
-        images: [
-          {
-            url: absoluteOgImage,
-            width: 1200,
-            height: 630,
-            alt: event.title,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: event.title,
-        description,
-        images: [absoluteOgImage],
-      },
+      openGraph: openGraphConfig,
+      twitter: twitterConfig,
     }
   } catch (error) {
     console.error('Error generating event metadata:', error)
