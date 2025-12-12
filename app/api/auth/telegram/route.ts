@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,18 +40,41 @@ function verifyTelegramAuth(data: any, botToken: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
+  
   try {
     const body = await req.json()
     const { telegramData, orgId, inviteToken } = body
 
     if (!telegramData) {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Missing telegram data in widget auth request',
+        errorCode: 'AUTH_TG_WIDGET_FAILED',
+        context: {
+          endpoint: '/api/auth/telegram',
+          reason: 'missing_data',
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Missing telegram data' }, { status: 400 })
     }
 
     // Проверяем подлинность данных от Telegram
     const botToken = process.env.TELEGRAM_BOT_TOKEN!
     if (!verifyTelegramAuth(telegramData, botToken)) {
-      console.error('Invalid Telegram authentication')
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Invalid Telegram widget authentication - hash mismatch',
+        errorCode: 'AUTH_TG_WIDGET_FAILED',
+        context: {
+          endpoint: '/api/auth/telegram',
+          reason: 'invalid_hash',
+          telegramUserId: telegramData.id,
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Invalid Telegram authentication' }, { status: 400 })
     }
 
@@ -58,6 +82,20 @@ export async function POST(req: NextRequest) {
     const authDate = telegramData.auth_date
     const now = Math.floor(Date.now() / 1000)
     if (now - authDate > 86400) {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Telegram widget auth data is too old',
+        errorCode: 'AUTH_TG_WIDGET_FAILED',
+        context: {
+          endpoint: '/api/auth/telegram',
+          reason: 'data_expired',
+          authDate,
+          currentTime: now,
+          ageSeconds: now - authDate,
+          telegramUserId: telegramData.id,
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Authentication data is too old' }, { status: 400 })
     }
 
@@ -104,7 +142,17 @@ export async function POST(req: NextRequest) {
       })
 
       if (signUpError || !newUser.user) {
-        console.error('Error creating user:', signUpError)
+        await logErrorToDatabase({
+          level: 'error',
+          message: `Failed to create user via Telegram widget: ${signUpError?.message || 'Unknown error'}`,
+          errorCode: 'AUTH_TG_WIDGET_ERROR',
+          context: {
+            endpoint: '/api/auth/telegram',
+            dbError: signUpError?.message,
+            telegramUserId: tgUserId,
+            ip: ipAddress
+          }
+        })
         return NextResponse.json({ error: 'Failed to create user' }, { status: 500 })
       }
 
@@ -159,13 +207,13 @@ export async function POST(req: NextRequest) {
             photo_url: photoUrl,
             participant_status: invite.access_type === 'full' ? 'participant' : 'event_attendee',
             source: 'invite',
-            user_id: userId // ✅ Добавляем user_id для связи
+            user_id: userId
           }, {
             onConflict: 'org_id,tg_user_id',
             ignoreDuplicates: false
           })
         
-        // ✅ Создаём membership для участников с полным доступом
+        // Создаём membership для участников с полным доступом
         if (invite.access_type === 'full') {
           await supabaseAdmin
             .from('memberships')
@@ -178,7 +226,6 @@ export async function POST(req: NextRequest) {
               onConflict: 'org_id,user_id',
               ignoreDuplicates: false
             })
-          console.log(`Created membership for user ${userId} via invite`)
         }
 
         // Увеличиваем счётчик использований
@@ -188,9 +235,6 @@ export async function POST(req: NextRequest) {
           .eq('id', invite.id)
 
         // Логируем использование
-        const forwardedFor = req.headers.get('x-forwarded-for')
-        const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
-        
         await supabaseAdmin
           .from('organization_invite_uses')
           .insert({
@@ -213,7 +257,6 @@ export async function POST(req: NextRequest) {
 
       if (!existingParticipant) {
         // Participant не найден, проверяем участие в группах организации
-        console.log(`Participant not found for tg_user_id ${tgUserId} in org ${targetOrgId}, checking group membership...`)
         
         // 1. Получаем список tg_chat_id групп организации
         const { data: orgGroups } = await supabaseAdmin
@@ -222,7 +265,6 @@ export async function POST(req: NextRequest) {
           .eq('org_id', targetOrgId)
         
         const orgChatIds = (orgGroups || []).map(g => String(g.tg_chat_id))
-        console.log(`Found ${orgChatIds.length} groups for org ${targetOrgId}`)
         
         if (orgChatIds.length === 0) {
           return NextResponse.json({
@@ -240,8 +282,6 @@ export async function POST(req: NextRequest) {
           .order('event_time', { ascending: false })
           .limit(1)
         
-        console.log(`Found ${userActivity?.length || 0} activity records for user ${tgUserId}`)
-        
         if (!userActivity || userActivity.length === 0) {
           // Нет активности в группах организации
           return NextResponse.json({
@@ -252,7 +292,6 @@ export async function POST(req: NextRequest) {
         
         // 3. Пользователь есть в группах! Создаём participant
         const activityRecord = userActivity[0]
-        console.log(`Creating participant for user ${tgUserId} based on activity in group ${activityRecord.tg_chat_id}`)
         
         const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
         
@@ -262,23 +301,18 @@ export async function POST(req: NextRequest) {
             org_id: targetOrgId,
             tg_user_id: tgUserId,
             username: username || activityRecord.from_username,
-            tg_first_name: firstName, // Telegram имя
-            tg_last_name: lastName, // Telegram фамилия
+            tg_first_name: firstName,
+            tg_last_name: lastName,
             full_name: fullName,
             photo_url: photoUrl,
             participant_status: 'participant',
             source: 'telegram_group',
-            user_id: userId // ✅ Добавляем user_id для связи с auth.users
+            user_id: userId
           })
         
-        if (participantError) {
-          console.error('Error creating participant:', participantError)
-          // Если ошибка - возможно уже существует, продолжаем
-        } else {
-          console.log(`Successfully created participant for user ${tgUserId}`)
-          
-          // ✅ Создаём membership с role='member' для доступа в организацию
-          const { error: membershipError } = await supabaseAdmin
+        if (!participantError) {
+          // Создаём membership с role='member' для доступа в организацию
+          await supabaseAdmin
             .from('memberships')
             .upsert({
               org_id: targetOrgId,
@@ -289,12 +323,6 @@ export async function POST(req: NextRequest) {
               onConflict: 'org_id,user_id',
               ignoreDuplicates: true
             })
-          
-          if (membershipError) {
-            console.error('Error creating membership:', membershipError)
-          } else {
-            console.log(`Successfully created membership for user ${userId} in org ${targetOrgId}`)
-          }
         }
       }
     }
@@ -328,7 +356,19 @@ export async function POST(req: NextRequest) {
     })
 
     if (sessionError || !session) {
-      console.error('Error creating session:', sessionError)
+      await logErrorToDatabase({
+        level: 'error',
+        message: `Failed to create session for Telegram user: ${sessionError?.message || 'Unknown error'}`,
+        errorCode: 'AUTH_TG_WIDGET_ERROR',
+        context: {
+          endpoint: '/api/auth/telegram',
+          reason: 'session_creation_failed',
+          dbError: sessionError?.message,
+          userId,
+          telegramUserId: tgUserId,
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
     }
 
@@ -345,11 +385,21 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Telegram auth error:', error)
+    await logErrorToDatabase({
+      level: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error in Telegram widget auth',
+      errorCode: 'AUTH_TG_WIDGET_ERROR',
+      context: {
+        endpoint: '/api/auth/telegram',
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        ip: ipAddress
+      },
+      stackTrace: error instanceof Error ? error.stack : undefined
+    })
+    
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }
-

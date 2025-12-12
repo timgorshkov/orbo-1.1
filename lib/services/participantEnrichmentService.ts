@@ -92,8 +92,6 @@ export async function enrichParticipant(
       console.warn(`[Enrichment] No telegram groups found for org ${orgId}`);
     }
     
-    console.log(`[Enrichment] Found ${chatIds.length} accessible chat IDs for org ${orgId}`);
-    
     // 2. Fetch messages (ALL available, not filtered by date)
     // ⚠️ Don't filter by date - imported history may have old dates
     // AI will prioritize recent messages anyway (last 50 messages in analyzeParticipantWithAI)
@@ -114,10 +112,26 @@ export async function enrichParticipant(
       messages = messagesData || [];
     }
     
-    // Filter participant's messages
-    const participantMessages = messages.filter(m => m.tg_user_id === participant.tg_user_id);
+    // Also fetch WhatsApp messages (stored with tg_chat_id = 0, participant_id in meta)
+    const { data: whatsappMessages, error: whatsappError } = await supabaseAdmin
+      .from('activity_events')
+      .select('id, tg_user_id, tg_chat_id, message_id, event_type, created_at, meta')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', 0)  // WhatsApp marker
+      .eq('event_type', 'message')
+      .contains('meta', { participant_id: participantId })
+      .order('created_at', { ascending: false })
+      .limit(500);
     
-    console.log(`[Enrichment] Found ${messages.length} total messages, ${participantMessages.length} from participant`);
+    if (!whatsappError && whatsappMessages) {
+      messages = [...messages, ...whatsappMessages];
+    }
+    
+    // Filter participant's messages (for Telegram - by tg_user_id, for WhatsApp - already filtered by participant_id)
+    const participantMessages = messages.filter(m => 
+      m.tg_user_id === participant.tg_user_id || 
+      (m.tg_chat_id === 0 && m.meta?.participant_id === participantId)
+    );
     
     // 3. Fetch participant's reactions (ALL available, not filtered by date)
     let reactions: any[] = [];
@@ -130,9 +144,7 @@ export async function enrichParticipant(
         .eq('event_type', 'reaction')
         .order('created_at', { ascending: false });
       
-      if (reactionsError) {
-        console.warn(`[Enrichment] Failed to fetch reactions: ${reactionsError.message}`);
-      } else {
+      if (!reactionsError) {
         reactions = reactionsData || [];
       }
     }
@@ -167,8 +179,6 @@ export async function enrichParticipant(
     // 6. AI Analysis (if requested and have messages)
     let aiAnalysis: AIEnrichmentResult | undefined;
     if (options.useAI && participantMessages.length > 0) {
-      console.log(`[Enrichment] Preparing ${participantMessages.length} participant messages for AI analysis...`);
-      
       // Prepare messages with context (including reply_to and thread context)
       const messagesWithContext = await prepareMessagesWithContext(
         participantMessages,
@@ -177,15 +187,12 @@ export async function enrichParticipant(
         chatIds  // ⭐ Pass chatIds for fetching reply texts
       );
       
-      console.log(`[Enrichment] Prepared ${messagesWithContext.length} messages with context (from ${participantMessages.length} raw messages)`);
-      
       if (messagesWithContext.length === 0) {
-        console.warn(`[Enrichment] ⚠️ No messages with text found! Sample message meta:`, participantMessages[0]?.meta);
+        console.warn(`[Enrichment] No messages with text found for participant ${participantId}`);
       }
       
-      // ⭐ NEW: Prepare reacted messages as interest signals
+      // Prepare reacted messages as interest signals
       const reactedMessages = await prepareReactedMessagesForAI(reactions, chatIds);
-      console.log(`[Enrichment] Prepared ${reactedMessages.length} reacted messages as interest signals`);
       
       aiAnalysis = await analyzeParticipantWithAI(
         messagesWithContext,
@@ -232,24 +239,11 @@ export async function enrichParticipant(
       }
       attributesUpdate.ai_analysis_cost = aiAnalysis.cost_usd;
       attributesUpdate.ai_analysis_tokens = aiAnalysis.tokens_used;
-      
-      // ⭐ Log AI analysis results for debugging
-      console.log(`[Enrichment] AI Analysis results for participant ${participantId}:`, {
-        interests_count: aiAnalysis.interests_keywords?.length || 0,
-        topics_count: Object.keys(aiAnalysis.topics_discussed || {}).length,
-        recent_asks_count: aiAnalysis.recent_asks?.length || 0,
-        city: aiAnalysis.city_inferred,
-        interests: aiAnalysis.interests_keywords,
-        topics: aiAnalysis.topics_discussed,
-        recent_asks: aiAnalysis.recent_asks
-      });
     }
     
     if (roleClassification) {
       attributesUpdate.behavioral_role = roleClassification.role;
       attributesUpdate.role_confidence = roleClassification.confidence;
-      
-      console.log(`[Enrichment] Role classification: ${roleClassification.role} (${roleClassification.confidence})`);
     }
     
     if (reactionPatterns) {
@@ -266,14 +260,6 @@ export async function enrichParticipant(
     attributesUpdate.enrichment_version = '1.0';
     attributesUpdate.enrichment_source = options.useAI ? 'ai' : 'rule-based';
     
-    // ⭐ Log what will be saved
-    console.log(`[Enrichment] Saving attributes update for participant ${participantId}:`, {
-      ...attributesUpdate,
-      interests_keywords_count: attributesUpdate.interests_keywords?.length || 0,
-      topics_discussed_count: Object.keys(attributesUpdate.topics_discussed || {}).length,
-      recent_asks_count: attributesUpdate.recent_asks?.length || 0
-    });
-    
     // 10. Save to database
     const currentAttributes = participant.custom_attributes || {};
     const mergedAttributes = mergeCustomAttributes(
@@ -281,13 +267,6 @@ export async function enrichParticipant(
       attributesUpdate,
       { allowSystemFields: true } // Allow system fields for enrichment
     );
-    
-    console.log(`[Enrichment] Merged attributes (after merge):`, {
-      interests_keywords: mergedAttributes.interests_keywords,
-      topics_discussed: mergedAttributes.topics_discussed,
-      recent_asks: mergedAttributes.recent_asks,
-      behavioral_role: mergedAttributes.behavioral_role
-    });
     
     const { error: updateError } = await supabaseAdmin
       .from('participants')
@@ -300,8 +279,6 @@ export async function enrichParticipant(
     if (updateError) {
       throw new Error(`Failed to update participant: ${updateError.message}`);
     }
-    
-    console.log(`[Enrichment] ✅ Successfully saved enrichment data for participant ${participantId}`);
     
     result.success = true;
     result.duration_ms = Date.now() - startTime;
@@ -459,8 +436,6 @@ async function prepareMessagesWithContext(
         }
       });
     }
-    
-    console.log(`[Enrichment] Fetched ${fullTextsMap.size} full texts from participant_messages (out of ${messageIds.length} message IDs)`);
   }
   
   // ⭐ NEW: Fetch reply_to message texts
@@ -505,8 +480,6 @@ async function prepareMessagesWithContext(
         }
       });
     }
-    
-    console.log(`[Enrichment] Fetched ${replyTextsMap.size} reply-to texts (out of ${replyToMessageIds.length} reply IDs)`);
   }
   
   // ⭐ NEW: Build thread context map (nearby messages in time)
@@ -539,16 +512,6 @@ async function prepareMessagesWithContext(
     
     if (!text || text.trim().length === 0) {
       skippedCount++;
-      if (skippedCount <= 3) {
-        // Log first few skipped messages for debugging
-        console.log(`[Enrichment] Skipping message ${msg.id} (message_id: ${msg.message_id}) - no text found. Meta structure:`, {
-          hasMeta: !!msg.meta,
-          metaKeys: msg.meta ? Object.keys(msg.meta) : [],
-          metaType: typeof msg.meta,
-          hasFullText: !!fullText,
-          sampleMeta: JSON.stringify(msg.meta).slice(0, 200)
-        });
-      }
       continue;
     }
     
@@ -606,15 +569,6 @@ async function prepareMessagesWithContext(
       thread_context
     });
   }
-  
-  if (skippedCount > 0) {
-    console.warn(`[Enrichment] Skipped ${skippedCount} messages without text (out of ${participantMessages.length} total)`);
-  }
-  
-  // Log context stats
-  const withReplyContext = result.filter(m => m.reply_to_text).length;
-  const withThreadContext = result.filter(m => m.thread_context).length;
-  console.log(`[Enrichment] Context stats: ${withReplyContext} with reply context, ${withThreadContext} with thread context`);
   
   return result;
 }
@@ -862,8 +816,6 @@ export async function estimateEnrichmentCost(
   
   const messageCount = count || 0;
   const estimate = estimateAICost(Math.min(messageCount, 50)); // We only send top 50 to AI
-  
-  console.log(`[Enrichment] Estimated ${messageCount} messages for participant in ${chatIds.length} groups`);
   
   return {
     messageCount,

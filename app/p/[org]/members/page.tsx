@@ -162,22 +162,20 @@ export default async function MembersPage({ params, searchParams }: {
 
   console.log(`[Members Page] Fetched ${participants?.length || 0} participants for org ${orgId}`)
 
-  // Enrich participants with real activity history from messages
+  // Enrich participants with real activity history from messages (Telegram + WhatsApp)
   if (participants && participants.length > 0) {
     const participantIds = participants.map(p => p.id)
+    const statsMap = new Map<string, { first: Date; last: Date }>()
     
-    // Get first and last message dates for each participant
-    const { data: activityStats } = await adminSupabase
+    // 1. Get Telegram messages from participant_messages
+    const { data: telegramStats } = await adminSupabase
       .from('participant_messages')
       .select('participant_id, sent_at')
       .in('participant_id', participantIds)
       .order('sent_at', { ascending: true })
     
-    if (activityStats && activityStats.length > 0) {
-      // Group by participant_id and find min/max dates
-      const statsMap = new Map<string, { first: Date; last: Date }>()
-      
-      for (const stat of activityStats) {
+    if (telegramStats) {
+      for (const stat of telegramStats) {
         const participantId = stat.participant_id
         const sentAt = new Date(stat.sent_at)
         
@@ -189,32 +187,51 @@ export default async function MembersPage({ params, searchParams }: {
           if (sentAt > current.last) current.last = sentAt
         }
       }
-      
-      // Attach real activity dates to participants
-      for (const participant of participants) {
-        const stats = statsMap.get(participant.id)
-        if (stats) {
-          // Use earliest date: either first message or created_at
-          const createdAt = participant.created_at ? new Date(participant.created_at) : null
-          participant.first_message_at = stats.first.toISOString()
-          participant.real_join_date = !createdAt || stats.first < createdAt 
-            ? stats.first.toISOString() 
-            : participant.created_at
-          
-          // Use latest activity: either last message or last_activity_at
-          const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null
-          participant.real_last_activity = !lastActivity || stats.last > lastActivity
-            ? stats.last.toISOString()
-            : participant.last_activity_at
+    }
+    
+    // 2. Get WhatsApp messages from activity_events (tg_chat_id = 0)
+    const { data: whatsappStats } = await adminSupabase
+      .from('activity_events')
+      .select('meta, created_at')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', 0)
+      .eq('event_type', 'message')
+    
+    if (whatsappStats) {
+      for (const stat of whatsappStats) {
+        const participantId = stat.meta?.participant_id
+        if (!participantId || !participantIds.includes(participantId)) continue
+        
+        const sentAt = new Date(stat.created_at)
+        
+        if (!statsMap.has(participantId)) {
+          statsMap.set(participantId, { first: sentAt, last: sentAt })
         } else {
-          // No messages - use original dates
-          participant.real_join_date = participant.created_at
-          participant.real_last_activity = participant.last_activity_at
+          const current = statsMap.get(participantId)!
+          if (sentAt < current.first) current.first = sentAt
+          if (sentAt > current.last) current.last = sentAt
         }
       }
-    } else {
-      // No messages at all - use original dates
-      for (const participant of participants) {
+    }
+    
+    // Attach real activity dates to participants
+    for (const participant of participants) {
+      const stats = statsMap.get(participant.id)
+      if (stats) {
+        // Use earliest date: either first message or created_at
+        const createdAt = participant.created_at ? new Date(participant.created_at) : null
+        participant.first_message_at = stats.first.toISOString()
+        participant.real_join_date = !createdAt || stats.first < createdAt 
+          ? stats.first.toISOString() 
+          : participant.created_at
+        
+        // Use latest activity: either last message or last_activity_at
+        const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null
+        participant.real_last_activity = !lastActivity || stats.last > lastActivity
+          ? stats.last.toISOString()
+          : participant.last_activity_at
+      } else {
+        // No messages - use original dates
         participant.real_join_date = participant.created_at
         participant.real_last_activity = participant.last_activity_at
       }

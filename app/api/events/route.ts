@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
       coverImageUrl,
       eventType,
       locationInfo,
+      mapLink,
       eventDate,
       endDate,
       startTime,
@@ -142,6 +144,7 @@ export async function POST(request: NextRequest) {
       cover_image_url: coverImageUrl || null,
       event_type: eventType,
       location_info: locationInfo || null,
+      map_link: eventType === 'offline' && mapLink ? mapLink : null,
       event_date: eventDate,
       end_date: endDate || null, // null means same day as event_date
       start_time: startTime,
@@ -186,6 +189,21 @@ export async function POST(request: NextRequest) {
       console.error('Error creating event:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Log admin action
+    await logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.CREATE_EVENT,
+      resourceType: ResourceTypes.EVENT,
+      resourceId: event.id,
+      metadata: {
+        title: event.title,
+        event_type: event.event_type,
+        event_date: event.event_date,
+        status: event.status
+      }
+    })
 
     // Create registration fields based on config
     if (registrationFieldsConfig && event?.id) {

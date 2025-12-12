@@ -30,6 +30,7 @@ type Event = {
   cover_image_url: string | null
   event_type: 'online' | 'offline'
   location_info: string | null
+  map_link?: string | null // Link to map for offline events
   event_date: string
   end_date?: string | null
   start_time: string
@@ -67,6 +68,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(initialEvent?.cover_image_url || null)
   const [eventType, setEventType] = useState<'online' | 'offline'>(initialEvent?.event_type || 'online')
   const [locationInfo, setLocationInfo] = useState(initialEvent?.location_info || '')
+  const [mapLink, setMapLink] = useState(initialEvent?.map_link || '')
   const [eventDate, setEventDate] = useState(initialEvent?.event_date || '')
   const [endDate, setEndDate] = useState(initialEvent?.end_date || initialEvent?.event_date || '')
   const [startTime, setStartTime] = useState(initialEvent?.start_time || '')
@@ -129,7 +131,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [status, setStatus] = useState<'draft' | 'published' | 'cancelled'>(
     initialEvent?.status || 'published'
   )
-  const [isPublic, setIsPublic] = useState(initialEvent?.is_public || false)
+  const [isPublic, setIsPublic] = useState(initialEvent?.is_public ?? true) // Public by default for new events
   const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')
   
   const [error, setError] = useState<string | null>(null)
@@ -168,6 +170,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       coverImageUrl: coverImageUrl || null,
       eventType,
       locationInfo: locationInfo || null,
+      mapLink: eventType === 'offline' && mapLink ? mapLink : null,
       eventDate,
       endDate: endDate && endDate !== eventDate ? endDate : null,
       startTime,
@@ -386,6 +389,24 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                   placeholder={eventType === 'online' ? 'https://zoom.us/...' : 'Москва, ул. Примерная, д. 1'}
                 />
               </div>
+
+              {/* Map Link for Offline Events */}
+              {eventType === 'offline' && (
+                <div>
+                  <label className="text-sm font-medium block mb-2">
+                    Ссылка на карту (необязательно)
+                  </label>
+                  <Input
+                    type="url"
+                    value={mapLink}
+                    onChange={(e) => setMapLink(e.target.value)}
+                    placeholder="https://yandex.ru/maps/... или https://maps.google.com/..."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Ссылка на Яндекс.Карты, Google Maps или 2GIS
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

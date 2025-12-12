@@ -107,9 +107,20 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
       )}
       <CardContent className="space-y-2 pt-2">
         {events.map(event => {
-          const formatted = event.created_at
-            ? format(new Date(event.created_at), 'd MMM, HH:mm', { locale: ru })
-            : '';
+          // Format date: include year if not current year
+          let formatted = '';
+          if (event.created_at) {
+            const eventDate = new Date(event.created_at);
+            const currentYear = new Date().getFullYear();
+            const eventYear = eventDate.getFullYear();
+            
+            if (eventYear === currentYear) {
+              formatted = format(eventDate, 'd MMM, HH:mm', { locale: ru });
+            } else {
+              // Include year for past years
+              formatted = format(eventDate, 'd MMM yyyy, HH:mm', { locale: ru });
+            }
+          }
 
           // Extract useful info from meta
           let messageText = '';
@@ -155,26 +166,22 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           const eventLabel = getEventLabel(event.event_type);
 
           return (
-            <div key={event.id} className="flex items-start gap-2 text-sm py-1.5 hover:bg-gray-50 rounded px-2 -mx-2">
-              <div className="mt-0.5 flex-shrink-0">
+            <div key={event.id} className="flex items-center gap-2 text-sm py-1 hover:bg-gray-50 rounded px-2 -mx-2">
+              <div className="flex-shrink-0">
                 {getEventIcon(event.event_type, isWhatsApp ? 'whatsapp' : undefined)}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-gray-400 flex-shrink-0">{formatted}</span>
-                  {groupName && (
-                    <span className="text-xs text-gray-500 truncate">• {groupName}</span>
-                  )}
-                  {replyIndicator && (
-                    <span className="text-xs text-blue-500">{replyIndicator}</span>
-                  )}
-                </div>
-                {eventLabel ? (
-                  <div className="text-gray-600">{eventLabel}</div>
-                ) : messageText ? (
-                  <div className="text-gray-700 truncate">{messageText}</div>
-                ) : null}
-              </div>
+              <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{formatted}</span>
+              {groupName && (
+                <span className="text-xs text-gray-500 flex-shrink-0 max-w-24 truncate">{groupName}</span>
+              )}
+              {replyIndicator && (
+                <span className="text-xs text-blue-500 flex-shrink-0">{replyIndicator}</span>
+              )}
+              {eventLabel ? (
+                <span className="text-gray-600 truncate">{eventLabel}</span>
+              ) : messageText ? (
+                <span className="text-gray-700 truncate flex-1">{messageText}</span>
+              ) : null}
             </div>
           );
         })}

@@ -17,9 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveParticipantsForEnrichment } from '@/lib/services/participantStatsService';
 import { enrichParticipant } from '@/lib/services/participantEnrichmentService';
-import { createAdminServer } from '@/lib/server/supabaseServer';
-
-const supabaseAdmin = createAdminServer();
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,8 +79,6 @@ export async function GET(request: NextRequest) {
     
     for (const participant of participants) {
       try {
-        console.log(`[Cron: Update Roles] Enriching participant ${participant.id}...`);
-        
         await enrichParticipant(participant.id, participant.org_id, {
           useAI: false,              // ❌ NO AI - rule-based only
           includeBehavior: true,     // ✅ Update behavioral_role
@@ -91,7 +87,6 @@ export async function GET(request: NextRequest) {
         });
         
         results.success++;
-        console.log(`[Cron: Update Roles] ✅ Enriched participant ${participant.id}`);
       } catch (error) {
         results.failed++;
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -102,13 +97,12 @@ export async function GET(request: NextRequest) {
     
     const duration = Date.now() - startTime;
     
-    // Step 3: Log results to database
-    console.log('[Cron: Update Roles] Step 3: Logging results...');
-    const { error: logError } = await supabaseAdmin
-      .from('error_logs')
-      .insert({
-        level: 'info',
-        message: `Daily role update completed: ${results.success} success, ${results.failed} failed`,
+    // Log only if there were failures
+    if (results.failed > 0) {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: `Daily role update had ${results.failed} failures out of ${participants.length} participants`,
+        errorCode: 'CRON_ROLE_UPDATE_PARTIAL',
         context: {
           success_count: results.success,
           failed_count: results.failed,
@@ -117,9 +111,6 @@ export async function GET(request: NextRequest) {
           errors: results.errors.slice(0, 10) // Keep first 10 errors
         }
       });
-    
-    if (logError) {
-      console.error('[Cron: Update Roles] Failed to log results:', logError);
     }
     
     console.log('[Cron: Update Roles] ==================== COMPLETED ====================');
@@ -141,16 +132,15 @@ export async function GET(request: NextRequest) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
     
-    await supabaseAdmin
-      .from('error_logs')
-      .insert({
-        level: 'critical',
-        message: `Daily role update failed: ${errorMsg}`,
-        stack_trace: errorStack,
-        context: {
-          duration_ms: duration
-        }
-      });
+    await logErrorToDatabase({
+      level: 'error',
+      message: `Daily role update failed: ${errorMsg}`,
+      errorCode: 'CRON_ROLE_UPDATE_ERROR',
+      context: {
+        duration_ms: duration
+      },
+      stackTrace: errorStack
+    });
     
     return NextResponse.json(
       { 
@@ -162,4 +152,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

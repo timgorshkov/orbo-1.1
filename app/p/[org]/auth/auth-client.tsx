@@ -8,9 +8,10 @@ import { ArrowLeft, Send, Check, AlertCircle, Loader2 } from 'lucide-react';
 type Props = {
   orgId: string
   redirectUrl: string
+  eventId?: string // Optional: extracted from redirect URL if pointing to event
 }
 
-export default function MemberAuthClient({ orgId, redirectUrl }: Props) {
+export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEventId }: Props) {
   const router = useRouter();
 
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -18,6 +19,12 @@ export default function MemberAuthClient({ orgId, redirectUrl }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Extract eventId from redirectUrl if not provided as prop
+  const eventId = propEventId || (() => {
+    const match = redirectUrl.match(/\/events\/([a-f0-9-]+)/i)
+    return match ? match[1] : undefined
+  })()
 
   // Generate code on mount
   useEffect(() => {
@@ -35,6 +42,7 @@ export default function MemberAuthClient({ orgId, redirectUrl }: Props) {
         body: JSON.stringify({
           orgId,
           redirectUrl,
+          eventId, // Include eventId for better context
         }),
       });
 

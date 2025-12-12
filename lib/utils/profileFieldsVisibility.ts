@@ -22,6 +22,9 @@ const AI_SYSTEM_FIELDS = [
   'enrichment_version',
   'enrichment_source',
   'event_attendance', // Event behavior metrics
+  // Import metadata (internal)
+  'whatsapp_imported',
+  'import_date',
 ]
 
 // User-defined fields (visible to all)

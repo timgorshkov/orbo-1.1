@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
+import sharp from 'sharp'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png']
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_LOGO_WIDTH = 400 // Max width in pixels for resized logo
 
 // POST /api/organizations/[id]/logo - Upload organization logo
 export async function POST(
@@ -49,7 +51,7 @@ export async function POST(
     // Validate file
     if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: 'Only JPG and PNG files are allowed' },
+        { error: 'Only JPG, PNG and WebP files are allowed' },
         { status: 400 }
       )
     }
@@ -60,11 +62,6 @@ export async function POST(
         { status: 400 }
       )
     }
-
-    // Get file extension
-    const ext = file.name.split('.').pop()
-    const fileName = `${orgId}.${ext}`
-    const filePath = `org-logos/${fileName}`
 
     // Create admin Supabase client for storage
     const adminSupabase = createClient(
@@ -88,14 +85,50 @@ export async function POST(
       }
     }
 
-    // Upload new file
+    // Upload new file with resizing
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    const inputBuffer = Buffer.from(arrayBuffer)
+    
+    // Resize image to max width while maintaining aspect ratio
+    // Convert to JPEG for consistent output and smaller file size
+    let resizedBuffer: Buffer
+    let outputContentType = 'image/jpeg'
+    let outputExt = 'jpg'
+    
+    try {
+      const image = sharp(inputBuffer)
+      const metadata = await image.metadata()
+      
+      // Only resize if image is wider than MAX_LOGO_WIDTH
+      if (metadata.width && metadata.width > MAX_LOGO_WIDTH) {
+        resizedBuffer = await image
+          .resize(MAX_LOGO_WIDTH, null, { 
+            fit: 'inside',
+            withoutEnlargement: true 
+          })
+          .jpeg({ quality: 85 })
+          .toBuffer()
+      } else {
+        // Keep original size but convert to JPEG for consistency
+        resizedBuffer = await image
+          .jpeg({ quality: 85 })
+          .toBuffer()
+      }
+    } catch (sharpError) {
+      console.error('Image processing error:', sharpError)
+      // Fallback to original buffer if processing fails
+      resizedBuffer = inputBuffer
+      outputContentType = file.type
+      outputExt = file.name.split('.').pop() || 'jpg'
+    }
+    
+    // Update file path with new extension
+    const resizedFilePath = `org-logos/${orgId}.${outputExt}`
 
     const { data: uploadData, error: uploadError } = await adminSupabase.storage
       .from('materials')
-      .upload(filePath, buffer, {
-        contentType: file.type,
+      .upload(resizedFilePath, resizedBuffer, {
+        contentType: outputContentType,
         upsert: true
       })
 
@@ -110,7 +143,7 @@ export async function POST(
     // Get public URL
     const { data: { publicUrl } } = adminSupabase.storage
       .from('materials')
-      .getPublicUrl(filePath)
+      .getPublicUrl(resizedFilePath)
 
     // Update organization
     const { data: updatedOrg, error: updateError } = await supabase

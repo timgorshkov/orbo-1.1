@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import type { SupabaseClient } from '@supabase/supabase-js';
-// REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
@@ -127,8 +127,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
       updatedCustomAttributes: updatedParticipant?.custom_attributes
     });
 
-  // REMOVED: Audit logging (migration 072)
-  console.log(`[Participant Updated] ID: ${canonicalId}, Actor: ${user.id}`);
+  // Log admin action
+  await logAdminAction({
+    orgId,
+    userId: user.id,
+    action: AdminActions.UPDATE_PARTICIPANT,
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: canonicalId,
+    changes: {
+      after: updatePayload
+    },
+    metadata: {
+      participant_name: updatedParticipant?.full_name
+    }
+  });
 
     const detail = await getParticipantDetail(orgId, participantId);
 
@@ -394,15 +406,25 @@ async function mergeFromDuplicate(
     }
   }
 
-  // REMOVED: Audit logging (migration 072)
-  console.log(`[Participant Merged] ${duplicateCanonical} -> ${canonicalId}, Actor: ${actorId}`);
+  // Log admin action
+  await logAdminAction({
+    orgId,
+    userId: actorId,
+    action: AdminActions.MERGE_PARTICIPANTS,
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: canonicalId,
+    metadata: {
+      merged_from: duplicateCanonical,
+      merged_into: canonicalId
+    }
+  });
 
   const detail = await getParticipantDetail(orgId, canonicalId);
 
   return NextResponse.json({ 
     success: true, 
     detail, 
-    merged_into: canonicalId, // ✅ Возвращаем ID текущего (canonical) профиля
+    merged_into: canonicalId,
     merge_result: mergeResult || null
   });
 }
@@ -526,8 +548,18 @@ async function mergeIntoTarget(
     }
   }
 
-  // REMOVED: Audit logging (migration 072)
-  console.log(`[Participant Merged] ${canonicalId} -> ${targetCanonical}, Actor: ${actorId}`);
+  // Log admin action
+  await logAdminAction({
+    orgId,
+    userId: actorId,
+    action: AdminActions.MERGE_PARTICIPANTS,
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: targetCanonical,
+    metadata: {
+      merged_from: canonicalId,
+      merged_into: targetCanonical
+    }
+  });
 
   const detail = await getParticipantDetail(orgId, targetCanonical);
 

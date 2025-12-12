@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import crypto from 'crypto'
 
 /**
@@ -11,6 +12,9 @@ import crypto from 'crypto'
  * Возвращает: { code: string, botUsername: string, deepLink: string, qrUrl: string, expiresAt: string }
  */
 export async function POST(req: NextRequest) {
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
+  
   try {
     const supabaseAdmin = createAdminServer()
     
@@ -43,12 +47,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (attempts >= maxAttempts) {
+      await logErrorToDatabase({
+        level: 'error',
+        message: 'Failed to generate unique auth code after max attempts',
+        errorCode: 'AUTH_TG_GENERATE_ERROR',
+        context: {
+          endpoint: '/api/auth/telegram-code/generate',
+          maxAttempts,
+          orgId,
+          eventId,
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Failed to generate unique code' }, { status: 500 })
     }
 
     // Получаем IP и User Agent для безопасности
-    const forwardedFor = req.headers.get('x-forwarded-for')
-    const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
     const userAgent = req.headers.get('user-agent')
 
     // Срок действия: 10 минут
@@ -70,7 +84,18 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (insertError || !authCode) {
-      console.error('Error creating auth code:', insertError)
+      await logErrorToDatabase({
+        level: 'error',
+        message: `Failed to create auth code: ${insertError?.message || 'Unknown error'}`,
+        errorCode: 'AUTH_TG_GENERATE_ERROR',
+        context: {
+          endpoint: '/api/auth/telegram-code/generate',
+          dbError: insertError?.message,
+          orgId,
+          eventId,
+          ip: ipAddress
+        }
+      })
       return NextResponse.json({ error: 'Failed to create auth code' }, { status: 500 })
     }
 
@@ -78,7 +103,15 @@ export async function POST(req: NextRequest) {
     const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
     
     if (!botUsername) {
-      console.error('NEXT_PUBLIC_TELEGRAM_BOT_USERNAME not configured')
+      await logErrorToDatabase({
+        level: 'error',
+        message: 'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME not configured',
+        errorCode: 'AUTH_TG_GENERATE_ERROR',
+        context: {
+          endpoint: '/api/auth/telegram-code/generate',
+          reason: 'bot_not_configured'
+        }
+      })
       return NextResponse.json({ error: 'Bot not configured' }, { status: 500 })
     }
 
@@ -87,8 +120,6 @@ export async function POST(req: NextRequest) {
 
     // QR код - используем QR Server API (бесплатный и надежный)
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(deepLink)}`
-
-    console.log(`[Auth Code] Generated code ${code} for org ${orgId || 'none'}, event ${eventId || 'none'}`)
 
     return NextResponse.json({
       code: code,
@@ -100,11 +131,21 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error generating auth code:', error)
+    await logErrorToDatabase({
+      level: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error generating auth code',
+      errorCode: 'AUTH_TG_GENERATE_ERROR',
+      context: {
+        endpoint: '/api/auth/telegram-code/generate',
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        ip: ipAddress
+      },
+      stackTrace: error instanceof Error ? error.stack : undefined
+    })
+    
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }
-

@@ -2,7 +2,9 @@
  * Telegram Authorization Handler
  * Обрабатывает авторизацию через короткий код из Telegram бота
  * 
- * GET /auth/telegram?code=XXXXXX&redirect=/path/to/redirect
+ * GET /auth/telegram-handler?code=XXXXXX&redirect=/path/to/redirect
+ * 
+ * Note: This route is called from /auth/telegram page after OG metadata is rendered
  */
 
 import { NextRequest, NextResponse } from 'next/server'

@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/participantEnrichmentService';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export async function GET(
   request: NextRequest,
@@ -122,6 +123,22 @@ export async function POST(
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'Enrichment failed' }, { status: 500 });
     }
+    
+    // Log admin action
+    await logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.ENRICH_PARTICIPANT,
+      resourceType: ResourceTypes.PARTICIPANT,
+      resourceId: participantId,
+      metadata: {
+        messages_analyzed: result.messages_analyzed,
+        reactions_analyzed: result.reactions_analyzed,
+        cost_usd: result.cost_usd,
+        duration_ms: result.duration_ms,
+        use_ai: useAI
+      }
+    });
     
     // Return result with summary
     return NextResponse.json({

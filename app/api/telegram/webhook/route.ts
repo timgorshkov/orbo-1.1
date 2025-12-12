@@ -7,6 +7,7 @@ import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { updateParticipantActivity, incrementGroupMessageCount } from '@/lib/services/participantStatsService'
 import { createAPILogger } from '@/lib/logger'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 export const dynamic = 'force-dynamic';
 
@@ -64,10 +65,34 @@ export async function POST(req: NextRequest) {
     // Запускаем обработку с timeout
     console.log('[Webhook POST] Starting processing with 10s timeout...');
     
-    const processingPromise = processWebhookInBackground(body)
+    let timeoutId: NodeJS.Timeout | null = null
+    let didTimeout = false
+    
+    const processingPromise = processWebhookInBackground(body).then((result) => {
+      // Processing completed - cancel timeout
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      return result
+    })
+    
     const timeoutPromise = new Promise((resolve) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(async () => {
+        didTimeout = true
         console.log('[Webhook POST] Timeout reached, returning 200 OK anyway')
+        // Log timeout as warning
+        await logErrorToDatabase({
+          level: 'warn',
+          message: 'Webhook processing timeout - returning 200 OK anyway',
+          errorCode: 'WEBHOOK_TIMEOUT',
+          context: {
+            endpoint: '/api/telegram/webhook',
+            updateId: body?.update_id,
+            chatId: body?.message?.chat?.id || body?.my_chat_member?.chat?.id,
+            timeoutMs: 10000
+          }
+        })
         resolve('timeout')
       }, 10000) // 10 секунд
     })
@@ -79,6 +104,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('[Webhook POST] ❌ Error parsing request:', error);
+    // Log parsing error
+    await logErrorToDatabase({
+      level: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error parsing webhook request',
+      errorCode: 'WEBHOOK_PROCESSING_ERROR',
+      context: {
+        endpoint: '/api/telegram/webhook',
+        reason: 'request_parse_error',
+        errorType: error instanceof Error ? error.constructor.name : typeof error
+      },
+      stackTrace: error instanceof Error ? error.stack : undefined
+    })
     // Всегда возвращаем успешный ответ Telegram, чтобы избежать повторных запросов
     return NextResponse.json({ ok: true });
   }

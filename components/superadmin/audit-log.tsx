@@ -10,10 +10,14 @@ import {
   ChevronUp,
   User,
   Calendar,
-  Hash
+  Hash,
+  Building2,
+  Clock,
+  Activity
 } from 'lucide-react'
+import { getActionDescription, getResourceDescription } from '@/lib/auditActionDescriptions'
 
-interface AuditLog {
+interface AuditLogEntry {
   id: number
   org_id: string
   user_id: string
@@ -45,7 +49,7 @@ interface Statistics {
 
 interface AuditLogData {
   ok: boolean
-  logs: AuditLog[]
+  logs: AuditLogEntry[]
   statistics: Statistics
   filters: {
     org_id?: string
@@ -63,7 +67,7 @@ export function AuditLog() {
   const [error, setError] = useState<string | null>(null)
   
   // Filters
-  const [hoursFilter, setHoursFilter] = useState(24)
+  const [hoursFilter, setHoursFilter] = useState(168) // Default to week
   const [actionFilter, setActionFilter] = useState<string>('all')
   const [resourceFilter, setResourceFilter] = useState<string>('all')
   
@@ -91,13 +95,13 @@ export function AuditLog() {
       const res = await fetch(`/api/superadmin/audit-log?${params}`)
       
       if (!res.ok) {
-        throw new Error('Failed to fetch audit logs')
+        throw new Error('Не удалось загрузить журнал аудита')
       }
       
       const data = await res.json()
       setData(data)
     } catch (e: any) {
-      setError(e.message || 'Failed to fetch audit logs')
+      setError(e.message || 'Не удалось загрузить журнал аудита')
     } finally {
       setLoading(false)
     }
@@ -123,11 +127,35 @@ export function AuditLog() {
     })
   }
 
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const getTimeAgo = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMins / 60)
+    const diffDays = Math.floor(diffHours / 24)
+    
+    if (diffMins < 1) return 'только что'
+    if (diffMins < 60) return `${diffMins} мин. назад`
+    if (diffHours < 24) return `${diffHours} ч. назад`
+    return `${diffDays} д. назад`
+  }
+
   if (loading && !data) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Admin Action Audit Log</CardTitle>
+          <CardTitle>Журнал действий админов</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-neutral-600">Загрузка...</p>
@@ -140,7 +168,7 @@ export function AuditLog() {
     return (
       <Card className="border-red-200">
         <CardHeader>
-          <CardTitle className="text-red-600">Admin Action Audit Log</CardTitle>
+          <CardTitle className="text-red-600">Журнал действий</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-red-600">{error}</p>
@@ -160,11 +188,6 @@ export function AuditLog() {
   const uniqueActions = Object.keys(data.statistics.by_action).sort()
   const uniqueResources = Object.keys(data.statistics.by_resource).sort()
 
-  // Format action name for display
-  const formatAction = (action: string) => {
-    return action.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-  }
-
   return (
     <div className="space-y-4">
       {/* Statistics */}
@@ -172,37 +195,40 @@ export function AuditLog() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-neutral-600">
-              Total Actions
+              Всего действий
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.statistics.total}</div>
+            <p className="text-xs text-neutral-500">за выбранный период</p>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-neutral-600">
-              Action Types
+              Типов действий
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {Object.keys(data.statistics.by_action).length}
             </div>
+            <p className="text-xs text-neutral-500">уникальных операций</p>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-neutral-600">
-              Resource Types
+              Типов ресурсов
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {Object.keys(data.statistics.by_resource).length}
             </div>
+            <p className="text-xs text-neutral-500">затронутых объектов</p>
           </CardContent>
         </Card>
       </div>
@@ -211,7 +237,7 @@ export function AuditLog() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
-            <span>Filters</span>
+            <span>Фильтры</span>
             <Button 
               onClick={fetchLogs} 
               size="sm" 
@@ -219,7 +245,7 @@ export function AuditLog() {
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              Обновить
             </Button>
           </CardTitle>
         </CardHeader>
@@ -228,35 +254,36 @@ export function AuditLog() {
             {/* Time filter */}
             <div>
               <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Time Range
+                Период
               </label>
               <select
                 value={hoursFilter}
                 onChange={(e) => setHoursFilter(parseInt(e.target.value, 10))}
                 className="px-3 py-1.5 text-sm border rounded-md"
               >
-                <option value="1">Last hour</option>
-                <option value="6">Last 6 hours</option>
-                <option value="24">Last 24 hours</option>
-                <option value="72">Last 3 days</option>
-                <option value="168">Last week</option>
+                <option value="1">Последний час</option>
+                <option value="6">6 часов</option>
+                <option value="24">24 часа</option>
+                <option value="72">3 дня</option>
+                <option value="168">Неделя</option>
+                <option value="720">Месяц</option>
               </select>
             </div>
             
             {/* Action filter */}
             <div>
               <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Action Type
+                Действие
               </label>
               <select
                 value={actionFilter}
                 onChange={(e) => setActionFilter(e.target.value)}
                 className="px-3 py-1.5 text-sm border rounded-md"
               >
-                <option value="all">All Actions</option>
+                <option value="all">Все действия</option>
                 {uniqueActions.map(action => (
                   <option key={action} value={action}>
-                    {formatAction(action)} ({data.statistics.by_action[action]})
+                    {getActionDescription(action)} ({data.statistics.by_action[action]})
                   </option>
                 ))}
               </select>
@@ -265,17 +292,17 @@ export function AuditLog() {
             {/* Resource filter */}
             <div>
               <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Resource Type
+                Ресурс
               </label>
               <select
                 value={resourceFilter}
                 onChange={(e) => setResourceFilter(e.target.value)}
                 className="px-3 py-1.5 text-sm border rounded-md"
               >
-                <option value="all">All Resources</option>
+                <option value="all">Все ресурсы</option>
                 {uniqueResources.map(resource => (
                   <option key={resource} value={resource}>
-                    {formatAction(resource)} ({data.statistics.by_resource[resource]})
+                    {getResourceDescription(resource)} ({data.statistics.by_resource[resource]})
                   </option>
                 ))}
               </select>
@@ -288,15 +315,18 @@ export function AuditLog() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Audit Logs ({data.logs.length})
+            Журнал действий ({data.logs.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
           {data.logs.length === 0 ? (
             <div className="text-center py-8">
-              <Calendar className="h-12 w-12 text-neutral-400 mx-auto mb-3" />
+              <Activity className="h-12 w-12 text-neutral-400 mx-auto mb-3" />
               <p className="text-sm text-neutral-600">
-                No actions in the selected time range
+                Нет действий за выбранный период
+              </p>
+              <p className="text-xs text-neutral-400 mt-1">
+                Действия админов будут отображаться здесь
               </p>
             </div>
           ) : (
@@ -307,77 +337,82 @@ export function AuditLog() {
                 return (
                   <div
                     key={log.id}
-                    className="border rounded-lg p-3"
+                    className="border rounded-lg overflow-hidden"
                   >
                     {/* Header */}
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5">
-                        <User className="h-4 w-4 text-blue-600" />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                            {formatAction(log.action)}
-                          </Badge>
-                          
-                          <Badge variant="outline" className="text-xs">
-                            {formatAction(log.resource_type)}
-                          </Badge>
-                          
-                          {log.resource_id && (
-                            <Badge variant="outline" className="text-xs font-mono">
-                              <Hash className="h-3 w-3 mr-1" />
-                              {log.resource_id.substring(0, 8)}...
-                            </Badge>
-                          )}
-                          
-                          <span className="text-xs text-neutral-500">
-                            {new Date(log.created_at).toLocaleString('ru-RU')}
-                          </span>
+                    <div className="p-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5">
+                          <User className="h-4 w-4 text-blue-600" />
                         </div>
                         
-                        <p className="text-sm mb-1">
-                          <span className="font-medium">{log.users?.email || 'Unknown user'}</span>
-                          {' → '}
-                          <span className="text-neutral-600">
-                            {log.organizations?.name || 'Unknown org'}
-                          </span>
-                        </p>
-                        
-                        {log.metadata && Object.keys(log.metadata).length > 0 && (
-                          <div className="text-xs text-neutral-600 mt-1">
-                            {Object.entries(log.metadata).slice(0, 2).map(([key, value]) => (
-                              <span key={key} className="mr-3">
-                                {key}: {String(value)}
-                              </span>
-                            ))}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                              {getActionDescription(log.action)}
+                            </Badge>
+                            
+                            <Badge variant="outline" className="text-xs">
+                              {getResourceDescription(log.resource_type)}
+                            </Badge>
+                            
+                            {log.resource_id && (
+                              <Badge variant="outline" className="text-xs font-mono bg-neutral-50">
+                                <Hash className="h-3 w-3 mr-1" />
+                                {log.resource_id.length > 8 ? `${log.resource_id.substring(0, 8)}...` : log.resource_id}
+                              </Badge>
+                            )}
                           </div>
-                        )}
+                          
+                          <p className="text-sm mb-1">
+                            <span className="font-medium">{log.users?.email || 'Неизвестный пользователь'}</span>
+                          </p>
+                          
+                          <div className="flex items-center gap-4 text-xs text-neutral-500">
+                            <span className="flex items-center gap-1">
+                              <Building2 className="h-3 w-3" />
+                              {log.organizations?.name || 'Неизвестная орг.'}
+                            </span>
+                            <span className="flex items-center gap-1" title={formatDate(log.created_at)}>
+                              <Clock className="h-3 w-3" />
+                              {getTimeAgo(log.created_at)}
+                            </span>
+                          </div>
+                          
+                          {log.metadata && Object.keys(log.metadata).length > 0 && (
+                            <div className="text-xs text-neutral-600 mt-2 flex flex-wrap gap-2">
+                              {Object.entries(log.metadata).slice(0, 3).map(([key, value]) => (
+                                <span key={key} className="bg-neutral-100 px-2 py-0.5 rounded">
+                                  {key}: {String(value).length > 20 ? `${String(value).substring(0, 20)}...` : String(value)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <Button
+                          onClick={() => toggleExpanded(log.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
-                      
-                      <Button
-                        onClick={() => toggleExpanded(log.id)}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
                     </div>
                     
                     {/* Expanded details */}
                     {isExpanded && (
-                      <div className="mt-3 pt-3 border-t space-y-2">
+                      <div className="px-3 pb-3 space-y-3 border-t pt-3 bg-neutral-50">
                         {log.request_id && (
                           <div>
                             <p className="text-xs font-medium text-neutral-700 mb-1">
-                              Request ID:
+                              ID запроса:
                             </p>
-                            <p className="text-xs text-neutral-600 font-mono">
+                            <p className="text-xs text-neutral-600 font-mono bg-white p-2 rounded border">
                               {log.request_id}
                             </p>
                           </div>
@@ -386,32 +421,32 @@ export function AuditLog() {
                         {log.ip_address && (
                           <div>
                             <p className="text-xs font-medium text-neutral-700 mb-1">
-                              IP Address:
+                              IP адрес:
                             </p>
-                            <p className="text-xs text-neutral-600 font-mono">
+                            <p className="text-xs text-neutral-600 font-mono bg-white p-2 rounded border">
                               {log.ip_address}
                             </p>
                           </div>
                         )}
                         
-                        {log.changes && (
+                        {log.changes && (log.changes.before || log.changes.after) && (
                           <div>
                             <p className="text-xs font-medium text-neutral-700 mb-1">
-                              Changes:
+                              Изменения:
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                               {log.changes.before && (
                                 <div>
-                                  <p className="text-xs text-neutral-500 mb-1">Before:</p>
-                                  <pre className="text-xs text-neutral-600 bg-neutral-100 p-2 rounded overflow-x-auto">
+                                  <p className="text-xs text-neutral-500 mb-1">До:</p>
+                                  <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
                                     {JSON.stringify(log.changes.before, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.changes.after && (
                                 <div>
-                                  <p className="text-xs text-neutral-500 mb-1">After:</p>
-                                  <pre className="text-xs text-neutral-600 bg-neutral-100 p-2 rounded overflow-x-auto">
+                                  <p className="text-xs text-neutral-500 mb-1">После:</p>
+                                  <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
                                     {JSON.stringify(log.changes.after, null, 2)}
                                   </pre>
                                 </div>
@@ -420,16 +455,22 @@ export function AuditLog() {
                           </div>
                         )}
                         
-                        {log.metadata && (
+                        {log.metadata && Object.keys(log.metadata).length > 0 && (
                           <div>
                             <p className="text-xs font-medium text-neutral-700 mb-1">
-                              Metadata:
+                              Дополнительная информация:
                             </p>
-                            <pre className="text-xs text-neutral-600 bg-neutral-100 p-2 rounded overflow-x-auto">
+                            <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
                               {JSON.stringify(log.metadata, null, 2)}
                             </pre>
                           </div>
                         )}
+                        
+                        <div className="flex gap-4 text-xs text-neutral-500 pt-2 border-t">
+                          <span>ID: {log.id}</span>
+                          <span>User ID: {log.user_id.slice(0, 8)}...</span>
+                          <span>Org ID: {log.org_id.slice(0, 8)}...</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -442,4 +483,3 @@ export function AuditLog() {
     </div>
   )
 }
-

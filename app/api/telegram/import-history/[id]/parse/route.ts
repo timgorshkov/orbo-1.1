@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser, type ParsedJsonAuthor } from '@/lib/services/telegramJsonParser';
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,6 +176,19 @@ export async function POST(
 
     // Проверяем размер файла
     if (file.size > MAX_FILE_SIZE) {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: `File too large for Telegram import: ${file.size} bytes`,
+        errorCode: 'IMPORT_FILE_TOO_LARGE',
+        context: {
+          endpoint: '/api/telegram/import-history/parse',
+          fileSize: file.size,
+          maxSize: MAX_FILE_SIZE,
+          fileName: file.name
+        },
+        userId: user.id,
+        orgId: orgId || undefined
+      })
       return NextResponse.json({
         error: 'File too large',
         message: `Размер файла превышает ${MAX_FILE_SIZE / 1024 / 1024}MB. Telegram автоматически разбивает экспорт на файлы < 1MB. Загрузите файлы по одному.`,
@@ -187,6 +201,18 @@ export async function POST(
     const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
     
     if (!isJson && !isHtml) {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: `Invalid file type for Telegram import: ${file.type}`,
+        errorCode: 'IMPORT_INVALID_FORMAT',
+        context: {
+          endpoint: '/api/telegram/import-history/parse',
+          fileName: file.name,
+          fileType: file.type
+        },
+        userId: user.id,
+        orgId: orgId || undefined
+      })
       return NextResponse.json({
         error: 'Invalid file type',
         message: 'Пожалуйста, загрузите JSON или HTML файл экспорта Telegram',
@@ -368,7 +394,16 @@ export async function POST(
       },
     });
   } catch (error: any) {
-    console.error('Error parsing Telegram history:', error);
+    await logErrorToDatabase({
+      level: 'error',
+      message: error.message || 'Unknown error parsing Telegram history',
+      errorCode: 'IMPORT_SERVER_ERROR',
+      context: {
+        endpoint: '/api/telegram/import-history/parse',
+        errorType: error.constructor?.name || typeof error
+      },
+      stackTrace: error.stack
+    })
     return NextResponse.json({
       error: 'Failed to parse file',
       message: error.message || 'Unknown error',

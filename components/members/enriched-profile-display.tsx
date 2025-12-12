@@ -88,12 +88,19 @@ export function EnrichedProfileDisplay({
   
   // Helper: Calculate engagement category
   // UNIFIED logic matching members-filters-sidebar.tsx and get_engagement_breakdown SQL
+  // Now uses real_join_date and real_last_activity for WhatsApp participants
   const getEngagementCategory = () => {
     const now = new Date();
-    const createdAt = new Date(participant.created_at);
-    const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null;
+    // Use real_join_date if available (for imported WhatsApp participants)
+    const joinDate = (participant as any).real_join_date 
+      ? new Date((participant as any).real_join_date) 
+      : new Date(participant.created_at);
+    // Use real_last_activity if available
+    const lastActivity = (participant as any).real_last_activity 
+      ? new Date((participant as any).real_last_activity)
+      : (participant.last_activity_at ? new Date(participant.last_activity_at) : null);
     
-    const daysSinceJoined = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceJoined = (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24);
     const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999;
     const activityScore = participant.activity_score || 0;
     

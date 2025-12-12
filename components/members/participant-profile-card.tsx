@@ -532,7 +532,9 @@ export default function ParticipantProfileCard({
                 'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
                 'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
                 // Event behavior (shown in separate section)
-                'event_attendance'
+                'event_attendance',
+                // Import metadata (WhatsApp imports) - internal only
+                'import_date', 'whatsapp_imported'
               ];
               
               const userEditableAttrs = Object.entries(fields.custom_attributes)

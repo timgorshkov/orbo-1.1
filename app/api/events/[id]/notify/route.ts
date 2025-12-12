@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 // POST /api/events/[id]/notify - Send Telegram notification for event
 export async function POST(
@@ -148,11 +150,12 @@ export async function POST(
     message += `🗓 ${dateStr}\n`
     message += `🕐 ${timeStr}\n`
 
-    if (event.location_info) {
-      if (event.event_type === 'online') {
-        message += `🌐 Онлайн\n`
-      } else {
-        message += `📍 ${event.location_info}\n`
+    if (event.event_type === 'online') {
+      message += `🌐 Онлайн\n`
+    } else if (event.location_info) {
+      message += `📍 ${event.location_info}\n`
+      if (event.map_link) {
+        message += `🗺 <a href="${event.map_link}">Место на карте</a>\n`
       }
     }
 
@@ -265,6 +268,22 @@ export async function POST(
             message_preview: message.substring(0, 100)
           })
 
+          // Log to error database
+          await logErrorToDatabase({
+            level: 'error',
+            message: `Failed to publish event to Telegram: ${telegramData.description || 'Unknown error'}`,
+            errorCode: 'EVENT_PUBLISH_TG_ERROR',
+            context: {
+              endpoint: '/api/events/[id]/notify',
+              eventId,
+              groupId: group.id,
+              groupTitle: group.title,
+              chatId: group.tg_chat_id,
+              telegramErrorCode: telegramData.error_code
+            },
+            orgId: event.org_id
+          })
+
           // Save failed notification using admin client
           await adminSupabase
             .from('event_telegram_notifications')
@@ -291,6 +310,22 @@ export async function POST(
           group_title: group.title,
           chat_id: group.tg_chat_id
         })
+
+        await logErrorToDatabase({
+          level: 'error',
+          message: `Exception while publishing event to Telegram: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          errorCode: 'EVENT_PUBLISH_TG_ERROR',
+          context: {
+            endpoint: '/api/events/[id]/notify',
+            eventId,
+            groupId: group.id,
+            chatId: group.tg_chat_id,
+            errorType: error.constructor?.name || typeof error
+          },
+          stackTrace: error instanceof Error ? error.stack : undefined,
+          orgId: event.org_id
+        })
+
         results.push({
           group_id: group.id,
           group_title: group.title,
@@ -300,12 +335,38 @@ export async function POST(
       }
     }
 
+    // Log admin action for successful notifications
+    const successfulNotifications = results.filter(r => r.success)
+    if (successfulNotifications.length > 0) {
+      await logAdminAction({
+        orgId: event.org_id,
+        userId: user.id,
+        action: AdminActions.PUBLISH_EVENT_TG,
+        resourceType: ResourceTypes.EVENT,
+        resourceId: eventId,
+        metadata: {
+          event_title: event.title,
+          groups_count: successfulNotifications.length,
+          groups: successfulNotifications.map(r => r.group_title).slice(0, 5)
+        }
+      })
+    }
+
     return NextResponse.json({
       success: true,
       results
     })
   } catch (error: any) {
-    console.error('Error in POST /api/events/[id]/notify:', error)
+    await logErrorToDatabase({
+      level: 'error',
+      message: error.message || 'Unknown error in event notification',
+      errorCode: 'EVENT_NOTIFY_ERROR',
+      context: {
+        endpoint: '/api/events/[id]/notify',
+        errorType: error.constructor?.name || typeof error
+      },
+      stackTrace: error.stack
+    })
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

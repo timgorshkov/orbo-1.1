@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -378,20 +380,52 @@ export async function POST(request: Request) {
       
       const orgGroups = await getOrgTelegramGroups(orgId);
 
+      // Log admin action
+      await logAdminAction({
+        orgId,
+        userId: user.id,
+        action: AdminActions.SYNC_TELEGRAM_GROUP,
+        resourceType: ResourceTypes.TELEGRAM_GROUP,
+        metadata: {
+          groups_count: orgGroups.length,
+          groups: orgGroups.slice(0, 5).map((g: any) => g.title)
+        }
+      });
+
       return NextResponse.json({
         success: true,
         message: `Synced ${orgGroups.length} groups for org ${orgId}`,
         groups: orgGroups
       });
     } catch (telegramError: any) {
-      console.error('Telegram API error:', telegramError);
+      await logErrorToDatabase({
+        level: 'error',
+        message: `Telegram API error during sync: ${telegramError.message}`,
+        errorCode: 'TG_GROUP_SYNC_ERROR',
+        context: {
+          endpoint: '/api/telegram/groups/sync',
+          errorType: telegramError.constructor?.name || typeof telegramError,
+          orgId
+        },
+        stackTrace: telegramError.stack,
+        orgId
+      });
       return NextResponse.json({ 
         error: 'Failed to sync groups',
         details: telegramError.message
       }, { status: 500 });
     }
   } catch (error: any) {
-    console.error('Error in sync groups:', error);
+    await logErrorToDatabase({
+      level: 'error',
+      message: error.message || 'Unknown error syncing groups',
+      errorCode: 'TG_GROUP_SYNC_ERROR',
+      context: {
+        endpoint: '/api/telegram/groups/sync',
+        errorType: error.constructor?.name || typeof error
+      },
+      stackTrace: error.stack
+    });
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

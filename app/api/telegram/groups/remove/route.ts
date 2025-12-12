@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +90,18 @@ export async function POST(request: Request) {
     }
 
     console.log('Successfully deleted mapping from org_telegram_groups')
+
+    // Log admin action
+    await logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.REMOVE_TELEGRAM_GROUP,
+      resourceType: ResourceTypes.TELEGRAM_GROUP,
+      resourceId: groupId,
+      metadata: {
+        tg_chat_id: chatIdStr
+      }
+    });
 
     // Проверяем, есть ли другие организации, использующие эту группу
     const { data: otherMappings, error: otherMappingsError } = await supabaseService

@@ -82,6 +82,9 @@ export async function GET(
     if (event.location_info && event.event_type === 'online') {
       description += `\n\nСсылка на подключение: ${event.location_info}`
     }
+    if (event.event_type === 'offline' && event.map_link) {
+      description += `\n\nМесто на карте: ${event.map_link}`
+    }
     if (event.is_paid && event.price_info) {
       description += `\n\nСтоимость:\n${event.price_info}`
     }

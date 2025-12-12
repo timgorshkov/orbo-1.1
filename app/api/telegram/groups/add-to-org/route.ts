@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,7 +172,19 @@ export async function POST(request: Request) {
       .single();
       
     if (membershipError || !membership) {
-      console.error('Error checking membership:', membershipError);
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'User tried to add group without organization access',
+        errorCode: 'TG_GROUP_ADD_INCOMPLETE',
+        context: {
+          endpoint: '/api/telegram/groups/add-to-org',
+          reason: 'no_membership',
+          userId: user.id,
+          orgId
+        },
+        userId: user.id,
+        orgId
+      });
       return NextResponse.json({ 
         error: 'You do not have access to this organization' 
       }, { status: 403 });
@@ -184,7 +198,18 @@ export async function POST(request: Request) {
       .single();
 
     if (groupError || !group) {
-      console.error('Error fetching group:', groupError);
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Telegram group not found during add-to-org',
+        errorCode: 'TG_GROUP_NOT_FOUND',
+        context: {
+          endpoint: '/api/telegram/groups/add-to-org',
+          groupId,
+          dbError: groupError?.message
+        },
+        userId: user.id,
+        orgId
+      });
       return NextResponse.json({ 
         error: 'Group not found' 
       }, { status: 404 });
@@ -235,13 +260,40 @@ export async function POST(request: Request) {
       .single();
 
     if (adminError || !adminRights || !adminRights.is_admin) {
-      console.error('Error checking admin rights:', adminError);
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'User is not admin in Telegram group',
+        errorCode: 'TG_BOT_NOT_ADMIN',
+        context: {
+          endpoint: '/api/telegram/groups/add-to-org',
+          reason: 'user_not_admin',
+          groupId,
+          tgChatId: tgChatIdStr,
+          telegramUserId: activeAccount.telegram_user_id
+        },
+        userId: user.id,
+        orgId
+      });
       return NextResponse.json({
         error: 'Grant admin permissions to @orbo_community_bot before adding the group'
       }, { status: 400 });
     }
 
     if (adminRights.bot_status !== 'connected' && group.bot_status !== 'connected') {
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Bot not connected to Telegram group',
+        errorCode: 'TG_BOT_NOT_ADMIN',
+        context: {
+          endpoint: '/api/telegram/groups/add-to-org',
+          reason: 'bot_not_connected',
+          groupId,
+          tgChatId: tgChatIdStr,
+          botStatus: adminRights.bot_status
+        },
+        userId: user.id,
+        orgId
+      });
       return NextResponse.json({
         error: 'Grant admin permissions to @orbo_community_bot before adding the group'
       }, { status: 400 });
@@ -324,6 +376,19 @@ export async function POST(request: Request) {
     // Копируем участников группы в новую организацию
     await copyGroupParticipantsToOrg(supabaseService, tgChatIdStr, orgId);
 
+    // Log admin action
+    await logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.ADD_TELEGRAM_GROUP,
+      resourceType: ResourceTypes.TELEGRAM_GROUP,
+      resourceId: group.id,
+      metadata: {
+        group_title: group.title,
+        tg_chat_id: tgChatIdStr
+      }
+    });
+
     // ✅ Добавляем флаг suggestImport для показа предложения импорта истории
     return NextResponse.json({
       success: true,
@@ -333,7 +398,16 @@ export async function POST(request: Request) {
       suggestImport: true // ✅ Флаг для показа предложения импорта истории
     });
   } catch (error: any) {
-    console.error('Error in add-to-org:', error);
+    await logErrorToDatabase({
+      level: 'error',
+      message: error.message || 'Unknown error adding group to organization',
+      errorCode: 'TG_GROUP_ADD_ERROR',
+      context: {
+        endpoint: '/api/telegram/groups/add-to-org',
+        errorType: error.constructor?.name || typeof error
+      },
+      stackTrace: error.stack
+    });
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

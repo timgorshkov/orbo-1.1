@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Upload, FileText, AlertCircle, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
+import { Upload, FileText, AlertCircle, CheckCircle2, Loader2, ArrowLeft, Archive, Users } from 'lucide-react'
 import Link from 'next/link'
 
 export default function WhatsAppImportPage() {
@@ -21,44 +21,53 @@ export default function WhatsAppImportPage() {
     messageCount: number
     participantCount: number
     dateRange: string
+    isZip: boolean
   } | null>(null)
   
   const handleFileSelect = async (selectedFile: File) => {
     setError(null)
     setPreview(null)
     
-    if (!selectedFile.name.endsWith('.txt')) {
-      setError('Пожалуйста, выберите файл с расширением .txt')
+    const isZip = selectedFile.name.toLowerCase().endsWith('.zip') || selectedFile.type === 'application/zip'
+    const isTxt = selectedFile.name.toLowerCase().endsWith('.txt')
+    
+    if (!isZip && !isTxt) {
+      setError('Пожалуйста, выберите файл .txt или .zip архив')
       return
     }
     
     setFile(selectedFile)
     
-    // Парсим файл для превью
+    if (isZip) {
+      // For ZIP files, we show a placeholder preview
+      // Full parsing happens on server
+      setPreview({
+        messageCount: 0,
+        participantCount: 0,
+        dateRange: 'Будет определено при импорте',
+        isZip: true
+      })
+      console.log('[WhatsApp Import] ZIP file selected:', selectedFile.name, selectedFile.size, 'bytes')
+      return
+    }
+    
+    // Parse TXT file for preview
     try {
       const content = await selectedFile.text()
       const lines = content.split('\n').filter(line => line.trim())
       
-      // Логируем первые строки для отладки
       console.log('[WhatsApp Import] File loaded:', selectedFile.name)
       console.log('[WhatsApp Import] Total lines:', lines.length)
       console.log('[WhatsApp Import] First 5 lines sample:')
       lines.slice(0, 5).forEach((line, i) => console.log(`  Line ${i + 1}: ${line.substring(0, 100)}...`))
       
-      // Несколько паттернов для разных форматов WhatsApp
-      // Формат RU: DD.MM.YYYY, HH:MM - Имя: Сообщение (основной российский формат)
-      // Формат EN: [DD/MM/YYYY, HH:MM:SS] Имя: Сообщение
+      // Patterns for different WhatsApp formats
       const patterns = [
-        // ОСНОВНОЙ: DD.MM.YYYY, HH:MM - Имя: Сообщение (российский формат)
-        // Примеры:
-        // 18.10.2023, 14:44 - +7 919 968-10-57: На кухне
-        // 22.10.2023, 18:52 - Михаил Сосед Родителей: Пятый подъезд нет холодной воды
+        // Russian format: DD.MM.YYYY, HH:MM - Name: Message
         /^(\d{1,2}\.\d{1,2}\.\d{4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.*)$/,
-        
-        // Альтернативный: [DD.MM.YYYY, HH:MM:SS] Имя: Сообщение
+        // Alternative: [DD.MM.YYYY, HH:MM:SS] Name: Message
         /^\[(\d{1,2}[\.\/]\d{1,2}[\.\/]\d{2,4}),?\s*(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*(.*)$/,
-        
-        // DD/MM/YYYY, HH:MM - Имя: Сообщение (формат с /)
+        // DD/MM/YYYY, HH:MM - Name: Message
         /^(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–]\s*([^:]+):\s*(.*)$/,
       ]
       
@@ -71,7 +80,6 @@ export default function WhatsAppImportPage() {
       for (const line of lines) {
         let match: RegExpMatchArray | null = null
         
-        // Пробуем каждый паттерн
         for (let i = 0; i < patterns.length; i++) {
           match = line.match(patterns[i])
           if (match) {
@@ -87,9 +95,6 @@ export default function WhatsAppImportPage() {
           messageCount++
           const participant = match[3].trim()
           
-          // Исключаем системные сообщения (они не содержат двоеточия после имени,
-          // но наш паттерн требует двоеточие, поэтому системные сообщения не матчатся)
-          // Дополнительно фильтруем по ключевым словам на случай если что-то проскочило
           const lowerParticipant = participant.toLowerCase()
           const isSystemMessage = 
             lowerParticipant.includes('создал') ||
@@ -107,11 +112,9 @@ export default function WhatsAppImportPage() {
             participants.add(participant)
           }
           
-          // Парсим дату (поддержка разных разделителей)
           const dateParts = match[1].replace(/\//g, '.').split('.')
           if (dateParts.length === 3) {
             let [day, month, year] = dateParts
-            // Если год короткий (24), делаем полным (2024)
             if (year.length === 2) {
               year = '20' + year
             }
@@ -131,7 +134,7 @@ export default function WhatsAppImportPage() {
       
       if (messageCount === 0) {
         console.error('[WhatsApp Import] No messages parsed. File format not recognized.')
-        setError('Не удалось распознать сообщения в файле. Пожалуйста, приложите файл в чат для анализа формата.')
+        setError('Не удалось распознать сообщения в файле. Попробуйте загрузить ZIP-архив.')
         setFile(null)
         return
       }
@@ -143,14 +146,10 @@ export default function WhatsAppImportPage() {
         participantCount: participants.size,
         dateRange: minDate && maxDate 
           ? `${formatDate(minDate)} — ${formatDate(maxDate)}`
-          : 'Не определено'
+          : 'Не определено',
+        isZip: false
       })
       
-      console.log('[WhatsApp Import] Preview ready:', {
-        messages: messageCount,
-        participants: participants.size,
-        dateRange: minDate && maxDate ? `${minDate.toISOString()} to ${maxDate.toISOString()}` : 'N/A'
-      })
     } catch (err) {
       console.error('Error parsing file:', err)
       setError('Ошибка при чтении файла')
@@ -170,11 +169,13 @@ export default function WhatsAppImportPage() {
   
   const [importResult, setImportResult] = useState<{
     success: boolean
+    groupName?: string
     stats: {
       messagesTotal: number
       messagesImported: number
       participantsCreated: number
       participantsExisting: number
+      vcfContactsFound?: number
     }
   } | null>(null)
   
@@ -203,9 +204,9 @@ export default function WhatsAppImportPage() {
         throw new Error(result.error || 'Ошибка при импорте')
       }
       
-      // Показываем результат на этой же странице
       setImportResult({
         success: true,
+        groupName: result.groupName,
         stats: result.stats
       })
       
@@ -235,11 +236,11 @@ export default function WhatsAppImportPage() {
           <CardHeader>
             <CardTitle>Загрузка файла</CardTitle>
             <CardDescription>
-              Загрузите файл экспорта чата WhatsApp (.txt)
+              Загрузите ZIP-архив или TXT-файл экспорта чата WhatsApp
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Зона загрузки */}
+            {/* Drop zone */}
             <div
               className={`
                 border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
@@ -254,7 +255,7 @@ export default function WhatsAppImportPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt"
+                accept=".txt,.zip"
                 className="hidden"
                 onChange={(e) => {
                   const selectedFile = e.target.files?.[0]
@@ -264,10 +265,19 @@ export default function WhatsAppImportPage() {
               
               {file ? (
                 <div className="space-y-2">
-                  <CheckCircle2 className="w-12 h-12 mx-auto text-green-500" />
+                  {file.name.toLowerCase().endsWith('.zip') ? (
+                    <Archive className="w-12 h-12 mx-auto text-green-500" />
+                  ) : (
+                    <CheckCircle2 className="w-12 h-12 mx-auto text-green-500" />
+                  )}
                   <div className="font-medium text-green-700">{file.name}</div>
                   <div className="text-sm text-green-600">
                     {(file.size / 1024).toFixed(1)} КБ
+                    {file.name.toLowerCase().endsWith('.zip') && (
+                      <span className="ml-2 px-2 py-0.5 bg-green-200 rounded text-xs">
+                        ZIP-архив
+                      </span>
+                    )}
                   </div>
                   <button 
                     className="text-sm text-neutral-500 hover:text-neutral-700 underline"
@@ -288,34 +298,46 @@ export default function WhatsAppImportPage() {
                     или нажмите для выбора
                   </div>
                   <div className="text-xs text-neutral-400">
-                    Поддерживаемый формат: .txt
+                    Поддерживаемые форматы: <strong>.zip</strong> (рекомендуется) или <strong>.txt</strong>
                   </div>
                 </div>
               )}
             </div>
             
-            {/* Превью */}
+            {/* Preview */}
             {preview && (
               <div className="bg-neutral-50 rounded-lg p-4 space-y-3">
-                <h4 className="font-medium">Предварительный анализ:</h4>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div className="text-2xl font-bold text-green-600">{preview.messageCount}</div>
-                    <div className="text-xs text-neutral-500">сообщений</div>
+                <h4 className="font-medium">
+                  {preview.isZip ? '📦 ZIP-архив выбран' : 'Предварительный анализ:'}
+                </h4>
+                {preview.isZip ? (
+                  <div className="text-sm text-neutral-600">
+                    <p>Архив будет распакован на сервере.</p>
+                    <p className="mt-2 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-blue-500" />
+                      Имена контактов из VCF-файлов будут использованы для участников
+                    </p>
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold text-blue-600">{preview.participantCount}</div>
-                    <div className="text-xs text-neutral-500">участников</div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <div className="text-2xl font-bold text-green-600">{preview.messageCount}</div>
+                      <div className="text-xs text-neutral-500">сообщений</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-blue-600">{preview.participantCount}</div>
+                      <div className="text-xs text-neutral-500">участников</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-neutral-700">{preview.dateRange}</div>
+                      <div className="text-xs text-neutral-500">период</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-medium text-neutral-700">{preview.dateRange}</div>
-                    <div className="text-xs text-neutral-500">период</div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
             
-            {/* Ошибка */}
+            {/* Error */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
@@ -323,24 +345,29 @@ export default function WhatsAppImportPage() {
               </div>
             )}
             
-            {/* Информация */}
+            {/* Info */}
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-              <strong>ℹ️ Важно:</strong>
+              <strong>💡 Рекомендуется загружать ZIP-архив:</strong>
               <ul className="mt-2 space-y-1 list-disc list-inside">
-                <li>Участники будут созданы по номерам телефонов</li>
-                <li>Повторный импорт того же файла не создаст дубликаты</li>
-                <li>Сообщения будут доступны в профилях участников</li>
+                <li>Архив содержит VCF-файлы с именами контактов</li>
+                <li>Участники будут созданы с реальными именами, а не номерами телефонов</li>
+                <li>Повторный импорт не создаст дубликаты</li>
               </ul>
             </div>
             
-            {/* Результат импорта */}
+            {/* Import result */}
             {importResult && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
-                <h3 className="text-lg font-semibold text-green-800 mb-4">Импорт завершён!</h3>
+                <h3 className="text-lg font-semibold text-green-800 mb-2">Импорт завершён!</h3>
+                {importResult.groupName && (
+                  <p className="text-green-700 mb-4">Группа: {importResult.groupName}</p>
+                )}
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="bg-white rounded-lg p-3">
-                    <div className="text-2xl font-bold text-green-600">{importResult.stats.messagesImported}</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {importResult.stats.messagesImported.toLocaleString('ru')}
+                    </div>
                     <div className="text-neutral-500">сообщений импортировано</div>
                   </div>
                   <div className="bg-white rounded-lg p-3">
@@ -348,9 +375,15 @@ export default function WhatsAppImportPage() {
                     <div className="text-neutral-500">участников создано</div>
                   </div>
                   {importResult.stats.participantsExisting > 0 && (
-                    <div className="bg-white rounded-lg p-3 col-span-2">
+                    <div className="bg-white rounded-lg p-3">
                       <div className="text-lg font-bold text-neutral-600">{importResult.stats.participantsExisting}</div>
-                      <div className="text-neutral-500">участников уже существовали</div>
+                      <div className="text-neutral-500">уже существовали</div>
+                    </div>
+                  )}
+                  {importResult.stats.vcfContactsFound && importResult.stats.vcfContactsFound > 0 && (
+                    <div className="bg-white rounded-lg p-3">
+                      <div className="text-lg font-bold text-purple-600">{importResult.stats.vcfContactsFound}</div>
+                      <div className="text-neutral-500">имён из VCF</div>
                     </div>
                   )}
                 </div>
@@ -375,18 +408,23 @@ export default function WhatsAppImportPage() {
               </div>
             )}
             
-            {/* Кнопка импорта */}
+            {/* Import button */}
             {!importResult && (
               <Button
                 className="w-full"
                 size="lg"
-                disabled={!file || !preview || isUploading}
+                disabled={!file || isUploading}
                 onClick={handleImport}
               >
                 {isUploading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Импортируем...
+                  </>
+                ) : preview?.isZip ? (
+                  <>
+                    <Archive className="w-4 h-4 mr-2" />
+                    Импортировать архив
                   </>
                 ) : (
                   <>
@@ -402,4 +440,3 @@ export default function WhatsAppImportPage() {
     </div>
   )
 }
-

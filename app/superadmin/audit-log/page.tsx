@@ -6,9 +6,9 @@ export default function SuperadminAuditLogPage() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Admin Action Audit Log</h1>
+        <h1 className="text-3xl font-bold">Журнал действий админов</h1>
         <p className="text-neutral-600 mt-2">
-          Track what admins do in the system - who did what and when
+          Отслеживание действий администраторов: кто, что и когда сделал
         </p>
       </div>
       
@@ -16,4 +16,3 @@ export default function SuperadminAuditLogPage() {
     </div>
   )
 }
-

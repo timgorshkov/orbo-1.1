@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser } from '@/lib/services/telegramJsonParser';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -722,6 +723,23 @@ export async function POST(
           matched_participants: decisions.filter(d => d.action === 'merge').length,
         })
         .eq('id', batchId);
+
+      // Log admin action
+      await logAdminAction({
+        orgId: orgId!,
+        userId: user.id,
+        action: AdminActions.IMPORT_TELEGRAM_HISTORY,
+        resourceType: ResourceTypes.IMPORT,
+        resourceId: batchId.toString(),
+        metadata: {
+          group_id: groupId,
+          group_title: group.title,
+          filename: file.name,
+          imported_messages: importedCount,
+          new_participants: newParticipantsCount,
+          format: isJson ? 'json' : 'html'
+        }
+      });
 
       return NextResponse.json({
         success: true,

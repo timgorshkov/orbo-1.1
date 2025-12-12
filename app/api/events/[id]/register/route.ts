@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 // POST /api/events/[id]/register - Register for event
 export async function POST(
@@ -264,7 +265,18 @@ export async function POST(
       
       // Handle duplicate key error gracefully
       if (rpcError.code === '23505' || rpcError.message?.includes('duplicate')) {
-        // User is already registered (race condition)
+        // User is already registered (race condition) - this is expected, not an error
+        await logErrorToDatabase({
+          level: 'info',
+          message: 'Duplicate event registration attempt (race condition)',
+          errorCode: 'EVENT_REGISTER_DUPLICATE',
+          context: {
+            endpoint: '/api/events/[id]/register',
+            eventId,
+            participantId: participant.id
+          }
+        })
+        
         const { data: existingReg } = await adminSupabase
           .from('event_registrations')
           .select('*')
@@ -280,6 +292,19 @@ export async function POST(
           { status: 200 }
         )
       }
+      
+      await logErrorToDatabase({
+        level: 'error',
+        message: `Failed to register for event: ${rpcError.message}`,
+        errorCode: 'EVENT_REGISTER_ERROR',
+        context: {
+          endpoint: '/api/events/[id]/register',
+          eventId,
+          participantId: participant.id,
+          rpcErrorCode: rpcError.code,
+          rpcErrorMessage: rpcError.message
+        }
+      })
       
       return NextResponse.json(
         { error: rpcError.message || 'Failed to register for event' },
@@ -314,7 +339,16 @@ export async function POST(
 
     return NextResponse.json({ registration }, { status: 201 })
   } catch (error: any) {
-    console.error('Error in POST /api/events/[id]/register:', error)
+    await logErrorToDatabase({
+      level: 'error',
+      message: error.message || 'Unknown error in event registration',
+      errorCode: 'EVENT_REGISTER_ERROR',
+      context: {
+        endpoint: '/api/events/[id]/register',
+        errorType: error.constructor?.name || typeof error
+      },
+      stackTrace: error.stack
+    })
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

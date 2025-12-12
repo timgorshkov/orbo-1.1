@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 /**
  * Верифицирует код авторизации и создает сессию для пользователя
@@ -17,13 +18,11 @@ import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
  * Возвращает: { success: true, redirectUrl: string, sessionUrl: string }
  */
 export async function POST(req: NextRequest) {
-  console.log('[Verify API] ==================== ENDPOINT CALLED ====================');
-  console.log('[Verify API] Timestamp:', new Date().toISOString());
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
   
   try {
-    console.log('[Verify API] Parsing JSON body...');
     const body = await req.json()
-    console.log('[Verify API] ✅ JSON parsed successfully');
     
     const { 
       code, 
@@ -35,14 +34,24 @@ export async function POST(req: NextRequest) {
     } = body
 
     if (!code || !telegramUserId) {
-      console.log('[Verify API] ❌ Missing required fields');
+      // Логируем как предупреждение - может быть бот или ошибка клиента
+      await logErrorToDatabase({
+        level: 'warn',
+        message: 'Missing required fields for Telegram code verification',
+        errorCode: 'AUTH_TG_CODE_FAILED',
+        context: {
+          endpoint: '/api/auth/telegram-code/verify',
+          hasCode: !!code,
+          hasTelegramUserId: !!telegramUserId,
+          ip: ipAddress
+        }
+      })
+      
       return NextResponse.json({ 
         error: 'Missing required fields',
         errorCode: 'MISSING_FIELDS'
       }, { status: 400 })
     }
-
-    console.log(`[Verify API] Calling verifyTelegramAuthCode service for code ${code}`)
 
     // Вызываем сервис верификации
     const result = await verifyTelegramAuthCode({
@@ -54,10 +63,7 @@ export async function POST(req: NextRequest) {
       photoUrl
     })
 
-    console.log('[Verify API] Service call completed:', { success: result.success })
-
     if (result.success) {
-      console.log('[Verify API] ✅ Verification successful')
       return NextResponse.json({
         success: true,
         sessionUrl: result.sessionUrl,
@@ -66,7 +72,23 @@ export async function POST(req: NextRequest) {
         orgId: result.orgId
       })
     } else {
-      console.log('[Verify API] ❌ Verification failed:', result.errorCode)
+      // Логируем неуспешную верификацию
+      const isExpired = result.errorCode === 'EXPIRED_CODE'
+      const isInvalid = result.errorCode === 'INVALID_CODE'
+      const isDbError = result.errorCode === 'DB_ERROR'
+      
+      await logErrorToDatabase({
+        level: isDbError ? 'error' : 'warn',
+        message: `Telegram code verification failed: ${result.error}`,
+        errorCode: isExpired ? 'AUTH_TG_CODE_EXPIRED' : isDbError ? 'AUTH_TG_CODE_ERROR' : 'AUTH_TG_CODE_FAILED',
+        context: {
+          endpoint: '/api/auth/telegram-code/verify',
+          errorCode: result.errorCode,
+          telegramUserId,
+          telegramUsername,
+          ip: ipAddress
+        }
+      })
       
       const statusCode = 
         result.errorCode === 'MISSING_FIELDS' ? 400 :
@@ -82,11 +104,18 @@ export async function POST(req: NextRequest) {
     }
 
   } catch (error) {
-    console.error('[Verify API] ❌ Error in verify endpoint:', error);
-    console.error('[Verify API] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    console.error('[Verify API] Error message:', error instanceof Error ? error.message : String(error));
-    console.error('[Verify API] Error stack:', error instanceof Error ? error.stack : 'No stack');
-    console.log(`[Verify API] ==================== ERROR ====================`);
+    // Логируем серверную ошибку
+    await logErrorToDatabase({
+      level: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error in Telegram code verification',
+      errorCode: 'AUTH_TG_CODE_ERROR',
+      context: {
+        endpoint: '/api/auth/telegram-code/verify',
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        ip: ipAddress
+      },
+      stackTrace: error instanceof Error ? error.stack : undefined
+    })
     
     // Проверяем, является ли это ошибкой парсинга JSON
     if (error instanceof Error && error.message.includes('JSON')) {

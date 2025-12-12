@@ -199,15 +199,47 @@ export default async function EventDetailPage({
 
   // Check authentication
   const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const isAuthenticated = !authError && !!user
   
-  // For unauthenticated users - redirect to Telegram auth (not email signin)
-  if (authError || !user) {
-    // Redirect to Telegram auth page with return URL
-    redirect(`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${eventId}`)}`)
+  // For PUBLIC events: show event details to everyone (auth required only for registration)
+  // For PRIVATE events: require authentication and org membership
+  
+  if (!isAuthenticated) {
+    if (event.is_public) {
+      // Public event - show event details without auth (read-only mode)
+      // Registration will require auth (handled in EventDetail component)
+      const eventWithStats = {
+        ...event,
+        registered_count: event.event_registrations?.filter(
+          (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
+        ).length || 0,
+        available_spots: event.capacity
+          ? Math.max(0, event.capacity - (event.event_registrations?.filter(
+              (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
+            ).length || 0))
+          : null,
+        is_user_registered: false
+      }
+      
+      return (
+        <div className="p-6">
+          <EventDetail 
+            event={eventWithStats}
+            orgId={orgId}
+            role="guest"
+            isEditMode={false}
+            telegramGroups={[]}
+            requireAuthForRegistration={true}
+          />
+        </div>
+      )
+    } else {
+      // Private event - redirect to auth
+      redirect(`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${eventId}`)}`)
+    }
   }
 
-  // For private events, require org membership
-  // For public events, allow any authenticated user
+  // User is authenticated - check org access for private events
   let hasOrgAccess = true;
   if (!event.is_public) {
     // Check membership directly instead of using requireOrgAccess (which throws)

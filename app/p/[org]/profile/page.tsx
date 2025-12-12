@@ -85,14 +85,16 @@ export default function ProfilePage() {
     'interests_keywords', 'recent_asks', 'city_inferred', 'city_confidence',
     'topics_discussed', 'behavioral_role', 'role_confidence', 'reaction_patterns',
     'communication_style',
-    // User-defined fields (shown in "Goals & Offers" section - можно показать позже)
+    // User-defined fields (shown in "Goals & Offers" section separately)
     'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
     // Technical/meta fields (should only be in logs)
     'last_enriched_at', 'enrichment_source', 'enrichment_version', 
     'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
     'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
     // Event behavior (shown in separate section)
-    'event_attendance'
+    'event_attendance',
+    // Import metadata (hidden)
+    'whatsapp_imported', 'import_date'
   ];
   
   // Convert custom_attributes object to array for editing (excluding system fields)
@@ -685,6 +687,68 @@ export default function ProfilePage() {
                   />
                 </div>
                 
+                {/* Goals & Offers (user-editable) */}
+                <div className="border-t pt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Цели и Предложения</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Мои цели
+                      </label>
+                      <textarea
+                        value={editForm.custom_attributes.goals_self || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          custom_attributes: {
+                            ...editForm.custom_attributes,
+                            goals_self: e.target.value
+                          }
+                        })}
+                        placeholder="Опишите ваши цели и интересы в сообществе"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Могу предложить (через запятую)
+                      </label>
+                      <Input
+                        type="text"
+                        value={Array.isArray(editForm.custom_attributes.offers) 
+                          ? editForm.custom_attributes.offers.join(', ')
+                          : editForm.custom_attributes.offers || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          custom_attributes: {
+                            ...editForm.custom_attributes,
+                            offers: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          }
+                        })}
+                        placeholder="Консультации, знакомства, ресурсы..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Ищу (через запятую)
+                      </label>
+                      <Input
+                        type="text"
+                        value={Array.isArray(editForm.custom_attributes.asks) 
+                          ? editForm.custom_attributes.asks.join(', ')
+                          : editForm.custom_attributes.asks || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          custom_attributes: {
+                            ...editForm.custom_attributes,
+                            asks: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          }
+                        })}
+                        placeholder="Партнёры, инвестиции, специалисты..."
+                      />
+                    </div>
+                  </div>
+                </div>
+                
                 {/* Custom Attributes */}
                 <div className="border-t pt-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -842,6 +906,54 @@ export default function ProfilePage() {
                   </div>
                 )}
 
+                {/* Goals & Offers (user-editable) */}
+                {profile.participant?.custom_attributes && (() => {
+                  const attrs = profile.participant.custom_attributes || {}
+                  const hasGoalsOffers = attrs.goals_self || 
+                    (Array.isArray(attrs.offers) && attrs.offers.length > 0) || 
+                    (Array.isArray(attrs.asks) && attrs.asks.length > 0)
+                  
+                  if (!hasGoalsOffers) return null
+                  
+                  return (
+                    <div className="border-t pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Цели и Предложения</h3>
+                      <div className="space-y-3">
+                        {attrs.goals_self && (
+                          <div>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Цели</span>
+                            <p className="text-sm text-gray-800 mt-1">{attrs.goals_self}</p>
+                          </div>
+                        )}
+                        {Array.isArray(attrs.offers) && attrs.offers.length > 0 && (
+                          <div>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Могу предложить</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {attrs.offers.map((offer: string, i: number) => (
+                                <span key={i} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full">
+                                  {offer}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {Array.isArray(attrs.asks) && attrs.asks.length > 0 && (
+                          <div>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Ищу</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {attrs.asks.map((ask: string, i: number) => (
+                                <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
+                                  {ask}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* Contact Information */}
                 {(profile.participant?.email || profile.participant?.phone) && (
                   <div className="border-t pt-4">
@@ -868,23 +980,25 @@ export default function ProfilePage() {
                 {/* Custom attributes (excluding system/AI fields) */}
                 {profile.participant?.custom_attributes && (() => {
                   // System fields that shouldn't be displayed (AI-generated or technical)
-                  const systemFields = [
+                  const hiddenFields = [
                     // AI-extracted fields
                     'interests_keywords', 'recent_asks', 'city_inferred', 'city_confidence',
                     'topics_discussed', 'behavioral_role', 'role_confidence', 'reaction_patterns',
                     'communication_style',
-                    // User-defined fields (shown in "Goals & Offers" section - можно показать позже)
+                    // User-defined fields (shown in "Goals & Offers" section separately)
                     'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
                     // Technical/meta fields (should only be in logs)
                     'last_enriched_at', 'enrichment_source', 'enrichment_version', 
                     'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
                     'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
                     // Event behavior (shown in separate section)
-                    'event_attendance'
+                    'event_attendance',
+                    // Import metadata (hidden)
+                    'whatsapp_imported', 'import_date'
                   ];
                   
                   const userAttributes = Object.entries(profile.participant.custom_attributes)
-                    .filter(([key]) => !systemFields.includes(key));
+                    .filter(([key]) => !hiddenFields.includes(key));
                   
                   if (userAttributes.length === 0) return null;
                   

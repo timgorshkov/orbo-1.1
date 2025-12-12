@@ -400,8 +400,42 @@ export async function getParticipantDetail(orgId: string, participantId: string)
   // Audit log feature was removed in migration 072
   const auditLog: ParticipantAuditRecord[] = [];
 
+  // Calculate real_join_date and real_last_activity from events
+  // This ensures correct engagement category for WhatsApp participants
+  let realJoinDate = participantRecord.created_at;
+  let realLastActivity = participantRecord.last_activity_at;
+  
+  if (eventsData.length > 0) {
+    // Get earliest and latest event dates
+    const sortedByDate = [...eventsData].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    const firstEventDate = new Date(sortedByDate[0].created_at);
+    const lastEventDate = new Date(sortedByDate[sortedByDate.length - 1].created_at);
+    const createdAt = participantRecord.created_at ? new Date(participantRecord.created_at) : null;
+    const lastActivityAt = participantRecord.last_activity_at ? new Date(participantRecord.last_activity_at) : null;
+    
+    // real_join_date: earliest of first event or created_at
+    if (!createdAt || firstEventDate < createdAt) {
+      realJoinDate = firstEventDate.toISOString();
+    }
+    
+    // real_last_activity: latest of last event or last_activity_at
+    if (!lastActivityAt || lastEventDate > lastActivityAt) {
+      realLastActivity = lastEventDate.toISOString();
+    }
+  }
+  
+  // Enrich participant record with real dates
+  const enrichedParticipant = {
+    ...participantRecord,
+    real_join_date: realJoinDate,
+    real_last_activity: realLastActivity
+  } as ParticipantRecord;
+
   return {
-    participant: participantRecord as ParticipantRecord,
+    participant: enrichedParticipant,
     canonicalParticipantId: canonicalId,
     requestedParticipantId: participantId,
     duplicates: (duplicates || []) as ParticipantRecord[],

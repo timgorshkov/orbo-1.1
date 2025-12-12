@@ -64,8 +64,6 @@ async function logOpenAICall(params: {
     if (error) {
       console.error('[OpenAI] Failed to log API call:', error);
       // Don't throw - logging failure shouldn't break enrichment
-    } else {
-      console.log(`[OpenAI] Logged API call: ${params.requestType}, ${params.totalTokens} tokens, $${params.costUsd.toFixed(4)}`);
     }
   } catch (logError) {
     console.error('[OpenAI] Error logging API call:', logError);
@@ -141,8 +139,6 @@ export async function analyzeParticipantWithAI(
   // This allows analyzing imported history with old dates
   const recentMessages = sortedMessages.slice(0, 50);
   
-  console.log(`[AI Enrichment] Using ${recentMessages.length} messages (from ${messages.length} total, no date filter)`);
-  
   // Prepare prompt
   const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в Telegram-группе и выделить:
 
@@ -186,17 +182,6 @@ export async function analyzeParticipantWithAI(
 - Возвращай только данные в формате JSON, без комментариев`;
 
   const messagesToAnalyze = recentMessages.slice(0, 50);
-  
-  // ⭐ Log sample messages for debugging
-  console.log(`[AI Enrichment] Preparing prompt with ${messagesToAnalyze.length} messages`);
-  if (messagesToAnalyze.length > 0) {
-    console.log(`[AI Enrichment] Sample messages (first 3):`, messagesToAnalyze.slice(0, 3).map(m => ({
-      text: m.text.slice(0, 100),
-      date: m.created_at,
-      author: m.author_name,
-      is_participant: m.is_participant
-    })));
-  }
   
   // Build reacted messages section if available
   const reactedSection = reactedMessages.length > 0 
@@ -249,9 +234,6 @@ ${messagesToAnalyze.map((m, i) => {
   try {
     const startTime = Date.now();
     
-    // ⭐ Log prompt length for debugging
-    console.log(`[AI Enrichment] Prompt length: ${userPrompt.length} chars, ${messagesToAnalyze.length} messages`);
-    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini', // Cheaper model, good enough for extraction
       messages: [
@@ -266,23 +248,13 @@ ${messagesToAnalyze.map((m, i) => {
     const rawResponse = response.choices[0].message.content || '{}';
     const result = JSON.parse(rawResponse);
     
-    // ⭐ Log raw AI response for debugging
-    console.log(`[AI Enrichment] Raw AI response:`, rawResponse.slice(0, 500));
-    console.log(`[AI Enrichment] Parsed result:`, {
-      interests: result.interests,
-      topics_count: Object.keys(result.topics_discussed || {}).length,
-      recent_asks: result.recent_asks,
-      city: result.city
-    });
-    
     // Calculate cost (gpt-4o-mini pricing: $0.15/1M input, $0.60/1M output)
     const inputTokens = response.usage?.prompt_tokens || 0;
     const outputTokens = response.usage?.completion_tokens || 0;
     const totalTokens = response.usage?.total_tokens || 0;
     const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
     
-    console.log(`[AI Enrichment] Analyzed ${messages.length} messages in ${Date.now() - startTime}ms`);
-    console.log(`[AI Enrichment] Tokens: ${totalTokens}, Cost: $${costUsd.toFixed(4)}`);
+    console.log(`[AI Enrichment] ${messages.length} msgs → ${result.interests?.length || 0} interests, ${totalTokens} tokens, $${costUsd.toFixed(4)}`);
     
     // ⭐ Log API call to database
     await logOpenAICall({

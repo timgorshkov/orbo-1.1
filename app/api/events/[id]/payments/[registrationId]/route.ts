@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 /**
  * PATCH /api/events/[id]/payments/[registrationId]
@@ -162,6 +163,25 @@ export async function PATCH(
       console.error('Error updating payment:', updateError)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
+
+    // Log admin action
+    await logAdminAction({
+      orgId: event.org_id,
+      userId: user.id,
+      action: AdminActions.UPDATE_PAYMENT_STATUS,
+      resourceType: ResourceTypes.EVENT_PAYMENT,
+      resourceId: registrationId,
+      changes: {
+        before: { payment_status: existingReg.payment_status },
+        after: { payment_status: updateData.payment_status }
+      },
+      metadata: {
+        event_id: eventId,
+        participant_name: (updatedReg as any)?.participants?.full_name,
+        paid_amount: updateData.paid_amount,
+        payment_method: updateData.payment_method
+      }
+    })
 
     return NextResponse.json({
       success: true,

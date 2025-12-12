@@ -143,6 +143,25 @@ export async function GET(
     } else {
       console.log('Dashboard: No groups found, skipping activity fetch')
     }
+    
+    // Also add WhatsApp activity (tg_chat_id = 0)
+    const { data: whatsappActivity } = await adminSupabase
+      .from('activity_events')
+      .select('created_at')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', 0)
+      .eq('event_type', 'message')
+      .gte('created_at', fourteenDaysAgo.toISOString())
+    
+    if (whatsappActivity) {
+      whatsappActivity.forEach(event => {
+        const dateKey = new Date(event.created_at).toISOString().split('T')[0]
+        if (activityByDay[dateKey] !== undefined) {
+          activityByDay[dateKey] += 1
+        }
+      })
+      console.log(`Dashboard: Added ${whatsappActivity.length} WhatsApp messages to activity chart`)
+    }
 
     const activityChart = last14Days.map(date => ({
       date,
@@ -159,6 +178,9 @@ export async function GET(
       inactiveNewcomers: []
     }
 
+    // Day of year for rotation of attention zone items
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
+    
     if (!isOnboarding && (groupsCount || 0) > 0) {
       // 4a. Events with low registration (< 30% capacity, 3 days before start)
       const threeDaysFromNow = new Date()
@@ -197,20 +219,21 @@ export async function GET(
           }
         })
         .filter(e => e.registrationRate < 30 && e.capacity)
-        .slice(0, 3)
 
-      attentionZones.criticalEvents = criticalEvents as any
+      // Limit critical events to 3 with rotation
+      const eventsOffset = dayOfYear % Math.max(1, criticalEvents.length)
+      attentionZones.criticalEvents = (criticalEvents.length <= 3 
+        ? criticalEvents 
+        : criticalEvents.slice(eventsOffset, eventsOffset + 3).concat(
+            criticalEvents.slice(0, Math.max(0, 3 - (criticalEvents.length - eventsOffset)))
+          ).slice(0, 3)
+      ) as any
 
       // 4b. Participants on verge of churn (were active, silent 14+ days)
-      const fourteenDaysAgo14 = new Date()
-      fourteenDaysAgo14.setDate(fourteenDaysAgo14.getDate() - 14)
-
       const { data: churningParticipants } = await adminSupabase.rpc('get_churning_participants', {
         p_org_id: orgId,
         p_days_silent: 14
       })
-
-      attentionZones.churningParticipants = (churningParticipants || []).slice(0, 5) as any
 
       // 4c. Inactive newcomers (14+ days after first activity with no second activity)
       const { data: inactiveNewcomers } = await adminSupabase.rpc('get_inactive_newcomers', {
@@ -218,7 +241,26 @@ export async function GET(
         p_days_since_first: 14
       })
 
-      attentionZones.inactiveNewcomers = (inactiveNewcomers || []).slice(0, 5) as any
+      // Limit to 3 items with daily rotation for variety
+      const churningList = churningParticipants || []
+      const newcomersList = inactiveNewcomers || []
+      
+      // Rotate based on day - shows different participants each day
+      const churningOffset = dayOfYear % Math.max(1, churningList.length)
+      const newcomersOffset = dayOfYear % Math.max(1, newcomersList.length)
+      
+      // Get 3 items with rotation (wrap around)
+      const getRotatedSlice = (arr: any[], offset: number, limit: number) => {
+        if (arr.length <= limit) return arr
+        const result = []
+        for (let i = 0; i < limit; i++) {
+          result.push(arr[(offset + i) % arr.length])
+        }
+        return result
+      }
+      
+      attentionZones.churningParticipants = getRotatedSlice(churningList, churningOffset, 3) as any
+      attentionZones.inactiveNewcomers = getRotatedSlice(newcomersList, newcomersOffset, 3) as any
     }
 
     // 5. Upcoming events (next 3)

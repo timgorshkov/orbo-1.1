@@ -1,14 +1,35 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
+// Re-export descriptions for backwards compatibility in server-side code
+export { 
+  ActionDescriptions, 
+  ResourceDescriptions, 
+  getActionDescription, 
+  getResourceDescription 
+} from './auditActionDescriptions';
+
+// Lazy initialization of Supabase admin client to avoid issues during module loading
+let _supabaseAdmin: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient | null {
+  if (!_supabaseAdmin) {
+    // Only create client when actually needed (server-side only)
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!url || !key) {
+      console.error('[logAdminAction] Missing Supabase credentials');
+      return null;
     }
+    
+    _supabaseAdmin = createClient(url, key, {
+      auth: {
+        persistSession: false
+      }
+    });
   }
-);
+  return _supabaseAdmin;
+}
 
 export interface LogAdminActionOptions {
   // Who
@@ -37,31 +58,16 @@ export interface LogAdminActionOptions {
  * Log admin action to database (admin_action_log table)
  * 
  * This function records what admins do in the system for audit purposes.
- * 
- * @example
- * await logAdminAction({
- *   orgId: '123',
- *   userId: '456',
- *   action: 'send_test_digest',
- *   resourceType: 'digest',
- *   metadata: { recipient_count: 1 }
- * });
- * 
- * @example
- * await logAdminAction({
- *   orgId: '123',
- *   userId: '456',
- *   action: 'update_participant',
- *   resourceType: 'participant',
- *   resourceId: '789',
- *   changes: {
- *     before: { tags: ['active'] },
- *     after: { tags: ['active', 'vip'] }
- *   }
- * });
  */
 export async function logAdminAction(options: LogAdminActionOptions): Promise<void> {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+    
+    if (!supabaseAdmin) {
+      console.error('[logAdminAction] Supabase admin client not available');
+      return;
+    }
+    
     const {
       orgId,
       userId,
@@ -105,47 +111,95 @@ export async function logAdminAction(options: LogAdminActionOptions): Promise<vo
  * Common action types (for consistency)
  */
 export const AdminActions = {
-  // Digest
-  SEND_TEST_DIGEST: 'send_test_digest',
-  UPDATE_DIGEST_SETTINGS: 'update_digest_settings',
-  
-  // Participants
+  // ==========================================
+  // PARTICIPANTS
+  // ==========================================
   UPDATE_PARTICIPANT: 'update_participant',
   DELETE_PARTICIPANT: 'delete_participant',
+  MERGE_PARTICIPANTS: 'merge_participants',
+  ENRICH_PARTICIPANT: 'enrich_participant', // AI analysis
   SYNC_PARTICIPANT_PHOTO: 'sync_participant_photo',
   
-  // Events
+  // ==========================================
+  // EVENTS
+  // ==========================================
   CREATE_EVENT: 'create_event',
   UPDATE_EVENT: 'update_event',
   DELETE_EVENT: 'delete_event',
-  PUBLISH_EVENT: 'publish_event',
+  PUBLISH_EVENT_TG: 'publish_event_tg', // Share to Telegram
   
-  // Telegram
+  // Event registrations
+  UPDATE_REGISTRATION: 'update_registration', // Admin edits registration
+  CANCEL_REGISTRATION: 'cancel_registration', // Admin cancels registration
+  ADD_PARTICIPANT_TO_EVENT: 'add_participant_to_event', // Manual add
+  
+  // Event payments
+  UPDATE_PAYMENT_STATUS: 'update_payment_status',
+  
+  // ==========================================
+  // TELEGRAM GROUPS
+  // ==========================================
+  ADD_TELEGRAM_GROUP: 'add_telegram_group',
+  REMOVE_TELEGRAM_GROUP: 'remove_telegram_group',
   SYNC_TELEGRAM_GROUP: 'sync_telegram_group',
-  UPDATE_TELEGRAM_SETTINGS: 'update_telegram_settings',
-  SET_WEBHOOK: 'set_webhook',
+  BOT_STATUS_CHANGED: 'bot_status_changed', // Bot promoted/demoted
   
-  // Organization
+  // ==========================================
+  // IMPORT
+  // ==========================================
+  IMPORT_TELEGRAM_HISTORY: 'import_telegram_history',
+  IMPORT_WHATSAPP_HISTORY: 'import_whatsapp_history',
+  
+  // ==========================================
+  // DIGEST
+  // ==========================================
+  SEND_TEST_DIGEST: 'send_test_digest',
+  UPDATE_DIGEST_SETTINGS: 'update_digest_settings',
+  
+  // ==========================================
+  // ORGANIZATION
+  // ==========================================
   UPDATE_ORG_SETTINGS: 'update_org_settings',
   UPDATE_ORG_PROFILE: 'update_org_profile',
   
-  // Import
-  IMPORT_MESSAGES: 'import_messages',
-  
-  // Errors
+  // ==========================================
+  // ERRORS (Superadmin)
+  // ==========================================
   RESOLVE_ERROR: 'resolve_error',
+  
+  // ==========================================
+  // LEGACY (Apps, Payments)
+  // ==========================================
+  CREATE_APP: 'create_app',
+  UPDATE_APP: 'update_app',
+  DELETE_APP: 'delete_app',
+  MODERATE_ITEM: 'moderate_item',
+  CREATE_PAYMENT: 'create_payment',
+  UPDATE_PAYMENT: 'update_payment',
+  CREATE_SUBSCRIPTION: 'create_subscription',
+  UPDATE_SUBSCRIPTION: 'update_subscription',
+  CANCEL_SUBSCRIPTION: 'cancel_subscription',
+  CREATE_PAYMENT_METHOD: 'create_payment_method',
+  UPDATE_PAYMENT_METHOD: 'update_payment_method',
+  DELETE_PAYMENT_METHOD: 'delete_payment_method',
 } as const;
 
 /**
  * Common resource types (for consistency)
  */
 export const ResourceTypes = {
-  DIGEST: 'digest',
   PARTICIPANT: 'participant',
   EVENT: 'event',
+  EVENT_REGISTRATION: 'event_registration',
+  EVENT_PAYMENT: 'event_payment',
   TELEGRAM_GROUP: 'telegram_group',
+  IMPORT: 'import',
+  DIGEST: 'digest',
   ORGANIZATION: 'organization',
   ERROR: 'error',
-  WEBHOOK: 'webhook',
+  APP: 'app',
+  APP_ITEM: 'app_item',
+  PAYMENT: 'payment',
+  SUBSCRIPTION: 'subscription',
+  PAYMENT_METHOD: 'payment_method',
 } as const;
-

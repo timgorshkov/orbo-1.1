@@ -22,6 +22,7 @@ type Event = {
   cover_image_url: string | null
   event_type: 'online' | 'offline'
   location_info: string | null
+  map_link?: string | null
   event_date: string
   end_date?: string | null
   start_time: string
@@ -81,9 +82,10 @@ type Props = {
   role: 'owner' | 'admin' | 'member' | 'guest'
   isEditMode: boolean
   telegramGroups: Array<{ id: number; tg_chat_id: number; title: string | null }>
+  requireAuthForRegistration?: boolean // For public events viewed by unauthenticated users
 }
 
-export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups }: Props) {
+export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups, requireAuthForRegistration = false }: Props) {
   const { adminMode, isAdmin } = useAdminMode(role)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -499,7 +501,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     <CardTitle>Регистрация</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {isRegistered ? (
+                    {/* Show login prompt for unauthenticated users on public events */}
+                    {requireAuthForRegistration ? (
+                      <div className="text-center py-4">
+                        <div className="text-neutral-600 mb-4">
+                          Для регистрации необходимо войти через Telegram
+                        </div>
+                        <a
+                          href={`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${event.id}`)}`}
+                          className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                        >
+                          Войти и зарегистрироваться
+                        </a>
+                      </div>
+                    ) : isRegistered ? (
                       <>
                         <div className="text-center py-2">
                           <div className="text-green-600 font-medium mb-1">
@@ -664,10 +679,42 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                       <div className="font-medium">
                         {event.event_type === 'online' ? 'Онлайн' : 'Офлайн'}
                       </div>
-                      {event.location_info && (
-                        <div className="text-sm text-neutral-600 break-words">
-                          {event.location_info}
-                        </div>
+                      {event.event_type === 'online' && event.location_info && (
+                        isRegistered ? (
+                          <a 
+                            href={event.location_info} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                          >
+                            <LinkIcon className="w-3 h-3" />
+                            Ссылка на трансляцию
+                          </a>
+                        ) : (
+                          <div className="text-sm text-neutral-500 italic">
+                            Ссылка будет доступна после регистрации
+                          </div>
+                        )
+                      )}
+                      {event.event_type === 'offline' && (
+                        <>
+                          {event.location_info && (
+                            <div className="text-sm text-neutral-600 break-words">
+                              {event.location_info}
+                            </div>
+                          )}
+                          {event.map_link && (
+                            <a 
+                              href={event.map_link} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 mt-1"
+                            >
+                              <MapPin className="w-3 h-3" />
+                              Место на карте
+                            </a>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -905,7 +952,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     <CardTitle>Регистрация</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {isRegistered ? (
+                    {/* Show login prompt for unauthenticated users on public events */}
+                    {requireAuthForRegistration ? (
+                      <div className="text-center py-4">
+                        <div className="text-neutral-600 mb-4">
+                          Для регистрации необходимо войти через Telegram
+                        </div>
+                        <a
+                          href={`/p/${orgId}/auth?redirect=${encodeURIComponent(`/p/${orgId}/events/${event.id}`)}`}
+                          className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                        >
+                          Войти и зарегистрироваться
+                        </a>
+                      </div>
+                    ) : isRegistered ? (
                       <>
                         <div className="text-center py-2">
                           <div className="text-green-600 font-medium mb-1">
@@ -1067,10 +1127,42 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                       <div className="font-medium">
                         {event.event_type === 'online' ? 'Онлайн' : 'Офлайн'}
                       </div>
-                      {event.location_info && (
-                        <div className="text-sm text-neutral-600 break-words">
-                          {event.location_info}
-                        </div>
+                      {event.event_type === 'online' && event.location_info && (
+                        isRegistered ? (
+                          <a 
+                            href={event.location_info} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                          >
+                            <LinkIcon className="w-3 h-3" />
+                            Ссылка на трансляцию
+                          </a>
+                        ) : (
+                          <div className="text-sm text-neutral-500 italic">
+                            Ссылка будет доступна после регистрации
+                          </div>
+                        )
+                      )}
+                      {event.event_type === 'offline' && (
+                        <>
+                          {event.location_info && (
+                            <div className="text-sm text-neutral-600 break-words">
+                              {event.location_info}
+                            </div>
+                          )}
+                          {event.map_link && (
+                            <a 
+                              href={event.map_link} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 mt-1"
+                            >
+                              <MapPin className="w-3 h-3" />
+                              Место на карте
+                            </a>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

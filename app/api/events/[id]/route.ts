@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -136,6 +137,7 @@ export async function PUT(
       coverImageUrl,
       eventType,
       locationInfo,
+      mapLink,
       eventDate,
       endDate,
       startTime,
@@ -219,6 +221,7 @@ export async function PUT(
       cover_image_url: coverImageUrl || null,
       event_type: eventType,
       location_info: locationInfo || null,
+      map_link: eventType === 'offline' && mapLink ? mapLink : null,
       event_date: eventDate,
       end_date: endDate || null, // null means same day as event_date
       start_time: startTime,
@@ -262,6 +265,20 @@ export async function PUT(
       console.error('Error updating event:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Log admin action
+    await logAdminAction({
+      orgId: existingEvent.org_id,
+      userId: user.id,
+      action: AdminActions.UPDATE_EVENT,
+      resourceType: ResourceTypes.EVENT,
+      resourceId: eventId,
+      metadata: {
+        title: event.title,
+        event_type: event.event_type,
+        status: event.status
+      }
+    })
 
     // Sync registration fields based on registrationFieldsConfig
     if (event?.id) {
@@ -376,6 +393,16 @@ export async function DELETE(
       console.error('Error deleting event:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Log admin action
+    await logAdminAction({
+      orgId: existingEvent.org_id,
+      userId: user.id,
+      action: AdminActions.DELETE_EVENT,
+      resourceType: ResourceTypes.EVENT,
+      resourceId: eventId,
+      metadata: {}
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
