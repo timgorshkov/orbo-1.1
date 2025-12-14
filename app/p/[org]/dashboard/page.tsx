@@ -24,25 +24,27 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Проверяем роль (только админы могут видеть дашборд)
-  const { data: membership } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
+  // PARALLEL: Проверяем роль и получаем организацию одновременно
+  const [membershipResult, orgResult] = await Promise.all([
+    adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle(),
+    adminSupabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', orgId)
+      .single()
+  ])
+
+  const membership = membershipResult.data
+  const org = orgResult.data
 
   if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
-    // Если не админ, редирект на главную
     redirect(`/p/${orgId}`)
   }
-
-  // Получаем информацию об организации
-  const { data: org } = await adminSupabase
-    .from('organizations')
-    .select('id, name')
-    .eq('id', orgId)
-    .single()
 
   if (!org) {
     redirect('/orgs')

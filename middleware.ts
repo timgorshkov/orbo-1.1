@@ -50,11 +50,18 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/signup') ||
     pathname.startsWith('/auth-callback') || // Старый callback (для обратной совместимости)
     pathname.startsWith('/auth/callback') || // Новый server-side callback
+    pathname.startsWith('/auth/telegram') || // Telegram auth routes
     pathname.startsWith('/p/') || // Публичные страницы (проверка доступа внутри компонентов)
     pathname === '/' ||
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
   ) {
-    // ⭐ Refresh session for all requests to update tokens before Server Components access them
+    // ⚠️ НЕ вызываем getSession() для auth callback маршрутов - это нарушает PKCE flow!
+    // Code verifier cookie должен быть доступен для exchangeCodeForSession
+    if (pathname.startsWith('/auth/callback') || pathname.startsWith('/auth-callback')) {
+      return response
+    }
+    
+    // ⭐ Refresh session for other public routes to update tokens before Server Components access them
     // This prevents "Cookies can only be modified" errors in Server Components
     try {
       await supabase.auth.getSession()

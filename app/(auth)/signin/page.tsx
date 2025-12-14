@@ -49,6 +49,7 @@ export default function SignIn() {
             width={200} 
             height={60}
             className="mb-8"
+            priority
           />
           <h2 className="text-3xl font-bold">
             Управление Telegram-сообществом в одном месте

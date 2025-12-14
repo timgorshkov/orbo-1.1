@@ -65,7 +65,12 @@ export async function GET(req: NextRequest) {
         .single();
       
       const orgId = orgMapping?.org_id || null;
-      // Check if last_sync_at is stale (>15 minutes)
+      
+      // Health check thresholds (in minutes)
+      // These are more realistic for community groups with varying activity
+      const DEGRADED_THRESHOLD = 6 * 60;   // 6 hours without activity = degraded
+      const UNHEALTHY_THRESHOLD = 24 * 60; // 24 hours without activity = unhealthy
+      
       let status = 'healthy';
       let minutesSinceSync = null;
       
@@ -74,37 +79,46 @@ export async function GET(req: NextRequest) {
         const now = new Date();
         minutesSinceSync = Math.round((now.getTime() - lastSync.getTime()) / 60000);
         
-        if (minutesSinceSync > 60) {
-          // No activity for >1 hour = unhealthy
+        if (minutesSinceSync > UNHEALTHY_THRESHOLD) {
+          // No activity for >24 hours = unhealthy
           status = 'unhealthy';
           unhealthyCount++;
-        } else if (minutesSinceSync > 15) {
-          // No activity for >15 minutes = degraded
+        } else if (minutesSinceSync > DEGRADED_THRESHOLD) {
+          // No activity for >6 hours = degraded
           status = 'degraded';
           degradedCount++;
         } else {
-          // Activity within 15 minutes = healthy
+          // Activity within 6 hours = healthy
           healthyCount++;
         }
       } else {
-        // No sync ever = unhealthy
-        status = 'unhealthy';
-        unhealthyCount++;
-        minutesSinceSync = 99999; // Very large number
+        // No sync ever - check bot_status to determine if this is expected
+        if (group.bot_status === 'active') {
+          // Bot is active but never synced = unhealthy
+          status = 'unhealthy';
+          unhealthyCount++;
+        } else {
+          // Bot not active - this is expected, mark as degraded (not unhealthy)
+          status = 'degraded';
+          degradedCount++;
+        }
+        minutesSinceSync = null; // Unknown
       }
       
-      // Log health event if degraded or unhealthy
-      if (status !== 'healthy') {
+      // Log health event only for unhealthy groups (not degraded, to reduce spam)
+      // Degraded is common for low-activity groups and doesn't require logging
+      if (status === 'unhealthy') {
         const { error: healthLogError } = await supabaseServiceRole.rpc('log_telegram_health', {
           p_tg_chat_id: group.tg_chat_id,
           p_event_type: 'sync_failure',
           p_status: status,
-          p_message: minutesSinceSync 
-            ? `No activity for ${minutesSinceSync} minutes` 
-            : 'No sync recorded',
+          p_message: minutesSinceSync !== null
+            ? `No activity for ${Math.round(minutesSinceSync / 60)} hours` 
+            : 'No sync recorded (bot may not be active)',
           p_details: JSON.stringify({
             last_sync_at: group.last_sync_at,
-            minutes_since_sync: minutesSinceSync
+            minutes_since_sync: minutesSinceSync,
+            bot_status: group.bot_status
           }),
           p_org_id: orgId
         });

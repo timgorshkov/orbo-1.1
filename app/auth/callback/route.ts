@@ -6,9 +6,15 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  // Логируем все auth-related cookies для диагностики
+  const allCookies = request.cookies.getAll()
+  const authCookies = allCookies.filter(c => c.name.includes('auth') || c.name.includes('sb-'))
+  
   console.log('[Auth Callback] Processing callback:', {
     hasCode: !!code,
-    origin: requestUrl.origin
+    origin: requestUrl.origin,
+    authCookiesCount: authCookies.length,
+    authCookieNames: authCookies.map(c => c.name)
   })
 
   if (code) {
@@ -23,7 +29,14 @@ export async function GET(request: NextRequest) {
       {
         cookies: {
           get(name: string) {
-            return request.cookies.get(name)?.value
+            // Сначала пробуем из request cookies (более надёжно для PKCE)
+            const requestCookie = request.cookies.get(name)?.value
+            if (requestCookie) {
+              return requestCookie
+            }
+            // Fallback на cookieStore
+            const storeCookie = cookieStore.get(name)?.value
+            return storeCookie
           },
           set(name: string, value: string, options: any) {
             // ✅ Устанавливаем cookies в cookieStore (для чтения) и в tempResponse (для отправки)
@@ -52,7 +65,14 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Auth Callback] Exchange error:', error)
-      return NextResponse.redirect(`${requestUrl.origin}/signin?error=auth_failed`)
+      console.error('[Auth Callback] Error details:', {
+        message: error.message,
+        status: error.status,
+        code: (error as any).code,
+        // Проверяем наличие code_verifier cookies
+        codeVerifierCookies: authCookies.filter(c => c.name.includes('code-verifier')).map(c => c.name)
+      })
+      return NextResponse.redirect(`${requestUrl.origin}/signin?error=auth_failed&reason=${encodeURIComponent(error.message)}`)
     }
 
     console.log('[Auth Callback] Session created for user:', data.user?.email)

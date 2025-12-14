@@ -37,15 +37,6 @@ export async function updateParticipantActivity(
         .eq('org_id', orgId);
       
       if (error) {
-        // Log as warning, not error - this is non-critical
-        console.warn('[Stats] Warning: Failed to update participant activity:', {
-          attempt,
-          tgUserId,
-          orgId,
-          message: error.message,
-          code: error.code || ''
-        });
-        
         // Don't retry for specific error codes (e.g., not found)
         if (error.code === 'PGRST116' || error.code === '42P01') {
           break;
@@ -56,6 +47,14 @@ export async function updateParticipantActivity(
           await new Promise(resolve => setTimeout(resolve, 100 * attempt));
           continue;
         }
+        
+        // Only log on final attempt to reduce noise
+        console.warn('[Stats] Participant activity update failed:', {
+          tgUserId,
+          orgId,
+          message: error.message,
+          code: error.code || ''
+        });
       } else {
         // Success - exit loop
         return;
@@ -69,20 +68,18 @@ export async function updateParticipantActivity(
                           errorMessage.includes('ECONNRESET') ||
                           errorMessage.includes('timeout');
       
-      console.warn('[Stats] Warning: Participant activity update failed:', {
-        attempt,
-        tgUserId,
-        orgId,
-        error: errorMessage,
-        willRetry: isTransient && attempt < maxRetries
-      });
-      
       if (isTransient && attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 100 * attempt));
         continue;
       }
       
-      // Final attempt failed - just log and return
+      // Only log on final attempt to reduce noise
+      console.warn('[Stats] Participant activity network error:', {
+        tgUserId,
+        orgId,
+        error: errorMessage
+      });
+      
       break;
     }
   }
@@ -91,30 +88,69 @@ export async function updateParticipantActivity(
 /**
  * Increment message counter for group
  * Called from webhook after processing message
+ * 
+ * Uses retry logic similar to updateParticipantActivity for reliability
  */
 export async function incrementGroupMessageCount(
   tgChatId: number
 ): Promise<void> {
-  try {
-    // Create admin client per request (important for serverless)
-    const supabaseAdmin = createAdminServer();
-    
-    // Group member_count is auto-updated by trigger
-    // No need to manually increment
-    
-    // Update last_sync_at
-    const { error } = await supabaseAdmin
-      .from('telegram_groups')
-      .update({
-        last_sync_at: new Date().toISOString()
-      })
-      .eq('tg_chat_id', tgChatId);
-    
-    if (error) {
-      console.error('[Stats] Failed to update group sync time:', error);
+  const maxRetries = 2;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Create admin client per request (important for serverless)
+      const supabaseAdmin = createAdminServer();
+      
+      // Update last_sync_at (critical for health monitoring)
+      const { error } = await supabaseAdmin
+        .from('telegram_groups')
+        .update({
+          last_sync_at: new Date().toISOString()
+        })
+        .eq('tg_chat_id', tgChatId);
+      
+      if (error) {
+        // Only log on final attempt to reduce noise
+        if (attempt === maxRetries) {
+          console.warn('[Stats] Failed to update group sync time:', {
+            tgChatId,
+            error: error.message,
+            code: error.code || ''
+          });
+        }
+        
+        // Retry for transient errors
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+          continue;
+        }
+      } else {
+        // Success
+        return;
+      }
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      
+      // Check if transient error worth retrying
+      const isTransient = errorMessage.includes('fetch failed') || 
+                          errorMessage.includes('ECONNRESET') ||
+                          errorMessage.includes('timeout');
+      
+      // Only log on final attempt to reduce noise
+      if (attempt === maxRetries) {
+        console.warn('[Stats] Group sync time update failed:', {
+          tgChatId,
+          error: errorMessage
+        });
+      }
+      
+      if (isTransient && attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        continue;
+      }
+      
+      break;
     }
-  } catch (error) {
-    console.error('[Stats] Error updating group sync time:', error);
   }
 }
 

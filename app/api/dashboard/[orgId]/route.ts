@@ -29,37 +29,53 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // 1. Check onboarding status
-    const { data: telegramAccount } = await supabase
-      .from('user_telegram_accounts')
-      .select('is_verified')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .eq('is_verified', true)
-      .single()
+    // 1. Check onboarding status - PARALLEL queries
+    const [
+      telegramAccountResult,
+      orgGroupsForCountResult,
+      materialsCountResult,
+      eventsCountResult,
+      totalParticipantsResult
+    ] = await Promise.all([
+      supabase
+        .from('user_telegram_accounts')
+        .select('is_verified')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .eq('is_verified', true)
+        .single(),
+      adminSupabase
+        .from('org_telegram_groups')
+        .select(`
+          tg_chat_id,
+          telegram_groups!inner(bot_status, tg_chat_id)
+        `)
+        .eq('org_id', orgId),
+      adminSupabase
+        .from('material_pages')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId),
+      adminSupabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .in('status', ['published', 'completed']),
+      adminSupabase
+        .from('participants')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .neq('source', 'bot')
+    ])
 
-    // Get groups count through org_telegram_groups
-    const { data: orgGroupsForCount } = await adminSupabase
-      .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner(bot_status)
-      `)
-      .eq('org_id', orgId)
+    const telegramAccount = telegramAccountResult.data
+    const orgGroupsForCount = orgGroupsForCountResult.data
+    const materialsCount = materialsCountResult.count
+    const eventsCount = eventsCountResult.count
+    const totalParticipants = totalParticipantsResult.count
     
     const groupsCount = orgGroupsForCount?.filter(
       (item: any) => item.telegram_groups?.bot_status === 'connected'
     ).length || 0
-
-    const { count: materialsCount } = await adminSupabase
-      .from('material_pages')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-
-    const { count: eventsCount } = await adminSupabase
-      .from('events')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .in('status', ['published', 'completed'])
 
     const onboardingStatus = {
       hasTelegramAccount: !!telegramAccount,
@@ -77,28 +93,14 @@ export async function GET(
 
     const isOnboarding = onboardingStatus.progress < 60 // Less than 60% complete
 
-    // 2. Get total participants count (unique, not sum per group)
-    const { count: totalParticipants } = await adminSupabase
-      .from('participants')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .neq('source', 'bot') // Exclude bots
-
-    // 3. Get activity for last 14 days (messages per day)
+    // 2. Get activity for last 14 days (messages per day)
+    // Note: totalParticipants already fetched in parallel above
     const fourteenDaysAgo = new Date()
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
     fourteenDaysAgo.setHours(0, 0, 0, 0)
 
-    // Get all telegram groups for this org through org_telegram_groups
-    const { data: orgGroupsData } = await adminSupabase
-      .from('org_telegram_groups')
-      .select(`
-        tg_chat_id,
-        telegram_groups!inner(tg_chat_id)
-      `)
-      .eq('org_id', orgId)
-
-    const chatIds = orgGroupsData?.map(g => String(g.tg_chat_id)) || []
+    // Reuse orgGroupsForCount data instead of separate query
+    const chatIds = orgGroupsForCount?.map(g => String(g.tg_chat_id)) || []
     
     console.log(`Dashboard: Found ${chatIds.length} groups for org ${orgId}`, chatIds)
 
@@ -182,26 +184,36 @@ export async function GET(
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
     
     if (!isOnboarding && (groupsCount || 0) > 0) {
-      // 4a. Events with low registration (< 30% capacity, 3 days before start)
+      // 4a-c. Parallel fetch for attention zones
       const threeDaysFromNow = new Date()
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
 
-      const { data: upcomingEvents } = await adminSupabase
-        .from('events')
-        .select(`
-          id,
-          title,
-          event_date,
-          start_time,
-          capacity,
-          event_registrations!event_registrations_event_id_fkey(id, status)
-        `)
-        .eq('org_id', orgId)
-        .eq('status', 'published')
-        .gte('event_date', new Date().toISOString())
-        .lte('event_date', threeDaysFromNow.toISOString())
+      const [criticalEventsResult, churningResult, inactiveResult] = await Promise.all([
+        adminSupabase
+          .from('events')
+          .select(`
+            id,
+            title,
+            event_date,
+            start_time,
+            capacity,
+            event_registrations!event_registrations_event_id_fkey(id, status)
+          `)
+          .eq('org_id', orgId)
+          .eq('status', 'published')
+          .gte('event_date', new Date().toISOString())
+          .lte('event_date', threeDaysFromNow.toISOString()),
+        adminSupabase.rpc('get_churning_participants', {
+          p_org_id: orgId,
+          p_days_silent: 14
+        }),
+        adminSupabase.rpc('get_inactive_newcomers', {
+          p_org_id: orgId,
+          p_days_since_first: 14
+        })
+      ])
 
-      const criticalEvents = (upcomingEvents || [])
+      const criticalEvents = (criticalEventsResult.data || [])
         .map(event => {
           const registeredCount = event.event_registrations?.filter(
             (r: any) => r.status === 'registered'
@@ -229,17 +241,8 @@ export async function GET(
           ).slice(0, 3)
       ) as any
 
-      // 4b. Participants on verge of churn (were active, silent 14+ days)
-      const { data: churningParticipants } = await adminSupabase.rpc('get_churning_participants', {
-        p_org_id: orgId,
-        p_days_silent: 14
-      })
-
-      // 4c. Inactive newcomers (14+ days after first activity with no second activity)
-      const { data: inactiveNewcomers } = await adminSupabase.rpc('get_inactive_newcomers', {
-        p_org_id: orgId,
-        p_days_since_first: 14
-      })
+      const churningParticipants = churningResult.data
+      const inactiveNewcomers = inactiveResult.data
 
       // Limit to 3 items with daily rotation for variety
       const churningList = churningParticipants || []

@@ -1,7 +1,21 @@
+/**
+ * Supabase Server Utilities
+ * 
+ * ⚠️ DEPRECATED: Этот файл сохранён для обратной совместимости.
+ * Используйте новые абстракции:
+ * - import { createServerDb, createAdminDb } from '@/lib/db'
+ * - import { createServerAuth } from '@/lib/auth'
+ * - import { createStorage } from '@/lib/storage'
+ */
+
 import { createServerClient } from "@supabase/ssr"
 import { cookies, headers } from "next/headers"
 import { createClient } from '@supabase/supabase-js'
 
+/**
+ * @deprecated Используйте createServerDb() из '@/lib/db' для работы с БД
+ * или getSupabaseClient() если нужен доступ к auth/storage напрямую
+ */
 export async function createClientServer() {
   const cookieStore = await cookies()
   const hdrs = await headers()
@@ -13,21 +27,16 @@ export async function createClientServer() {
         get: name => cookieStore.get(name)?.value,
         set: (name, value, opts) => {
           try {
-            // ⚠️ Cookies can only be modified in Route Handlers or Server Actions
-            // In Server Components, this will fail silently to prevent errors
             cookieStore.set({ name, value, ...opts })
           } catch (error) {
-            // Silently ignore cookie modification errors in Server Components
-            // Token refresh will be handled by middleware or Route Handlers
-            // This is expected behavior - middleware handles token refresh for all requests
+            // Silently ignore in Server Components
           }
         },
         remove: (name, opts) => {
           try {
             cookieStore.set({ name, value: "", ...opts })
           } catch (error) {
-            // Silently ignore cookie removal errors in Server Components
-            // This is expected behavior - middleware handles token refresh for all requests
+            // Silently ignore in Server Components
           }
         },
       }
@@ -35,11 +44,31 @@ export async function createClientServer() {
   )
 }
 
-// Функция для серверных компонентов с использованием сервисной роли
+/**
+ * @deprecated Используйте createAdminDb() из '@/lib/db' для работы с БД
+ * или getSupabaseAdminClient() если нужен доступ к auth/storage напрямую
+ */
 export function createAdminServer() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Используйте сервисную роль
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   )
+}
+
+// ============================================
+// Реэкспорт новых абстракций для постепенной миграции
+// ============================================
+
+// DB abstractions - импортируйте напрямую из '@/lib/db'
+// Auth abstractions - импортируйте напрямую из '@/lib/auth'  
+// Storage abstractions - импортируйте напрямую из '@/lib/storage'
+
+// Хелперы для прямого доступа к Supabase (когда нужен auth/storage)
+export function getSupabaseClient() {
+  return createClientServer();
+}
+
+export function getSupabaseAdminClient() {
+  return createAdminServer();
 }
