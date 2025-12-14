@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 
 const inter = Inter({ 
@@ -72,7 +73,10 @@ export default function RootLayout({
       <link rel="icon" href="/icon.svg" type="image/svg+xml" />
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     </head>
-    <body className={`${inter.className} bg-slate-50`}>{children}</body>
+    <body className={`${inter.className} bg-slate-50`}>
+        {children}
+        <SpeedInsights />
+      </body>
   </html>
   );
 }

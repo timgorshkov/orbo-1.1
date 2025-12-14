@@ -129,7 +129,23 @@ export async function GET(request: NextRequest) {
 
           updatedGroups++;
         } catch (groupError: any) {
-          console.error(`[Cron] Error processing group ${chatId}:`, groupError.message);
+          const errorMessage = groupError.message || String(groupError);
+          
+          // Группа была конвертирована в супергруппу - это ожидаемая ситуация
+          if (errorMessage.includes('upgraded to a supergroup')) {
+            console.warn(`[Cron] Group ${chatId} (${groupTitle}) was upgraded to supergroup - marking for migration`);
+            
+            // Помечаем группу как требующую миграции
+            await supabaseService
+              .from('telegram_groups')
+              .update({ 
+                bot_status: 'migration_needed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('tg_chat_id', chatId);
+          } else {
+            console.error(`[Cron] Error processing group ${chatId}:`, errorMessage);
+          }
         }
       }
 

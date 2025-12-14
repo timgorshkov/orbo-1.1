@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     // Получаем список групп для синхронизации
     const { data: groups, error: groupsError } = await supabase
       .from('telegram_groups')
-      .select('id, org_id, tg_chat_id, title')
+      .select('id, tg_chat_id, title')
       .eq('bot_status', 'connected')
       .order('id')
     
