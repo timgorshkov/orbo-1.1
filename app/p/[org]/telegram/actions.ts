@@ -91,9 +91,10 @@ export async function deleteGroup(formData: FormData) {
     console.log(`Deleting group ${groupId} from organization ${org}`)
     
     // Получаем группу и её tg_chat_id используя admin client
+    // Note: telegram_groups не имеет org_id - связь через org_telegram_groups
     const { data: existingGroup, error: fetchError } = await adminSupabase
       .from('telegram_groups')
-      .select('id, tg_chat_id, org_id')
+      .select('id, tg_chat_id')
       .eq('id', groupId)
       .single()
     
@@ -130,16 +131,8 @@ export async function deleteGroup(formData: FormData) {
       console.error('Error checking other org links:', checkError)
     }
     
-    // Если группа была связана только с этой организацией, убираем org_id (legacy)
-    if (!otherLinks || otherLinks.length === 0) {
-      if (existingGroup.org_id === org) {
-        await adminSupabase
-          .from('telegram_groups')
-          .update({ org_id: null })
-          .eq('id', groupId)
-        console.log(`Cleared org_id for group ${groupId}`)
-      }
-    }
+    // Note: telegram_groups.org_id column doesn't exist anymore
+    // All org relationships are managed through org_telegram_groups table
     
     console.log(`Group ${groupId} removed from organization ${org}`)
     return { success: true }

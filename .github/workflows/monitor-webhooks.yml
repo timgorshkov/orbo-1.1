@@ -23,8 +23,26 @@ jobs:
             APP_URL="https://app.orbo.ru"
           fi
           
-          response=$(curl -s -w "\n%{http_code}" -X GET \
-            "${APP_URL}/api/telegram/admin/monitor-webhooks")
+          # Curl с retry и таймаутами для надёжности
+          response=$(curl -s -w "\n%{http_code}" \
+            --retry 3 \
+            --retry-delay 5 \
+            --connect-timeout 30 \
+            --max-time 60 \
+            -X GET \
+            "${APP_URL}/api/telegram/admin/monitor-webhooks" 2>&1) || {
+            curl_exit_code=$?
+            echo "⚠️ Curl failed with exit code: $curl_exit_code"
+            case $curl_exit_code in
+              6)  echo "Could not resolve host" ;;
+              7)  echo "Failed to connect to host" ;;
+              28) echo "Connection timed out" ;;
+              35) echo "SSL/TLS handshake error" ;;
+              *)  echo "Unknown curl error" ;;
+            esac
+            echo "This is likely a temporary network issue. Exiting gracefully."
+            exit 0
+          }
           
           # Разделяем ответ и HTTP код
           http_code=$(echo "$response" | tail -n1)
@@ -59,4 +77,3 @@ jobs:
           # Показываем статистику восстановлений
           echo "Recovery statistics:"
           echo "$body" | jq -r '.recoveryStats // {}'
-

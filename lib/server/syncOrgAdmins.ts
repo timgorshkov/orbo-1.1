@@ -25,6 +25,7 @@ export async function syncOrgAdmins(orgId: string): Promise<void> {
 
 /**
  * Check if user has admin rights in any Telegram group for this org
+ * Note: telegram_groups doesn't have org_id - uses org_telegram_groups for org mapping
  */
 export async function checkUserAdminStatus(userId: string, orgId: string): Promise<{
   isAdmin: boolean
@@ -33,16 +34,33 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
   try {
     const adminSupabase = createAdminServer()
     
-    // Get groups where user is admin
+    // First, get all groups in this org
+    const { data: orgGroups, error: orgGroupsError } = await adminSupabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
+      .eq('org_id', orgId)
+    
+    if (orgGroupsError) {
+      console.error('Error fetching org groups:', orgGroupsError)
+      return { isAdmin: false, groups: [] }
+    }
+    
+    if (!orgGroups || orgGroups.length === 0) {
+      return { isAdmin: false, groups: [] }
+    }
+    
+    const orgChatIds = orgGroups.map(g => g.tg_chat_id)
+    
+    // Get groups where user is admin AND group is in this org
     const { data: adminGroups, error } = await adminSupabase
       .from('user_group_admin_status')
       .select(`
         tg_chat_id,
-        telegram_groups!inner(id, title, org_id, tg_chat_id)
+        telegram_groups!inner(id, title, tg_chat_id)
       `)
       .eq('user_id', userId)
       .eq('is_admin', true)
-      .eq('telegram_groups.org_id', orgId)
+      .in('tg_chat_id', orgChatIds)
     
     if (error) {
       console.error('Error checking admin status:', error)

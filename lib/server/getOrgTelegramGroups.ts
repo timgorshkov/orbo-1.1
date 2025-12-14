@@ -20,7 +20,8 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
   const supabase = createAdminServer();
 
   const groupsMap = new Map<string, OrgTelegramGroup>();
-  const primaryOrgIds = new Map<string, string | null>();
+  // Note: primaryOrgIds was removed - telegram_groups.org_id doesn't exist anymore
+  // All org relationships are determined by org_telegram_groups table
 
   const normalizeChatId = (value: any): string => String(value);
   const filterActiveGroups = (groups: any[] | null | undefined) =>
@@ -96,45 +97,8 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
     groupsMap.set(chatId, normalized);
   };
 
-  // 1. Прямые связи через поле org_id (legacy-поведение)
-  // Note: org_id column may not exist in telegram_groups (new schema uses org_telegram_groups)
-  let directGroups: any[] = [];
-  try {
-    const { data: directGroupsData, error: directError } = await supabase
-      .from('telegram_groups')
-      .select('*')
-      .eq('org_id', orgId);
-
-    if (directError) {
-      // Column doesn't exist (42703) - this is expected for new schema
-      if (directError.code === '42703') {
-        console.log('telegram_groups.org_id column does not exist, skipping direct query (using org_telegram_groups only)');
-      } else {
-        console.error('Error fetching direct telegram groups:', directError);
-      }
-    } else {
-      directGroups = filterActiveGroups(directGroupsData);
-    }
-  } catch (err: any) {
-    // Silently handle - org_id column may not exist
-    if (err?.code !== '42703') {
-      console.error('Unexpected error fetching direct groups:', err);
-    }
-  }
-
-  directGroups.forEach(group => {
-    const chatId = normalizeChatId(group.tg_chat_id);
-    primaryOrgIds.set(chatId, group.org_id ?? null);
-    assignGroup(chatId, {
-      ...group,
-      tg_chat_id: chatId,
-      org_id: orgId,
-      primary_org_id: group.org_id ?? null,
-      mapped_org_ids: [orgId, group.org_id].filter(Boolean) as string[],
-      is_primary: group.org_id === orgId,
-      status: 'active'
-    });
-  });
+  // Note: telegram_groups.org_id column was removed (migration 071)
+  // All org relationships are managed through org_telegram_groups table only
 
   // 2. Связи через org_telegram_groups (мульти-организации)
   type MappingRow = { tg_chat_id: string; status: string; archived_reason: string | null };
@@ -190,20 +154,17 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
     const chatId = normalizeChatId(group.tg_chat_id);
     const mapping = activeMappings.find(row => row.tg_chat_id === chatId);
 
-    primaryOrgIds.set(chatId, group.org_id ?? primaryOrgIds.get(chatId) ?? null);
-
+    // Note: telegram_groups.org_id doesn't exist anymore
+    // Primary org is determined by org_telegram_groups mappings
     const mappedOrgIds = [orgId];
-    if (group.org_id) {
-      mappedOrgIds.push(group.org_id);
-    }
 
     assignGroup(chatId, {
       ...group,
       tg_chat_id: chatId,
       org_id: orgId,
-      primary_org_id: group.org_id ?? primaryOrgIds.get(chatId) ?? null,
+      primary_org_id: orgId, // Current org is primary for this context
       mapped_org_ids: mappedOrgIds,
-      is_primary: group.org_id === orgId,
+      is_primary: true, // All groups in this query belong to current org
       status: mapping?.status ?? 'active',
       archived_reason: mapping?.archived_reason ?? null
     });
@@ -279,7 +240,7 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
 
       groupsMap.forEach((group, chatId) => {
         const entry = mappingAccumulator.get(chatId);
-        const primaryOrgId = primaryOrgIds.get(chatId) ?? group.primary_org_id ?? null;
+        const primaryOrgId = group.primary_org_id ?? orgId;
         const mappedOrgIds = new Set(group.mapped_org_ids ?? []);
 
         if (entry) {
@@ -311,7 +272,17 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
   }
 
   const groups = Array.from(groupsMap.values())
-    .filter(group => !group.status || group.status === 'active')
+    .filter(group => {
+      // Filter by org_telegram_groups.status (must be active)
+      if (group.status && group.status !== 'active') return false;
+      
+      // Filter out groups where bot is pending/inactive (they show in "Pending" section)
+      // bot_status values: 'active', 'pending', 'inactive', 'migration_needed', etc.
+      const pendingStatuses = ['pending', 'inactive', 'migration_needed'];
+      if (group.bot_status && pendingStatuses.includes(group.bot_status)) return false;
+      
+      return true;
+    })
     .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
   return groups;

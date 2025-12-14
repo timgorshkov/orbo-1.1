@@ -296,11 +296,14 @@ async getChatMember(chatId: number, userId: number) {
         errorMessage.includes('user not found') ||
         errorMessage.includes('chat not found') ||
         errorMessage.includes('USER_DELETED') ||
-        errorMessage.includes('bot was blocked');
+        errorMessage.includes('bot was blocked') ||
+        errorMessage.includes('upgraded to a supergroup') ||
+        errorMessage.includes('was kicked') ||
+        errorMessage.includes('PEER_ID_INVALID');
       
       if (isExpectedError) {
-        // Log as info for expected errors (deleted users, blocked bots, etc.)
-        console.log(`[Telegram API] Expected error in ${method}:`, errorMessage);
+        // Log as info for expected errors (common Telegram API responses)
+        console.log(`[Telegram API] Expected response in ${method}:`, errorMessage);
       } else {
         // Log as error for unexpected issues
         console.error(`Error calling Telegram API (${method}):`, error);

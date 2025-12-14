@@ -717,47 +717,19 @@ async function handleBotCommand(message: any) {
   
   // Для групповых чатов - обработка команд верификации владельца
   if (message.chat.type !== 'private') {
-    // Находим организацию по чату (проверяем как строку и как число)
-    console.log(`Looking for group with tg_chat_id: ${chatId}, type: ${typeof chatId}`);
+    // Находим организацию по чату через org_telegram_groups (telegram_groups не имеет org_id)
+    console.log(`Looking for org mapping for tg_chat_id: ${chatId}`);
   
-    // Сначала пробуем точное совпадение
-    let { data: group } = await supabase
-      .from('telegram_groups')
+    // Ищем организацию через org_telegram_groups
+    const { data: orgMapping } = await supabase
+      .from('org_telegram_groups')
       .select('org_id')
-      .eq('tg_chat_id', chatId)
+      .filter('tg_chat_id::text', 'eq', String(chatId))
+      .limit(1)
       .maybeSingle();
-      
-    // Если не нашли, пробуем как строку
-    if (!group) {
-      console.log(`Group not found with exact match, trying string conversion...`);
-      const { data: groupStr } = await supabase
-        .from('telegram_groups')
-        .select('org_id')
-        .eq('tg_chat_id', String(chatId))
-        .maybeSingle();
-        
-      if (groupStr) {
-        console.log(`Found group with string tg_chat_id: ${String(chatId)}`);
-        group = groupStr;
-      } else {
-        console.log(`Group not found with string tg_chat_id either`);
-        
-        // Пробуем filter с преобразованием типов
-        const { data: groupFilter } = await supabase
-          .from('telegram_groups')
-          .select('org_id')
-          .filter('tg_chat_id::text', 'eq', String(chatId))
-          .maybeSingle();
-          
-        if (groupFilter) {
-          console.log(`Found group with filter tg_chat_id::text = ${String(chatId)}`);
-          group = groupFilter;
-        }
-      }
-    }
     
-    if (!group?.org_id) {
-      console.log(`Command from unknown group ${chatId}, trying to get any organization`);
+    if (!orgMapping?.org_id) {
+      console.log(`Command from unmapped group ${chatId}, trying to get any organization`);
       // Получаем любую организацию
       const { data: orgs } = await supabase
         .from('organizations')
@@ -771,7 +743,8 @@ async function handleBotCommand(message: any) {
       return;
     }
     
-    return await handleCommandWithOrg(chatId, from, command, group.org_id);
+    console.log(`Found org ${orgMapping.org_id} for group ${chatId}`);
+    return await handleCommandWithOrg(chatId, from, command, orgMapping.org_id);
   } // Закрываем условие для групповых чатов
 }
 
