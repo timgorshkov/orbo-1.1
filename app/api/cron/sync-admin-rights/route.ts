@@ -143,6 +143,18 @@ export async function GET(request: NextRequest) {
                 updated_at: new Date().toISOString()
               })
               .eq('tg_chat_id', chatId);
+          } else if (errorMessage.includes('bot was kicked') || errorMessage.includes('was kicked from')) {
+            // Бот был удалён из группы - это ожидаемая ситуация
+            console.warn(`[Cron] Bot was kicked from group ${chatId} (${groupTitle}) - marking as inactive`);
+            
+            // Помечаем группу как неактивную
+            await supabaseService
+              .from('telegram_groups')
+              .update({ 
+                bot_status: 'inactive',
+                updated_at: new Date().toISOString()
+              })
+              .eq('tg_chat_id', chatId);
           } else {
             console.error(`[Cron] Error processing group ${chatId}:`, errorMessage);
           }

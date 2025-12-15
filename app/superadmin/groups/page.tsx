@@ -7,77 +7,73 @@ export default async function SuperadminGroupsPage() {
   
   const supabase = createAdminServer()
   
-  // Получаем группы с метриками
-  const { data: groups, error: groupsError } = await supabase
-    .from('telegram_groups')
-    .select(`
-      id,
-      title,
-      tg_chat_id,
-      bot_status,
-      last_sync_at
-    `)
-    .order('id', { ascending: false })
-  
-  console.log('[Superadmin Groups] Loaded groups:', groups?.length, 'Error:', groupsError)
-  
-  // Для каждой группы получаем связанные данные
-  const groupsWithMetrics = await Promise.all((groups || []).map(async (group) => {
-    // Связанные организации (используем tg_chat_id)
-    const { data: orgLinks, error: orgError } = await supabase
+  // ✅ ОПТИМИЗАЦИЯ: Получаем все данные ПАРАЛЛЕЛЬНО вместо N+1 запросов
+  const [groupsResult, orgLinksResult, participantCountsResult, lastActivitiesResult] = await Promise.all([
+    // 1. Все группы
+    supabase
+      .from('telegram_groups')
+      .select('id, title, tg_chat_id, bot_status, last_sync_at, member_count')
+      .order('id', { ascending: false }),
+    
+    // 2. Все связи с организациями
+    supabase
       .from('org_telegram_groups')
-      .select('org_id')
-      .eq('tg_chat_id', group.tg_chat_id)
+      .select('tg_chat_id, org_id'),
     
-    // Участники этой группы (уникальные по tg_user_id)
-    // Получаем через JOIN с participants для доступа к tg_user_id
-    const { data: participantsData, error: participantsError } = await supabase
+    // 3. Количество участников по группам (через participant_groups)
+    supabase
       .from('participant_groups')
-      .select(`
-        participants!inner (
-          tg_user_id
-        )
-      `)
-      .eq('tg_group_id', group.tg_chat_id)
+      .select('tg_group_id'),
     
-    // Считаем уникальные tg_user_id
-    const participantsCount = participantsData 
-      ? new Set(
-          participantsData
-            .map((p: any) => p.participants?.tg_user_id)
-            .filter(Boolean)
-        ).size
-      : 0
-    
-    // Активность в этой группе (используем tg_chat_id)
-    const { data: activities, error: activitiesError } = await supabase
+    // 4. Последняя активность по группам (агрегат через RPC или просто последние события)
+    supabase
       .from('activity_events')
-      .select('created_at')
-      .eq('tg_chat_id', group.tg_chat_id)
+      .select('tg_chat_id, created_at')
+      .not('tg_chat_id', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(1)
-    
-    if (group.id === (groups || [])[0]?.id) {
-      console.log('[Superadmin Groups] First group metrics:', {
-        group_id: group.id,
-        tg_chat_id: group.tg_chat_id,
-        orgs: orgLinks?.length || 0,
-        participants: participantsCount || 0,
-        lastActivity: activities?.[0]?.created_at,
-        errors: { orgError, participantsError, activitiesError }
-      })
+      .limit(500) // Последние 500 событий для расчёта last_activity
+  ])
+  
+  const groups = groupsResult.data || []
+  const orgLinks = orgLinksResult.data || []
+  const participantGroups = participantCountsResult.data || []
+  const lastActivities = lastActivitiesResult.data || []
+  
+  console.log('[Superadmin Groups] Loaded:', {
+    groups: groups.length,
+    orgLinks: orgLinks.length,
+    participantGroups: participantGroups.length,
+    lastActivities: lastActivities.length
+  })
+  
+  // Создаём карты для быстрого доступа
+  const orgsByGroup = new Map<number, string[]>()
+  orgLinks.forEach(link => {
+    const chatId = Number(link.tg_chat_id)
+    if (!orgsByGroup.has(chatId)) {
+      orgsByGroup.set(chatId, [])
     }
-    
-    return {
-      ...group,
-      org_telegram_groups: orgLinks || [],
-      participants_count: participantsCount || 0,
-      last_activity: activities?.[0]?.created_at || null
+    orgsByGroup.get(chatId)!.push(link.org_id)
+  })
+  
+  const participantsByGroup = new Map<number, number>()
+  participantGroups.forEach(pg => {
+    const chatId = Number(pg.tg_group_id)
+    participantsByGroup.set(chatId, (participantsByGroup.get(chatId) || 0) + 1)
+  })
+  
+  const lastActivityByGroup = new Map<number, string>()
+  lastActivities.forEach(activity => {
+    const chatId = Number(activity.tg_chat_id)
+    // Сохраняем только первую (самую свежую) запись для каждой группы
+    if (!lastActivityByGroup.has(chatId)) {
+      lastActivityByGroup.set(chatId, activity.created_at)
     }
-  }))
+  })
   
   // Форматируем данные
-  const formattedGroups = groupsWithMetrics.map(group => {
+  const formattedGroups = groups.map(group => {
+    const chatId = Number(group.tg_chat_id)
     return {
       id: group.id,
       title: group.title,
@@ -85,10 +81,10 @@ export default async function SuperadminGroupsPage() {
       bot_status: group.bot_status,
       created_at: group.last_sync_at || null,
       has_bot: group.bot_status === 'connected',
-      has_admin_rights: group.bot_status === 'connected', // Uses bot_status as source of truth
-      participants_count: group.participants_count || 0,
-      organizations_count: group.org_telegram_groups?.length || 0,
-      last_activity_at: group.last_activity
+      has_admin_rights: group.bot_status === 'connected',
+      participants_count: participantsByGroup.get(chatId) || group.member_count || 0,
+      organizations_count: orgsByGroup.get(chatId)?.length || 0,
+      last_activity_at: lastActivityByGroup.get(chatId) || null
     }
   })
   
@@ -105,4 +101,3 @@ export default async function SuperadminGroupsPage() {
     </div>
   )
 }
-

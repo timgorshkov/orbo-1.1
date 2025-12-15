@@ -38,9 +38,10 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     let attempts = 0;
     const MAX_ATTEMPTS = 2;
     
-    async function updateAdminRights() {
+    // ✅ ОПТИМИЗАЦИЯ: Обновляем права админа в ФОНЕ, не блокируя загрузку страницы
+    async function updateAdminRightsInBackground() {
       try {
-        console.log('Updating admin rights before fetching available groups...');
+        console.log('[Background] Updating admin rights...');
         const updateRes = await fetch('/api/telegram/groups/update-admin-rights', {
           method: 'POST',
           headers: {
@@ -49,23 +50,24 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           body: JSON.stringify({
             orgId: params.org
           }),
-          signal: AbortSignal.timeout(15000) // 15 секунд таймаут
+          signal: AbortSignal.timeout(30000) // 30 секунд таймаут для фоновой операции
         });
-        
-        if (!isMounted) return;
         
         if (updateRes.ok) {
           const updateData = await updateRes.json();
-          console.log(`Updated admin rights for ${updateData.updatedGroups?.length || 0} groups`);
+          console.log(`[Background] Updated admin rights for ${updateData.updatedGroups?.length || 0} groups`);
+          
+          // ✅ После обновления прав - перезагружаем список групп, если компонент ещё смонтирован
+          if (isMounted) {
+            console.log('[Background] Refreshing available groups after admin rights update...');
+            fetchAvailableGroups();
+          }
         } else {
-          console.error(`Failed to update admin rights: ${updateRes.status} ${updateRes.statusText}`);
+          console.error(`[Background] Failed to update admin rights: ${updateRes.status}`);
         }
       } catch (e) {
-        console.error('Error updating admin rights:', e);
+        console.error('[Background] Error updating admin rights:', e);
       }
-      
-      // Продолжаем с получением доступных групп независимо от результата обновления прав
-      fetchAvailableGroups();
     }
     
     async function fetchAvailableGroups() {
@@ -136,8 +138,11 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       }
     }
     
-    // Сначала обновляем права администратора, затем получаем доступные группы
-    updateAdminRights();
+    // ✅ ОПТИМИЗАЦИЯ: Сначала показываем доступные группы (быстро)
+    fetchAvailableGroups();
+    
+    // ✅ Затем обновляем права админа в ФОНЕ (медленно, но не блокирует UI)
+    updateAdminRightsInBackground();
     
     // Функция очистки для избежания утечек памяти и обновлений состояния после размонтирования
     return () => {

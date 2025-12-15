@@ -7,6 +7,20 @@
 import { WeeklyDigest } from '@/lib/services/weeklyDigestService';
 
 /**
+ * Escape Telegram Markdown special characters in user-generated content
+ * Characters that need escaping: _ * [ ] ( ) ~ ` > # + - = | { } . !
+ */
+function escapeMarkdown(text: string): string {
+  if (!text) return '';
+  // For Telegram Markdown (not MarkdownV2), escape: * _ ` [
+  return text
+    .replace(/\*/g, '\\*')
+    .replace(/_/g, '\\_')
+    .replace(/`/g, '\\`')
+    .replace(/\[/g, '\\[');
+}
+
+/**
  * Format percentage change with trend indicator
  */
 function formatChange(current: number, previous: number): string {
@@ -68,7 +82,7 @@ ${formatDateRange(digest.dateRange.start, digest.dateRange.end)}
 ${topContributors.map((c, i) => {
   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
   const newBadge = c.is_new_to_top ? ' (новый в топе)' : '';
-  return `${medal} ${c.name}: ${c.messages} сообщений${newBadge}`;
+  return `${medal} ${escapeMarkdown(c.name)}: ${c.messages} сообщений${newBadge}`;
 }).join('\n')}`;
   }
 
@@ -99,8 +113,8 @@ ${items.join('\n')}`;
       const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
       const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       
-      return `📅 ${event.title}
-   ${dateStr} в ${timeStr}${event.location ? ` • ${event.location}` : ''}
+      return `📅 ${escapeMarkdown(event.title)}
+   ${dateStr} в ${timeStr}${event.location ? ` • ${escapeMarkdown(event.location)}` : ''}
    Зарегистрировано: ${event.registration_count} участников`;
     }).join('\n\n');
 
@@ -117,8 +131,8 @@ ${eventsList}`;
   if (suggestedActions.length > 0) {
     const actionsList = suggestedActions.map((action, i) => {
       const priority = action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '⚪️';
-      return `${i + 1}. ${action.title}
-   ${action.description}`;
+      return `${i + 1}. ${escapeMarkdown(action.title)}
+   ${escapeMarkdown(action.description)}`;
     }).join('\n\n');
 
     actionsSection = `
