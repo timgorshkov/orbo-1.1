@@ -11,6 +11,14 @@ import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 export const dynamic = 'force-dynamic';
 
+// Уровень логирования: 'minimal' | 'normal' | 'verbose'
+// minimal - только ошибки и важные события
+// normal - основные шаги обработки
+// verbose - полная отладка
+const LOG_LEVEL = process.env.WEBHOOK_LOG_LEVEL || 'minimal';
+const isVerbose = LOG_LEVEL === 'verbose';
+const isNormal = LOG_LEVEL === 'normal' || isVerbose;
+
 // Создаем глобальный клиент Supabase с сервисной ролью для обхода RLS
 const supabaseServiceRole = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,13 +65,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    console.log('[Webhook POST] Body parsed, update_id:', body?.update_id);
-    console.log('[Webhook POST] Has message:', !!body?.message);
-    console.log('[Webhook POST] Has text:', !!body?.message?.text);
-    console.log('[Webhook POST] Text preview:', body?.message?.text?.substring(0, 30));
     
-    // Запускаем обработку с timeout
-    console.log('[Webhook POST] Starting processing with 10s timeout...');
+    // Минимальное логирование для production
+    if (isVerbose) {
+      console.log('[Webhook] update_id:', body?.update_id, 'msg:', !!body?.message, 'text:', body?.message?.text?.substring(0, 30));
+    }
     
     let timeoutId: NodeJS.Timeout | null = null
     let didTimeout = false
@@ -100,7 +106,6 @@ export async function POST(req: NextRequest) {
     // Ждем либо завершения обработки, либо timeout
     await Promise.race([processingPromise, timeoutPromise])
     
-    console.log('[Webhook POST] Returning 200 OK to Telegram');
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('[Webhook POST] ❌ Error parsing request:', error);
@@ -129,10 +134,12 @@ async function processWebhookInBackground(body: any) {
   const updateId = body.update_id;
   let chatId: number | null = null;
   let orgId: string | null = null;
+  const startTime = Date.now();
   
   try {
-    console.log('[Webhook] ==================== NEW UPDATE ====================');
-    console.log('[Webhook] Processing update:', updateId);
+    if (isVerbose) {
+      console.log('[Webhook] Processing update:', updateId);
+    }
     
     // ========================================
     // STEP 0: IDEMPOTENCY CHECK
@@ -145,34 +152,28 @@ async function processWebhookInBackground(body: any) {
         .single();
       
       if (exists) {
-        console.log('[Webhook] ⏭️  Update already processed (idempotent), skipping:', updateId);
+        if (isNormal) console.log('[Webhook] Duplicate update:', updateId);
         return; // Already processed
       }
-    } else {
-      console.warn('[Webhook] ⚠️  No update_id in webhook body, cannot guarantee idempotency');
     }
     
-    console.log('[Webhook] Update structure:', JSON.stringify({
-      has_message: !!body.message,
-      has_text: !!body?.message?.text,
-      message_type: body?.message?.chat?.type,
-      from_id: body?.message?.from?.id,
-      chat_id: body?.message?.chat?.id,
-      text_preview: body?.message?.text?.substring(0, 50)
-    }, null, 2));
-    
-    console.log('[Webhook] Step 1: Checking if group processing needed');
+    if (isVerbose) {
+      console.log('[Webhook] Structure:', JSON.stringify({
+        msg: !!body.message,
+        text: !!body?.message?.text,
+        type: body?.message?.chat?.type,
+        from: body?.message?.from?.id,
+        chat: body?.message?.chat?.id
+      }));
+    }
     
     // Проверяем, существует ли группа в базе данных и добавляем, если нет
     // ТОЛЬКО для групповых чатов (не для private)
     if (body.message?.chat?.id && body.message?.chat?.type !== 'private') {
-      console.log('[Webhook] Step 1a: Group chat detected, processing group data');
-      const chatId = body.message.chat.id;
+      chatId = body.message.chat.id;
       const title = body.message.chat.title || `Group ${chatId}`;
       
       try {
-        // Проверяем существующую группу
-        console.log('[Webhook] Step 1b: Querying existing group');
         const { data: existingGroup } = await supabaseServiceRole
           .from('telegram_groups')
           .select('id, bot_status')
@@ -180,117 +181,74 @@ async function processWebhookInBackground(body: any) {
           .limit(1);
         
         if (existingGroup && existingGroup.length > 0) {
-          // Обновляем существующую группу (только title и last_sync_at)
-          console.log('[Webhook] Step 1c: Updating existing group:', existingGroup[0].id, 'current bot_status:', existingGroup[0].bot_status);
           await supabaseServiceRole
             .from('telegram_groups')
             .update({
               title: title,
-              // НЕ обновляем bot_status! Он обновляется только через my_chat_member
               last_sync_at: new Date().toISOString()
             })
             .eq('id', existingGroup[0].id);
-          console.log('[Webhook] Step 1d: Existing group updated, bot_status remains:', existingGroup[0].bot_status);
         } else {
-          // Создаём новую группу БЕЗ привязки к организации
-          // Группа будет добавлена в организацию вручную через UI
-          console.log('[Webhook] Step 1c: Creating new group WITHOUT org_id');
-          const { data: newGroup, error: insertError } = await supabaseServiceRole
+          const { error: insertError } = await supabaseServiceRole
             .from('telegram_groups')
             .insert({
               tg_chat_id: String(chatId),
               title: title,
-              bot_status: 'pending', // Будет обновлён на 'connected' через my_chat_member webhook
-              // analytics_enabled removed in migration 080 (never read)
+              bot_status: 'pending',
               last_sync_at: new Date().toISOString()
-            })
-            .select()
-            .single();
+            });
           
           if (insertError) {
-            console.error('[Webhook] ❌ Error inserting new group:', insertError);
-          } else {
-            console.log('[Webhook] Step 1d: New group created:', newGroup?.id, 'waiting for manual assignment to organization');
+            console.error('[Webhook] Error creating group:', insertError.message);
+          } else if (isNormal) {
+            console.log('[Webhook] New group created:', chatId);
           }
         }
       } catch (error) {
-        console.error('[Webhook] Error processing group:', error);
+        console.error('[Webhook] Group processing error:', error);
       }
-    } else {
-      console.log('[Webhook] Step 1a: Skipping group processing (private chat or no chat id)');
     }
-    
-    console.log('[Webhook] Step 2: Checking if EventProcessingService needed');
     
     // Обрабатываем событие ТОЛЬКО для групп, добавленных в организацию
     if (body.message?.chat?.type !== 'private' && body.message?.chat?.id) {
-      const chatId = body.message.chat.id;
+      const msgChatId = body.message.chat.id;
       
-      // Проверяем, добавлена ли группа в какую-либо организацию
-      console.log('[Webhook] Step 2a: Checking if group is assigned to any organization');
       const { data: orgMapping } = await supabaseServiceRole
         .from('org_telegram_groups')
         .select('org_id')
-        .filter('tg_chat_id::text', 'eq', String(chatId))
+        .filter('tg_chat_id::text', 'eq', String(msgChatId))
         .limit(1);
       
       if (orgMapping && orgMapping.length > 0) {
-        console.log('[Webhook] Step 2b: ✅ Group is assigned to organization, processing events');
-        orgId = orgMapping[0].org_id; // Store for logging
+        orgId = orgMapping[0].org_id;
         const eventProcessingService = createEventProcessingService();
         eventProcessingService.setSupabaseClient(supabaseServiceRole);
         await eventProcessingService.processUpdate(body);
-        console.log('[Webhook] Step 2c: EventProcessingService completed');
         
         // Update participant activity stats (lightweight, no enrichment)
         if (body.message?.from?.id && orgId) {
-          updateParticipantActivity(body.message.from.id, orgId).catch(err => {
-            console.error('[Webhook] Failed to update participant activity:', err);
-          });
-          incrementGroupMessageCount(chatId).catch(err => {
-            console.error('[Webhook] Failed to update group message count:', err);
-          });
+          updateParticipantActivity(body.message.from.id, orgId).catch(() => {});
+          incrementGroupMessageCount(msgChatId).catch(() => {});
         }
-      } else {
-        console.log('[Webhook] Step 2b: ⏭️  Group is NOT assigned to any organization, skipping event processing');
-        console.log('[Webhook] Step 2c: Group will appear in "Available Groups" for admins to add manually');
       }
-    } else {
-      console.log('[Webhook] Step 2a: Skipping EventProcessingService (private chat)');
     }
     
-    // ========================================
     // STEP 2.5: Обработка изменений статуса бота (my_chat_member)
-    // ========================================
     if (body.my_chat_member) {
       const chatMember = body.my_chat_member;
       const botUserId = chatMember.new_chat_member?.user?.id;
       
       // Проверяем, что это наш бот
       if (botUserId === 8355772450) {
-        const chatId = chatMember.chat?.id;
+        const memberChatId = chatMember.chat?.id;
         const newStatus = chatMember.new_chat_member?.status;
-        const oldStatus = chatMember.old_chat_member?.status;
         
-        console.log('[Webhook] Step 2.5: Bot status changed in chat', chatId, {
-          oldStatus,
-          newStatus,
-          chatType: chatMember.chat?.type
-        });
-        
-        // Обновляем bot_status в telegram_groups
-        if (chatId && newStatus) {
+        if (memberChatId && newStatus) {
           let botStatus = 'pending';
+          if (newStatus === 'administrator') botStatus = 'connected';
+          else if (newStatus === 'left' || newStatus === 'kicked') botStatus = 'inactive';
           
-          if (newStatus === 'administrator') {
-            botStatus = 'connected';
-          } else if (newStatus === 'member') {
-            botStatus = 'pending';
-          } else if (newStatus === 'left' || newStatus === 'kicked') {
-            botStatus = 'inactive';
-          }
-          
-          console.log('[Webhook] Updating bot_status to:', botStatus);
+          if (isNormal) console.log('[Webhook] Bot status:', memberChatId, botStatus);
           
           const { error: updateError } = await supabaseServiceRole
             .from('telegram_groups')
@@ -301,43 +259,30 @@ async function processWebhookInBackground(body: any) {
             .filter('tg_chat_id::text', 'eq', String(chatId));
           
           if (updateError) {
-            console.error('[Webhook] ❌ Error updating bot_status:', updateError);
-          } else {
-            console.log('[Webhook] ✅ Bot status updated to', botStatus, 'for chat', chatId);
+            console.error('[Webhook] Bot status update error:', updateError.message);
           }
         }
       }
     }
     
-    // ========================================
     // STEP 2.6: Обработка изменений статуса администраторов (chat_member)
-    // ========================================
     if (body.chat_member) {
       const chatMember = body.chat_member;
-      const chatId = chatMember.chat?.id;
+      const adminChatId = chatMember.chat?.id;
       const userId = chatMember.new_chat_member?.user?.id;
       const newStatus = chatMember.new_chat_member?.status;
       const oldStatus = chatMember.old_chat_member?.status;
       
-      console.log('[Webhook] Step 2.6: Admin status changed in chat', chatId, {
-        userId,
-        oldStatus,
-        newStatus,
-        chatType: chatMember.chat?.type
-      });
-      
-      // Проверяем, что это изменение статуса администратора
       const wasAdmin = oldStatus === 'administrator' || oldStatus === 'creator';
       const isAdmin = newStatus === 'administrator' || newStatus === 'creator';
       
       if (wasAdmin !== isAdmin) {
-        console.log(`[Webhook] Admin rights changed for user ${userId} in chat ${chatId}: ${wasAdmin} -> ${isAdmin}`);
+        if (isNormal) console.log('[Webhook] Admin change:', userId, adminChatId, wasAdmin, '->', isAdmin);
         
         // Обновляем права для конкретного пользователя в группе
-        if (chatId && userId) {
+        if (adminChatId && userId) {
           const isOwner = newStatus === 'creator';
           
-          // Деактивируем старую запись (если была)
           await supabaseServiceRole
             .from('telegram_group_admins')
             .update({
@@ -346,28 +291,25 @@ async function processWebhookInBackground(body: any) {
               verified_at: new Date().toISOString(),
               expires_at: new Date().toISOString()
             })
-            .eq('tg_chat_id', chatId)
+            .eq('tg_chat_id', adminChatId)
             .eq('tg_user_id', userId);
           
-          // Если пользователь стал админом, добавляем новую запись
           if (isAdmin) {
             const { error: upsertError } = await supabaseServiceRole
               .from('telegram_group_admins')
               .upsert({
-                tg_chat_id: chatId,
+                tg_chat_id: adminChatId,
                 tg_user_id: userId,
                 is_admin: true,
                 is_owner: isOwner,
                 verified_at: new Date().toISOString(),
-                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 дней
+                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
               }, {
                 onConflict: 'tg_chat_id,tg_user_id'
               });
             
             if (upsertError) {
-              console.error('[Webhook] ❌ Error upserting admin rights:', upsertError);
-            } else {
-              console.log('[Webhook] ✅ Admin rights updated for user', userId, 'in chat', chatId);
+              console.error('[Webhook] Admin rights upsert error:', upsertError.message);
             }
           }
           
@@ -375,21 +317,17 @@ async function processWebhookInBackground(body: any) {
           const { data: orgBindings } = await supabaseServiceRole
             .from('org_telegram_groups')
             .select('org_id')
-            .eq('tg_chat_id', chatId);
+            .eq('tg_chat_id', adminChatId);
           
           if (orgBindings && orgBindings.length > 0) {
             for (const binding of orgBindings) {
-              console.log(`[Webhook] Syncing memberships for org ${binding.org_id} after admin rights change`);
-              
               const { error: syncError } = await supabaseServiceRole.rpc(
                 'sync_telegram_admins',
                 { p_org_id: binding.org_id }
               );
               
               if (syncError) {
-                console.error(`[Webhook] ❌ Error syncing memberships for org ${binding.org_id}:`, syncError);
-              } else {
-                console.log(`[Webhook] ✅ Memberships synced for org ${binding.org_id}`);
+                console.error('[Webhook] Membership sync error:', syncError.message);
               }
             }
           }
@@ -406,13 +344,7 @@ async function processWebhookInBackground(body: any) {
       const messageId = reaction.message_id;
       const userId = reaction.user?.id;
       
-      console.log('[Webhook] Step 2.6: Reaction received', {
-        chatId,
-        messageId,
-        userId,
-        oldReactions: reaction.old_reaction?.length || 0,
-        newReactions: reaction.new_reaction?.length || 0
-      });
+      if (isVerbose) console.log('[Webhook] Reaction:', chatId, messageId, userId);
       
       // Проверяем, что группа привязана к организации
       if (chatId && messageId && userId) {
@@ -422,59 +354,38 @@ async function processWebhookInBackground(body: any) {
           .eq('tg_chat_id', chatId);
         
         if (orgBindings && orgBindings.length > 0) {
-          console.log('[Webhook] Processing reaction event for org:', orgBindings[0].org_id);
-          
-          // Используем EventProcessingService
           const eventProcessingService = createEventProcessingService();
           eventProcessingService.setSupabaseClient(supabaseServiceRole);
           await eventProcessingService.processReaction(body.message_reaction, orgBindings[0].org_id);
           
-          console.log('[Webhook] Step 2.6: Reaction processed');
-          
-          // Update participant activity stats (lightweight, no enrichment)
           if (userId) {
-            updateParticipantActivity(userId, orgBindings[0].org_id).catch(err => {
-              console.error('[Webhook] Failed to update participant activity (reaction):', err);
-            });
+            updateParticipantActivity(userId, orgBindings[0].org_id).catch(() => {});
           }
         }
       }
     }
     
-    console.log('[Webhook] Step 3: Checking for text message processing');
-    
     // Обработка команд бота и кодов авторизации (включая личные сообщения)
     if (body?.message?.text) {
       const text = body.message.text.trim();
-      console.log('[Webhook] Received text message:', {
-        text: text,
-        from: body.message.from?.id,
-        chat: body.message.chat?.id,
-        chatType: body.message.chat?.type
-      });
-      
-      // Проверяем, является ли это кодом авторизации (6 hex символов)
       const isAuthCode = /^[0-9A-F]{6}$/i.test(text);
-      console.log('[Webhook] Is auth code?', isAuthCode, 'Pattern test result:', /^[0-9A-F]{6}$/i.test(text));
       
       if (isAuthCode) {
-        console.log('[Webhook] ✅ Detected auth code directly:', text);
+        if (isNormal) console.log('[Webhook] Auth code:', text);
         await handleAuthCode(body.message, text.toUpperCase());
-      } 
-      // Или команда с кодом: /start CODE
-      else if (text.startsWith('/')) {
-        console.log('[Webhook] Detected command:', text.split(' ')[0]);
+      } else if (text.startsWith('/')) {
+        if (isVerbose) console.log('[Webhook] Command:', text.split(' ')[0]);
         await handleBotCommand(body.message);
-      } else {
-        console.log('[Webhook] Message does not match auth code or command pattern');
       }
-    } else {
-      console.log('[Webhook] No text message in update');
-      console.log('[Webhook] Full update payload:', JSON.stringify(body, null, 2));
+    } else if (isVerbose) {
+      console.log('[Webhook] Non-text update:', JSON.stringify(body, null, 2));
     }
     
-    console.log('[Webhook] ==================== COMPLETED ====================');
-    console.log('[Webhook] Processing completed for update:', body.update_id);
+    // Минимальный итоговый лог
+    const durationMs = Date.now() - startTime;
+    if (isNormal) {
+      console.log(`[Webhook] ✓ ${updateId} ${body.message?.chat?.type || 'event'} ${durationMs}ms`);
+    }
     
     // ========================================
     // RECORD SUCCESSFUL PROCESSING
@@ -491,7 +402,7 @@ async function processWebhookInBackground(body: any) {
     
     // Record idempotency
     if (updateId && chatId) {
-      const { error: idempotencyError } = await supabaseServiceRole
+      await supabaseServiceRole
         .from('telegram_webhook_idempotency')
         .insert({
           update_id: updateId,
@@ -500,14 +411,8 @@ async function processWebhookInBackground(body: any) {
           org_id: orgId
         });
       
-      if (idempotencyError) {
-        console.error('[Webhook] ⚠️  Failed to save idempotency record:', idempotencyError.message);
-      } else {
-        console.log('[Webhook] ✅ Idempotency record saved');
-      }
-      
-      // Log health success
-      const { error: healthLogError } = await supabaseServiceRole
+      // Log health success (silent)
+      await supabaseServiceRole
         .rpc('log_telegram_health', {
           p_tg_chat_id: chatId,
           p_event_type: 'webhook_success',
@@ -515,20 +420,13 @@ async function processWebhookInBackground(body: any) {
           p_message: `Processed ${eventType} update`,
           p_org_id: orgId
         });
-      
-      if (healthLogError) {
-        console.error('[Webhook] ⚠️  Failed to log health:', healthLogError.message);
-      } else {
-        console.log('[Webhook] ✅ Health success logged');
-      }
     }
     
   } catch (error) {
-    console.error('[Webhook] ❌ Background processing error:', error);
-    console.error('[Webhook] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    console.error('[Webhook] Error message:', error instanceof Error ? error.message : String(error));
-    console.error('[Webhook] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.log('[Webhook] ==================== ERROR ====================');
+    console.error('[Webhook] Error:', error instanceof Error ? error.message : String(error));
+    if (isVerbose && error instanceof Error) {
+      console.error('[Webhook] Stack:', error.stack);
+    }
     
     // ========================================
     // LOG ERROR TO DATABASE

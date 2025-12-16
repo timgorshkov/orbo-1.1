@@ -44,3 +44,15 @@ next-env.d.ts
 # misc
 temp/
 .tmp-migration
+
+# Deploy secrets (keep example files)
+deploy/.env
+deploy/data/
+deploy/nginx/ssl/
+deploy/nginx/logs/
+
+# SSH keys
+*.pem
+id_rsa*
+selectel_key*
+.s3cfg

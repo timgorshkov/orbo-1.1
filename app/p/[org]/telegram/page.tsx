@@ -206,6 +206,12 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
       </div>
     )
   } catch (error) {
+    // Unauthorized/Forbidden are expected for unauthenticated users - redirect silently
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (errorMessage === 'Unauthorized' || errorMessage === 'Forbidden') {
+      // Don't log expected auth errors
+      return notFound()
+    }
     console.error('Telegram page error:', error)
     return notFound()
   }

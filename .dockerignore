@@ -1,0 +1,97 @@
+# ============================================
+# Docker Ignore File
+# ============================================
+# 
+# Files and directories to exclude from Docker build context.
+# This speeds up builds and reduces image size.
+#
+
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+out
+build
+dist
+
+# Testing
+coverage
+.nyc_output
+
+# IDE and editors
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# Environment files (secrets!)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Deploy folder (contains its own Dockerfile)
+deploy
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Memory bank (development only)
+memory-bank
+
+# Cursor rules
+.cursor
+
+# Database migrations (applied separately)
+db/migrations_archive
+
+# Temporary files
+temp
+tmp
+*.tmp
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Supabase local config
+supabase/.branches
+supabase/.temp
+
+# Python scripts (if any)
+*.py
+__pycache__
+
+# Archives
+*.tar.gz
+*.zip
+

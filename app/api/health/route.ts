@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 
 export const dynamic = 'force-dynamic'
-export const runtime = 'edge'
+// Note: Removed 'edge' runtime for Docker standalone compatibility
 
 export async function GET() {
   const startTime = Date.now()

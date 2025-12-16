@@ -1,0 +1,132 @@
+# Docker Compose configuration for Orbo production deployment
+# 
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose logs -f app        # View app logs
+#   docker compose down               # Stop all services
+#   docker compose build app          # Rebuild app image
+#
+# Environment: Production (Selectel Server)
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: orbo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orbo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: orbo
+      # Locale settings
+      POSTGRES_INITDB_ARGS: "--locale=en_US.UTF-8"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./data/postgres-backup:/backup
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbo -d orbo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Performance tuning for 32GB RAM server
+    command: >
+      postgres
+      -c shared_buffers=8GB
+      -c effective_cache_size=24GB
+      -c maintenance_work_mem=2GB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=64MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=52428kB
+      -c huge_pages=off
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_connections=200
+      -c logging_collector=on
+      -c log_directory='/var/lib/postgresql/data/log'
+      -c log_filename='postgresql-%Y-%m-%d_%H%M%S.log'
+      -c log_rotation_age=1d
+      -c log_rotation_size=100MB
+      -c log_min_duration_statement=1000
+
+  # ============================================
+  # Next.js Application
+  # ============================================
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: orbo_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://orbo:${POSTGRES_PASSWORD}@postgres:5432/orbo
+      - NODE_ENV=production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  # ============================================
+  # Nginx Reverse Proxy
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: orbo_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./data/certbot/www:/var/www/certbot:ro
+      - ./data/certbot/conf:/etc/letsencrypt:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Certbot for SSL certificates
+  # ============================================
+  certbot:
+    image: certbot/certbot
+    container_name: orbo_certbot
+    volumes:
+      - ./data/certbot/www:/var/www/certbot
+      - ./data/certbot/conf:/etc/letsencrypt
+    # Run certificate renewal every 12 hours
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+networks:
+  default:
+    name: orbo_network
+    driver: bridge
+

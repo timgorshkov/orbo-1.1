@@ -3,6 +3,11 @@ import { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChatMemberUpdate
 import { createTelegramService } from './telegramService';
 import { createClient } from '@supabase/supabase-js';
 
+// Уровень логирования для EventProcessingService
+const LOG_LEVEL = process.env.WEBHOOK_LOG_LEVEL || 'minimal';
+const isVerbose = LOG_LEVEL === 'verbose';
+const isNormal = LOG_LEVEL === 'normal' || isVerbose;
+
 /**
  * Сервис для обработки и нормализации событий Telegram
  */
@@ -647,16 +652,11 @@ export class EventProcessingService {
    * Обрабатывает обычное сообщение пользователя
    */
   private async processUserMessage(message: TelegramMessage, orgId: string): Promise<void> {
-    console.log('[EventProcessing] ===== PROCESSING USER MESSAGE =====');
-    console.log('[EventProcessing] OrgId:', orgId);
-    console.log('[EventProcessing] Message ID:', message.message_id);
-    console.log('[EventProcessing] Chat ID:', message.chat.id);
-    console.log('[EventProcessing] From:', message.from?.username || message.from?.id);
-
-    if (!message.from) {
-      console.log('[EventProcessing] No message.from, skipping');
-      return;
+    if (isVerbose) {
+      console.log('[EventProcessing] Message:', orgId, message.message_id, message.chat.id, message.from?.username);
     }
+
+    if (!message.from) return;
   
     const chatId = message.chat.id;
     const userId = message.from.id;
@@ -664,17 +664,10 @@ export class EventProcessingService {
     const messageThreadId = typeof (message as any)?.message_thread_id === 'number' ? (message as any).message_thread_id : null;
     const threadTitle = this.extractThreadTitle(message);
 
-    if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot') {
-      console.log('[EventProcessing] Skipping user message for GroupAnonymousBot');
+    // Skip anonymous and bot users
+    if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot' || message.from.is_bot) {
       return;
     }
-
-    if (message.from.is_bot) {
-      console.log('[EventProcessing] Skipping user message for bot user', message.from.username || userId);
-      return;
-    }
-
-    console.log('[EventProcessing] User message is valid, proceeding...');
 
     const username = message.from.username;
     const fullName = `${message.from.first_name} ${message.from.last_name || ''}`.trim();
@@ -822,14 +815,9 @@ export class EventProcessingService {
     // Activity events are now tracked through activity_events table directly
     
     try {
-      console.log('[EventProcessing] ===== INSERTING ACTIVITY EVENT =====');
-      console.log('[EventProcessing] Inserting activity event with data:', {
-        org_id: orgId,
-        event_type: 'message',
-        tg_chat_id: chatId,
-        message_id: message.message_id,
-        tg_user_id: userId
-      });
+      if (isVerbose) {
+        console.log('[EventProcessing] Insert event:', orgId, chatId, message.message_id);
+      }
       
       // Unified metadata structure for activity_events
       const messageText = message.text || '';
@@ -886,9 +874,7 @@ export class EventProcessingService {
         }
       };
       
-      console.log('[EventProcessing] Attempting insert to activity_events...');
-      // ✅ Check if event already exists (prevent duplicates when group belongs to multiple orgs)
-      // One message should create only ONE activity_event, regardless of how many orgs the group belongs to
+      // Check if event already exists (prevent duplicates)
       try {
         const { data: existingEvent } = await this.supabase
           .from('activity_events')
@@ -901,13 +887,9 @@ export class EventProcessingService {
         let insertedEvent: any = null;
         
         if (existingEvent) {
-          // Event already exists - reuse it instead of creating duplicate
-          console.log(`[EventProcessing] ⚠️ Activity event already exists (ID: ${existingEvent.id}) for message ${message.message_id}, skipping duplicate insert`);
           insertedEvent = existingEvent;
         } else {
-          // Пробуем добавить дополнительные поля, если они существуют в таблице
           try {
-            // Вставляем событие и получаем ID для связи с participant_messages
             const { data: newEvent, error } = await this.supabase
               .from('activity_events')
               .insert(baseEventData)
@@ -915,16 +897,12 @@ export class EventProcessingService {
               .single();
           
             if (error) {
-              console.error('[EventProcessing] ❌ Error inserting activity event with base data:', error);
+              console.error('[EventProcessing] Insert error:', error.message);
               throw error;
-            } else {
-              insertedEvent = newEvent;
-              console.log('[EventProcessing] ✅ Activity event recorded successfully with ID:', insertedEvent?.id);
             }
+            insertedEvent = newEvent;
           } catch (insertError: any) {
-            // If insert fails due to duplicate key (shouldn't happen with our check, but handle gracefully)
             if (insertError?.code === '23505') {
-              console.log('[EventProcessing] ⚠️ Duplicate key error, attempting to find existing event...');
               const { data: foundEvent } = await this.supabase
                 .from('activity_events')
                 .select('id')
@@ -934,7 +912,6 @@ export class EventProcessingService {
                 .maybeSingle();
               if (foundEvent) {
                 insertedEvent = foundEvent;
-                console.log('[EventProcessing] ✅ Found existing event (ID:', foundEvent.id, ')');
               } else {
                 throw insertError;
               }
@@ -974,8 +951,6 @@ export class EventProcessingService {
             if (messageError) {
               console.error('[EventProcessing] ⚠️  Failed to save message text:', messageError);
               // Non-critical error, continue processing
-            } else {
-              console.log('[EventProcessing] ✅ Message text saved to participant_messages');
             }
           }
         }
@@ -998,14 +973,11 @@ export class EventProcessingService {
           }
         };
         
-        console.log('[EventProcessing] Attempting minimal insert to activity_events...');
         try {
           const { error: minimalError } = await this.supabase.from('activity_events').insert(minimalEventData);
           
           if (minimalError) {
-            console.error('[EventProcessing] ❌ Error inserting activity event with minimal data:', minimalError);
-          } else {
-            console.log('[EventProcessing] ✅ Activity event recorded successfully with minimal data');
+            console.error('[EventProcessing] Minimal insert error:', minimalError.message);
           }
         } catch (minimalInsertError) {
           console.error('[EventProcessing] ❌ Fatal error inserting activity event:', minimalInsertError);
@@ -1585,7 +1557,7 @@ export class EventProcessingService {
         return;
       }
 
-      console.log('[EventProcessing] Saving message text, length:', messageText.length);
+      if (isVerbose) console.log('[EventProcessing] Save text:', messageText.length);
 
       const mediaType = this.detectMediaType(message);
       const wordsCount = messageText.split(/\s+/).filter(w => w.length > 0).length;
@@ -1610,13 +1582,9 @@ export class EventProcessingService {
 
       if (error) {
         // Игнорируем ошибки duplicate key (сообщение уже сохранено)
-        if (error.code === '23505') {
-          console.log('[EventProcessing] Message already saved, skipping');
-        } else {
-          console.error('[EventProcessing] ❌ Error saving message text:', error);
+        if (error.code !== '23505') {
+          console.error('[EventProcessing] Save text error:', error.message);
         }
-      } else {
-        console.log('[EventProcessing] ✅ Message text saved successfully');
       }
     } catch (error) {
       console.error('[EventProcessing] ❌ Exception saving message text:', error);
@@ -1650,17 +1618,12 @@ export class EventProcessingService {
       const oldReactions = reaction.old_reaction || [];
 
       if (!chatId || !messageId || !userId) {
-        console.log('[EventProcessing] Invalid reaction data, skipping');
         return;
       }
 
-      console.log('[EventProcessing] ===== PROCESSING REACTION =====');
-      console.log('[EventProcessing] OrgId:', orgId);
-      console.log('[EventProcessing] Message ID:', messageId);
-      console.log('[EventProcessing] Chat ID:', chatId);
-      console.log('[EventProcessing] User ID:', userId);
-      console.log('[EventProcessing] Old reactions:', oldReactions.length);
-      console.log('[EventProcessing] New reactions:', newReactions.length);
+      if (isVerbose) {
+        console.log('[EventProcessing] Reaction:', orgId, chatId, messageId, userId);
+      }
 
       // 1. Ensure participant exists
       const { data: participant } = await this.supabase
@@ -1691,11 +1654,9 @@ export class EventProcessingService {
         }
 
         participantId = newParticipant.id;
-        console.log('[EventProcessing] Created new participant:', participantId);
       }
 
-      // 2. Update reactions_count on the original message
-      // Count: +1 if reaction added, -1 if removed
+      // Update reactions_count on the original message
       const reactionDelta = newReactions.length - oldReactions.length;
 
       if (reactionDelta !== 0) {
@@ -1707,9 +1668,7 @@ export class EventProcessingService {
         });
 
         if (updateError) {
-          console.error('[EventProcessing] Error updating reactions_count:', updateError);
-        } else {
-          console.log('[EventProcessing] ✅ Updated reactions_count by', reactionDelta);
+          console.error('[EventProcessing] Reactions update error:', updateError.message);
         }
       }
 
@@ -1744,12 +1703,10 @@ export class EventProcessingService {
         });
 
       if (insertError) {
-        console.error('[EventProcessing] ❌ Error inserting reaction event:', insertError);
-      } else {
-        console.log('[EventProcessing] ✅ Reaction event recorded');
+        console.error('[EventProcessing] Reaction insert error:', insertError.message);
       }
 
-      // 4. Update participant last_activity_at
+      // Update participant last_activity_at
       await this.supabase
         .from('participants')
         .update({
@@ -1757,10 +1714,8 @@ export class EventProcessingService {
         })
         .eq('id', participantId);
 
-      // 5. Update group metrics
+      // Update group metrics
       await this.updateGroupMetrics(orgId, chatId);
-
-      console.log('[EventProcessing] ===== REACTION PROCESSING COMPLETE =====');
     } catch (error) {
       console.error('[EventProcessing] Error processing reaction:', error);
     }

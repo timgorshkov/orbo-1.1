@@ -1,0 +1,60 @@
+# ============================================
+# SSH Config Template for Orbo Deployment
+# ============================================
+#
+# Copy this to: C:\Users\YOUR_USERNAME\.ssh\config
+# (or ~/.ssh/config on Linux/Mac)
+#
+# Before using:
+# 1. Generate SSH key: ssh-keygen -t ed25519 -C "orbo-selectel" -f ~/.ssh/selectel_key
+# 2. Copy public key to server: see instructions below
+# 3. Replace YOUR_SERVER_IP with actual IP
+#
+
+Host selectel-orbo
+    HostName YOUR_SERVER_IP
+    User deploy
+    IdentityFile ~/.ssh/selectel_key
+    ForwardAgent yes
+    
+    # Optional: Keep connection alive
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    
+    # Optional: Compression for slower connections
+    # Compression yes
+
+# ============================================
+# How to copy SSH key to server (Windows)
+# ============================================
+#
+# Option 1: PowerShell (if you can still login with password)
+#
+#   type $env:USERPROFILE\.ssh\selectel_key.pub | ssh root@YOUR_SERVER_IP "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+#
+# Option 2: Manual copy
+#
+#   1. Open: notepad $env:USERPROFILE\.ssh\selectel_key.pub
+#   2. Copy the entire content
+#   3. SSH to server: ssh root@YOUR_SERVER_IP
+#   4. Run: mkdir -p ~/.ssh && nano ~/.ssh/authorized_keys
+#   5. Paste the key and save (Ctrl+X, Y, Enter)
+#
+# Option 3: Via Selectel Console
+#
+#   1. Login to my.selectel.ru
+#   2. Go to your server -> Console
+#   3. Login as root
+#   4. Add key as shown in Option 2
+#
+
+# ============================================
+# Testing SSH Connection
+# ============================================
+#
+# After setup, test connection:
+#   ssh selectel-orbo
+#
+# Should connect without password prompt.
+#
+

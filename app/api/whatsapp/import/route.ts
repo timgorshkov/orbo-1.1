@@ -201,12 +201,67 @@ export async function POST(request: NextRequest) {
     
     console.log(`[WhatsApp Import] Group name: ${groupName}`)
     
+    // Remove BOM (Byte Order Mark) if present
+    if (chatContent.charCodeAt(0) === 0xFEFF) {
+      chatContent = chatContent.slice(1)
+      console.log(`[WhatsApp Import] Removed BOM from content`)
+    }
+    
+    // Normalize line endings (handle Windows CRLF, Mac CR, Unix LF)
+    chatContent = chatContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    
     const lines = chatContent.split('\n').filter(line => line.trim())
     console.log(`[WhatsApp Import] Total lines: ${lines.length}`)
     
-    // Parse messages
-    // Format: DD.MM.YYYY, HH:MM - Имя/Телефон: Сообщение
-    const messagePattern = /^(\d{1,2}\.\d{1,2}\.\d{4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.*)$/
+    // Log first few lines for debugging
+    if (lines.length > 0) {
+      console.log(`[WhatsApp Import] First 3 lines:`)
+      lines.slice(0, 3).forEach((line, i) => {
+        console.log(`  Line ${i + 1}: "${line.substring(0, 150)}${line.length > 150 ? '...' : ''}"`)
+      })
+    }
+    
+    // Parse messages - support multiple formats
+    // Format 1: DD.MM.YYYY, HH:MM - Имя/Телефон: Сообщение (Russian mobile)
+    // Format 2: [DD.MM.YYYY, HH:MM:SS] Имя/Телефон: Сообщение (iOS/some Android)
+    // Format 3: DD/MM/YYYY, HH:MM - Имя/Телефон: Сообщение (US/English)
+    // Format 4: DD.MM.YY, HH:MM - Имя/Телефон: Сообщение (short year)
+    const messagePatterns = [
+      // Format 1: DD.MM.YYYY, HH:MM - Name: Message
+      /^(\d{1,2}\.\d{1,2}\.\d{4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.*)$/,
+      // Format 2: [DD.MM.YYYY, HH:MM:SS] Name: Message (with brackets)
+      /^\[(\d{1,2}\.\d{1,2}\.\d{4}),\s*(\d{1,2}:\d{2})(?::\d{2})?\]\s*([^:]+):\s*(.*)$/,
+      // Format 3: DD/MM/YYYY, HH:MM - Name: Message (slash dates)
+      /^(\d{1,2}\/\d{1,2}\/\d{4}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.*)$/,
+      // Format 4: DD.MM.YY, HH:MM - Name: Message (short year)
+      /^(\d{1,2}\.\d{1,2}\.\d{2}),\s*(\d{1,2}:\d{2})\s*-\s*([^:]+):\s*(.*)$/,
+      // Format 5: [DD/MM/YYYY, HH:MM:SS] Name: Message (brackets + slash)
+      /^\[(\d{1,2}\/\d{1,2}\/\d{4}),\s*(\d{1,2}:\d{2})(?::\d{2})?\]\s*([^:]+):\s*(.*)$/,
+    ]
+    
+    // Detect which pattern works
+    let workingPattern: RegExp | null = null
+    for (const pattern of messagePatterns) {
+      const testMatches = lines.filter(line => pattern.test(line)).length
+      if (testMatches > 0) {
+        workingPattern = pattern
+        console.log(`[WhatsApp Import] Pattern matched: ${testMatches} lines with pattern ${messagePatterns.indexOf(pattern) + 1}`)
+        break
+      }
+    }
+    
+    if (!workingPattern) {
+      console.error(`[WhatsApp Import] No pattern matched any lines. Sample lines:`)
+      lines.slice(0, 5).forEach((line, i) => {
+        console.error(`  Line ${i + 1}: "${line}"`)
+      })
+      return NextResponse.json({ 
+        error: 'Неподдерживаемый формат файла. Попробуйте экспортировать чат заново через WhatsApp.',
+        details: `First line: ${lines[0]?.substring(0, 100) || 'empty'}`
+      }, { status: 400 })
+    }
+    
+    const messagePattern = workingPattern
     
     const messages: Array<{
       date: string
@@ -227,16 +282,25 @@ export async function POST(request: NextRequest) {
     let minDate: Date | null = null
     let maxDate: Date | null = null
     
+    let skippedNoMatch = 0
+    let skippedSystem = 0
+    
     for (const line of lines) {
       const match = line.match(messagePattern)
-      if (!match) continue
+      if (!match) {
+        skippedNoMatch++
+        continue
+      }
       
       const [, dateStr, timeStr, sender, text] = match
       const senderTrimmed = sender.trim()
       
       // Skip system messages
       const lowerSender = senderTrimmed.toLowerCase()
-      if (
+      const lowerText = text.toLowerCase()
+      
+      // WhatsApp system message patterns
+      const isSystemMessage = 
         lowerSender.includes('создал') ||
         lowerSender.includes('добавил') ||
         lowerSender.includes('изменил') ||
@@ -245,14 +309,33 @@ export async function POST(request: NextRequest) {
         lowerSender.includes('присоединил') ||
         lowerSender.includes('покинул') ||
         lowerSender.includes('удалил') ||
+        lowerText.includes('создал эту группу') ||
+        lowerText.includes('добавлен в группу') ||
+        lowerText.includes('покинул группу') ||
+        lowerText.includes('присоединился') ||
+        lowerText.includes('изменил название') ||
+        lowerText.includes('изменил значок') ||
+        lowerText.includes('сообщения защищены') ||
+        lowerText.includes('end-to-end') ||
+        lowerText.includes('шифрованием') ||
         senderTrimmed === 'Вы' ||
         senderTrimmed.length > 100
-      ) {
+      
+      if (isSystemMessage) {
+        skippedSystem++
         continue
       }
       
-      // Parse date
-      const [day, month, year] = dateStr.split('.')
+      // Parse date - support both dot and slash separators, and 2-digit years
+      const dateParts = dateStr.includes('/') ? dateStr.split('/') : dateStr.split('.')
+      let [day, month, year] = dateParts
+      
+      // Handle 2-digit year (e.g., "24" → "2024")
+      if (year && year.length === 2) {
+        const yearNum = parseInt(year)
+        year = (yearNum > 50 ? '19' : '20') + year
+      }
+      
       const [hours, minutes] = timeStr.split(':')
       const timestamp = new Date(
         parseInt(year),
@@ -317,6 +400,7 @@ export async function POST(request: NextRequest) {
     }
     
     console.log(`[WhatsApp Import] Parsed ${messages.length} messages from ${participantNames.size} participants`)
+    console.log(`[WhatsApp Import] Skipped: ${skippedNoMatch} no match, ${skippedSystem} system messages`)
     
     if (messages.length === 0) {
       return NextResponse.json({ 

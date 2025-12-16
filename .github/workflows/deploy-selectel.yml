@@ -1,0 +1,88 @@
+name: Deploy to Selectel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SERVER_HOST: 84.38.187.45
+  SERVER_USER: deploy
+  DEPLOY_PATH: /home/deploy/orbo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SELECTEL_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create archive
+        run: |
+          tar --exclude='node_modules' \
+              --exclude='.next' \
+              --exclude='.git' \
+              --exclude='deploy/data' \
+              -czf deploy.tar.gz .
+
+      - name: Upload to server
+        run: |
+          scp -i ~/.ssh/deploy_key deploy.tar.gz \
+            ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Deploy on server
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            
+            # Backup current app
+            if [ -d "app" ]; then
+              mv app app_backup_$(date +%Y%m%d_%H%M%S)
+            fi
+            
+            # Extract new version
+            mkdir -p app
+            tar -xzf deploy.tar.gz -C app
+            rm deploy.tar.gz
+            
+            # Copy Dockerfile
+            cp app/deploy/Dockerfile app/
+            
+            # Load env vars and rebuild
+            source .env
+            
+            docker build \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+              --build-arg NEXT_PUBLIC_TELEGRAM_BOT_USERNAME="$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME" \
+              --build-arg SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              --build-arg OPENAI_API_KEY="$OPENAI_API_KEY" \
+              -t orbo-app \
+              app/
+            
+            # Restart app
+            docker compose up -d app
+            
+            # Cleanup old backups (keep last 3)
+            ls -dt app_backup_* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
+            
+            # Health check
+            sleep 10
+            curl -f http://localhost:3000/api/health || exit 1
+            
+            echo "Deploy successful!"
+          EOF
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
