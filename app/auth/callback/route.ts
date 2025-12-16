@@ -5,6 +5,13 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
+  
+  // Определяем реальный origin (из X-Forwarded-* или NEXT_PUBLIC_APP_URL)
+  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const realOrigin = forwardedHost 
+    ? `${forwardedProto}://${forwardedHost.split(':')[0]}`
+    : process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin
 
   // Логируем все auth-related cookies для диагностики
   const allCookies = request.cookies.getAll()
@@ -72,13 +79,13 @@ export async function GET(request: NextRequest) {
         // Проверяем наличие code_verifier cookies
         codeVerifierCookies: authCookies.filter(c => c.name.includes('code-verifier')).map(c => c.name)
       })
-      return NextResponse.redirect(`${requestUrl.origin}/signin?error=auth_failed&reason=${encodeURIComponent(error.message)}`)
+      return NextResponse.redirect(`${realOrigin}/signin?error=auth_failed&reason=${encodeURIComponent(error.message)}`)
     }
 
     console.log('[Auth Callback] Session created for user:', data.user?.email)
 
-    // Определяем URL редиректа
-    const redirectUrl = new URL(requestUrl.origin)
+    // Определяем URL редиректа (используем реальный origin)
+    const redirectUrl = new URL(realOrigin)
     
     // Получаем организации пользователя
     const { data: orgs, error: orgsError } = await supabase
@@ -121,6 +128,6 @@ export async function GET(request: NextRequest) {
 
   // Если нет кода - редиректим на signin
   console.warn('[Auth Callback] No code provided, redirecting to signin')
-  return NextResponse.redirect(`${requestUrl.origin}/signin`)
+  return NextResponse.redirect(`${realOrigin}/signin`)
 }
 
