@@ -27,11 +27,8 @@ jobs:
 
       - name: Create archive
         run: |
-          tar --exclude='node_modules' \
-              --exclude='.next' \
-              --exclude='.git' \
-              --exclude='deploy/data' \
-              -czf deploy.tar.gz .
+          # Используем git archive - надёжнее и автоматически исключает .git
+          git archive --format=tar.gz -o deploy.tar.gz HEAD
 
       - name: Upload to server
         run: |
