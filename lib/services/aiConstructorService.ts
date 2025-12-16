@@ -7,12 +7,8 @@
  * AUTO-LOGS all API calls to openai_api_logs table
  */
 
-import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { openai } from './openaiClient';
 
 // Supabase admin client for logging
 const supabaseAdmin = createClient(

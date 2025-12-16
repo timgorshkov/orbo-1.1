@@ -8,8 +8,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
 import { createServiceLogger } from '@/lib/logger';
+import { openai } from './openaiClient';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,10 +20,6 @@ const supabaseAdmin = createClient(
     }
   }
 );
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const logger = createServiceLogger('WeeklyDigestService');
 
