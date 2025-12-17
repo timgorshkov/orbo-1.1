@@ -6,18 +6,10 @@ import { createEventProcessingService } from '@/lib/services/eventProcessingServ
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { updateParticipantActivity, incrementGroupMessageCount } from '@/lib/services/participantStatsService'
-import { createAPILogger } from '@/lib/logger'
+import { createAPILogger, createServiceLogger } from '@/lib/logger'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
 export const dynamic = 'force-dynamic';
-
-// Уровень логирования: 'minimal' | 'normal' | 'verbose'
-// minimal - только ошибки и важные события
-// normal - основные шаги обработки
-// verbose - полная отладка
-const LOG_LEVEL = process.env.WEBHOOK_LOG_LEVEL || 'minimal';
-const isVerbose = LOG_LEVEL === 'verbose';
-const isNormal = LOG_LEVEL === 'normal' || isVerbose;
 
 // Создаем глобальный клиент Supabase с сервисной ролью для обхода RLS
 const supabaseServiceRole = createClient(
@@ -66,15 +58,18 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     
-    // Минимальное логирование для production
-    if (isVerbose) {
-      console.log('[Webhook] update_id:', body?.update_id, 'msg:', !!body?.message, 'text:', body?.message?.text?.substring(0, 30));
-    }
+    logger.debug({ 
+      update_id: body?.update_id,
+      has_message: !!body?.message,
+      has_text: !!body?.message?.text,
+      text_preview: body?.message?.text?.substring(0, 30),
+      chat_id: body?.message?.chat?.id
+    }, 'Webhook body parsed');
     
     let timeoutId: NodeJS.Timeout | null = null
     let didTimeout = false
     
-    const processingPromise = processWebhookInBackground(body).then((result) => {
+    const processingPromise = processWebhookInBackground(body, logger).then((result) => {
       // Processing completed - cancel timeout
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -86,7 +81,11 @@ export async function POST(req: NextRequest) {
     const timeoutPromise = new Promise((resolve) => {
       timeoutId = setTimeout(async () => {
         didTimeout = true
-        console.log('[Webhook POST] Timeout reached, returning 200 OK anyway')
+        logger.warn({ 
+          update_id: body?.update_id,
+          chat_id: body?.message?.chat?.id || body?.my_chat_member?.chat?.id,
+          timeout_ms: 10000
+        }, 'Webhook processing timeout - returning 200 OK anyway');
         // Log timeout as warning
         await logErrorToDatabase({
           level: 'warn',
@@ -108,7 +107,11 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('[Webhook POST] ❌ Error parsing request:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      error_type: error instanceof Error ? error.constructor.name : typeof error,
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error parsing webhook request');
     // Log parsing error
     await logErrorToDatabase({
       level: 'error',
@@ -130,16 +133,14 @@ export async function POST(req: NextRequest) {
  * Обработка webhook в фоне
  * Эта функция выполняется асинхронно после возврата ответа Telegram
  */
-async function processWebhookInBackground(body: any) {
+async function processWebhookInBackground(body: any, logger: ReturnType<typeof createAPILogger>) {
   const updateId = body.update_id;
   let chatId: number | null = null;
   let orgId: string | null = null;
   const startTime = Date.now();
   
   try {
-    if (isVerbose) {
-      console.log('[Webhook] Processing update:', updateId);
-    }
+    logger.debug({ update_id: updateId }, 'Processing webhook update');
     
     // ========================================
     // STEP 0: IDEMPOTENCY CHECK
@@ -152,20 +153,18 @@ async function processWebhookInBackground(body: any) {
         .single();
       
       if (exists) {
-        if (isNormal) console.log('[Webhook] Duplicate update:', updateId);
+        logger.debug({ update_id: updateId }, 'Duplicate update - skipping');
         return; // Already processed
       }
     }
     
-    if (isVerbose) {
-      console.log('[Webhook] Structure:', JSON.stringify({
-        msg: !!body.message,
-        text: !!body?.message?.text,
-        type: body?.message?.chat?.type,
-        from: body?.message?.from?.id,
-        chat: body?.message?.chat?.id
-      }));
-    }
+    logger.debug({ 
+      has_message: !!body.message,
+      has_text: !!body?.message?.text,
+      message_type: body?.message?.chat?.type,
+      from_id: body?.message?.from?.id,
+      chat_id: body?.message?.chat?.id
+    }, 'Webhook update structure');
     
     // Проверяем, существует ли группа в базе данных и добавляем, если нет
     // ТОЛЬКО для групповых чатов (не для private)
@@ -199,13 +198,19 @@ async function processWebhookInBackground(body: any) {
             });
           
           if (insertError) {
-            console.error('[Webhook] Error creating group:', insertError.message);
-          } else if (isNormal) {
-            console.log('[Webhook] New group created:', chatId);
+            logger.error({ 
+              chat_id: chatId,
+              error: insertError.message 
+            }, 'Error creating group');
+          } else {
+            logger.info({ chat_id: chatId, title }, 'New group created');
           }
         }
       } catch (error) {
-        console.error('[Webhook] Group processing error:', error);
+        logger.error({ 
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Group processing error');
       }
     }
     
@@ -248,7 +253,11 @@ async function processWebhookInBackground(body: any) {
           if (newStatus === 'administrator') botStatus = 'connected';
           else if (newStatus === 'left' || newStatus === 'kicked') botStatus = 'inactive';
           
-          if (isNormal) console.log('[Webhook] Bot status:', memberChatId, botStatus);
+          logger.info({ 
+            chat_id: memberChatId,
+            bot_status: botStatus,
+            new_status: newStatus
+          }, 'Bot status changed');
           
           // Upsert group so that it appears in available groups even если еще не было сообщений
           const chatTitle = chatMember.chat?.title || `Chat ${memberChatId}`;
@@ -262,7 +271,10 @@ async function processWebhookInBackground(body: any) {
             }, { onConflict: 'tg_chat_id' });
           
           if (upsertError) {
-            console.error('[Webhook] Bot status upsert error:', upsertError.message);
+            logger.error({ 
+              chat_id: memberChatId,
+              error: upsertError.message 
+            }, 'Bot status upsert error');
           }
         }
       }
@@ -280,7 +292,13 @@ async function processWebhookInBackground(body: any) {
       const isAdmin = newStatus === 'administrator' || newStatus === 'creator';
       
       if (wasAdmin !== isAdmin) {
-        if (isNormal) console.log('[Webhook] Admin change:', userId, adminChatId, wasAdmin, '->', isAdmin);
+        logger.info({ 
+          user_id: userId,
+          chat_id: adminChatId,
+          was_admin: wasAdmin,
+          is_admin: isAdmin,
+          new_status: newStatus
+        }, 'Admin rights changed');
         
         // Обновляем права для конкретного пользователя в группе
         if (adminChatId && userId) {
@@ -312,7 +330,11 @@ async function processWebhookInBackground(body: any) {
               });
             
             if (upsertError) {
-              console.error('[Webhook] Admin rights upsert error:', upsertError.message);
+              logger.error({ 
+                chat_id: adminChatId,
+                user_id: userId,
+                error: upsertError.message 
+              }, 'Admin rights upsert error');
             }
           }
           
@@ -330,7 +352,11 @@ async function processWebhookInBackground(body: any) {
               );
               
               if (syncError) {
-                console.error('[Webhook] Membership sync error:', syncError.message);
+                logger.error({ 
+                  org_id: binding.org_id,
+                  chat_id: adminChatId,
+                  error: syncError.message 
+                }, 'Membership sync error');
               }
             }
           }
@@ -347,7 +373,11 @@ async function processWebhookInBackground(body: any) {
       const messageId = reaction.message_id;
       const userId = reaction.user?.id;
       
-      if (isVerbose) console.log('[Webhook] Reaction:', chatId, messageId, userId);
+      logger.debug({ 
+        chat_id: chatId,
+        message_id: messageId,
+        user_id: userId
+      }, 'Processing reaction');
       
       // Проверяем, что группа привязана к организации
       if (chatId && messageId && userId) {
@@ -374,21 +404,28 @@ async function processWebhookInBackground(body: any) {
       const isAuthCode = /^[0-9A-F]{6}$/i.test(text);
       
       if (isAuthCode) {
-        if (isNormal) console.log('[Webhook] Auth code:', text);
-        await handleAuthCode(body.message, text.toUpperCase());
+        logger.info({ code: text }, 'Auth code detected');
+        await handleAuthCode(body.message, text.toUpperCase(), logger);
       } else if (text.startsWith('/')) {
-        if (isVerbose) console.log('[Webhook] Command:', text.split(' ')[0]);
-        await handleBotCommand(body.message);
+        const command = text.split(' ')[0];
+        logger.debug({ command }, 'Bot command received');
+        await handleBotCommand(body.message, logger);
       }
-    } else if (isVerbose) {
-      console.log('[Webhook] Non-text update:', JSON.stringify(body, null, 2));
+    } else {
+      logger.debug({ 
+        update_type: body.my_chat_member ? 'my_chat_member' : body.chat_member ? 'chat_member' : 'other'
+      }, 'Non-text update');
     }
     
-    // Минимальный итоговый лог
+    // Итоговый лог
     const durationMs = Date.now() - startTime;
-    if (isNormal) {
-      console.log(`[Webhook] ✓ ${updateId} ${body.message?.chat?.type || 'event'} ${durationMs}ms`);
-    }
+    logger.info({ 
+      update_id: updateId,
+      event_type: body.message?.chat?.type || 'event',
+      duration_ms: durationMs,
+      chat_id: chatId,
+      org_id: orgId
+    }, 'Webhook processing completed');
     
     // ========================================
     // RECORD SUCCESSFUL PROCESSING
@@ -426,17 +463,20 @@ async function processWebhookInBackground(body: any) {
     }
     
   } catch (error) {
-    console.error('[Webhook] Error:', error instanceof Error ? error.message : String(error));
-    if (isVerbose && error instanceof Error) {
-      console.error('[Webhook] Stack:', error.stack);
-    }
+    // Extract chat_id for error logging
+    chatId = chatId || body.message?.chat?.id || body.my_chat_member?.chat?.id || body.chat_member?.chat?.id || null;
+    
+    logger.error({ 
+      update_id: updateId,
+      chat_id: chatId,
+      org_id: orgId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Webhook processing error');
     
     // ========================================
     // LOG ERROR TO DATABASE
     // ========================================
-    
-    // Extract chat_id for error logging
-    chatId = chatId || body.message?.chat?.id || body.my_chat_member?.chat?.id || body.chat_member?.chat?.id || null;
     
     // Log error to database
     const { error: logError } = await supabaseServiceRole
@@ -454,7 +494,7 @@ async function processWebhookInBackground(body: any) {
       });
     
     if (logError) {
-      console.error('[Webhook] ⚠️  Failed to log error to database:', logError.message);
+      logger.error({ error: logError.message }, 'Failed to log error to database');
     }
     
     // Log health failure
@@ -469,7 +509,7 @@ async function processWebhookInBackground(body: any) {
         });
       
       if (healthFailureError) {
-        console.error('[Webhook] ⚠️  Failed to log health failure:', healthFailureError.message);
+        logger.error({ error: healthFailureError.message }, 'Failed to log health failure');
       }
     }
   }
@@ -478,20 +518,19 @@ async function processWebhookInBackground(body: any) {
 /**
  * Обработка кода авторизации
  */
-async function handleAuthCode(message: any, code: string) {
+async function handleAuthCode(message: any, code: string, logger: ReturnType<typeof createAPILogger>) {
   const chatId = message.chat.id;
   const from = message.from;
+  const authLogger = logger.child({ service: 'telegram_auth' });
   
-  console.log(`[Bot Auth] ==================== START ====================`);
-  console.log(`[Bot Auth] Processing auth code: ${code}`);
-  console.log(`[Bot Auth] User ID: ${from.id}`);
-  console.log(`[Bot Auth] Chat ID: ${chatId}`);
-  console.log(`[Bot Auth] Username: ${from.username}`);
+  authLogger.info({ 
+    code,
+    telegram_user_id: from.id,
+    chat_id: chatId,
+    username: from.username
+  }, 'Processing auth code');
   
   try {
-    // Вызываем сервис верификации напрямую (без HTTP fetch)
-    console.log(`[Bot Auth] Calling verifyTelegramAuthCode service...`);
-    
     const verifyResult = await verifyTelegramAuthCode({
       code,
       telegramUserId: from.id,
@@ -501,8 +540,7 @@ async function handleAuthCode(message: any, code: string) {
       photoUrl: from.photo_url
     });
     
-    console.log(`[Bot Auth] ✅ Service call completed`);
-    console.log(`[Bot Auth] Result:`, JSON.stringify(verifyResult, null, 2));
+    authLogger.debug({ result: verifyResult }, 'Auth code verification completed');
 
     if (verifyResult.success) {
       // Успешная авторизация
@@ -529,7 +567,10 @@ async function handleAuthCode(message: any, code: string) {
           message += `⏰ _Авторизационная ссылка действует 1 час и только для первого входа._\n`;
           message += `_После первого входа используйте постоянную ссылку выше._`;
         } catch (err) {
-          console.error('[Bot Auth] Failed to fetch org name:', err);
+          logger.error({ 
+            org_id: verifyResult.orgId,
+            error: err instanceof Error ? err.message : String(err)
+          }, 'Failed to fetch org name');
           message += `Откройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`;
         }
       } else {
@@ -540,8 +581,11 @@ async function handleAuthCode(message: any, code: string) {
         parse_mode: 'Markdown'
       });
       
-      console.log(`[Bot Auth] ✅ User ${from.id} authenticated successfully with code ${code}`);
-      console.log(`[Bot Auth] ==================== SUCCESS ====================`);
+      authLogger.info({ 
+        telegram_user_id: from.id,
+        code,
+        org_id: verifyResult.orgId
+      }, 'User authenticated successfully');
     } else {
       // Ошибка верификации
       let errorMessage = '❌ Неверный или просроченный код авторизации.'
@@ -552,17 +596,21 @@ async function handleAuthCode(message: any, code: string) {
         errorMessage = '❌ Неверный код авторизации. Проверьте код и попробуйте снова.'
       }
       
-      console.log(`[Bot Auth] ❌ Sending error message: ${errorMessage}`);
+      authLogger.warn({ 
+        code,
+        error_code: verifyResult.errorCode,
+        error: verifyResult.error
+      }, 'Auth code verification failed');
+      
       const telegramService = createTelegramService('main');
       await telegramService.sendMessage(chatId, errorMessage);
-      
-      console.log(`[Bot Auth] ❌ Failed to verify code ${code}: ${verifyResult.error}`);
-      console.log(`[Bot Auth] ==================== FAILED ====================`);
     }
   } catch (error) {
-    console.error(`[Bot Auth] ❌ Exception in handleAuthCode:`, error);
-    console.error(`[Bot Auth] Error type:`, error instanceof Error ? error.constructor.name : typeof error);
-    console.error(`[Bot Auth] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+    authLogger.error({ 
+      code,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Exception in handleAuthCode');
     
     try {
       const telegramService = createTelegramService('main');
@@ -571,18 +619,17 @@ async function handleAuthCode(message: any, code: string) {
         '⚠️ Произошла ошибка при обработке кода. Попробуйте позже.'
       );
     } catch (sendError) {
-      console.error(`[Bot Auth] Failed to send error message:`, sendError);
+      authLogger.error({ error: sendError }, 'Failed to send error message');
     }
-    
-    console.log(`[Bot Auth] ==================== ERROR ====================`);
   }
 }
 
-async function handleBotCommand(message: any) {
+async function handleBotCommand(message: any, logger: ReturnType<typeof createAPILogger>) {
   const chatId = message.chat.id;
   const from = message.from;
   const text = message.text;
   const command = text.split(' ')[0].toLowerCase();
+  const commandLogger = logger.child({ service: 'bot_command' });
   // Используем сервисную роль для обхода RLS
   const supabase = supabaseServiceRole;
   
@@ -592,7 +639,7 @@ async function handleBotCommand(message: any) {
     
     // Проверяем, похоже ли на код авторизации (6 символов hex)
     if (/^[0-9A-F]{6}$/i.test(code)) {
-      await handleAuthCode(message, code);
+      await handleAuthCode(message, code, logger);
       return; // Прекращаем обработку команды
     }
   }
@@ -612,14 +659,13 @@ async function handleBotCommand(message: any) {
       parse_mode: 'HTML'
     });
     
-    console.log(`[Bot] Sent instruction message to user ${userId}`);
+    commandLogger.info({ user_id: userId }, 'Sent instruction message');
     return;
   }
   
   // Для групповых чатов - обработка команд верификации владельца
   if (message.chat.type !== 'private') {
-    // Находим организацию по чату через org_telegram_groups (telegram_groups не имеет org_id)
-    console.log(`Looking for org mapping for tg_chat_id: ${chatId}`);
+    commandLogger.debug({ chat_id: chatId }, 'Looking for org mapping');
   
     // Ищем организацию через org_telegram_groups
     const { data: orgMapping } = await supabase
@@ -630,7 +676,7 @@ async function handleBotCommand(message: any) {
       .maybeSingle();
     
     if (!orgMapping?.org_id) {
-      console.log(`Command from unmapped group ${chatId}, trying to get any organization`);
+      commandLogger.debug({ chat_id: chatId }, 'Command from unmapped group - using default org');
       // Получаем любую организацию
       const { data: orgs } = await supabase
         .from('organizations')
@@ -638,21 +684,23 @@ async function handleBotCommand(message: any) {
         .limit(1);
       
       if (orgs && orgs.length > 0) {
-        console.log(`Using default org ${orgs[0].id} for command`);
-        return await handleCommandWithOrg(chatId, from, command, orgs[0].id);
+        commandLogger.debug({ org_id: orgs[0].id }, 'Using default org for command');
+        return await handleCommandWithOrg(chatId, from, command, orgs[0].id, commandLogger);
       }
       return;
     }
     
-    console.log(`Found org ${orgMapping.org_id} for group ${chatId}`);
-    return await handleCommandWithOrg(chatId, from, command, orgMapping.org_id);
+    commandLogger.debug({ org_id: orgMapping.org_id, chat_id: chatId }, 'Found org for group');
+    return await handleCommandWithOrg(chatId, from, command, orgMapping.org_id, commandLogger);
   } // Закрываем условие для групповых чатов
 }
 
-async function handleCommandWithOrg(chatId: number, from: any, command: string, orgId: string) {
+async function handleCommandWithOrg(chatId: number, from: any, command: string, orgId: string, logger: ReturnType<typeof createAPILogger>) {
   // Используем сервисную роль для обхода RLS
   const supabase = supabaseServiceRole;
   const telegramService = createTelegramService();
+  
+  logger.info({ command, chat_id: chatId, org_id: orgId, user_id: from.id }, 'Processing bot command');
   
   // Обрабатываем команды
   switch(command) {
@@ -666,11 +714,11 @@ async function handleCommandWithOrg(chatId: number, from: any, command: string, 
       break;
       
     case '/stats':
-      await handleStatsCommand(chatId, orgId);
+      await handleStatsCommand(chatId, orgId, logger);
       break;
       
     case '/events':
-      await handleEventsCommand(chatId, orgId);
+      await handleEventsCommand(chatId, orgId, logger);
       break;
   }
   
@@ -690,7 +738,7 @@ async function handleCommandWithOrg(chatId: number, from: any, command: string, 
 /**
  * Обрабатывает команду /stats
  */
-async function handleStatsCommand(chatId: number, orgId: string) {
+async function handleStatsCommand(chatId: number, orgId: string, logger: ReturnType<typeof createAPILogger>) {
   // Используем сервисную роль для обхода RLS
   const supabase = supabaseServiceRole;
   const telegramService = createTelegramService();
@@ -700,7 +748,7 @@ async function handleStatsCommand(chatId: number, orgId: string) {
     const today = new Date().toISOString().split('T')[0]
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     
-    console.log(`Getting stats for chat ${chatId} in org ${orgId}, today: ${today}, yesterday: ${yesterday}`);
+    logger.debug({ chat_id: chatId, org_id: orgId, today, yesterday }, 'Getting stats');
     
     // Получаем группу для проверки
     let { data: groupData } = await supabase
@@ -718,7 +766,7 @@ async function handleStatsCommand(chatId: number, orgId: string) {
         .maybeSingle();
         
       if (groupStrData) {
-        console.log(`Found group with string tg_chat_id: ${String(chatId)}`);
+        logger.debug({ chat_id: chatId, method: 'string' }, 'Found group with string tg_chat_id');
         groupData = groupStrData;
       } else {
         // Пробуем через filter
@@ -727,15 +775,13 @@ async function handleStatsCommand(chatId: number, orgId: string) {
           .select('id, title, tg_chat_id')
           .filter('tg_chat_id::text', 'eq', String(chatId))
           .maybeSingle();
-          
+        
         if (groupFilterData) {
-          console.log(`Found group with filter tg_chat_id::text = ${String(chatId)}`);
+          logger.debug({ chat_id: chatId, method: 'filter' }, 'Found group with filter');
           groupData = groupFilterData;
         }
       }
     }
-    
-    console.log(`Group data for stats:`, groupData);
     
     // Получаем метрики за сегодня
     const { data: todayMetrics, error: todayError } = await supabase
@@ -745,12 +791,10 @@ async function handleStatsCommand(chatId: number, orgId: string) {
       .eq('tg_chat_id', chatId)
       .eq('date', today)
       .maybeSingle();
-      
-    if (todayError) {
-      console.error('Error fetching today metrics:', todayError);
-    }
     
-    console.log('Today metrics:', todayMetrics);
+    if (todayError) {
+      logger.error({ error: todayError.message }, 'Error fetching today metrics');
+    }
     
     // Если не нашли с числовым chatId, пробуем со строковым
     if (!todayMetrics) {
@@ -763,7 +807,7 @@ async function handleStatsCommand(chatId: number, orgId: string) {
         .maybeSingle();
         
       if (todayMetricsStr) {
-        console.log('Found today metrics with string tg_chat_id');
+        logger.debug({ chat_id: chatId }, 'Found today metrics with string tg_chat_id');
       }
     }
     
@@ -775,12 +819,10 @@ async function handleStatsCommand(chatId: number, orgId: string) {
       .eq('tg_chat_id', chatId)
       .eq('date', yesterday)
       .maybeSingle();
-      
-    if (yesterdayError) {
-      console.error('Error fetching yesterday metrics:', yesterdayError);
-    }
     
-    console.log('Yesterday metrics:', yesterdayMetrics);
+    if (yesterdayError) {
+      logger.error({ error: yesterdayError.message }, 'Error fetching yesterday metrics');
+    }
     
     // Получаем количество участников
     const { count: memberCount, error: memberCountError } = await supabase
@@ -788,9 +830,9 @@ async function handleStatsCommand(chatId: number, orgId: string) {
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
       .limit(1);
-      
+    
     if (memberCountError) {
-      console.error('Error fetching member count:', memberCountError);
+      logger.error({ error: memberCountError.message }, 'Error fetching member count');
     }
     
     // Получаем количество сообщений за все время
@@ -800,9 +842,9 @@ async function handleStatsCommand(chatId: number, orgId: string) {
       .eq('org_id', orgId)
       .eq('tg_chat_id', chatId)
       .eq('event_type', 'message');
-      
+    
     if (totalMessagesError) {
-      console.error('Error fetching total messages:', totalMessagesError);
+      logger.error({ error: totalMessagesError.message }, 'Error fetching total messages');
     }
     
     // Формируем сообщение со статистикой
@@ -836,7 +878,10 @@ async function handleStatsCommand(chatId: number, orgId: string) {
     
     await telegramService.sendMessage(chatId, statsMessage)
   } catch (error) {
-    console.error('Error handling stats command:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error handling stats command');
     await telegramService.sendMessage(chatId, 'Ошибка при получении статистики.')
   }
 }
@@ -844,7 +889,7 @@ async function handleStatsCommand(chatId: number, orgId: string) {
 /**
  * Обрабатывает команду /events
  */
-async function handleEventsCommand(chatId: number, orgId: string) {
+async function handleEventsCommand(chatId: number, orgId: string, logger: ReturnType<typeof createAPILogger>) {
   // Используем сервисную роль для обхода RLS
   const supabase = supabaseServiceRole;
   const telegramService = createTelegramService();
@@ -880,7 +925,10 @@ async function handleEventsCommand(chatId: number, orgId: string) {
       )
     }
   } catch (error) {
-    console.error('Error handling events command:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error handling events command');
     await telegramService.sendMessage(chatId, 'Ошибка при получении событий.')
   }
 }
