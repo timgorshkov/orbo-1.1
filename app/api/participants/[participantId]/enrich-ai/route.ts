@@ -82,12 +82,14 @@ export async function POST(
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/enrich-ai' });
   let participantId: string | undefined;
+  let orgId: string | undefined;
   try {
     const paramsData = await params;
     participantId = paramsData.participantId;
     const supabase = await createClientServer();
     const body = await request.json();
-    const { orgId, useAI = true, includeBehavior = true, includeReactions = true, daysBack = 90 } = body;
+    const { useAI = true, includeBehavior = true, includeReactions = true, daysBack = 90 } = body;
+    orgId = body.orgId;
     
     if (!orgId) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
@@ -175,7 +177,7 @@ export async function POST(
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       participant_id: participantId || 'unknown',
-      org_id: orgId
+      org_id: orgId || 'unknown'
     }, '[API] Enrich AI error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
