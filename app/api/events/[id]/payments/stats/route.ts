@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * GET /api/events/[id]/payments/stats
@@ -21,6 +22,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments/stats' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -64,7 +66,7 @@ export async function GET(
       .single()
 
     if (statsError) {
-      console.error('Error fetching payment stats:', statsError)
+      logger.error({ error: statsError.message, event_id: eventId }, 'Error fetching payment stats');
       return NextResponse.json({ error: statsError.message }, { status: 500 })
     }
 
@@ -89,7 +91,7 @@ export async function GET(
       .not('price', 'is', null)
 
     if (breakdownError) {
-      console.error('Error fetching status breakdown:', breakdownError)
+      logger.error({ error: breakdownError.message, event_id: eventId }, 'Error fetching status breakdown');
     }
 
     // Count by status
@@ -119,7 +121,11 @@ export async function GET(
       }
     })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]/payments/stats:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in GET /api/events/[id]/payments/stats');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

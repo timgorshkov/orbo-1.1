@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
 import { participantMatcher } from '@/lib/services/participants/matcher';
 import { PostgrestSingleResponse } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
 // REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
@@ -47,6 +48,7 @@ function normalizeEmail(email?: string | null): string | null {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/create' });
   try {
     const supabaseAdmin = createAdminServer();
     
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
       .select('id')) as PostgrestSingleResponse<{ id: string }[]>;
 
     if (insertError) {
-      console.error('Error inserting participant:', insertError);
+      logger.error({ error: insertError.message, org_id: orgId }, 'Error inserting participant');
       return NextResponse.json({ error: 'Failed to create participant' }, { status: 500 });
     }
 
@@ -123,7 +125,12 @@ export async function POST(request: Request) {
     // REMOVED: Audit logging (migration 072)
     // participant_audit_log table and logParticipantAudit function removed
     if (participantId) {
-      console.log(`[Participant Created] ID: ${participantId}, Name: ${fullName || 'Unnamed'}, Source: ${source || 'manual'}`);
+      logger.info({ 
+        participant_id: participantId, 
+        full_name: fullName || 'Unnamed', 
+        source: source || 'manual',
+        org_id: orgId
+      }, '[Participant Created]');
     }
 
     return NextResponse.json({
@@ -131,7 +138,11 @@ export async function POST(request: Request) {
       participantId
     });
   } catch (error: any) {
-    console.error('Error creating participant:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack,
+      org_id: orgId
+    }, 'Error creating participant');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { createAPILogger } from '@/lib/logger'
 
 // PATCH /api/events/[id]/participants/[registrationId] - Update event registration (admin only)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; registrationId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/participants/[registrationId]' });
   try {
     const { id: eventId, registrationId } = await params
     const supabase = await createClientServer()
@@ -91,7 +93,7 @@ export async function PATCH(
       .eq('id', registrationId)
 
     if (updateError) {
-      console.error('[Edit Registration] Error updating registration:', updateError)
+      logger.error({ error: updateError.message, event_id: eventId, registration_id: registrationId }, '[Edit Registration] Error updating registration');
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
@@ -141,7 +143,12 @@ export async function PATCH(
       message: 'Registration updated successfully'
     }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in PATCH /api/events/[id]/participants/[registrationId]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId,
+      registration_id: registrationId
+    }, 'Error in PATCH /api/events/[id]/participants/[registrationId]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

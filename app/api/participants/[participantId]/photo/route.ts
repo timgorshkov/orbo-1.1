@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
+import { createAPILogger } from '@/lib/logger'
 import sharp from 'sharp'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ participantId: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/participants/[participantId]/photo' });
   try {
     const { participantId } = await params
     const supabase = await createClientServer()
@@ -97,7 +99,7 @@ export async function POST(
       })
 
     if (uploadError) {
-      console.error('Upload error:', uploadError)
+      logger.error({ error: uploadError.message, participant_id: participantId, org_id: orgId }, 'Upload error');
       return NextResponse.json({ error: 'Failed to upload photo' }, { status: 500 })
     }
 
@@ -113,13 +115,18 @@ export async function POST(
       .eq('id', participantId)
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ error: updateError.message, participant_id: participantId, org_id: orgId }, 'Update error');
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 })
     }
 
+    logger.info({ participant_id: participantId, org_id: orgId }, 'Photo uploaded successfully');
     return NextResponse.json({ photo_url: publicUrl })
   } catch (error) {
-    console.error('Photo upload error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      participant_id: participantId
+    }, 'Photo upload error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -128,6 +135,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ participantId: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/participants/[participantId]/photo' });
   try {
     const { participantId } = await params
     const supabase = await createClientServer()
@@ -196,13 +204,18 @@ export async function DELETE(
       .eq('id', participantId)
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ error: updateError.message, participant_id: participantId, org_id: orgId }, 'Update error');
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 })
     }
 
+    logger.info({ participant_id: participantId, org_id: orgId }, 'Photo deleted successfully');
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Photo delete error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      participant_id: participantId
+    }, 'Photo delete error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

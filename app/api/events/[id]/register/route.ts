@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
+import { createAPILogger } from '@/lib/logger'
 
 // POST /api/events/[id]/register - Register for event
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
   try {
     const eventId = params.id
     const supabase = await createClientServer()
@@ -54,7 +56,7 @@ export async function POST(
         })
 
       if (countError) {
-        console.error('Error counting registrations:', countError)
+        logger.error({ error: countError.message, event_id: eventId }, 'Error counting registrations');
         // Fallback to manual count
         let registeredCount = 0
         if (countByPaid) {
@@ -111,7 +113,7 @@ export async function POST(
     // NEW: If not found by telegram_user_id, try finding by email
     // This prevents creating duplicate participants for users without confirmed Telegram
     if (!participant && user.email) {
-      console.log(`Searching participant by email: ${user.email}`)
+      logger.debug({ email: user.email, event_id: eventId }, 'Searching participant by email');
       
       const { data: foundByEmail } = await adminSupabase
         .from('participants')
@@ -122,13 +124,16 @@ export async function POST(
         .maybeSingle()
 
       if (foundByEmail) {
-        console.log(`Found existing participant by email: ${foundByEmail.id}`)
+        logger.debug({ participant_id: foundByEmail.id, email: user.email }, 'Found existing participant by email');
         participant = foundByEmail
 
         // If we found participant by email AND user now has confirmed Telegram,
         // update the participant with telegram_user_id
         if (telegramAccount?.telegram_user_id && !foundByEmail.tg_user_id) {
-          console.log(`Linking telegram_user_id ${telegramAccount.telegram_user_id} to participant ${foundByEmail.id}`)
+          logger.debug({ 
+            participant_id: foundByEmail.id,
+            telegram_user_id: telegramAccount.telegram_user_id
+          }, 'Linking telegram_user_id to participant');
           
           await adminSupabase
             .from('participants')
@@ -144,7 +149,7 @@ export async function POST(
     // If participant still not found, create a new one
     // This should only happen for first-time event registration
     if (!participant) {
-      console.log(`Creating new participant for user ${user.id} in org ${event.org_id}`)
+      logger.info({ user_id: user.id, org_id: event.org_id, event_id: eventId }, 'Creating new participant');
       
       const { data: newParticipant, error: createError } = await adminSupabase
         .from('participants')
@@ -161,7 +166,7 @@ export async function POST(
         .single()
 
       if (createError) {
-        console.error('Error creating participant:', createError)
+        logger.error({ error: createError.message, user_id: user.id, org_id: event.org_id }, 'Error creating participant');
         
         // Handle duplicate email case (race condition or unique constraint)
         if (createError.code === '23505') {
@@ -175,7 +180,7 @@ export async function POST(
             .maybeSingle()
           
           if (existingByEmail) {
-            console.log(`Using participant created in race condition: ${existingByEmail.id}`)
+            logger.debug({ participant_id: existingByEmail.id }, 'Using participant created in race condition');
             participant = existingByEmail
           } else {
             return NextResponse.json(
@@ -223,7 +228,7 @@ export async function POST(
         .eq('id', existingRegistration.id)
 
       if (updateError) {
-        console.error('Error updating registration:', updateError)
+        logger.error({ error: updateError.message, registration_id: existingRegistration.id }, 'Error updating registration');
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
@@ -238,12 +243,12 @@ export async function POST(
     }
 
     // Use RPC function to register (completely bypasses RLS via SECURITY DEFINER)
-    console.log('[API] About to call register_for_event RPC with:', {
-      eventId,
-      participantId: participant.id,
+    logger.debug({ 
+      event_id: eventId,
+      participant_id: participant.id,
       quantity,
-      registrationDataKeys: Object.keys(registrationData)
-    })
+      registration_data_keys: Object.keys(registrationData)
+    }, '[API] About to call register_for_event RPC');
     
     const { data: registrationResult, error: rpcError } = await adminSupabase
       .rpc('register_for_event', {
@@ -253,15 +258,20 @@ export async function POST(
         p_quantity: quantity
       })
 
-    console.log('[API] RPC call returned:', { 
-      hasData: !!registrationResult, 
-      hasError: !!rpcError,
-      errorCode: rpcError?.code,
-      errorMessage: rpcError?.message
-    })
+    logger.debug({ 
+      has_data: !!registrationResult,
+      has_error: !!rpcError,
+      error_code: rpcError?.code,
+      error_message: rpcError?.message
+    }, '[API] RPC call returned');
 
     if (rpcError) {
-      console.error('Error creating registration via RPC:', rpcError)
+      logger.error({ 
+        error: rpcError.message,
+        error_code: rpcError.code,
+        event_id: eventId,
+        participant_id: participant.id
+      }, 'Error creating registration via RPC');
       
       // Handle duplicate key error gracefully
       if (rpcError.code === '23505' || rpcError.message?.includes('duplicate')) {
@@ -318,7 +328,7 @@ export async function POST(
       : registrationResult
 
     if (!registrationRow) {
-      console.error('RPC function returned no registration data')
+      logger.error({ event_id: eventId, participant_id: participant.id }, 'RPC function returned no registration data');
       return NextResponse.json(
         { error: 'Registration failed - no data returned' },
         { status: 500 }
@@ -361,6 +371,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
   try {
     const eventId = params.id
     const supabase = await createClientServer()
@@ -435,13 +446,17 @@ export async function DELETE(
       .eq('status', 'registered')
 
     if (cancelError) {
-      console.error('Error cancelling registration:', cancelError)
+      logger.error({ error: cancelError.message, event_id: eventId }, 'Error cancelling registration');
       return NextResponse.json({ error: cancelError.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Error in DELETE /api/events/[id]/register:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in DELETE /api/events/[id]/register');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

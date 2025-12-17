@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { participantMatcher } from '@/lib/services/participants/matcher';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 async function ensureOrgAccess(orgId: string) {
   const supabase = await createClientServer();
@@ -25,6 +26,7 @@ async function ensureOrgAccess(orgId: string) {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/check-duplicates' });
   try {
     const payload = await request.json();
     const orgId = payload?.orgId as string | undefined;
@@ -57,7 +59,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ matches: filteredMatches });
   } catch (error: any) {
-    console.error('Error checking participant duplicates:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack,
+      org_id: orgId
+    }, 'Error checking participant duplicates');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }

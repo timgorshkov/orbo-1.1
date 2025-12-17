@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-async function ensureOrgAccess(orgId: string) {
+async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createAPILogger>) {
   const supabase = await createClientServer();
   const { data: { user }, error } = await supabase.auth.getUser();
 
@@ -22,7 +23,9 @@ async function ensureOrgAccess(orgId: string) {
     .maybeSingle();
 
   if (membershipError) {
-    console.error('Membership check error:', membershipError);
+    if (logger) {
+      logger.error({ error: membershipError.message, org_id: orgId, user_id: user.id }, 'Membership check error');
+    }
     return { user: null, error: NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 }) };
   }
 
@@ -34,6 +37,7 @@ async function ensureOrgAccess(orgId: string) {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ participantId: string }> }) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]' });
   try {
     const { participantId } = await params
     const url = new URL(request.url);
@@ -43,7 +47,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
       return NextResponse.json({ error: 'Missing orgId or participantId' }, { status: 400 });
     }
 
-    const { error } = await ensureOrgAccess(orgId);
+    const { error } = await ensureOrgAccess(orgId, logger);
     if (error) return error;
 
     const detail = await getParticipantDetail(orgId, participantId);
@@ -54,12 +58,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
 
     return NextResponse.json(detail);
   } catch (error: any) {
-    console.error('Error in participant GET:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack
+    }, 'Error in participant GET');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ participantId: string }> }) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]' });
   try {
     const { participantId } = await params
     const payload = await request.json();
@@ -69,7 +77,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
       return NextResponse.json({ error: 'Missing orgId or participantId' }, { status: 400 });
     }
 
-    const { adminClient, user, error } = await ensureOrgAccess(orgId);
+    const { adminClient, user, error } = await ensureOrgAccess(orgId, logger);
     if (error) return error;
     if (!adminClient || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -97,13 +105,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
     });
 
     // Логирование для отладки
-    console.log('PUT /api/participants/[participantId]', {
-      participantId,
-      canonicalId,
-      updatePayload,
-      hasCustomAttributes: 'custom_attributes' in updatePayload,
-      customAttributesValue: updatePayload.custom_attributes
-    });
+    logger.debug({
+      participant_id: participantId,
+      canonical_id: canonicalId,
+      update_payload: updatePayload,
+      has_custom_attributes: 'custom_attributes' in updatePayload,
+      custom_attributes_value: updatePayload.custom_attributes
+    }, 'PUT /api/participants/[participantId]');
 
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
@@ -118,14 +126,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
       .maybeSingle();
 
     if (updateError) {
-      console.error('Error updating participant:', updateError);
+      logger.error({ error: updateError.message, participant_id: participantId, canonical_id: canonicalId, org_id: orgId }, 'Error updating participant');
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 });
     }
 
-    console.log('Participant updated successfully:', {
-      canonicalId,
-      updatedCustomAttributes: updatedParticipant?.custom_attributes
-    });
+    logger.info({
+      canonical_id: canonicalId,
+      updated_custom_attributes: updatedParticipant?.custom_attributes
+    }, 'Participant updated successfully');
 
   // Log admin action
   await logAdminAction({
@@ -146,12 +154,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
 
     return NextResponse.json({ success: true, participant: updatedParticipant, detail });
   } catch (error: any) {
-    console.error('Error in participant PUT:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack,
+      participant_id: participantId
+    }, 'Error in participant PUT');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ participantId: string }> }) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]' });
   try {
     const { participantId } = await params
     const payload = await request.json();
@@ -161,7 +174,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
       return NextResponse.json({ error: 'Missing orgId or participantId' }, { status: 400 });
     }
 
-    const { adminClient, user, error } = await ensureOrgAccess(orgId);
+    const { adminClient, user, error } = await ensureOrgAccess(orgId, logger);
     if (error) return error;
     if (!adminClient || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -171,21 +184,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
 
     switch (action) {
       case 'addTrait':
-        return handleAddTrait(adminClient, user.id, orgId, participantId, payload);
+        return handleAddTrait(adminClient, user.id, orgId, participantId, payload, logger);
       case 'removeTrait':
-        return handleRemoveTrait(adminClient, orgId, participantId, payload);
+        return handleRemoveTrait(adminClient, orgId, participantId, payload, logger);
       case 'mergeDuplicates':
-        return handleMergeParticipants(adminClient, user.id, orgId, participantId, payload);
+        return handleMergeParticipants(adminClient, user.id, orgId, participantId, payload, logger);
       default:
         return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
     }
   } catch (error: any) {
-    console.error('Error in participant PATCH:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack,
+      participant_id: participantId
+    }, 'Error in participant PATCH');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }
 
-async function handleAddTrait(supabase: SupabaseClient, actorId: string, orgId: string, participantId: string, payload: any) {
+async function handleAddTrait(supabase: SupabaseClient, actorId: string, orgId: string, participantId: string, payload: any, logger?: ReturnType<typeof createAPILogger>) {
   const { key, value, valueType, source, confidence, metadata } = payload || {};
 
   if (!key || !value) {
@@ -218,7 +235,9 @@ async function handleAddTrait(supabase: SupabaseClient, actorId: string, orgId: 
     });
 
   if (traitError) {
-    console.error('Error upserting participant trait:', traitError);
+    if (logger) {
+      logger.error({ error: traitError.message, participant_id: participantId, org_id: orgId }, 'Error upserting participant trait');
+    }
     return NextResponse.json({ error: 'Failed to upsert trait' }, { status: 500 });
   }
 
@@ -227,7 +246,7 @@ async function handleAddTrait(supabase: SupabaseClient, actorId: string, orgId: 
   return NextResponse.json({ success: true, trait, detail });
 }
 
-async function handleRemoveTrait(supabase: SupabaseClient, orgId: string, participantId: string, payload: any) {
+async function handleRemoveTrait(supabase: SupabaseClient, orgId: string, participantId: string, payload: any, logger?: ReturnType<typeof createAPILogger>) {
   const { traitId } = payload || {};
 
   if (!traitId) {
@@ -254,7 +273,9 @@ async function handleRemoveTrait(supabase: SupabaseClient, orgId: string, partic
     .eq('participant_id', canonicalId);
 
   if (deleteError) {
-    console.error('Error deleting participant trait:', deleteError);
+    if (logger) {
+      logger.error({ error: deleteError.message, participant_id: participantId, org_id: orgId }, 'Error deleting participant trait');
+    }
     return NextResponse.json({ error: 'Failed to delete trait' }, { status: 500 });
   }
 
@@ -263,12 +284,12 @@ async function handleRemoveTrait(supabase: SupabaseClient, orgId: string, partic
   return NextResponse.json({ success: true, detail });
 }
 
-async function handleMergeParticipants(supabase: SupabaseClient, actorId: string, orgId: string, participantId: string, payload: any) {
+async function handleMergeParticipants(supabase: SupabaseClient, actorId: string, orgId: string, participantId: string, payload: any, logger?: ReturnType<typeof createAPILogger>) {
   const { duplicates, targetId, duplicateId } = payload || {};
 
   // ✅ Новая логика: participantId = canonical (target), duplicateId = source
   if (duplicateId && typeof duplicateId === 'string') {
-    return mergeFromDuplicate(supabase, actorId, orgId, participantId, duplicateId);
+    return mergeFromDuplicate(supabase, actorId, orgId, participantId, duplicateId, logger);
   }
 
   // ✅ Старая логика для обратной совместимости (если передан targetId)
@@ -278,7 +299,7 @@ async function handleMergeParticipants(supabase: SupabaseClient, actorId: string
       return NextResponse.json({ error: 'Cannot merge participant into itself' }, { status: 400 });
     }
     // Иначе используем старую логику (participantId объединяется в targetId)
-    return mergeIntoTarget(supabase, actorId, orgId, participantId, targetId);
+    return mergeIntoTarget(supabase, actorId, orgId, participantId, targetId, logger);
   }
 
   const duplicateList = Array.isArray(duplicates) ? duplicates : [];
@@ -286,7 +307,7 @@ async function handleMergeParticipants(supabase: SupabaseClient, actorId: string
     return NextResponse.json({ error: 'No duplicates provided' }, { status: 400 });
   }
 
-  return mergeIntoTarget(supabase, actorId, orgId, participantId, duplicateList[0]);
+  return mergeIntoTarget(supabase, actorId, orgId, participantId, duplicateList[0], logger);
 }
 
 /**
@@ -299,7 +320,8 @@ async function mergeFromDuplicate(
   actorId: string,
   orgId: string,
   participantId: string,
-  duplicateId: string
+  duplicateId: string,
+  logger?: ReturnType<typeof createAPILogger>
 ): Promise<NextResponse> {
   if (!duplicateId || typeof duplicateId !== 'string') {
     return NextResponse.json({ error: 'Invalid duplicate ID' }, { status: 400 });
@@ -314,18 +336,22 @@ async function mergeFromDuplicate(
     .maybeSingle();
 
   if (participantError || !participantRecord) {
-    console.error('Current participant (target) not found:', participantId, participantError);
+    if (logger) {
+      logger.error({ error: participantError?.message, participant_id: participantId }, 'Current participant (target) not found');
+    }
     return NextResponse.json({ error: 'Current participant not found' }, { status: 404 });
   }
 
   const canonicalId = participantRecord.merged_into || participantRecord.id;
   
-  console.log('Merge from duplicate - Current participant (TARGET):', {
-    id: participantId,
-    merged_into: participantRecord.merged_into,
-    status: participantRecord.status,
-    canonicalId
-  });
+  if (logger) {
+    logger.debug({
+      id: participantId,
+      merged_into: participantRecord.merged_into,
+      status: participantRecord.status,
+      canonical_id: canonicalId
+    }, 'Merge from duplicate - Current participant (TARGET)');
+  }
 
   // Проверяем выбранный дубликат (source)
   const { data: duplicateRecord, error: duplicateError } = await supabase
@@ -336,22 +362,28 @@ async function mergeFromDuplicate(
     .maybeSingle();
 
   if (duplicateError || !duplicateRecord) {
-    console.error('Duplicate (source) not found:', duplicateId, duplicateError);
+    if (logger) {
+      logger.error({ error: duplicateError?.message, duplicate_id: duplicateId }, 'Duplicate (source) not found');
+    }
     return NextResponse.json({ error: 'Duplicate participant not found' }, { status: 404 });
   }
 
   const duplicateCanonical = duplicateRecord.merged_into || duplicateRecord.id;
   
-  console.log('Merge from duplicate - Selected duplicate (SOURCE):', {
-    id: duplicateId,
-    merged_into: duplicateRecord.merged_into,
-    status: duplicateRecord.status,
-    duplicateCanonical
-  });
+  if (logger) {
+    logger.debug({
+      id: duplicateId,
+      merged_into: duplicateRecord.merged_into,
+      status: duplicateRecord.status,
+      duplicate_canonical: duplicateCanonical
+    }, 'Merge from duplicate - Selected duplicate (SOURCE)');
+  }
 
   // Проверка: нельзя объединить сам с собой
   if (canonicalId === duplicateCanonical) {
-    console.error('Cannot merge participant with itself:', { canonicalId, duplicateCanonical });
+    if (logger) {
+      logger.error({ canonical_id: canonicalId, duplicate_canonical: duplicateCanonical }, 'Cannot merge participant with itself');
+    }
     return NextResponse.json({ 
       error: 'Cannot merge participant with itself',
       details: {
@@ -363,11 +395,13 @@ async function mergeFromDuplicate(
   }
 
   // ✅ ПРАВИЛЬНАЯ ЛОГИКА: canonicalId (текущий) = target, duplicateCanonical (дубликат) = source
-  console.log('Executing merge_participants_smart:', {
-    target: canonicalId,
-    duplicates: [duplicateCanonical],
-    actor: actorId
-  });
+  if (logger) {
+    logger.info({
+      target: canonicalId,
+      duplicates: [duplicateCanonical],
+      actor: actorId
+    }, 'Executing merge_participants_smart');
+  }
 
   const { data: mergeResult, error: mergeError } = await supabase
     .rpc('merge_participants_smart', {
@@ -377,7 +411,9 @@ async function mergeFromDuplicate(
     });
 
   if (mergeError) {
-    console.error('Error merging participants (trying fallback):', mergeError);
+    if (logger) {
+      logger.warn({ error: mergeError.message, target: canonicalId, duplicates: [duplicateCanonical] }, 'Error merging participants (trying fallback)');
+    }
     
     // Если новая функция недоступна, используем старую
     const { error: fallbackError } = await supabase
@@ -388,21 +424,23 @@ async function mergeFromDuplicate(
       });
     
     if (fallbackError) {
-      console.error('Error merging participants (fallback):', fallbackError);
+      if (logger) {
+        logger.error({ error: fallbackError.message, target: canonicalId, duplicates: [duplicateCanonical] }, 'Error merging participants (fallback)');
+      }
       return NextResponse.json({ error: 'Failed to merge participants' }, { status: 500 });
     }
   }
   
   // Логируем результаты объединения
-  if (mergeResult) {
-    console.log('Merge result:', mergeResult);
+  if (mergeResult && logger) {
+    logger.info({ merge_result: mergeResult }, 'Merge result');
     
     if (mergeResult.conflicts && mergeResult.conflicts.length > 0) {
-      console.log('Conflicts detected:', mergeResult.conflicts);
+      logger.info({ conflicts: mergeResult.conflicts }, 'Conflicts detected');
     }
     
     if (mergeResult.merged_fields && mergeResult.merged_fields.length > 0) {
-      console.log('Fields merged:', mergeResult.merged_fields);
+      logger.info({ merged_fields: mergeResult.merged_fields }, 'Fields merged');
     }
   }
 
@@ -438,7 +476,8 @@ async function mergeIntoTarget(
   actorId: string,
   orgId: string,
   participantId: string,
-  targetId: string
+  targetId: string,
+  logger?: ReturnType<typeof createAPILogger>
 ): Promise<NextResponse> {
   if (!targetId || typeof targetId !== 'string') {
     return NextResponse.json({ error: 'Invalid merge target' }, { status: 400 });
@@ -452,21 +491,27 @@ async function mergeIntoTarget(
     .maybeSingle();
 
   if (participantError || !participantRecord) {
-    console.error('Participant not found:', participantId, participantError);
+    if (logger) {
+      logger.error({ error: participantError?.message, participant_id: participantId }, 'Participant not found');
+    }
     return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
   }
 
   const canonicalId = participantRecord.merged_into || participantRecord.id;
   
-  console.log('Merge check - Current participant:', {
-    id: participantId,
-    merged_into: participantRecord.merged_into,
-    status: participantRecord.status,
-    canonicalId
-  });
+  if (logger) {
+    logger.debug({
+      id: participantId,
+      merged_into: participantRecord.merged_into,
+      status: participantRecord.status,
+      canonical_id: canonicalId
+    }, 'Merge check - Current participant');
+  }
 
   if (canonicalId === targetId) {
-    console.error('Cannot merge into itself:', { canonicalId, targetId });
+    if (logger) {
+      logger.error({ canonical_id: canonicalId, target_id: targetId }, 'Cannot merge into itself');
+    }
     return NextResponse.json({ error: 'Cannot merge participant into itself' }, { status: 400 });
   }
 
@@ -478,28 +523,34 @@ async function mergeIntoTarget(
     .maybeSingle();
 
   if (targetError || !targetRecord) {
-    console.error('Target not found:', targetId, targetError);
+    if (logger) {
+      logger.error({ error: targetError?.message, target_id: targetId }, 'Target not found');
+    }
     return NextResponse.json({ error: 'Selected participant not found' }, { status: 404 });
   }
 
   const targetCanonical = targetRecord.merged_into || targetRecord.id;
   
-  console.log('Merge check - Target participant:', {
-    id: targetId,
-    merged_into: targetRecord.merged_into,
-    status: targetRecord.status,
-    targetCanonical
-  });
+  if (logger) {
+    logger.debug({
+      id: targetId,
+      merged_into: targetRecord.merged_into,
+      status: targetRecord.status,
+      target_canonical: targetCanonical
+    }, 'Merge check - Target participant');
+  }
 
   if (targetCanonical === canonicalId) {
-    console.error('Participants already share canonical record:', {
-      participantId,
-      targetId,
-      canonicalId,
-      targetCanonical,
-      participantMergedInto: participantRecord.merged_into,
-      targetMergedInto: targetRecord.merged_into
-    });
+    if (logger) {
+      logger.error({
+        participant_id: participantId,
+        target_id: targetId,
+        canonical_id: canonicalId,
+        target_canonical: targetCanonical,
+        participant_merged_into: participantRecord.merged_into,
+        target_merged_into: targetRecord.merged_into
+      }, 'Participants already share canonical record');
+    }
     return NextResponse.json({ 
       error: 'Participants already share canonical record',
       details: {
@@ -519,7 +570,9 @@ async function mergeIntoTarget(
     });
 
   if (mergeError) {
-    console.error('Error merging participants (trying fallback):', mergeError);
+    if (logger) {
+      logger.warn({ error: mergeError.message, target: targetCanonical, duplicates: [canonicalId] }, 'Error merging participants (trying fallback)');
+    }
     
     // Если новая функция недоступна, используем старую
     const { error: fallbackError } = await supabase
@@ -530,21 +583,23 @@ async function mergeIntoTarget(
       });
     
     if (fallbackError) {
-      console.error('Error merging participants (fallback):', fallbackError);
+      if (logger) {
+        logger.error({ error: fallbackError.message, target: targetCanonical, duplicates: [canonicalId] }, 'Error merging participants (fallback)');
+      }
       return NextResponse.json({ error: 'Failed to merge participants' }, { status: 500 });
     }
   }
   
   // Логируем результаты объединения
-  if (mergeResult) {
-    console.log('Merge result:', mergeResult);
+  if (mergeResult && logger) {
+    logger.info({ merge_result: mergeResult }, 'Merge result');
     
     if (mergeResult.conflicts && mergeResult.conflicts.length > 0) {
-      console.log('Conflicts detected:', mergeResult.conflicts);
+      logger.info({ conflicts: mergeResult.conflicts }, 'Conflicts detected');
     }
     
     if (mergeResult.merged_fields && mergeResult.merged_fields.length > 0) {
-      console.log('Fields merged:', mergeResult.merged_fields);
+      logger.info({ merged_fields: mergeResult.merged_fields }, 'Fields merged');
     }
   }
 

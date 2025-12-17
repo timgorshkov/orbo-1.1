@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -41,7 +43,7 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Event not found' }, { status: 404 })
       }
-      console.error('Error fetching event:', error)
+      logger.error({ error: error.message, event_id: eventId }, 'Error fetching event');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -115,7 +117,11 @@ export async function GET(
       }
     })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in GET /api/events/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -128,6 +134,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
   try {
     const { id: eventId } = await params
     const body = await request.json()
@@ -262,7 +269,7 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error('Error updating event:', error)
+      logger.error({ error: error.message, event_id: eventId, user_id: user.id }, 'Error updating event');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -326,7 +333,7 @@ export async function PUT(
             .insert(fieldsToInsert)
           
           if (fieldsError) {
-            console.error('Error creating registration fields:', fieldsError)
+            logger.error({ error: fieldsError.message, event_id: event.id }, 'Error creating registration fields');
           }
         }
       }
@@ -334,7 +341,11 @@ export async function PUT(
 
     return NextResponse.json({ event })
   } catch (error: any) {
-    console.error('Error in PUT /api/events/[id]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in PUT /api/events/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -347,6 +358,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -390,7 +402,7 @@ export async function DELETE(
       .eq('id', eventId)
 
     if (error) {
-      console.error('Error deleting event:', error)
+      logger.error({ error: error.message, event_id: eventId, user_id: user.id }, 'Error deleting event');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -406,7 +418,11 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Error in DELETE /api/events/[id]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in DELETE /api/events/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

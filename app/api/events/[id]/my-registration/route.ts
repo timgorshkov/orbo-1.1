@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/my-registration' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -50,7 +52,7 @@ export async function GET(
       .maybeSingle()
 
     if (regError) {
-      console.error('Error fetching registration:', regError)
+      logger.error({ error: regError.message, event_id: eventId }, 'Error fetching registration');
       return NextResponse.json({ error: regError.message }, { status: 500 })
     }
 
@@ -89,7 +91,10 @@ export async function GET(
       }
     }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]/my-registration:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in GET /api/events/[id]/my-registration');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

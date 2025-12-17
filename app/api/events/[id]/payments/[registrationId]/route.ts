@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * PATCH /api/events/[id]/payments/[registrationId]
@@ -24,6 +25,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; registrationId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments/[registrationId]' });
   try {
     const { id: eventId, registrationId } = await params
     const body = await request.json()
@@ -160,7 +162,7 @@ export async function PATCH(
       .single()
 
     if (updateError) {
-      console.error('Error updating payment:', updateError)
+      logger.error({ error: updateError.message, event_id: eventId, registration_id: registrationId }, 'Error updating payment');
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
@@ -188,7 +190,12 @@ export async function PATCH(
       registration: updatedReg
     })
   } catch (error: any) {
-    console.error('Error in PATCH /api/events/[id]/payments/[registrationId]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId,
+      registration_id: registrationId
+    }, 'Error in PATCH /api/events/[id]/payments/[registrationId]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

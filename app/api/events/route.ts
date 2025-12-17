@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/events' });
   try {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('orgId')
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     const { data: events, error } = await query
 
     if (error) {
-      console.error('Error fetching events:', error)
+      logger.error({ error: error.message, org_id: orgId }, 'Error fetching events');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -62,7 +64,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ events: eventsWithStats })
   } catch (error: any) {
-    console.error('Error in GET /api/events:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in GET /api/events');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -72,6 +77,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/events - Create new event
 export async function POST(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/events' });
   try {
     const body = await request.json()
     const {
@@ -186,7 +192,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error creating event:', error)
+      logger.error({ error: error.message, org_id: orgId, user_id: user.id }, 'Error creating event');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -242,7 +248,7 @@ export async function POST(request: NextRequest) {
           .insert(fieldsToInsert)
         
         if (fieldsError) {
-          console.error('Error creating registration fields:', fieldsError)
+          logger.error({ error: fieldsError.message, event_id: event.id }, 'Error creating registration fields');
           // Don't fail the entire request, just log the error
         }
       }
@@ -250,7 +256,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ event }, { status: 201 })
   } catch (error: any) {
-    console.error('Error in POST /api/events:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in POST /api/events');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

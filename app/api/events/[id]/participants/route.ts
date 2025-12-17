@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // POST /api/events/[id]/participants - Manually add participant to event (admin only)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/participants' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -67,7 +69,7 @@ export async function POST(
 
       if (existingByEmail) {
         participantId = existingByEmail.id
-        console.log(`[Add Participant] Found existing participant by email: ${participantId}`)
+        logger.debug({ participant_id: participantId, email }, '[Add Participant] Found existing participant by email');
       }
     }
 
@@ -83,13 +85,13 @@ export async function POST(
 
       if (existingByPhone) {
         participantId = existingByPhone.id
-        console.log(`[Add Participant] Found existing participant by phone: ${participantId}`)
+        logger.debug({ participant_id: participantId, phone }, '[Add Participant] Found existing participant by phone');
       }
     }
 
     // If not found, create a "shadow" participant
     if (!participantId) {
-      console.log(`[Add Participant] Creating shadow participant for ${full_name}`)
+      logger.info({ full_name, event_id: eventId }, '[Add Participant] Creating shadow participant');
       
       const { data: newParticipant, error: createError } = await adminSupabase
         .from('participants')
@@ -106,7 +108,7 @@ export async function POST(
         .single()
 
       if (createError) {
-        console.error('[Add Participant] Error creating participant:', createError)
+        logger.error({ error: createError.message, full_name, event_id: eventId }, '[Add Participant] Error creating participant');
         
         // Handle duplicate email/phone case
         if (createError.code === '23505') {
@@ -122,6 +124,7 @@ export async function POST(
             
             if (existingByEmail) {
               participantId = existingByEmail.id
+              logger.debug({ participant_id: participantId }, '[Add Participant] Using participant created in race condition (email)');
             }
           }
           
@@ -136,6 +139,7 @@ export async function POST(
             
             if (existingByPhone) {
               participantId = existingByPhone.id
+              logger.debug({ participant_id: participantId }, '[Add Participant] Using participant created in race condition (phone)');
             }
           }
           
@@ -220,7 +224,7 @@ export async function POST(
         .eq('id', existingRegistration.id)
 
       if (updateError) {
-        console.error('[Add Participant] Error updating registration:', updateError)
+        logger.error({ error: updateError.message, registration_id: existingRegistration.id }, '[Add Participant] Error updating registration');
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
@@ -246,7 +250,7 @@ export async function POST(
       })
 
     if (rpcError) {
-      console.error('[Add Participant] RPC error:', rpcError)
+      logger.error({ error: rpcError.message, event_id: eventId, participant_id: participantId }, '[Add Participant] RPC error');
       return NextResponse.json({ error: rpcError.message }, { status: 500 })
     }
 
@@ -266,7 +270,10 @@ export async function POST(
       registration_id: registrationResult?.[0]?.registration_id
     }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in POST /api/events/[id]/participants:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in POST /api/events/[id]/participants');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -278,6 +285,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/participants' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -343,11 +351,14 @@ export async function GET(
       .order('registered_at', { ascending: true })
 
     if (regError) {
-      console.error('Error fetching participants:', regError)
+      logger.error({ error: regError.message, event_id: eventId }, 'Error fetching participants');
       return NextResponse.json({ error: regError.message }, { status: 500 })
     }
 
-    console.log(`[Event Participants] Found ${registrations?.length || 0} registrations for event ${eventId}`)
+    logger.debug({ 
+      registrations_count: registrations?.length || 0,
+      event_id: eventId
+    }, '[Event Participants] Found registrations');
     
     // Transform data for frontend
     const participants = (registrations || [])
@@ -357,7 +368,7 @@ export async function GET(
         const participant = participantsArray[0]
         
         if (!participant) {
-          console.log('[Event Participants] Skipping registration with no participant data:', reg.id)
+          logger.debug({ registration_id: reg.id }, '[Event Participants] Skipping registration with no participant data');
           return null
         }
         
@@ -378,11 +389,17 @@ export async function GET(
       })
       .filter((p): p is NonNullable<typeof p> => p !== null)
 
-    console.log(`[Event Participants] Returning ${participants.length} participants`)
+    logger.debug({ 
+      participants_count: participants.length,
+      event_id: eventId
+    }, '[Event Participants] Returning participants');
     
     return NextResponse.json({ participants }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]/participants:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in GET /api/events/[id]/participants');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

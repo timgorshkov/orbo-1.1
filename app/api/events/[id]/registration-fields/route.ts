@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/events/[id]/registration-fields - Get registration fields for an event
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -49,7 +51,7 @@ export async function GET(
       .order('field_order', { ascending: true })
 
     if (error) {
-      console.error('Error fetching registration fields:', error)
+      logger.error({ error: error.message, event_id: eventId }, 'Error fetching registration fields');
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -68,7 +70,10 @@ export async function GET(
 
     return NextResponse.json({ fields: mappedFields })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]/registration-fields:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in GET /api/events/[id]/registration-fields');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -81,6 +86,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -171,13 +177,16 @@ export async function POST(
       .single()
 
     if (createError) {
-      console.error('Error creating registration field:', createError)
+      logger.error({ error: createError.message, event_id: eventId }, 'Error creating registration field');
       return NextResponse.json({ error: createError.message }, { status: 500 })
     }
 
     return NextResponse.json({ field }, { status: 201 })
   } catch (error: any) {
-    console.error('Error in POST /api/events/[id]/registration-fields:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in POST /api/events/[id]/registration-fields');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -190,6 +199,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -280,7 +290,10 @@ export async function PUT(
 
     return NextResponse.json({ fields: mappedFields })
   } catch (error: any) {
-    console.error('Error in PUT /api/events/[id]/registration-fields:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in PUT /api/events/[id]/registration-fields');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -293,6 +306,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
     const { searchParams } = new URL(request.url)
@@ -339,6 +353,8 @@ export async function DELETE(
       )
     }
 
+    logger.info({ event_id: eventId, field_id: fieldId, user_id: user.id }, 'Deleting registration field');
+
     // Delete field using admin client
     const { error: deleteError } = await supabaseAdmin
       .from('event_registration_fields')
@@ -347,13 +363,16 @@ export async function DELETE(
       .eq('event_id', eventId)
 
     if (deleteError) {
-      console.error('Error deleting registration field:', deleteError)
+      logger.error({ error: deleteError.message, event_id: eventId, field_id: fieldId }, 'Error deleting registration field');
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('Error in DELETE /api/events/[id]/registration-fields:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in DELETE /api/events/[id]/registration-fields');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

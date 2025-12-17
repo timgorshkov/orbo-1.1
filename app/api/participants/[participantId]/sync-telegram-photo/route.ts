@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 /**
  * POST /api/participants/[participantId]/sync-telegram-photo
@@ -10,6 +11,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ participantId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/sync-telegram-photo' });
   try {
     const { participantId } = await context.params;
     
@@ -36,7 +38,7 @@ export async function POST(
       .single();
     
     if (participantError || !participant) {
-      console.error('Participant not found:', participantError);
+      logger.error({ error: participantError?.message, participant_id: participantId }, 'Participant not found');
       return NextResponse.json(
         { error: 'Participant not found' },
         { status: 404 }
@@ -45,7 +47,7 @@ export async function POST(
     
     // Если у участника уже есть загруженное фото, не перезаписываем
     if (participant.photo_url && participant.photo_url.includes('participant-photos')) {
-      console.log(`Participant ${participantId} already has a custom photo, skipping sync`);
+      logger.info({ participant_id: participantId }, 'Participant already has a custom photo, skipping sync');
       return NextResponse.json({
         success: true,
         message: 'Participant already has a custom photo',
@@ -72,7 +74,7 @@ export async function POST(
       );
       
       if (!photosResponse.ok || !photosResponse.result.photos.length) {
-        console.log(`No profile photos found for user ${participant.tg_user_id}`);
+        logger.info({ tg_user_id: participant.tg_user_id, participant_id: participantId }, 'No profile photos found for user');
         return NextResponse.json({
           success: false,
           message: 'No profile photos found'
@@ -87,7 +89,7 @@ export async function POST(
       const fileResponse = await telegramService.getFile(largestPhoto.file_id);
       
       if (!fileResponse.ok || !fileResponse.result.file_path) {
-        console.error('Failed to get file info:', fileResponse);
+        logger.error({ file_response: fileResponse, participant_id: participantId }, 'Failed to get file info');
         return NextResponse.json({
           success: false,
           message: 'Failed to get file info'
@@ -110,7 +112,7 @@ export async function POST(
         });
       
       if (uploadError) {
-        console.error('Failed to upload photo to storage:', uploadError);
+        logger.error({ error: uploadError.message, participant_id: participantId, org_id: participant.org_id }, 'Failed to upload photo to storage');
         return NextResponse.json({
           success: false,
           message: 'Failed to upload photo',
@@ -133,7 +135,7 @@ export async function POST(
         .eq('id', participantId);
       
       if (updateError) {
-        console.error('Failed to update participant photo_url:', updateError);
+        logger.error({ error: updateError.message, participant_id: participantId }, 'Failed to update participant photo_url');
         return NextResponse.json({
           success: false,
           message: 'Failed to update participant',
@@ -141,7 +143,7 @@ export async function POST(
         }, { status: 500 });
       }
       
-      console.log(`Successfully synced photo for participant ${participantId}`);
+      logger.info({ participant_id: participantId, org_id: participant.org_id }, 'Successfully synced photo for participant');
       
       return NextResponse.json({
         success: true,
@@ -158,7 +160,7 @@ export async function POST(
         errorMessage.includes('bot was blocked');
       
       if (isUserNotFound) {
-        console.log(`Telegram user ${participant.tg_user_id} not found (deleted or blocked bot)`);
+        logger.info({ tg_user_id: participant.tg_user_id, participant_id: participantId }, 'Telegram user not found (deleted or blocked bot)');
         // Return 200 (not an error from user's perspective)
         return NextResponse.json({
           success: false,
@@ -167,7 +169,12 @@ export async function POST(
         }, { status: 200 });
       }
       
-      console.error('Telegram API error:', telegramError);
+      logger.error({ 
+        error: telegramError.message || String(telegramError),
+        stack: telegramError.stack,
+        tg_user_id: participant.tg_user_id,
+        participant_id: participantId
+      }, 'Telegram API error');
       return NextResponse.json({
         success: false,
         message: 'Failed to fetch photo from Telegram',
@@ -176,7 +183,11 @@ export async function POST(
     }
     
   } catch (error: any) {
-    console.error('Error syncing Telegram photo:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      participant_id: participantId
+    }, 'Error syncing Telegram photo');
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

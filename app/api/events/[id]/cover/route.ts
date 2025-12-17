@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
+import { createAPILogger } from '@/lib/logger'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -10,6 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/cover' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -106,7 +108,7 @@ export async function POST(
       })
 
     if (uploadError) {
-      console.error('Upload error:', uploadError)
+      logger.error({ error: uploadError.message, event_id: eventId }, 'Upload error');
       return NextResponse.json(
         { error: 'Failed to upload file' },
         { status: 500 }
@@ -127,7 +129,7 @@ export async function POST(
       .single()
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ error: updateError.message, event_id: eventId }, 'Update error');
       return NextResponse.json(
         { error: 'Failed to update event' },
         { status: 500 }
@@ -140,7 +142,10 @@ export async function POST(
       event: updatedEvent
     })
   } catch (error: any) {
-    console.error('Error in POST /api/events/[id]/cover:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in POST /api/events/[id]/cover');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -153,6 +158,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/cover' });
   try {
     const { id: eventId } = await params
     const supabase = await createClientServer()
@@ -221,7 +227,7 @@ export async function DELETE(
       .single()
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ error: updateError.message, event_id: eventId }, 'Update error');
       return NextResponse.json(
         { error: 'Failed to update event' },
         { status: 500 }
@@ -233,7 +239,10 @@ export async function DELETE(
       event: updatedEvent
     })
   } catch (error: any) {
-    console.error('Error in DELETE /api/events/[id]/cover:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in DELETE /api/events/[id]/cover');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

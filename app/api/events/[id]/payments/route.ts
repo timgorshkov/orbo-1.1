@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * GET /api/events/[id]/payments
@@ -18,6 +19,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments' });
   try {
     const { id: eventId } = await params
     const { searchParams } = new URL(request.url)
@@ -92,7 +94,7 @@ export async function GET(
     const { data: registrations, error: regError } = await query
 
     if (regError) {
-      console.error('Error fetching registrations:', regError)
+      logger.error({ error: regError.message, event_id: eventId, status_filter: statusFilter }, 'Error fetching registrations');
       return NextResponse.json({ error: regError.message }, { status: 500 })
     }
 
@@ -127,7 +129,11 @@ export async function GET(
       registrations: enrichedRegistrations || []
     })
   } catch (error: any) {
-    console.error('Error in GET /api/events/[id]/payments:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error in GET /api/events/[id]/payments');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

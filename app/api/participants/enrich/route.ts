@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
+import { createAPILogger } from '@/lib/logger';
 // REMOVED: logParticipantAudit - audit logging removed in migration 072
 
-async function ensureOrgAccess(orgId: string) {
+async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createAPILogger>) {
   const supabase = await createClientServer();
   const { data: authResult, error } = await supabase.auth.getUser();
 
@@ -20,7 +21,9 @@ async function ensureOrgAccess(orgId: string) {
     .maybeSingle();
 
   if (membershipError) {
-    console.error('Membership check error:', membershipError);
+    if (logger) {
+      logger.error({ error: membershipError.message, org_id: orgId, user_id: authResult.user.id }, 'Membership check error');
+    }
     return { error: NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 }) };
   }
 
@@ -52,6 +55,7 @@ function normalizeEmail(email?: string | null): string | null {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/enrich' });
   try {
     const payload = await request.json();
     const orgId = payload?.orgId as string | undefined;
@@ -61,7 +65,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing orgId or targetParticipantId' }, { status: 400 });
     }
 
-    const access = await ensureOrgAccess(orgId);
+    const access = await ensureOrgAccess(orgId, logger);
     if ('error' in access) {
       return access.error;
     }
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (participantError) {
-      console.error('Error loading participant for enrichment:', participantError);
+      logger.error({ error: participantError.message, participant_id: targetParticipantId, org_id: orgId }, 'Error loading participant for enrichment');
       return NextResponse.json({ error: 'Failed to load participant' }, { status: 500 });
     }
 
@@ -143,7 +147,7 @@ export async function POST(request: Request) {
       .eq('id', existingParticipant.id);
 
     if (updateError) {
-      console.error('Error enriching participant:', updateError);
+      logger.error({ error: updateError.message, participant_id: existingParticipant.id, org_id: orgId }, 'Error enriching participant');
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 });
     }
 
@@ -151,7 +155,11 @@ export async function POST(request: Request) {
 
     // REMOVED: Audit logging (migration 072)
     if (updatedFields.length > 0) {
-      console.log(`[Participant Enriched] ID: ${existingParticipant.id}, Fields: ${updatedFields.join(', ')}`);
+      logger.info({ 
+        participant_id: existingParticipant.id, 
+        updated_fields: updatedFields,
+        org_id: orgId
+      }, '[Participant Enriched]');
     }
 
     const detail = await getParticipantDetail(orgId, existingParticipant.id);
@@ -163,7 +171,10 @@ export async function POST(request: Request) {
       detail
     });
   } catch (error: any) {
-    console.error('Error enriching participant:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack
+    }, 'Error enriching participant');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
 }

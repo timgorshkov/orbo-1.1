@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/events/checkin' });
   // Получаем токен из строки запроса
   const token = req.nextUrl.searchParams.get('token')
   if (!token) {
@@ -27,12 +29,15 @@ export async function GET(req: NextRequest) {
       .single()
 
     if (error || !data) {
-      console.error('Invalid checkin token:', error)
+      logger.error({ error: error?.message, token_hash: hash.substring(0, 8) + '...' }, 'Invalid checkin token');
       return NextResponse.redirect(new URL('/?checkin=invalid', req.url))
     }
 
+    logger.info({ registration_id: data.id, event_id: data.event_id, org_id: data.org_id }, 'Processing checkin');
+
     // Проверяем, не был ли уже выполнен чек-ин
     if (data.status === 'checked_in') {
+      logger.info({ registration_id: data.id }, 'Checkin already completed');
       // Уже отмечен, но перенаправляем на страницу события с сообщением
       return NextResponse.redirect(
         new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=already`, req.url)
@@ -46,7 +51,7 @@ export async function GET(req: NextRequest) {
       .eq('id', data.id)
 
     if (updateError) {
-      console.error('Error updating checkin status:', updateError)
+      logger.error({ error: updateError.message, registration_id: data.id }, 'Error updating checkin status');
       return NextResponse.redirect(new URL('/?checkin=error', req.url))
     }
 
@@ -63,13 +68,18 @@ export async function GET(req: NextRequest) {
         }
       })
 
+    logger.info({ registration_id: data.id, event_id: data.event_id }, 'Checkin successful');
+    
     // Успешный чек-ин, перенаправляем на страницу события
     return NextResponse.redirect(
       new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=ok`, req.url)
     )
 
   } catch (e) {
-    console.error('Checkin error:', e)
+    logger.error({ 
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined
+    }, 'Checkin error');
     return NextResponse.redirect(new URL('/?checkin=error', req.url))
   }
 }

@@ -3,12 +3,14 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { createAPILogger } from '@/lib/logger'
 
 // POST /api/events/[id]/notify - Send Telegram notification for event
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/notify' });
   try {
     const { id: eventId } = await params
     const body = await request.json()
@@ -38,7 +40,7 @@ export async function POST(
       .single()
 
     if (eventError || !event) {
-      console.error('Event fetch error:', eventError)
+      logger.error({ error: eventError?.message, event_id: eventId }, 'Event fetch error');
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
@@ -65,7 +67,7 @@ export async function POST(
       .eq('org_id', event.org_id)
 
     if (linksError) {
-      console.error('Error fetching org group links:', linksError)
+      logger.error({ error: linksError.message, org_id: event.org_id }, 'Error fetching org group links');
       return NextResponse.json(
         { error: 'Failed to fetch organization groups' },
         { status: 500 }
@@ -74,8 +76,10 @@ export async function POST(
 
     const orgChatIds = (orgGroupLinks || []).map(link => String(link.tg_chat_id))
     
-    console.log('Organization chat IDs:', orgChatIds)
-    console.log('Requested group IDs:', groupIds)
+    logger.debug({ 
+      org_chat_ids: orgChatIds,
+      requested_group_ids: groupIds
+    }, 'Organization chat IDs and requested group IDs');
     
     if (orgChatIds.length === 0) {
       return NextResponse.json(
@@ -92,7 +96,7 @@ export async function POST(
       .in('id', groupIds)
     
     if (allGroupsError) {
-      console.error('Error fetching all groups:', allGroupsError)
+      logger.error({ error: allGroupsError.message, group_ids: groupIds }, 'Error fetching all groups');
       return NextResponse.json(
         { error: 'Failed to fetch groups' },
         { status: 500 }
@@ -104,20 +108,27 @@ export async function POST(
       orgChatIds.includes(String(group.tg_chat_id))
     )
     
-    console.log(`Filtered ${groups.length} groups from ${allGroups?.length || 0} total`)
+    logger.debug({ 
+      filtered_count: groups.length,
+      total_count: allGroups?.length || 0
+    }, 'Filtered groups');
 
     if (!groups || groups.length === 0) {
-      console.error('No valid groups found after filtering')
-      console.log('Requested groupIds:', groupIds)
-      console.log('Org chat IDs:', orgChatIds)
-      console.log('All groups tg_chat_ids:', (allGroups || []).map(g => String(g.tg_chat_id)))
+      logger.error({ 
+        requested_group_ids: groupIds,
+        org_chat_ids: orgChatIds,
+        all_groups_tg_chat_ids: (allGroups || []).map(g => String(g.tg_chat_id))
+      }, 'No valid groups found after filtering');
       return NextResponse.json(
         { error: 'No valid groups found for this organization' },
         { status: 404 }
       )
     }
     
-    console.log(`Found ${groups.length} valid groups for event notification:`, groups.map(g => ({ id: g.id, title: g.title })))
+    logger.info({ 
+      groups_count: groups.length,
+      groups: groups.map(g => ({ id: g.id, title: g.title }))
+    }, 'Found valid groups for event notification');
 
     // Format date and time
     const eventDate = new Date(event.event_date)
@@ -144,7 +155,9 @@ export async function POST(
       message += `${descriptionHtml}\n\n`
       
       // Логируем для отладки (первые 200 символов)
-      console.log('[Events] Message description after conversion:', descriptionHtml.substring(0, 200))
+      logger.debug({ 
+        description_preview: descriptionHtml.substring(0, 200)
+      }, '[Events] Message description after conversion');
     }
 
     message += `🗓 ${dateStr}\n`
@@ -259,14 +272,14 @@ export async function POST(
           })
         } else {
           // Log error details for debugging
-          console.error('[Events] Failed to send Telegram notification:', {
+          logger.error({ 
             group_id: group.id,
             group_title: group.title,
             chat_id: group.tg_chat_id,
             error_code: telegramData.error_code,
             description: telegramData.description,
             message_preview: message.substring(0, 100)
-          })
+          }, '[Events] Failed to send Telegram notification');
 
           // Log to error database
           await logErrorToDatabase({
@@ -303,13 +316,13 @@ export async function POST(
           })
         }
       } catch (error: any) {
-        console.error(`[Events] Error sending notification to group ${group.id}:`, {
+        logger.error({ 
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
           group_id: group.id,
           group_title: group.title,
           chat_id: group.tg_chat_id
-        })
+        }, `[Events] Error sending notification to group ${group.id}`);
 
         await logErrorToDatabase({
           level: 'error',

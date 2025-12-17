@@ -15,11 +15,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/participantEnrichmentService';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ participantId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/enrich-ai' });
   try {
     const { participantId } = await params;
     const supabase = await createClientServer();
@@ -60,7 +62,11 @@ export async function GET(
       daysBack
     });
   } catch (error) {
-    console.error('[API] Enrich AI estimation error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      participant_id: participantId
+    }, '[API] Enrich AI estimation error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -72,6 +78,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ participantId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/enrich-ai' });
   try {
     const { participantId } = await params;
     const supabase = await createClientServer();
@@ -160,7 +167,12 @@ export async function POST(
       }
     });
   } catch (error) {
-    console.error('[API] Enrich AI error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      participant_id: participantId,
+      org_id: orgId
+    }, '[API] Enrich AI error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

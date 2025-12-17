@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // Helper to format date for ICS
 function formatICSDate(date: Date): string {
@@ -40,6 +41,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/ics' });
   try {
     const eventId = params.id
     const supabase = await createClientServer()
@@ -149,8 +151,11 @@ export async function GET(
       }
     })
   } catch (error: any) {
-    console.error('Error generating ICS file:', error)
-    console.error('Error stack:', error.stack)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      event_id: eventId
+    }, 'Error generating ICS file');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
