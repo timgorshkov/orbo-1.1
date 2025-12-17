@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { isSuperadmin } from '@/lib/server/superadminGuard'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * API для добавления нового суперадмина
  */
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: 'superadmin/add' });
+  
   try {
     // Проверяем права
     const isAdmin = await isSuperadmin()
@@ -35,14 +38,17 @@ export async function POST(req: NextRequest) {
       .rpc('get_user_by_email', { user_email: normalizedEmail })
     
     if (rpcError) {
-      console.error('[Superadmin Add] Error finding user by email:', rpcError)
+      logger.error({ 
+        email: normalizedEmail,
+        error: rpcError.message
+      }, 'Error finding user by email');
       return NextResponse.json({ 
         error: 'Ошибка при поиске пользователя' 
       }, { status: 500 })
     }
     
     if (!authUserData || authUserData.length === 0) {
-      console.log(`[Superadmin Add] User not found with email: ${normalizedEmail}`)
+      logger.warn({ email: normalizedEmail }, 'User not found');
       return NextResponse.json({ 
         error: 'Пользователь с таким email не найден. Сначала он должен зарегистрироваться.' 
       }, { status: 404 })
@@ -53,7 +59,11 @@ export async function POST(req: NextRequest) {
       email: authUserData[0].email
     }
     
-    console.log(`[Superadmin Add] Found user: ${targetUser.id} with email: ${targetUser.email}`)
+    logger.info({ 
+      target_user_id: targetUser.id,
+      email: targetUser.email,
+      created_by: user.id
+    }, 'Found user, adding superadmin');
     
     // Проверяем что ещё не суперадмин (используем admin клиент для обхода RLS)
     const { data: existing } = await supabaseAdmin
@@ -77,14 +87,22 @@ export async function POST(req: NextRequest) {
       })
     
     if (insertError) {
-      console.error('Error adding superadmin:', insertError)
+      logger.error({ 
+        target_user_id: targetUser.id,
+        error: insertError.message
+      }, 'Error adding superadmin');
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
+    
+    logger.info({ target_user_id: targetUser.id }, 'Superadmin added successfully');
     
     return NextResponse.json({ success: true })
     
   } catch (error) {
-    console.error('Error in superadmin add:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error in superadmin add');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

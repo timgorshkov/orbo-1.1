@@ -1,6 +1,9 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import UsersTable from '@/components/superadmin/users-table'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('SuperadminUsers');
 
 export default async function SuperadminUsersPage() {
   await requireSuperadmin()
@@ -51,7 +54,10 @@ export default async function SuperadminUsersPage() {
   const { data: authUsersData, error: authError } = await supabase
     .rpc('get_users_by_ids', { user_ids: userIds })
   
-  console.log('[Superadmin Users] Auth users from RPC:', authUsersData?.length || 0, 'Error:', authError)
+  logger.debug({ 
+    auth_users_count: authUsersData?.length || 0,
+    error: authError?.message
+  }, 'Auth users from RPC');
   
   // Создаем Map для быстрого доступа к auth данным
   const authUsersMap = new Map(
@@ -64,8 +70,11 @@ export default async function SuperadminUsersPage() {
     .select('user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified, org_id')
     .in('user_id', userIds)
   
-  console.log('[Superadmin Users] TG accounts fetched:', allTgAccounts?.length || 0, 'Error:', allTgError)
-  console.log('[Superadmin Users] User IDs we need:', userIds.length)
+  logger.debug({ 
+    tg_accounts_count: allTgAccounts?.length || 0,
+    user_ids_count: userIds.length,
+    error: allTgError?.message
+  }, 'TG accounts fetched');
   
   // Группируем по user_id
   const userDataMap = new Map<string, any>()
@@ -99,12 +108,15 @@ export default async function SuperadminUsersPage() {
     .select('user_id, telegram_user_id, is_verified, org_id')
     .in('user_id', userIds)
   
-  console.log('[Superadmin Users] Telegram accounts:', telegramAccounts?.length, 'Error:', tgError)
+  logger.debug({ 
+    telegram_accounts_count: telegramAccounts?.length,
+    error: tgError?.message
+  }, 'Telegram accounts');
   
   // Получаем уникальные telegram_user_id для поиска групп
   const tgUserIds = Array.from(new Set(telegramAccounts?.map(acc => acc.telegram_user_id).filter(Boolean)))
   
-  console.log('[Superadmin Users] Unique TG user IDs:', tgUserIds.length)
+  logger.debug({ unique_tg_user_ids_count: tgUserIds.length }, 'Unique TG user IDs');
   
   // Получаем группы где эти пользователи админы (через tg_chat_id)
   const { data: groupAdmins, error: groupAdminsError } = await supabase
@@ -125,7 +137,10 @@ export default async function SuperadminUsersPage() {
     telegram_groups: groupsMap.get(ga.tg_chat_id)
   }))
   
-  console.log('[Superadmin Users] Group admins:', enrichedGroupAdmins?.length, 'Error:', groupAdminsError)
+  logger.debug({ 
+    group_admins_count: enrichedGroupAdmins?.length,
+    error: groupAdminsError?.message
+  }, 'Group admins');
   
   // Форматируем данные
   const formattedUsers = Array.from(userMap.entries()).map(([userId, userData]) => {

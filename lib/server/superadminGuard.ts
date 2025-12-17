@@ -5,6 +5,9 @@
 
 import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from './supabaseServer'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('SuperadminGuard');
 
 /**
  * Проверяет является ли текущий пользователь активным суперадмином
@@ -15,11 +18,11 @@ export async function isSuperadmin(): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   
   if (!user) {
-    console.log('[Superadmin Check] No user found')
+    logger.debug({}, 'No user found');
     return false
   }
   
-  console.log('[Superadmin Check] User ID:', user.id, 'Email:', user.email)
+  logger.debug({ user_id: user.id, email: user.email }, 'Checking superadmin status');
   
   // Используем admin клиент для обхода RLS
   const supabaseAdmin = createAdminServer()
@@ -30,7 +33,11 @@ export async function isSuperadmin(): Promise<boolean> {
     .eq('is_active', true)
     .maybeSingle()
   
-  console.log('[Superadmin Check] Query result:', { superadmin, error })
+  logger.debug({ 
+    user_id: user.id,
+    is_superadmin: !!superadmin,
+    error: error?.message
+  }, 'Query result');
   
   return !!superadmin
 }

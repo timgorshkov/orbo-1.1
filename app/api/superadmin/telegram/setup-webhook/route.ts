@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
  * Only accessible by superadmins
  */
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: 'superadmin/telegram/setup-webhook' });
+  
   try {
     // Check authentication
     const supabase = await createClientServer();
@@ -28,7 +31,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (superadminError || !superadmin) {
-      console.error('[Superadmin] Access denied:', { userId: user.id, error: superadminError });
+      logger.warn({ 
+        user_id: user.id,
+        error: superadminError?.message
+      }, 'Access denied');
       return NextResponse.json({ error: 'Forbidden: Superadmin access required' }, { status: 403 });
     }
 
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
       ? `${baseUrl}/api/telegram/webhook`
       : `${baseUrl}/api/telegram/notifications/webhook`;
 
-    console.log(`[Superadmin] Setting webhook for ${botType} bot:`, webhookUrl);
+    logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting webhook');
 
     const telegramService = new TelegramService(botType);
 
@@ -69,14 +75,17 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.ok) {
-      console.error('[Superadmin] Failed to set webhook:', result);
+      logger.error({ 
+        bot_type: botType,
+        error: result.description || 'Unknown error'
+      }, 'Failed to set webhook');
       return NextResponse.json({
         error: 'Failed to set webhook',
         details: result.description || 'Unknown error'
       }, { status: 500 });
     }
 
-    console.log(`[Superadmin] ✅ Webhook successfully set for ${botType} bot`);
+    logger.info({ bot_type: botType }, 'Webhook successfully set');
 
     // Get webhook info to verify
     const webhookResponse = await telegramService.getWebhookInfo();
@@ -96,7 +105,10 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (error: any) {
-    console.error('[Superadmin] Error setting webhook:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error setting webhook');
     return NextResponse.json({
       error: 'Internal server error',
       message: error.message || 'Unknown error'
@@ -108,6 +120,8 @@ export async function POST(req: NextRequest) {
  * Get current webhook info
  */
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: 'superadmin/telegram/setup-webhook' });
+  
   try {
     // Check authentication
     const supabase = await createClientServer();
@@ -127,7 +141,10 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (superadminError || !superadmin) {
-      console.error('[Superadmin] Access denied:', { userId: user.id, error: superadminError });
+      logger.warn({ 
+        user_id: user.id,
+        error: superadminError?.message
+      }, 'Access denied');
       return NextResponse.json({ error: 'Forbidden: Superadmin access required' }, { status: 403 });
     }
 
@@ -165,7 +182,10 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error: any) {
-    console.error('[Superadmin] Error getting webhook info:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error getting webhook info');
     return NextResponse.json({
       error: 'Internal server error',
       message: error.message || 'Unknown error'

@@ -1,6 +1,9 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import GroupsTable from '@/components/superadmin/groups-table'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('SuperadminGroups');
 
 export default async function SuperadminGroupsPage() {
   await requireSuperadmin()
@@ -39,12 +42,12 @@ export default async function SuperadminGroupsPage() {
   const participantGroups = participantCountsResult.data || []
   const lastActivities = lastActivitiesResult.data || []
   
-  console.log('[Superadmin Groups] Loaded:', {
-    groups: groups.length,
-    orgLinks: orgLinks.length,
-    participantGroups: participantGroups.length,
-    lastActivities: lastActivities.length
-  })
+  logger.debug({ 
+    groups_count: groups.length,
+    org_links_count: orgLinks.length,
+    participant_groups_count: participantGroups.length,
+    last_activities_count: lastActivities.length
+  }, 'Loaded data');
   
   // Создаём карты для быстрого доступа
   const orgsByGroup = new Map<number, string[]>()

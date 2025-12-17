@@ -1,6 +1,9 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import SuperadminsTable from '@/components/superadmin/superadmins-table'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('SuperadminsPage');
 
 export default async function SuperadminsSuperadminsPage() {
   await requireSuperadmin()
@@ -15,7 +18,7 @@ export default async function SuperadminsSuperadminsPage() {
     .order('created_at', { ascending: false })
   
   if (error) {
-    console.error('[Superadmins Page] Error fetching superadmins:', error)
+    logger.error({ error: error.message }, 'Error fetching superadmins');
   }
   
   return (
