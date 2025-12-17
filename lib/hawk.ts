@@ -67,7 +67,8 @@ export function captureError(
   }
 
   try {
-    HawkCatcher.send(error, context, user);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HawkCatcher.send(error, context as any, user);
   } catch (e) {
     console.error('[Hawk] Failed to send error:', e);
   }
@@ -84,7 +85,8 @@ export function captureWarning(
 
   try {
     const warning = new Error(`[Warning] ${message}`);
-    HawkCatcher.send(warning, { ...context, level: 'warning' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HawkCatcher.send(warning, { ...context, level: 'warning' } as any);
   } catch (e) {
     console.error('[Hawk] Failed to send warning:', e);
   }
