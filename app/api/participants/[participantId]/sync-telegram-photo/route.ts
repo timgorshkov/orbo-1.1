@@ -12,8 +12,10 @@ export async function POST(
   context: { params: Promise<{ participantId: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/sync-telegram-photo' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await context.params;
+    const paramsData = await context.params;
+    participantId = paramsData.participantId;
     
     // Проверяем авторизацию
     const supabase = await createClientServer();
@@ -186,7 +188,7 @@ export async function POST(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, 'Error syncing Telegram photo');
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
