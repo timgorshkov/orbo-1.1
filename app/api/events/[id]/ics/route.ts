@@ -39,11 +39,13 @@ function foldLine(line: string): string {
 // GET /api/events/[id]/ics - Generate ICS file for event
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/ics' });
+  let eventId: string | undefined;
   try {
-    const eventId = params.id
+    const { id } = await params;
+    eventId = id;
     const supabase = await createClientServer()
 
     // Fetch event
