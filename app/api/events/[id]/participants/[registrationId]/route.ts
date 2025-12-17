@@ -9,8 +9,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; registrationId: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/participants/[registrationId]' });
+  let eventId: string | undefined;
+  let registrationId: string | undefined;
   try {
-    const { id: eventId, registrationId } = await params
+    const paramsData = await params;
+    eventId = paramsData.id;
+    registrationId = paramsData.registrationId;
     const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
