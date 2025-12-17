@@ -68,8 +68,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
 
 export async function PUT(request: Request, { params }: { params: Promise<{ participantId: string }> }) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const payload = await request.json();
     const orgId = payload?.orgId;
 
@@ -157,7 +159,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
     logger.error({ 
       error: error?.message || String(error),
       stack: error?.stack,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, 'Error in participant PUT');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
@@ -165,8 +167,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ participantId: string }> }) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const payload = await request.json();
     const orgId = payload?.orgId;
 
@@ -196,7 +200,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
     logger.error({ 
       error: error?.message || String(error),
       stack: error?.stack,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, 'Error in participant PATCH');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }

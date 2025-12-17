@@ -9,8 +9,10 @@ export async function POST(
   { params }: { params: Promise<{ participantId: string }> }
 ) {
   const logger = createAPILogger(req, { endpoint: '/api/participants/[participantId]/photo' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -125,7 +127,7 @@ export async function POST(
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, 'Photo upload error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -136,8 +138,10 @@ export async function DELETE(
   { params }: { params: Promise<{ participantId: string }> }
 ) {
   const logger = createAPILogger(req, { endpoint: '/api/participants/[participantId]/photo' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -214,7 +218,7 @@ export async function DELETE(
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, 'Photo delete error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
