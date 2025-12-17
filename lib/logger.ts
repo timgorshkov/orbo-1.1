@@ -11,7 +11,10 @@ export const logger = pino({
   
   // Formatters
   formatters: {
-    level: (label) => ({ level: label }),
+    level: (label, number) => {
+      // Return level as object with both label and number
+      return { level: label };
+    },
     bindings: (bindings) => ({
       pid: bindings.pid,
       hostname: bindings.hostname,

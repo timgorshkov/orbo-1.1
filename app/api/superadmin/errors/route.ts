@@ -67,12 +67,12 @@ export async function GET(req: NextRequest) {
     }
     
     const url = new URL(req.url);
-    const level = url.searchParams.get('level');
+    const levelFilter = url.searchParams.get('level');
     const hours = parseInt(url.searchParams.get('hours') || '24', 10);
     const limit = parseInt(url.searchParams.get('limit') || '100', 10);
     const errorCode = url.searchParams.get('error_code');
     
-    logger.info({ level, hours, limit, errorCode }, 'Fetching error logs');
+    logger.info({ level_filter: levelFilter, hours, limit, error_code: errorCode }, 'Fetching error logs');
     
     // Calculate time threshold
     const timeThreshold = new Date();
@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
       .limit(limit);
     
     // Apply filters
-    if (level) {
-      query = query.eq('level', level);
+    if (levelFilter) {
+      query = query.eq('level', levelFilter);
     }
     
     if (errorCode) {
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     const { data: errors, error } = await query;
     
     if (error) {
-      logger.error({ error }, 'Failed to fetch error logs');
+      logger.error({ error: error.message }, 'Failed to fetch error logs');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
     };
     
     logger.info({ 
-      errorsCount: errors?.length || 0, 
+      errors_count: errors?.length || 0, 
       statistics 
     }, 'Error logs fetched successfully');
     
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
       errors: errors || [],
       statistics,
       filters: {
-        level,
+        level: levelFilter,
         hours,
         limit,
         error_code: errorCode

@@ -28,8 +28,11 @@ export async function POST(
 ) {
   const logger = createAPILogger(request, { endpoint: 'telegram/import-history/import' });
   
+  let groupId: string | undefined;
+  
   try {
-    const { id: groupId } = await params
+    const paramsResolved = await params;
+    groupId = paramsResolved.id;
     const requestUrl = new URL(request.url)
     const expectedOrgId = requestUrl.searchParams.get('orgId') // ✅ Получаем orgId из query параметров
 
@@ -847,7 +850,7 @@ export async function POST(
     }
   } catch (error: any) {
     logger.error({ 
-      group_id: groupId,
+      group_id: groupId || 'unknown',
       error: error.message || String(error),
       stack: error.stack
     }, 'Error importing Telegram history');
