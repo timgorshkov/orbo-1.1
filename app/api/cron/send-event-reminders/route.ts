@@ -123,7 +123,8 @@ export async function GET(request: NextRequest) {
             const formattedTime = event.start_time.substring(0, 5);
 
             // Build event URL
-            const eventUrl = `https://app.orbo.ru/p/${event.org_id}/events/${event.id}`;
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+            const eventUrl = `${baseUrl}/p/${event.org_id}/events/${event.id}`;
             
             // Check payment status
             const isPaid = (event as any).requires_payment;

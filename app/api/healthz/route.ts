@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   // Опционально проверяем webhook'и
   if (checkWebhooks) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('host') || 'https://app.orbo.ru';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('host') || 'https://my.orbo.ru';
       const webhookCheckUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/api/telegram/admin/setup-webhooks`;
       
       const response = await fetch(webhookCheckUrl);

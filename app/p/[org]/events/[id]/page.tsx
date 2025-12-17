@@ -95,7 +95,7 @@ export async function generateMetadata({
     const openGraphConfig: any = {
       type: 'website',
       locale: 'ru_RU',
-      url: `https://app.orbo.ru/p/${orgId}/events/${eventId}`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/p/${orgId}/events/${eventId}`,
       title: event.title,
       description,
       siteName: org.name,

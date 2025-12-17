@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       notificationsBot.getWebhookInfo()
     ]);
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const expectedMainUrl = `${baseUrl}/api/telegram/webhook`;
     const expectedNotificationsUrl = `${baseUrl}/api/telegram/notifications/webhook`;
 

@@ -4,6 +4,7 @@
  */
 
 import { TelegramService } from './telegramService';
+import { createServiceLogger } from '@/lib/logger';
 
 interface RecoveryAttempt {
   timestamp: number;
@@ -18,6 +19,7 @@ class WebhookRecoveryService {
   private activeRecoveries: Set<string> = new Set(); // Блокировка на время recovery
   private readonly MAX_ATTEMPTS_PER_HOUR = 3; // Не более 3 попыток в час
   private readonly COOLDOWN_MS = 20 * 60 * 1000; // 20 минут между попытками
+  private logger = createServiceLogger('WebhookRecovery');
 
   private constructor() {}
 
@@ -41,7 +43,11 @@ class WebhookRecoveryService {
     
     // Проверяем количество попыток
     if (recentAttempts.length >= this.MAX_ATTEMPTS_PER_HOUR) {
-      console.warn(`[Webhook Recovery] Too many recovery attempts for ${botType} bot (${recentAttempts.length}/${this.MAX_ATTEMPTS_PER_HOUR})`);
+      this.logger.warn({ 
+        bot_type: botType,
+        attempts: recentAttempts.length,
+        max_attempts: this.MAX_ATTEMPTS_PER_HOUR
+      }, 'Too many recovery attempts');
       return false;
     }
     
@@ -49,7 +55,10 @@ class WebhookRecoveryService {
     const lastAttempt = recentAttempts[recentAttempts.length - 1];
     if (lastAttempt && now - lastAttempt.timestamp < this.COOLDOWN_MS) {
       const waitMinutes = Math.ceil((this.COOLDOWN_MS - (now - lastAttempt.timestamp)) / 60000);
-      console.warn(`[Webhook Recovery] Cooldown active for ${botType} bot. Wait ${waitMinutes} minutes`);
+      this.logger.warn({ 
+        bot_type: botType,
+        wait_minutes: waitMinutes
+      }, 'Cooldown active');
       return false;
     }
     
@@ -74,19 +83,17 @@ class WebhookRecoveryService {
    * Автоматически восстанавливает webhook
    */
   async recoverWebhook(botType: 'main' | 'notifications', reason: string): Promise<boolean> {
-    console.log(`[Webhook Recovery] ========== RECOVERY ATTEMPT START ==========`);
-    console.log(`[Webhook Recovery] Bot: ${botType}`);
-    console.log(`[Webhook Recovery] Reason: ${reason}`);
+    this.logger.info({ bot_type: botType, reason }, 'Recovery attempt start');
     
     // Проверяем, не идёт ли уже recovery для этого бота
     if (this.activeRecoveries.has(botType)) {
-      console.warn(`[Webhook Recovery] Recovery already in progress for ${botType} bot`);
+      this.logger.warn({ bot_type: botType }, 'Recovery already in progress');
       return false;
     }
     
     // Проверяем, можем ли мы попытаться восстановить
     if (!this.canAttemptRecovery(botType)) {
-      console.warn(`[Webhook Recovery] Recovery blocked by rate limiting`);
+      this.logger.warn({ bot_type: botType }, 'Recovery blocked by rate limiting');
       return false;
     }
     
@@ -103,13 +110,16 @@ class WebhookRecoveryService {
         throw new Error('Webhook secret not configured');
       }
       
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru';
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
       const webhookUrl = botType === 'main' 
         ? `${baseUrl}/api/telegram/webhook`
         : `${baseUrl}/api/telegram/notifications/webhook`;
       
-      console.log(`[Webhook Recovery] Setting webhook URL: ${webhookUrl}`);
-      console.log(`[Webhook Recovery] Using secret for ${botType}: ${botType === 'notifications' ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET'}`);
+      this.logger.info({ 
+        bot_type: botType,
+        webhook_url: webhookUrl,
+        secret_env: botType === 'notifications' ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET'
+      }, 'Setting webhook');
       
       const telegramService = new TelegramService(botType === 'main' ? 'main' : 'notifications');
       
@@ -128,7 +138,7 @@ class WebhookRecoveryService {
         throw new Error(`Failed to set webhook: ${result.description || 'Unknown error'}`);
       }
       
-      console.log(`[Webhook Recovery] ✅ Webhook successfully recovered for ${botType} bot`);
+      this.logger.info({ bot_type: botType }, 'Webhook successfully recovered');
       this.recordAttempt(botType, true);
       
       // Отправляем уведомление в Telegram (опционально)
@@ -138,12 +148,16 @@ class WebhookRecoveryService {
     } catch (error: any) {
       // Если Telegram вернул "Too Many Requests" — это не наша проблема, просто ждём
       if (error.message?.includes('Too Many Requests')) {
-        console.warn(`[Webhook Recovery] ⏳ Telegram rate limit hit, will retry later`);
+        this.logger.warn({ bot_type: botType }, 'Telegram rate limit hit, will retry later');
         // НЕ записываем как failed attempt
         return false;
       }
       
-      console.error(`[Webhook Recovery] ❌ Failed to recover webhook for ${botType} bot:`, error);
+      this.logger.error({ 
+        bot_type: botType,
+        error: error.message || String(error),
+        stack: error.stack
+      }, 'Failed to recover webhook');
       this.recordAttempt(botType, false, error.message);
       
       // Отправляем уведомление об ошибке
@@ -153,7 +167,7 @@ class WebhookRecoveryService {
     } finally {
       // Снимаем блокировку
       this.activeRecoveries.delete(botType);
-      console.log(`[Webhook Recovery] ========== RECOVERY ATTEMPT END ==========`);
+      this.logger.debug({ bot_type: botType }, 'Recovery attempt end');
     }
   }
 
@@ -177,7 +191,11 @@ class WebhookRecoveryService {
       await telegramService.sendMessage(parseInt(notificationChannelId, 10), message);
     } catch (e) {
       // Игнорируем ошибки уведомлений
-      console.error('[Webhook Recovery] Failed to send notification:', e);
+      this.logger.error({ 
+        bot_type: botType,
+        success,
+        error: e instanceof Error ? e.message : String(e)
+      }, 'Failed to send recovery notification');
     }
   }
 

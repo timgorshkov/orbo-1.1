@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
             max_connections: data.result.max_connections,
             allowed_updates: data.result.allowed_updates,
             // Важно: проверяем совпадение URL
-            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/webhook`,
-            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/webhook`
+            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`,
+            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`
           }
         } else {
           results.mainBot = { error: data.description }
@@ -75,8 +75,8 @@ export async function GET(req: NextRequest) {
             max_connections: data.result.max_connections,
             allowed_updates: data.result.allowed_updates,
             // Важно: проверяем совпадение URL
-            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/notifications/webhook`,
-            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/notifications/webhook`
+            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`,
+            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`
           }
         } else {
           results.notificationsBot = { error: data.description }

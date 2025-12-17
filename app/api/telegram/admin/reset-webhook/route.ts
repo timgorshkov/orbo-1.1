@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     const results: any = {}
 
     // Переустанавливаем основной бот
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
       results.main = {
         webhook: info.result,
         expectedSecretLength: process.env.TELEGRAM_WEBHOOK_SECRET?.length || 0,
-        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/webhook`
+        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`
       }
     }
 
@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
           process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || 
           process.env.TELEGRAM_WEBHOOK_SECRET
         )?.length || 0,
-        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'}/api/telegram/notifications/webhook`
+        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`
       }
     }
 

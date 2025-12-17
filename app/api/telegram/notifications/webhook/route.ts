@@ -2,40 +2,46 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  console.log('[Notifications Bot Webhook] ==================== WEBHOOK RECEIVED ====================');
+  const logger = createAPILogger(req, { webhook: 'notifications' });
+  logger.info('Webhook received');
   
   // Проверяем секретный токен
   const secret = process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET
   const receivedSecret = req.headers.get('x-telegram-bot-api-secret-token')
   const usingDedicatedSecret = !!process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET
   
-  console.log('[Notifications Bot Webhook] Secret token check:', {
+  logger.debug({ 
     endpoint: '/api/telegram/notifications/webhook',
-    botType: 'NOTIFICATIONS',
-    usingDedicatedSecret,
-    secretSource: usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET (fallback)',
-    hasSecret: !!secret,
-    receivedMatches: receivedSecret === secret,
-    secretLength: secret?.length,
-    receivedSecretLength: receivedSecret?.length
-  });
+    bot_type: 'NOTIFICATIONS',
+    using_dedicated_secret: usingDedicatedSecret,
+    secret_source: usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET (fallback)',
+    has_secret: !!secret,
+    received_matches: receivedSecret === secret,
+    secret_length: secret?.length,
+    received_secret_length: receivedSecret?.length
+  }, 'Secret token check');
   
   if (receivedSecret !== secret) {
-    console.error('[Notifications Bot Webhook] ❌ Unauthorized - secret token mismatch');
-    console.error('[Notifications Bot Webhook] Endpoint: /api/telegram/notifications/webhook (NOTIFICATIONS BOT)');
-    console.error('[Notifications Bot Webhook] Using dedicated secret:', usingDedicatedSecret);
-    console.error('[Notifications Bot Webhook] Secret source:', usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET');
-    console.error('[Notifications Bot Webhook] Expected secret length:', secret?.length);
-    console.error('[Notifications Bot Webhook] Received secret length:', receivedSecret?.length);
+    logger.error({ 
+      endpoint: '/api/telegram/notifications/webhook',
+      bot_type: 'NOTIFICATIONS',
+      using_dedicated_secret: usingDedicatedSecret,
+      secret_source: usingDedicatedSecret ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET',
+      expected_secret_length: secret?.length,
+      received_secret_length: receivedSecret?.length
+    }, 'Unauthorized - secret token mismatch');
     
     // 🔧 Автоматическое восстановление webhook
-    console.log('[Notifications Bot Webhook] 🔧 Attempting automatic webhook recovery...');
+    logger.info({ bot_type: 'notifications' }, 'Attempting automatic webhook recovery');
     webhookRecoveryService.recoverWebhook('notifications', 'secret_token_mismatch').catch(err => {
-      console.error('[Notifications Bot Webhook] Recovery failed:', err);
+      logger.error({ 
+        error: err instanceof Error ? err.message : String(err)
+      }, 'Recovery failed');
     });
     
     return NextResponse.json({ ok: false }, { status: 401 })
@@ -61,7 +67,7 @@ export async function POST(req: NextRequest) {
           case '/start':
             // Отправляем приветственное сообщение с User ID
             try {
-              console.log(`Sending welcome message with User ID to: ${userId}`)
+              logger.debug({ user_id: userId }, 'Sending welcome message');
               
               const welcomeMessage = `👋 Привет, ${firstName}!
 
@@ -89,7 +95,7 @@ _Если вам нужна помощь, используйте команду 
                 parse_mode: 'Markdown'
               })
               
-              console.log('Welcome message result:', result)
+              logger.debug({ user_id: userId, result }, 'Welcome message sent');
               
               // Проверяем, есть ли ожидающие коды верификации для этого пользователя
               const { data: pendingVerifications } = await supabase
@@ -100,12 +106,18 @@ _Если вам нужна помощь, используйте команду 
                 .not('verification_code', 'is', null)
                 .gt('verification_expires_at', new Date().toISOString())
                 
-              console.log('Found pending verifications:', pendingVerifications?.length || 0)
+              logger.debug({ 
+                user_id: userId,
+                pending_count: pendingVerifications?.length || 0
+              }, 'Found pending verifications');
               
               // Если есть ожидающие коды, отправляем их
               if (pendingVerifications && pendingVerifications.length > 0) {
                 for (const verification of pendingVerifications) {
-                  console.log(`Resending verification code for account ID: ${verification.id}`)
+                  logger.debug({ 
+                    user_id: userId,
+                    account_id: verification.id
+                  }, 'Resending verification code');
                   
                   const message = `🔐 *Код верификации Orbo*
 
@@ -124,7 +136,10 @@ _Если вам нужна помощь, используйте команду 
                 }
               }
             } catch (error) {
-              console.error('Error sending welcome message:', error)
+              logger.error({ 
+                user_id: userId,
+                error: error instanceof Error ? error.message : String(error)
+              }, 'Error sending welcome message');
             }
             break
             
@@ -157,7 +172,10 @@ _Если вам нужна помощь, используйте команду 
                 parse_mode: 'Markdown'
               })
             } catch (error) {
-              console.error('Error sending help message:', error)
+              logger.error({ 
+                user_id: userId,
+                error: error instanceof Error ? error.message : String(error)
+              }, 'Error sending help message');
             }
             break
         }
@@ -166,7 +184,10 @@ _Если вам нужна помощь, используйте команду 
     
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('Notifications webhook error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Notifications webhook error');
     return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       assistantBot.getWebhookInfo()
     ]);
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const expectedMainUrl = `${baseUrl}/api/telegram/webhook`;
     const expectedAssistantUrl = `${baseUrl}/api/telegram/notifications/webhook`;
 
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const mainWebhookUrl = `${baseUrl}/api/telegram/webhook`;
     const assistantWebhookUrl = `${baseUrl}/api/telegram/notifications/webhook`;
 

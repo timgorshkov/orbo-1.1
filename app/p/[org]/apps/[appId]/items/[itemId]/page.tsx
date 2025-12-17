@@ -302,7 +302,7 @@ export default function ItemDetailPage() {
   // Build SEO meta
   const pageTitle = `${title} - ${app.name}`;
   const pageDescription = description?.slice(0, 160) || `${category ? category + ' - ' : ''}${price}`;
-  const pageUrl = `https://app.orbo.ru/p/${orgId}/apps/${appId}/items/${itemId}`;
+  const pageUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/p/${orgId}/apps/${appId}/items/${itemId}`;
 
   return (
     <>

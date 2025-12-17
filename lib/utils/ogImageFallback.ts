@@ -76,7 +76,7 @@ export function getAbsoluteOGImageUrl(imageUrl: string, baseUrl?: string): strin
   }
   
   // If relative URL, prepend base URL
-  const base = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'
+  const base = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
   
   // Ensure no double slashes
   const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base

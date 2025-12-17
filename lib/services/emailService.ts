@@ -190,7 +190,7 @@ class EmailService {
   }
 
   private getAdminNotificationTemplate(orgName: string): string {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     
     return `
 <!DOCTYPE html>

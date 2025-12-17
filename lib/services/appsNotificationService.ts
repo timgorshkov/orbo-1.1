@@ -122,7 +122,8 @@ export async function notifyItemApproved(itemId: string): Promise<{
     const phone = itemData.phone || '';
 
     // Public URL for item
-    const itemUrl = `https://app.orbo.ru/p/${org.slug}/apps/${(item.app_collections as any).app_id}/items/${item.id}`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+    const itemUrl = `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}/items/${item.id}`;
 
     let message = `${app.icon || '📦'} <b>${title}</b>\n\n`;
     
@@ -168,7 +169,7 @@ export async function notifyItemApproved(itemId: string): Promise<{
         [
           {
             text: `📱 Все объявления в ${app.name}`,
-            url: `https://app.orbo.ru/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
+            url: `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
           },
         ],
       ],
@@ -301,6 +302,7 @@ export async function notifyItemRejected(
     const itemData = item.data as any;
     const app = (item.app_collections as any).apps;
     const org = app.organizations;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
 
     const title = itemData.title || 'Без названия';
 
@@ -322,7 +324,7 @@ export async function notifyItemRejected(
         [
           {
             text: '📱 Перейти в приложение',
-            url: `https://app.orbo.ru/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
+            url: `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
           },
         ],
       ],

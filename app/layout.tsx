@@ -24,14 +24,14 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL('https://app.orbo.ru'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'),
   alternates: {
     canonical: '/',
   },
   openGraph: {
     type: 'website',
     locale: 'ru_RU',
-    url: 'https://app.orbo.ru',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru',
     title: 'Orbo - Управление Telegram-сообществом',
     description: 'CRM участников, материалы, события и дашборд для Telegram-сообществ',
     siteName: 'Orbo',

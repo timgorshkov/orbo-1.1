@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.orbo.ru';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const webhookUrl = botType === 'main'
       ? `${baseUrl}/api/telegram/webhook`
       : `${baseUrl}/api/telegram/notifications/webhook`;
