@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
+import { createAPILogger } from '@/lib/logger'
 import sharp from 'sharp'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
@@ -12,8 +13,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/logo' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -115,7 +119,10 @@ export async function POST(
           .toBuffer()
       }
     } catch (sharpError) {
-      console.error('Image processing error:', sharpError)
+      logger.error({ 
+        error: sharpError instanceof Error ? sharpError.message : String(sharpError),
+        org_id: orgId
+      }, 'Image processing error');
       // Fallback to original buffer if processing fails
       resizedBuffer = inputBuffer
       outputContentType = file.type
@@ -133,7 +140,10 @@ export async function POST(
       })
 
     if (uploadError) {
-      console.error('Upload error:', uploadError)
+      logger.error({ 
+        error: uploadError.message,
+        org_id: orgId
+      }, 'Upload error');
       return NextResponse.json(
         { error: 'Failed to upload file' },
         { status: 500 }
@@ -154,20 +164,28 @@ export async function POST(
       .single()
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ 
+        error: updateError.message,
+        org_id: orgId
+      }, 'Update error');
       return NextResponse.json(
         { error: 'Failed to update organization' },
         { status: 500 }
       )
     }
 
+    logger.info({ org_id: orgId }, 'Logo uploaded successfully');
     return NextResponse.json({
       success: true,
       logo_url: publicUrl,
       organization: updatedOrg
     })
   } catch (error: any) {
-    console.error('Error in POST /api/organizations/[id]/logo:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in POST /api/organizations/[id]/logo');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -180,8 +198,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/logo' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -241,19 +262,27 @@ export async function DELETE(
       .single()
 
     if (updateError) {
-      console.error('Update error:', updateError)
+      logger.error({ 
+        error: updateError.message,
+        org_id: orgId
+      }, 'Update error');
       return NextResponse.json(
         { error: 'Failed to update organization' },
         { status: 500 }
       )
     }
 
+    logger.info({ org_id: orgId }, 'Logo deleted successfully');
     return NextResponse.json({
       success: true,
       organization: updatedOrg
     })
   } catch (error: any) {
-    console.error('Error in DELETE /api/organizations/[id]/logo:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in DELETE /api/organizations/[id]/logo');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
