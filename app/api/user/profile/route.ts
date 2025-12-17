@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,8 @@ export const dynamic = 'force-dynamic';
  * - Профиль участника (если есть)
  */
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: 'user/profile' });
+  
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('orgId');
@@ -27,10 +30,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log(`[Profile API] ========== PROFILE REQUEST START ==========`);
-    console.log(`[Profile API] User ID: ${user.id}`);
-    console.log(`[Profile API] Org ID: ${orgId}`);
-    console.log(`[Profile API] Email: ${user.email}`);
+    logger.info({ 
+      user_id: user.id,
+      org_id: orgId,
+      email: user.email
+    }, 'Profile request start');
 
     // Используем admin client для полного доступа
     const adminSupabase = createAdminServer();
@@ -54,7 +58,11 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (membershipError) {
-      console.error('[Profile API] Membership error:', membershipError);
+      logger.error({ 
+        user_id: user.id,
+        org_id: orgId,
+        error: membershipError.message
+      }, 'Membership error');
       return NextResponse.json({ 
         error: 'Forbidden', 
         details: 'You are not a member of this organization' 
@@ -65,7 +73,7 @@ export async function GET(request: NextRequest) {
     const isShadowProfile = membership.metadata?.shadow_profile === true;
 
     // 3. Telegram аккаунт для организации
-    console.log(`[Profile API] Step 3: Looking for telegram account (user_id=${user.id}, org_id=${orgId})`);
+    logger.debug({ user_id: user.id, org_id: orgId }, 'Looking for telegram account');
     const { data: telegramAccount, error: telegramError } = await adminSupabase
       .from('user_telegram_accounts')
       .select('*')
@@ -74,30 +82,29 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     
     if (telegramError) {
-      console.error('[Profile API] Error fetching telegram account:', telegramError);
+      logger.error({ 
+        user_id: user.id,
+        org_id: orgId,
+        error: telegramError.message
+      }, 'Error fetching telegram account');
     }
     
-    console.log(`[Profile API] Telegram account found: ${!!telegramAccount}`);
-    if (telegramAccount) {
-      console.log(`[Profile API] Telegram account details:`, {
-        id: telegramAccount.id,
-        telegram_user_id: telegramAccount.telegram_user_id,
-        telegram_username: telegramAccount.telegram_username,
-        is_verified: telegramAccount.is_verified
-      });
-    }
+    logger.debug({ 
+      has_telegram_account: !!telegramAccount,
+      telegram_user_id: telegramAccount?.telegram_user_id,
+      telegram_username: telegramAccount?.telegram_username,
+      is_verified: telegramAccount?.is_verified
+    }, 'Telegram account found');
 
     // 4. Профиль участника (если есть)
     let participant = null;
     
     // Сначала пробуем найти по telegram_user_id (если есть привязанный Telegram)
     if (telegramAccount?.telegram_user_id) {
-      console.log(`[Profile API] Step 4a: Looking for participant by tg_user_id`);
-      console.log(`[Profile API] Query params:`, {
+      logger.debug({ 
         org_id: orgId,
-        tg_user_id: telegramAccount.telegram_user_id,
-        merged_into: 'IS NULL'
-      });
+        tg_user_id: telegramAccount.telegram_user_id
+      }, 'Looking for participant by tg_user_id');
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
@@ -108,34 +115,30 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
       
       if (participantError) {
-        console.error('[Profile API] ❌ Error fetching participant by tg_user_id:', participantError);
+        logger.error({ 
+          org_id: orgId,
+          tg_user_id: telegramAccount.telegram_user_id,
+          error: participantError.message
+        }, 'Error fetching participant by tg_user_id');
       } else {
-        console.log(`[Profile API] Participant found by tg_user_id: ${!!participantData}`);
-        if (participantData) {
-          console.log('[Profile API] ✅ Participant data:', {
-            id: participantData.id,
-            full_name: participantData.full_name,
-            tg_user_id: participantData.tg_user_id,
-            user_id: '(not selected but should match)'
-          });
-        } else {
-          console.warn('[Profile API] ⚠️ No participant found with tg_user_id:', telegramAccount.telegram_user_id);
-        }
+        logger.debug({ 
+          found: !!participantData,
+          participant_id: participantData?.id,
+          full_name: participantData?.full_name
+        }, 'Participant lookup by tg_user_id');
       }
       
       participant = participantData;
     } else {
-      console.log('[Profile API] Step 4a: Skipping tg_user_id lookup (no telegram account)');
+      logger.debug({}, 'Skipping tg_user_id lookup (no telegram account)');
     }
     
     // Если не нашли по telegram_user_id, пробуем найти по user_id (для shadow профилей)
     if (!participant) {
-      console.log(`[Profile API] Step 4b: Looking for participant by user_id`);
-      console.log(`[Profile API] Query params:`, {
+      logger.debug({ 
         org_id: orgId,
-        user_id: user.id,
-        merged_into: 'IS NULL'
-      });
+        user_id: user.id
+      }, 'Looking for participant by user_id');
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
@@ -146,19 +149,17 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
       
       if (participantError) {
-        console.error('[Profile API] ❌ Error fetching participant by user_id:', participantError);
+        logger.error({ 
+          org_id: orgId,
+          user_id: user.id,
+          error: participantError.message
+        }, 'Error fetching participant by user_id');
       } else {
-        console.log(`[Profile API] Participant found by user_id: ${!!participantData}`);
-        if (participantData) {
-          console.log('[Profile API] ✅ Participant data:', {
-            id: participantData.id,
-            full_name: participantData.full_name,
-            username: participantData.username,
-            tg_user_id: participantData.tg_user_id
-          });
-        } else {
-          console.warn('[Profile API] ⚠️ No participant found with user_id:', user.id);
-        }
+        logger.debug({ 
+          found: !!participantData,
+          participant_id: participantData?.id,
+          full_name: participantData?.full_name
+        }, 'Participant lookup by user_id');
       }
       
       participant = participantData;
@@ -166,7 +167,7 @@ export async function GET(request: NextRequest) {
 
     // 4b. Если participant не найден, создаём его автоматически (для владельцев и админов)
     if (!participant && (membership.role === 'owner' || membership.role === 'admin')) {
-      console.log('[Profile API] Participant not found, creating new participant for user');
+      logger.debug({ user_id: user.id, org_id: orgId }, 'Participant not found, creating new participant');
       
       // Определяем данные для создания participant
       const tgUserId = telegramAccount?.telegram_user_id || null;
@@ -193,13 +194,25 @@ export async function GET(request: NextRequest) {
           .single();
         
         if (createError) {
-          console.error('[Profile API] Error creating participant:', createError);
+          logger.error({ 
+            user_id: user.id,
+            org_id: orgId,
+            error: createError.message
+          }, 'Error creating participant');
         } else {
-          console.log('[Profile API] Successfully created participant:', newParticipant?.id);
+          logger.info({ 
+            participant_id: newParticipant?.id,
+            user_id: user.id,
+            org_id: orgId
+          }, 'Successfully created participant');
           participant = newParticipant;
         }
       } catch (createErr: any) {
-        console.error('[Profile API] Exception creating participant:', createErr);
+        logger.error({ 
+          user_id: user.id,
+          org_id: orgId,
+          error: createErr instanceof Error ? createErr.message : String(createErr)
+        }, 'Exception creating participant');
       }
     }
 
@@ -215,7 +228,10 @@ export async function GET(request: NextRequest) {
           title: groupTitles[index] || `Group ${id}`
         }));
       } catch (e) {
-        console.error('[Profile API] Error parsing admin groups:', e);
+        logger.error({ 
+          user_id: user.id,
+          error: e instanceof Error ? e.message : String(e)
+        }, 'Error parsing admin groups');
       }
     }
 
@@ -241,14 +257,15 @@ export async function GET(request: NextRequest) {
       organization: organization || null
     };
 
-    console.log(`[Profile API] ========== PROFILE REQUEST COMPLETE ==========`);
-    console.log(`[Profile API] Summary:`, {
-      isShadowProfile,
-      hasTelegramAccount: !!telegramAccount,
-      hasParticipant: !!participant,
-      participantId: participant?.id || 'null',
-      participantName: participant?.full_name || 'null'
-    });
+    logger.info({ 
+      user_id: user.id,
+      org_id: orgId,
+      is_shadow_profile: isShadowProfile,
+      has_telegram_account: !!telegramAccount,
+      has_participant: !!participant,
+      participant_id: participant?.id,
+      participant_name: participant?.full_name
+    }, 'Profile request complete');
 
     return NextResponse.json({
       success: true,
@@ -256,7 +273,10 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[Profile API] Error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Profile API error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -269,6 +289,8 @@ export async function GET(request: NextRequest) {
  * Обновляет данные профиля участника
  */
 export async function PATCH(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: 'user/profile' });
+  
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('orgId');
@@ -287,7 +309,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { full_name, bio, phone, custom_attributes } = body;
 
-    console.log(`[Profile API] Updating profile for user ${user.id} in org ${orgId}`);
+    logger.info({ user_id: user.id, org_id: orgId }, 'Updating profile');
 
     const adminSupabase = createAdminServer();
 
@@ -363,14 +385,23 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (updateError) {
-      console.error('[Profile API] Update error:', updateError);
+      logger.error({ 
+        user_id: user.id,
+        org_id: orgId,
+        participant_id: existingParticipant.id,
+        error: updateError.message
+      }, 'Update error');
       return NextResponse.json({ 
         error: 'Failed to update profile', 
         details: updateError.message 
       }, { status: 500 });
     }
 
-    console.log(`[Profile API] Profile updated successfully`);
+    logger.info({ 
+      user_id: user.id,
+      org_id: orgId,
+      participant_id: participant?.id
+    }, 'Profile updated successfully');
 
     return NextResponse.json({
       success: true,
@@ -378,7 +409,10 @@ export async function PATCH(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[Profile API] Error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Profile API error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

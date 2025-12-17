@@ -1,8 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAPILogger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: 'auth/callback' });
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   
@@ -17,12 +19,12 @@ export async function GET(request: NextRequest) {
   const allCookies = request.cookies.getAll()
   const authCookies = allCookies.filter(c => c.name.includes('auth') || c.name.includes('sb-'))
   
-  console.log('[Auth Callback] Processing callback:', {
-    hasCode: !!code,
+  logger.info({ 
+    has_code: !!code,
     origin: requestUrl.origin,
-    authCookiesCount: authCookies.length,
-    authCookieNames: authCookies.map(c => c.name)
-  })
+    auth_cookies_count: authCookies.length,
+    auth_cookie_names: authCookies.map(c => c.name)
+  }, 'Processing auth callback')
 
   if (code) {
     const cookieStore = await cookies()
@@ -71,18 +73,16 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (error) {
-      console.error('[Auth Callback] Exchange error:', error)
-      console.error('[Auth Callback] Error details:', {
-        message: error.message,
+      logger.error({ 
+        error: error.message,
         status: error.status,
         code: (error as any).code,
-        // Проверяем наличие code_verifier cookies
-        codeVerifierCookies: authCookies.filter(c => c.name.includes('code-verifier')).map(c => c.name)
-      })
+        code_verifier_cookies: authCookies.filter(c => c.name.includes('code-verifier')).map(c => c.name)
+      }, 'Exchange code for session error');
       return NextResponse.redirect(`${realOrigin}/signin?error=auth_failed&reason=${encodeURIComponent(error.message)}`)
     }
 
-    console.log('[Auth Callback] Session created for user:', data.user?.email)
+    logger.info({ user_id: data.user?.id, email: data.user?.email }, 'Session created');
 
     // Определяем URL редиректа (используем реальный origin)
     const redirectUrl = new URL(realOrigin)
@@ -94,10 +94,16 @@ export async function GET(request: NextRequest) {
       .eq('user_id', data.user.id)
 
     if (orgsError) {
-      console.error('[Auth Callback] Error fetching organizations:', orgsError)
+      logger.error({ 
+        error: orgsError.message,
+        user_id: data.user.id
+      }, 'Error fetching organizations');
       redirectUrl.pathname = '/orgs'
     } else {
-      console.log('[Auth Callback] Found', orgs?.length || 0, 'organizations')
+      logger.info({ 
+        user_id: data.user.id,
+        orgs_count: orgs?.length || 0
+      }, 'Found organizations');
 
       // Редиректим в зависимости от наличия организаций
       // ✅ Если организаций нет - редирект на welcome страницу (не на форму создания)
@@ -127,7 +133,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Если нет кода - редиректим на signin
-  console.warn('[Auth Callback] No code provided, redirecting to signin')
+  logger.warn({ origin: realOrigin }, 'No code provided, redirecting to signin');
   return NextResponse.redirect(`${realOrigin}/signin`)
 }
 

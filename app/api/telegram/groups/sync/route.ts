@@ -5,10 +5,13 @@ import { TelegramService } from '@/lib/services/telegramService';
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: 'telegram/groups/sync' });
+  
   try {
     const body = await request.json();
     const { orgId } = body;
@@ -27,7 +30,7 @@ export async function POST(request: Request) {
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
     
-    console.log(`Looking for verified Telegram account for user ${user.id} in org ${orgId}`);
+    logger.debug({ user_id: user.id, org_id: orgId }, 'Looking for verified Telegram account');
     
     // Получаем все верифицированные Telegram аккаунты пользователя (не только для текущей организации)
     const { data: telegramAccounts, error: accountsError } = await supabaseService
@@ -37,17 +40,23 @@ export async function POST(request: Request) {
       .eq('is_verified', true);
       
     if (accountsError) {
-      console.error('Error fetching all Telegram accounts:', accountsError);
+      logger.error({ 
+        user_id: user.id,
+        error: accountsError.message
+      }, 'Error fetching Telegram accounts');
       return NextResponse.json({ 
         error: 'Error fetching Telegram accounts',
         details: accountsError
       }, { status: 500 });
     }
     
-    console.log(`Found ${telegramAccounts?.length || 0} verified Telegram accounts for user ${user.id}`);
+    logger.debug({ 
+      user_id: user.id,
+      accounts_count: telegramAccounts?.length || 0
+    }, 'Found verified Telegram accounts');
     
     if (!telegramAccounts || telegramAccounts.length === 0) {
-      console.log('No verified Telegram accounts found');
+      logger.warn({ user_id: user.id }, 'No verified Telegram accounts found');
       return NextResponse.json({ 
         error: 'No verified Telegram accounts found for this user' 
       }, { status: 400 });
@@ -59,14 +68,17 @@ export async function POST(request: Request) {
     // Выбираем аккаунт для текущей организации или первый доступный
     const activeAccount = telegramAccount || telegramAccounts[0];
     
-    console.log(`Using Telegram account: ID ${activeAccount.id}, Telegram User ID: ${activeAccount.telegram_user_id}`);
-    
+    logger.info({ 
+      account_id: activeAccount.id,
+      telegram_user_id: activeAccount.telegram_user_id,
+      org_id: orgId
+    }, 'Using Telegram account');
 
     // Инициализируем основной бот для проверки групп
     const telegramService = new TelegramService('main');
     const tgUserId = activeAccount.telegram_user_id;
     
-    console.log(`[Sync] Starting for user ${user.id}, TG ID: ${tgUserId}, org: ${orgId}`);
+    logger.info({ user_id: user.id, telegram_user_id: tgUserId, org_id: orgId }, 'Starting sync');
 
     try {
       // НОВАЯ ЛОГИКА: Получаем ВСЕ группы из БД, где бот подключен
@@ -77,14 +89,16 @@ export async function POST(request: Request) {
         .in('bot_status', ['connected', 'pending']);
       
       if (groupsError) {
-        console.error('[Sync] Error fetching groups from DB:', groupsError);
+        logger.error({ 
+          error: groupsError.message
+        }, 'Error fetching groups from DB');
         return NextResponse.json({ 
           error: 'Failed to fetch groups from database',
           details: groupsError
         }, { status: 500 });
       }
       
-      console.log(`[Sync] Found ${allGroups?.length || 0} groups in database with active bot`);
+      logger.debug({ groups_count: allGroups?.length || 0 }, 'Found groups in database');
       
       if (!allGroups || allGroups.length === 0) {
         // Нет групп с ботом — возвращаем пустой список
@@ -100,14 +114,14 @@ export async function POST(request: Request) {
       
       for (const group of allGroups) {
         const chatId = group.tg_chat_id;
-        console.log(`[Sync] Checking admin rights in ${chatId} (${group.title})`);
+        logger.debug({ chat_id: chatId, title: group.title }, 'Checking admin rights');
         
         try {
           // Получаем информацию о чате
           const chatDetails = await telegramService.getChat(chatId);
           
           if (!chatDetails.ok) {
-            console.error(`Failed to get chat details for ${chatId}:`, chatDetails);
+            logger.error({ chat_id: chatId }, 'Failed to get chat details');
             continue;
           }
           
@@ -115,7 +129,7 @@ export async function POST(request: Request) {
           const adminInfo = await telegramService.getChatMember(chatId, activeAccount.telegram_user_id);
           
           if (!adminInfo.ok) {
-            console.error(`Failed to get admin info for ${chatId}:`, adminInfo);
+            logger.error({ chat_id: chatId }, 'Failed to get admin info');
             continue;
           }
           
@@ -124,13 +138,21 @@ export async function POST(request: Request) {
           const isOwner = member.status === 'creator';
           
           if (!isAdmin) {
-            console.log(`User is not admin in chat ${chatId} (${chatDetails.result.title}), status: ${member.status}`);
+            logger.debug({ 
+              chat_id: chatId,
+              title: chatDetails.result.title,
+              status: member.status
+            }, 'User is not admin');
             continue;
           }
           
-          console.log(`User is admin in chat ${chatId} (${chatDetails.result.title}), status: ${member.status}`);
+          logger.debug({ 
+            chat_id: chatId,
+            title: chatDetails.result.title,
+            status: member.status
+          }, 'User is admin');
           
-          console.log(`Ensuring group ${chatId} (${chatDetails.result.title}) is registered globally`);
+          logger.debug({ chat_id: chatId, title: chatDetails.result.title }, 'Ensuring group is registered globally');
 
       const { data: existingGroupGlobal, error: existingGroupGlobalError } = await supabaseService
         .from('telegram_groups')
@@ -139,7 +161,10 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (existingGroupGlobalError && existingGroupGlobalError.code !== 'PGRST116') {
-        console.error('Error fetching canonical group:', existingGroupGlobalError);
+        logger.error({ 
+          chat_id: chatId,
+          error: existingGroupGlobalError.message
+        }, 'Error fetching canonical group');
       }
 
       let groupRecord = existingGroupGlobal;
@@ -160,7 +185,11 @@ export async function POST(request: Request) {
           
           // Проверяем паттерн миграции: старый ID без -100, новый с -100
           if (newChatIdStr.startsWith('-100') && !oldChatIdStr.startsWith('-100')) {
-            console.log(`[Chat Migration Detected] ${chatDetails.result.title}: ${oldChatId} -> ${chatId}`);
+            logger.info({ 
+              title: chatDetails.result.title,
+              old_chat_id: oldChatId,
+              new_chat_id: chatId
+            }, 'Chat migration detected');
             
             // Вызываем функцию миграции
             const { data: migrationResult, error: migrationError } = await supabaseService
@@ -170,9 +199,16 @@ export async function POST(request: Request) {
               });
             
             if (migrationError) {
-              console.error('[Chat Migration] Error:', migrationError);
+              logger.error({ 
+                old_chat_id: oldChatId,
+                new_chat_id: chatId,
+                error: migrationError.message
+              }, 'Chat migration error');
             } else {
-              console.log('[Chat Migration] Success:', migrationResult);
+              logger.info({ 
+                old_chat_id: oldChatId,
+                new_chat_id: chatId
+              }, 'Chat migration success');
               
               // Сохраняем результат миграции
               await supabaseService
@@ -211,7 +247,10 @@ export async function POST(request: Request) {
             })
 
           if (insertError) {
-            console.error(`Error inserting canonical group ${chatId}:`, insertError);
+            logger.error({ 
+              chat_id: chatId,
+              error: insertError.message
+            }, 'Error inserting canonical group');
             continue;
           }
 
@@ -238,7 +277,10 @@ export async function POST(request: Request) {
           .eq('id', groupRecord.id);
 
         if (updateError) {
-          console.error(`Error updating canonical group ${chatId}:`, updateError);
+          logger.error({ 
+            chat_id: chatId,
+            error: updateError.message
+          }, 'Error updating canonical group');
         }
       }
 
@@ -254,9 +296,12 @@ export async function POST(request: Request) {
         if (mappingError?.code === '23505') {
           // already linked
         } else if (mappingError?.code === '42P01') {
-          console.warn('Mapping table missing during sync; falling back to legacy org_id update');
+          logger.warn({ chat_id: chatId }, 'Mapping table missing during sync');
         } else {
-          console.error('Error creating org mapping:', mappingError);
+          logger.error({ 
+            chat_id: chatId,
+            error: mappingError.message
+          }, 'Error creating org mapping');
         }
       }
 
@@ -283,10 +328,16 @@ export async function POST(request: Request) {
             });
           
           if (adminError) {
-            console.error(`Error saving admin info for ${chatId}:`, adminError);
+            logger.error({ 
+              chat_id: chatId,
+              error: adminError.message
+            }, 'Error saving admin info');
           }
         } catch (chatError) {
-          console.error(`Error processing chat ${chatId}:`, chatError);
+          logger.error({ 
+            chat_id: chatId,
+            error: chatError instanceof Error ? chatError.message : String(chatError)
+          }, 'Error processing chat');
         }
       }
       
