@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
 
 // Service role client for bypassing RLS
 const supabaseServiceRole = createClient(
@@ -21,6 +22,7 @@ interface HealthStatus {
 }
 
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/health' });
   try {
     // Get all telegram groups
     const { data: groups, error } = await supabaseServiceRole
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
       .select('id, tg_chat_id, title, last_sync_at, bot_status');
     
     if (error) {
-      console.error('[Telegram Health] Error fetching groups:', error);
+      logger.error({ error: error.message }, '[Telegram Health] Error fetching groups');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -113,7 +115,10 @@ export async function GET(req: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('[Telegram Health] Unexpected error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, '[Telegram Health] Unexpected error');
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 });

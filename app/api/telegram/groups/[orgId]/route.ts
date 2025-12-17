@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,7 @@ export async function GET(
   request: Request,
   { params }: { params: { orgId: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/[orgId]' });
   try {
     const orgId = params.orgId;
 
@@ -15,7 +17,7 @@ export async function GET(
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
 
-    console.log(`Fetching groups for org: ${orgId}`);
+    logger.info({ org_id: orgId }, 'Fetching groups for org');
 
     const supabase = await createClientServer();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -34,7 +36,7 @@ export async function GET(
       .maybeSingle();
 
     if (membershipError) {
-      console.error('Membership check error:', membershipError);
+      logger.error({ error: membershipError.message, org_id: orgId, user_id: user.id }, 'Membership check error');
       return NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 });
     }
 
@@ -46,7 +48,11 @@ export async function GET(
 
     return NextResponse.json({ groups });
   } catch (error: any) {
-    console.error('Error in telegram groups GET:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: params.orgId
+    }, 'Error in telegram groups GET');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

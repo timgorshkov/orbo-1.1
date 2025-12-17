@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/accounts' });
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('orgId');
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-      console.error('Error fetching telegram account:', error);
+      logger.error({ error: error.message, user_id: user.id, org_id: orgId }, 'Error fetching telegram account');
       return NextResponse.json({ error: 'Failed to fetch telegram account' }, { status: 500 });
     }
 
@@ -38,7 +40,10 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error in telegram accounts GET:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in telegram accounts GET');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
@@ -75,10 +80,13 @@ export async function POST(request: Request) {
         fetchedUsername = chatInfo.result.username || telegramUsername;
         fetchedFirstName = chatInfo.result.first_name || telegramFirstName;
         fetchedLastName = chatInfo.result.last_name || telegramLastName;
-        console.log(`Fetched user info from Telegram: @${fetchedUsername}`);
+        logger.debug({ username: fetchedUsername, telegram_user_id: telegramUserId }, 'Fetched user info from Telegram');
       }
     } catch (error) {
-      console.log('Could not fetch user info from Telegram, using provided values:', error);
+      logger.debug({ 
+        error: error instanceof Error ? error.message : String(error),
+        telegram_user_id: telegramUserId
+      }, 'Could not fetch user info from Telegram, using provided values');
     }
     
     // Генерируем код верификации
@@ -107,7 +115,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('Error upserting telegram account:', error);
+      logger.error({ error: error.message, user_id: user.id, org_id: orgId }, 'Error upserting telegram account');
       return NextResponse.json({ error: 'Failed to save telegram account' }, { status: 500 });
     }
 
@@ -137,7 +145,7 @@ export async function POST(request: Request) {
       const { TelegramService } = await import('@/lib/services/telegramService');
       const notificationsBot = new TelegramService('notifications');
       
-      console.log(`Sending verification code to Telegram user ID: ${telegramUserId}`);
+      logger.info({ telegram_user_id: telegramUserId }, 'Sending verification code');
       
       const message = `🔐 *Код верификации Orbo*
 
@@ -154,10 +162,10 @@ export async function POST(request: Request) {
         parse_mode: 'Markdown'
       });
       
-      console.log('Verification code send result:', result);
+      logger.debug({ telegram_user_id: telegramUserId, result_ok: result.ok }, 'Verification code send result');
       
       if (!result.ok) {
-        console.error('Failed to send verification code:', result);
+        logger.error({ telegram_user_id: telegramUserId, error: result.description }, 'Failed to send verification code');
         
         // Если пользователь не начал диалог с ботом
         if (result.description?.includes('chat not found') || 
@@ -169,7 +177,11 @@ export async function POST(request: Request) {
         }
       }
     } catch (notificationError: any) {
-      console.error('Error sending verification code:', notificationError);
+      logger.error({ 
+        error: notificationError.message || String(notificationError),
+        stack: notificationError.stack,
+        telegram_user_id: telegramUserId
+      }, 'Error sending verification code');
       
       // Если ошибка связана с отсутствием чата
       if (notificationError.message?.includes('chat not found') || 
@@ -190,7 +202,10 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error in telegram accounts POST:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in telegram accounts POST');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
@@ -253,7 +268,7 @@ export async function PUT(request: Request) {
       .single();
 
     if (updateError) {
-      console.error('Error updating telegram account:', updateError);
+      logger.error({ error: updateError.message, account_id: telegramAccount.id }, 'Error updating telegram account');
       return NextResponse.json({ error: 'Failed to verify account' }, { status: 500 });
     }
 
@@ -275,7 +290,10 @@ export async function PUT(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error in telegram accounts PUT:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in telegram accounts PUT');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

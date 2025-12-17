@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ function safeErrorJson(error: any): string {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/update-admin-rights' });
   try {
     // Получаем текущего пользователя
     const supabase = await createClientServer();
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
     
-    console.log(`Updating admin rights for user ${user.id} in org ${orgId}`);
+    logger.info({ user_id: user.id, org_id: orgId }, 'Updating admin rights');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
       .eq('is_verified', true);
       
     if (accountsError) {
-      console.error('Error fetching Telegram accounts:', safeErrorJson(accountsError));
+      logger.error({ error: accountsError.message, user_id: user.id }, 'Error fetching Telegram accounts');
       return NextResponse.json({
         error: 'Failed to fetch Telegram accounts',
         details: safeErrorJson(accountsError)
@@ -62,26 +64,26 @@ export async function POST(request: Request) {
     }
     
     if (!telegramAccounts || telegramAccounts.length === 0) {
-      console.log(`No verified Telegram accounts found for user ${user.id}`);
+      logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
       return NextResponse.json({ 
         error: 'No verified Telegram accounts found for this user' 
       }, { status: 400 });
     }
     
-    console.log(`Found ${telegramAccounts.length} verified Telegram accounts for user ${user.id}`);
+    logger.debug({ accounts_count: telegramAccounts.length, user_id: user.id }, 'Found verified Telegram accounts');
     
     // Ищем аккаунт для текущей организации
     const telegramAccount = telegramAccounts.find(account => account.org_id === orgId);
     
     // Если нет аккаунта для текущей организации, используем первый доступный
     if (!telegramAccount) {
-      console.log(`No verified Telegram account found for org ${orgId}, using first available account`);
+      logger.debug({ org_id: orgId }, 'No verified Telegram account found for org, using first available account');
     }
     
     // Выбираем аккаунт для текущей организации или первый доступный
     const activeAccount = telegramAccount || telegramAccounts[0];
     
-    console.log(`Using Telegram account: ${activeAccount.telegram_user_id} (from org: ${activeAccount.org_id})`);
+    logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
     
     // Собираем кандидатов (чаты) только из предусмотренных связей
     const candidateChatIds = new Set<string>();
@@ -127,9 +129,9 @@ export async function POST(request: Request) {
       }
     } catch (mappingFetchError: any) {
       if (mappingFetchError?.code === '42P01') {
-        console.warn('org_telegram_groups table not found while updating admin rights');
+        logger.warn({}, 'org_telegram_groups table not found while updating admin rights');
       } else {
-        console.error('Error fetching org group mappings:', safeErrorJson(mappingFetchError));
+        logger.error({ error: mappingFetchError.message, org_id: orgId }, 'Error fetching org group mappings');
         return NextResponse.json({
           error: 'Failed to fetch organization mappings',
           details: safeErrorJson(mappingFetchError)
@@ -150,9 +152,9 @@ export async function POST(request: Request) {
       });
     } catch (directGroupsError: any) {
       if (directGroupsError?.code === '42703') {
-        console.warn('org_id column missing on telegram_groups while updating admin rights');
+        logger.warn({}, 'org_id column missing on telegram_groups while updating admin rights');
       } else {
-        console.error('Error fetching legacy org groups:', safeErrorJson(directGroupsError));
+        logger.error({ error: directGroupsError.message, org_id: orgId }, 'Error fetching legacy org groups');
         return NextResponse.json({
           error: 'Failed to fetch legacy organization groups',
           details: safeErrorJson(directGroupsError)
@@ -163,7 +165,7 @@ export async function POST(request: Request) {
     // ✅ НОВОЕ: Добавляем ВСЕ группы, где есть активность бота (включая новые группы)
     // Используем activity_events вместо удалённой таблицы telegram_activity_events
     try {
-      console.log('Scanning activity_events for new groups...');
+      logger.debug({}, 'Scanning activity_events for new groups');
       const { data: activityGroups } = await supabaseService
         .from('activity_events')
         .select('tg_chat_id')
@@ -178,18 +180,18 @@ export async function POST(request: Request) {
         }
       });
       
-      console.log(`Found ${uniqueChatIds.size} unique groups in activity events`);
+      logger.debug({ unique_groups_count: uniqueChatIds.size }, 'Found unique groups in activity events');
       
       // Добавляем в кандидаты
       uniqueChatIds.forEach(chatId => candidateChatIds.add(chatId));
     } catch (activityError) {
-      console.error('Error scanning activity events:', activityError);
+      logger.error({ error: activityError instanceof Error ? activityError.message : String(activityError) }, 'Error scanning activity events');
       // Не критично, продолжаем
     }
 
     // ✅ НОВОЕ: Добавляем ВСЕ группы из telegram_groups где бот подключен или pending
     try {
-      console.log('Scanning telegram_groups for groups with connected bot...');
+      logger.debug({}, 'Scanning telegram_groups for groups with connected bot');
       const { data: connectedGroups } = await supabaseService
         .from('telegram_groups')
         .select('tg_chat_id')
@@ -201,9 +203,9 @@ export async function POST(request: Request) {
         }
       });
       
-      console.log(`Found ${connectedGroups?.length || 0} groups with connected bot in telegram_groups`);
+      logger.debug({ groups_count: connectedGroups?.length || 0 }, 'Found groups with connected bot in telegram_groups');
     } catch (groupsError) {
-      console.error('Error scanning telegram_groups:', groupsError);
+      logger.error({ error: groupsError instanceof Error ? groupsError.message : String(groupsError) }, 'Error scanning telegram_groups');
       // Не критично, продолжаем
     }
 
@@ -217,7 +219,7 @@ export async function POST(request: Request) {
     }
 
     const normalizedChatIds = Array.from(candidateChatIds);
-    console.log(`Checking admin rights for ${normalizedChatIds.length} chats`);
+    logger.info({ chats_count: normalizedChatIds.length }, 'Checking admin rights for chats');
 
     const telegramService = new TelegramService('main');
     const updatedGroups: any[] = [];
@@ -234,7 +236,7 @@ export async function POST(request: Request) {
 
       try {
         // Получаем ВСЕХ администраторов группы
-        console.log(`Fetching all administrators for chat ${chatId}`);
+        logger.debug({ tg_chat_id: chatId }, 'Fetching all administrators for chat');
         const adminsResponse = await telegramService.getChatAdministrators(chatId);
 
         if (!adminsResponse?.ok) {
@@ -243,14 +245,14 @@ export async function POST(request: Request) {
         }
 
         const administrators = adminsResponse.result || [];
-        console.log(`Found ${administrators.length} administrators in chat ${chatId}`);
+        logger.debug({ tg_chat_id: chatId, admins_count: administrators.length }, 'Found administrators in chat');
 
         // ✅ Проверяем, является ли НАШ БОТ администратором
         const ourBotId = Number(process.env.TELEGRAM_BOT_ID || '8355772450');
         const botAdmin = administrators.find((admin: any) => admin?.user?.id === ourBotId);
         const botHasAdminRights = botAdmin && (botAdmin.status === 'administrator' || botAdmin.status === 'creator');
         
-        console.log(`Bot ${ourBotId} admin rights in chat ${chatId}: ${botHasAdminRights ? 'YES ✅' : 'NO ❌'}`);
+        logger.debug({ bot_id: ourBotId, tg_chat_id: chatId, has_admin_rights: botHasAdminRights }, 'Bot admin rights check');
         
         // ✅ Обновляем bot_status в telegram_groups
         const newBotStatus = botHasAdminRights ? 'connected' : 'pending';
@@ -259,11 +261,11 @@ export async function POST(request: Request) {
           .update({ bot_status: newBotStatus, last_sync_at: new Date().toISOString() })
           .eq('tg_chat_id', chatId);
         
-        console.log(`Updated bot_status to '${newBotStatus}' for chat ${chatId}`);
+        logger.debug({ tg_chat_id: chatId, bot_status: newBotStatus }, 'Updated bot_status');
 
         // ✅ КРИТИЧЕСКИЙ ФИКС: Сначала деактивируем ВСЕХ админов этой группы
         // Это гарантирует, что если кого-то убрали из админов, его права будут отозваны
-        console.log(`[DEACTIVATE] Starting deactivation for chat ${chatId}`);
+        logger.debug({ tg_chat_id: chatId }, '[DEACTIVATE] Starting deactivation');
         
         // Сначала проверим, сколько записей существует
         const { data: existingAdmins, error: countError } = await supabaseService
@@ -272,10 +274,13 @@ export async function POST(request: Request) {
           .eq('tg_chat_id', chatId);
         
         if (countError) {
-          console.error(`[DEACTIVATE] Error counting admins for chat ${chatId}:`, countError);
+          logger.error({ tg_chat_id: chatId, error: countError.message }, '[DEACTIVATE] Error counting admins');
         } else {
-          console.log(`[DEACTIVATE] Found ${existingAdmins?.length || 0} existing admin records for chat ${chatId}:`, 
-            existingAdmins?.map(a => ({ tg_user_id: a.tg_user_id, is_admin: a.is_admin })));
+          logger.debug({ 
+            tg_chat_id: chatId,
+            existing_admins_count: existingAdmins?.length || 0,
+            existing_admins: existingAdmins?.map(a => ({ tg_user_id: a.tg_user_id, is_admin: a.is_admin }))
+          }, '[DEACTIVATE] Found existing admin records');
         }
         
         const { data: deactivatedData, error: deactivateError } = await supabaseService
@@ -290,11 +295,14 @@ export async function POST(request: Request) {
           .select('tg_user_id');
         
         if (deactivateError) {
-          console.error(`[DEACTIVATE] ERROR deactivating admins for chat ${chatId}:`, deactivateError);
+          logger.error({ tg_chat_id: chatId, error: deactivateError.message }, '[DEACTIVATE] ERROR deactivating admins');
           warnings.push(`Could not deactivate old admins for chat ${chatId}: ${deactivateError.message}`);
         } else {
-          console.log(`[DEACTIVATE] ✅ Successfully deactivated ${deactivatedData?.length || 0} admins for chat ${chatId}:`,
-            deactivatedData?.map(a => a.tg_user_id));
+          logger.debug({ 
+            tg_chat_id: chatId,
+            deactivated_count: deactivatedData?.length || 0,
+            deactivated_user_ids: deactivatedData?.map(a => a.tg_user_id)
+          }, '[DEACTIVATE] Successfully deactivated admins');
         }
 
         // Обрабатываем каждого администратора
@@ -306,13 +314,17 @@ export async function POST(request: Request) {
           const isBot = admin?.user?.is_bot;
 
           if (!userId) {
-            console.warn(`Administrator without user ID in chat ${chatId}, skipping`);
+            logger.warn({ tg_chat_id: chatId }, 'Administrator without user ID, skipping');
             continue;
           }
 
           // ✅ Пропускаем ботов (включая orbo_community_bot) при сохранении в telegram_group_admins
           if (isBot) {
-            console.log(`⏭️  Skipping bot ${userId} (${admin.user?.username || admin.user?.first_name}) in chat ${chatId}`);
+            logger.debug({ 
+              tg_chat_id: chatId,
+              bot_id: userId,
+              bot_username: admin.user?.username || admin.user?.first_name
+            }, 'Skipping bot');
             continue;
           }
 
@@ -356,7 +368,11 @@ export async function POST(request: Request) {
             continue;
           }
 
-          console.log(`✅ Saved admin ${userId} (${admin.user?.username || admin.user?.first_name}) for chat ${chatId}`);
+          logger.debug({ 
+            tg_chat_id: chatId,
+            tg_user_id: userId,
+            username: admin.user?.username || admin.user?.first_name
+          }, 'Saved admin');
         }
 
         updatedGroups.push({
@@ -369,20 +385,24 @@ export async function POST(request: Request) {
     }
     
     // После обновления всех админов, вызываем sync_telegram_admins для создания memberships
-    console.log('Calling sync_telegram_admins to create memberships...');
+    logger.debug({ org_id: orgId }, 'Calling sync_telegram_admins to create memberships');
     try {
       const { error: syncError } = await supabaseService.rpc('sync_telegram_admins', {
         p_org_id: orgId
       });
       
       if (syncError) {
-        console.error('Error syncing telegram admins:', syncError);
+        logger.error({ error: syncError.message, org_id: orgId }, 'Error syncing telegram admins');
         warnings.push(`Failed to sync memberships: ${syncError.message}`);
       } else {
-        console.log('✅ Successfully synced telegram admins to memberships');
+        logger.info({ org_id: orgId }, 'Successfully synced telegram admins to memberships');
       }
     } catch (syncErr: any) {
-      console.error('Error calling sync_telegram_admins:', syncErr);
+      logger.error({ 
+        error: syncErr.message || String(syncErr),
+        stack: syncErr.stack,
+        org_id: orgId
+      }, 'Error calling sync_telegram_admins');
       warnings.push(`Failed to call sync function: ${syncErr.message || 'Unknown error'}`);
     }
 
@@ -395,7 +415,10 @@ export async function POST(request: Request) {
       warnings
     });
   } catch (error: any) {
-    console.error('Error updating admin rights:', error instanceof Error ? error.stack : String(error));
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error updating admin rights');
     return NextResponse.json({ 
       error: 'Error updating admin rights',
       details: error instanceof Error ? error.message : String(error)

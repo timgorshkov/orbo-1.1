@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +76,7 @@ type DailyMetrics = {
 }
 
 export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/analytics/data' });
   try {
     const { searchParams } = new URL(request.url)
     const orgId = searchParams.get('orgId')
@@ -84,7 +86,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    console.log('Analytics API request for:', { orgId, chatId })
+    logger.info({ org_id: orgId, chat_id: chatId }, 'Analytics API request');
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -178,7 +180,7 @@ export async function GET(request: Request) {
         .eq('is_active', true)
 
       if (membershipError) {
-        console.error('Error fetching participant memberships for analytics:', membershipError)
+        logger.error({ error: membershipError.message, chat_id: chatId }, 'Error fetching participant memberships for analytics');
       } else if (membershipRows) {
         membershipRows.forEach(row => {
           const participantsRaw = row?.participants
@@ -205,7 +207,10 @@ export async function GET(request: Request) {
         })
       }
     } catch (membershipException) {
-      console.error('Unexpected error loading participant memberships for analytics:', membershipException)
+      logger.error({ 
+        error: membershipException instanceof Error ? membershipException.message : String(membershipException),
+        stack: membershipException instanceof Error ? membershipException.stack : undefined
+      }, 'Unexpected error loading participant memberships for analytics');
     }
 
     // 2) Загружаем события активности (30 дней)
@@ -221,10 +226,10 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(2000)
 
-    console.log('Activity events query result:', {
-      count: activityEvents?.length || 0,
-      error: activityError
-    })
+    logger.debug({ 
+      events_count: activityEvents?.length || 0,
+      error: activityError?.message
+    }, 'Activity events query result');
 
     const processedMessageIds = new Set<string>()
     const usersByDay: Record<string, Set<number>> = {}
@@ -345,7 +350,7 @@ export async function GET(request: Request) {
           .in('tg_user_id', Array.from(new Set(missingForEnrichment)))
 
         if (participantError) {
-          console.error('Error fetching participants for analytics enrichment:', participantError)
+          logger.error({ error: participantError.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
         } else if (participantRows) {
           participantRows.forEach(row => {
             if (!row?.tg_user_id) {
@@ -379,7 +384,10 @@ export async function GET(request: Request) {
           })
         }
       } catch (participantEnrichmentException) {
-        console.error('Unexpected error enriching participants for analytics:', participantEnrichmentException)
+        logger.error({ 
+          error: participantEnrichmentException instanceof Error ? participantEnrichmentException.message : String(participantEnrichmentException),
+          stack: participantEnrichmentException instanceof Error ? participantEnrichmentException.stack : undefined
+        }, 'Unexpected error enriching participants for analytics');
       }
     }
 
@@ -568,7 +576,12 @@ export async function GET(request: Request) {
       participants: participantsResponse
     })
   } catch (error: any) {
-    console.error('Error in analytics API:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId,
+      chat_id: chatId
+    }, 'Error in analytics API');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }

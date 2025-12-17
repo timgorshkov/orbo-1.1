@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ function safeErrorJson(error: any): string {
 }
 
 export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/for-user' });
   try {
     // Получаем параметры запроса
     const url = new URL(request.url);
@@ -39,7 +41,7 @@ export async function GET(request: Request) {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
-      console.error('Auth error:', safeErrorJson(userError));
+      logger.error({ error: userError?.message }, 'Auth error');
       return NextResponse.json({ 
         error: 'Unauthorized', 
         groups: [],
@@ -47,7 +49,7 @@ export async function GET(request: Request) {
       }, { status: 401 });
     }
     
-    console.log(`Fetching groups for user ${user.id} in org ${orgId}`);
+    logger.info({ user_id: user.id, org_id: orgId }, 'Fetching groups for user');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
@@ -61,7 +63,7 @@ export async function GET(request: Request) {
         .eq('is_verified', true);
         
       if (accountsError) {
-        console.error('Error fetching Telegram accounts:', safeErrorJson(accountsError));
+        logger.error({ error: accountsError.message, user_id: user.id }, 'Error fetching Telegram accounts');
         return NextResponse.json({
           error: 'Failed to fetch Telegram accounts',
           details: 'Could not retrieve verified Telegram accounts',
@@ -71,7 +73,7 @@ export async function GET(request: Request) {
       }
       
       if (!telegramAccounts || telegramAccounts.length === 0) {
-        console.log(`No verified Telegram accounts found for user ${user.id}`);
+        logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
         return NextResponse.json({ 
           groups: [],
           availableGroups: [],
@@ -79,27 +81,23 @@ export async function GET(request: Request) {
         });
       }
       
-      console.log(`Found ${telegramAccounts.length} verified Telegram accounts for user ${user.id}`);
+      logger.debug({ accounts_count: telegramAccounts.length, user_id: user.id }, 'Found verified Telegram accounts');
       
       // Ищем аккаунт для текущей организации
       const telegramAccount = telegramAccounts.find(account => account.org_id === orgId);
       
       // Если нет аккаунта для текущей организации, используем первый доступный
       if (!telegramAccount) {
-        console.log(`No verified Telegram account found for org ${orgId}, using first available account`);
+        logger.debug({ org_id: orgId }, 'No verified Telegram account found for org, using first available account');
       }
       
       // Выбираем аккаунт для текущей организации или первый доступный
       const activeAccount = telegramAccount || telegramAccounts[0];
       
-      console.log(`Using Telegram account: ${activeAccount.telegram_user_id} (from org: ${activeAccount.org_id})`);
+      logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
       
       try {
-        console.log(`Querying telegram_group_admins for tg_user_id: ${activeAccount.telegram_user_id}`);
-        
-        // Получаем все группы, где пользователь является администратором
-        console.log('SQL query for telegram_group_admins:');
-        console.log(`SELECT * FROM telegram_group_admins WHERE tg_user_id = '${activeAccount.telegram_user_id}' AND is_admin = true`);
+        logger.debug({ tg_user_id: activeAccount.telegram_user_id }, 'Querying telegram_group_admins');
         
         // Получаем записи из telegram_group_admins
         const { data: adminRights, error: adminRightsError } = await supabaseService
@@ -109,7 +107,7 @@ export async function GET(request: Request) {
           .eq('is_admin', true);
           
         if (adminRightsError) {
-          console.error('Error fetching admin rights:', safeErrorJson(adminRightsError));
+          logger.error({ error: adminRightsError.message, tg_user_id: activeAccount.telegram_user_id }, 'Error fetching admin rights');
           return NextResponse.json({ 
             error: 'Failed to fetch admin rights',
             details: 'Database error when retrieving admin rights',
@@ -118,11 +116,11 @@ export async function GET(request: Request) {
           }, { status: 500 });
         }
         
-        console.log(`Found ${adminRights?.length || 0} admin rights records for user ${activeAccount.telegram_user_id}`);
+        logger.debug({ admin_rights_count: adminRights?.length || 0, tg_user_id: activeAccount.telegram_user_id }, 'Found admin rights records');
         
         // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь ДЕЙСТВИТЕЛЬНО админ
         if (!adminRights || adminRights.length === 0) {
-          console.log(`No admin rights found for user ${activeAccount.telegram_user_id}`);
+          logger.info({ tg_user_id: activeAccount.telegram_user_id }, 'No admin rights found');
           return NextResponse.json({
             groups: [],
             availableGroups: [],
@@ -133,7 +131,7 @@ export async function GET(request: Request) {
         // Собираем chat_id только из admin rights (где пользователь реально админ)
         const allChatIds = new Set((adminRights || []).map(right => String(right.tg_chat_id)));
         
-        console.log(`Chat IDs to fetch: ${Array.from(allChatIds).join(', ')}`);
+        logger.debug({ chat_ids: Array.from(allChatIds), chat_ids_count: allChatIds.size }, 'Chat IDs to fetch');
         
         // Получаем группы и их связи с организациями
         const chatIdValues = Array.from(allChatIds);
@@ -165,7 +163,7 @@ export async function GET(request: Request) {
 
         const primaryResult = await fetchGroupsBatch(chatIdValues);
         if (primaryResult.error) {
-          console.warn('Primary groups query failed, attempting fallback with numeric IDs:', safeErrorJson(primaryResult.error));
+          logger.warn({ error: primaryResult.error.message }, 'Primary groups query failed, attempting fallback with numeric IDs');
           lastError = primaryResult.error;
         } else if (primaryResult.data.length > 0) {
           groups = primaryResult.data;
@@ -199,7 +197,7 @@ export async function GET(request: Request) {
         }
           
         if ((!groups || groups.length === 0) && lastError) {
-          console.error('Error fetching groups:', safeErrorJson(lastError));
+          logger.error({ error: lastError.message }, 'Error fetching groups');
           return NextResponse.json({ 
             error: 'Failed to fetch groups',
             details: 'Database error when retrieving groups',
@@ -209,7 +207,7 @@ export async function GET(request: Request) {
         }
         
         if (!groups || groups.length === 0) {
-          console.log(`No groups found for chat IDs: ${chatIdValues.join(', ')}`);
+          logger.info({ chat_ids: chatIdValues }, 'No groups found for chat IDs');
           return NextResponse.json({
             groups: [],
             availableGroups: [],
@@ -217,7 +215,7 @@ export async function GET(request: Request) {
           });
         }
         
-        console.log(`Found ${groups.length} groups`);
+        logger.debug({ groups_count: groups.length }, 'Found groups');
         
         // Объединяем данные из adminRights и groups
         let mappings: any[] = [];
@@ -229,7 +227,7 @@ export async function GET(request: Request) {
 
           if (mappingRowsError) {
             if (mappingRowsError.code === '42703') {
-              console.warn('status column missing on org_telegram_groups, falling back to basic selection');
+              logger.warn({}, 'status column missing on org_telegram_groups, falling back to basic selection');
               const { data: fallbackRows, error: fallbackError } = await supabaseService
                 .from('org_telegram_groups')
                 .select('org_id, tg_chat_id')
@@ -260,14 +258,14 @@ export async function GET(request: Request) {
           if (mappings.length === 0) {
             // Legacy fallback removed: telegram_groups.org_id was removed in migration 071
             // All org-group mappings should be in org_telegram_groups table
-            console.warn('No org mappings found for these groups. They need to be added to organizations via org_telegram_groups.');
+            logger.warn({}, 'No org mappings found for these groups. They need to be added to organizations via org_telegram_groups.');
           }
         } catch (mappingError: any) {
           if (mappingError?.code === '42P01') {
-            console.warn('Mapping table org_telegram_groups not found while loading groups for user');
+            logger.warn({}, 'Mapping table org_telegram_groups not found while loading groups for user');
             mappings = [];
           } else {
-            console.error('Error fetching group mappings:', safeErrorJson(mappingError));
+            logger.error({ error: mappingError.message }, 'Error fetching group mappings');
             return NextResponse.json({
               error: 'Failed to fetch group mappings',
               details: mappingError instanceof Error ? mappingError.message : String(mappingError),
@@ -334,7 +332,10 @@ export async function GET(request: Request) {
               actualMemberCount = memberCount;
             }
           } catch (countError) {
-            console.error(`Error counting members for group ${groupAny.tg_chat_id}:`, countError);
+            logger.error({ 
+              tg_chat_id: groupAny.tg_chat_id,
+              error: countError instanceof Error ? countError.message : String(countError)
+            }, 'Error counting members for group');
           }
 
           // ✅ Проверяем, есть ли подтвержденные права админа
@@ -355,16 +356,18 @@ export async function GET(request: Request) {
           };
 
           // Детальное логирование для отладки
-          console.log(`Group ${groupAny.tg_chat_id} (${groupAny.title}):`, {
-            isLinkedToOrg,
-            botHasAdminRights,
-            hasAdminRights,
+          logger.debug({
+            tg_chat_id: groupAny.tg_chat_id,
+            title: groupAny.title,
+            is_linked_to_org: isLinkedToOrg,
+            bot_has_admin_rights: botHasAdminRights,
+            has_admin_rights: hasAdminRights,
             bot_status: groupAny.bot_status,
-            mappedOrgIds: Array.from(mappedOrgIds),
-            currentOrgId: orgId,
-            willBeInExisting: isLinkedToOrg,
-            willBeInAvailable: !isLinkedToOrg && hasAdminRights
-          });
+            mapped_org_ids: Array.from(mappedOrgIds),
+            current_org_id: orgId,
+            will_be_in_existing: isLinkedToOrg,
+            will_be_in_available: !isLinkedToOrg && hasAdminRights
+          }, 'Group processing details');
 
           // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь реально админ
           if (isLinkedToOrg) {
@@ -375,11 +378,18 @@ export async function GET(request: Request) {
             // На UI будет показано предупреждение, если botHasAdminRights=false
             availableGroups.push(normalizedGroup);
           } else {
-            console.log(`Group ${groupAny.tg_chat_id} skipped: hasAdminRights=${hasAdminRights}, bot_status=${groupAny.bot_status}`);
+            logger.debug({ 
+              tg_chat_id: groupAny.tg_chat_id,
+              has_admin_rights: hasAdminRights,
+              bot_status: groupAny.bot_status
+            }, 'Group skipped');
           }
         }
 
-        console.log(`Returning ${existingGroups.length} existing groups and ${availableGroups.length} available groups`);
+        logger.info({ 
+          existing_groups_count: existingGroups.length,
+          available_groups_count: availableGroups.length
+        }, 'Returning groups');
 
         return NextResponse.json({
           groups: includeExisting ? [...existingGroups, ...availableGroups] : existingGroups,
@@ -387,7 +397,10 @@ export async function GET(request: Request) {
           message: `Found ${existingGroups.length} groups for org ${orgId} and ${availableGroups.length} available groups`
         });
       } catch (adminGroupsError: any) {
-        console.error('Error processing admin groups:', safeErrorJson(adminGroupsError));
+        logger.error({ 
+          error: adminGroupsError.message || String(adminGroupsError),
+          stack: adminGroupsError.stack
+        }, 'Error processing admin groups');
         return NextResponse.json({ 
           error: 'Error processing admin groups',
           details: adminGroupsError instanceof Error ? adminGroupsError.message : String(adminGroupsError),
@@ -396,7 +409,10 @@ export async function GET(request: Request) {
         }, { status: 500 });
       }
     } catch (accountError: any) {
-      console.error('Error processing telegram account:', safeErrorJson(accountError));
+      logger.error({ 
+        error: accountError.message || String(accountError),
+        stack: accountError.stack
+      }, 'Error processing telegram account');
       return NextResponse.json({ 
         error: 'Error processing telegram account',
         details: accountError instanceof Error ? accountError.message : String(accountError),
@@ -405,7 +421,10 @@ export async function GET(request: Request) {
       }, { status: 500 });
     }
   } catch (error: any) {
-    console.error('Error in groups for-user:', error instanceof Error ? error.stack : String(error));
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error in groups for-user');
     return NextResponse.json({ 
       error: 'Error processing groups',
       details: error instanceof Error ? error.message : String(error),

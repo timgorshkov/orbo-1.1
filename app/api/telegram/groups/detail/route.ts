@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ function safeJson(error: any) {
 }
 
 export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/detail' });
   try {
     const url = new URL(request.url);
     const orgId = url.searchParams.get('orgId');
@@ -46,7 +48,7 @@ export async function GET(request: Request) {
       .maybeSingle();
 
     if (membershipError) {
-      console.error('Membership check error:', safeJson(membershipError));
+      logger.error({ error: membershipError.message, org_id: orgId, user_id: user.id }, 'Membership check error');
       return NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 });
     }
 
@@ -86,7 +88,7 @@ export async function GET(request: Request) {
     }
 
     if (groupError) {
-      console.error('Group fetch error:', safeJson(groupError));
+      logger.error({ error: groupError.message, group_id: groupIdParam }, 'Group fetch error');
     }
 
     if (!groupData) {
@@ -112,10 +114,10 @@ export async function GET(request: Request) {
         accessible = mappingExists;
       } catch (mappingError: any) {
         if (mappingError?.code === '42P01') {
-          console.warn('Mapping table org_telegram_groups not found while fetching group detail');
+          logger.warn({}, 'Mapping table org_telegram_groups not found while fetching group detail');
           accessible = false;
         } else {
-          console.error('Mapping lookup error:', safeJson(mappingError));
+          logger.error({ error: mappingError.message, org_id: orgId, tg_chat_id: groupData.tg_chat_id }, 'Mapping lookup error');
           return NextResponse.json({ error: 'Failed to verify group mapping' }, { status: 500 });
         }
       }
@@ -133,7 +135,10 @@ export async function GET(request: Request) {
       mappingExists,
     });
   } catch (error: any) {
-    console.error('Error in group detail API:', error);
+    logger.error({ 
+      error: error?.message || String(error),
+      stack: error?.stack
+    }, 'Error in group detail API');
     return NextResponse.json(
       { error: error?.message || 'Internal server error' },
       { status: 500 }

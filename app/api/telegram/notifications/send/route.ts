@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/notifications/send' });
   try {
     const { org_id, user_ids, message, notification_type } = await req.json()
     
@@ -51,7 +53,10 @@ export async function POST(req: NextRequest) {
             await telegramService.sendMessage(participant.tg_user_id, message)
             return { userId: participant.tg_user_id, success: true }
           } catch (error) {
-            console.error(`Error sending notification to ${participant.tg_user_id}:`, error)
+            logger.error({ 
+              tg_user_id: participant.tg_user_id,
+              error: error instanceof Error ? error.message : String(error)
+            }, 'Error sending notification');
             return { userId: participant.tg_user_id, success: false, error }
           }
         })
@@ -99,7 +104,10 @@ export async function POST(req: NextRequest) {
             await telegramService.sendMessage(participant.tg_user_id, message)
             return { userId: participant.tg_user_id, success: true }
           } catch (error) {
-            console.error(`Error sending notification to ${participant.tg_user_id}:`, error)
+            logger.error({ 
+              tg_user_id: participant.tg_user_id,
+              error: error instanceof Error ? error.message : String(error)
+            }, 'Error sending notification');
             return { userId: participant.tg_user_id, success: false, error }
           }
         })
@@ -130,7 +138,10 @@ export async function POST(req: NextRequest) {
       })
     }
   } catch (error) {
-    console.error('Error sending notifications:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error sending notifications');
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 })
   }
 }

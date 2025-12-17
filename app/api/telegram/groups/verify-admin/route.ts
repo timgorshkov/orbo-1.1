@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/verify-admin' });
   try {
     const body = await request.json();
     const { orgId, chatId } = body;
@@ -20,6 +22,8 @@ export async function POST(request: Request) {
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    logger.info({ org_id: orgId, chat_id: chatId, user_id: user.id }, 'Verifying admin status');
 
     // Получаем верифицированный Telegram аккаунт пользователя для данной организации
     const { data: telegramAccount, error: accountError } = await supabase
@@ -100,7 +104,7 @@ export async function POST(request: Request) {
         });
 
       if (adminError) {
-        console.error('Error saving admin info:', adminError);
+        logger.error({ error: adminError.message, chat_id: chatId, tg_user_id: telegramAccount.telegram_user_id }, 'Error saving admin info');
       }
 
       // Проверяем, существует ли уже эта группа в организации
@@ -131,7 +135,7 @@ export async function POST(request: Request) {
           .single();
 
         if (groupError) {
-          console.error('Error creating group:', groupError);
+          logger.error({ error: groupError.message, chat_id: chatId, org_id: orgId }, 'Error creating group');
           return NextResponse.json({ 
             error: 'Failed to create group record' 
           }, { status: 500 });
@@ -153,7 +157,7 @@ export async function POST(request: Request) {
           .single();
 
         if (updateError) {
-          console.error('Error updating group:', updateError);
+          logger.error({ error: updateError.message, group_id: existingGroup.id }, 'Error updating group');
         } else {
           groupData = updatedGroup;
         }
@@ -181,7 +185,12 @@ export async function POST(request: Request) {
       });
 
     } catch (telegramError: any) {
-      console.error('Telegram API error:', telegramError);
+      logger.error({ 
+        error: telegramError.message || String(telegramError),
+        stack: telegramError.stack,
+        org_id: orgId,
+        chat_id: chatId
+      }, 'Telegram API error');
       return NextResponse.json({ 
         error: 'Failed to verify group admin status',
         details: telegramError.message
@@ -189,7 +198,10 @@ export async function POST(request: Request) {
     }
 
   } catch (error: any) {
-    console.error('Error in verify-admin:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in verify-admin');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
