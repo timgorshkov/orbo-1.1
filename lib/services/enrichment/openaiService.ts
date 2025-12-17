@@ -13,6 +13,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { openai } from '../openaiClient';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('OpenAI');
 
 // Supabase admin client for logging
 const supabaseAdmin = createClient(
@@ -58,11 +61,20 @@ async function logOpenAICall(params: {
       });
     
     if (error) {
-      console.error('[OpenAI] Failed to log API call:', error);
+      logger.error({ 
+        org_id: params.orgId,
+        user_id: params.userId,
+        request_type: params.requestType,
+        error: error.message
+      }, 'Failed to log API call');
       // Don't throw - logging failure shouldn't break enrichment
     }
   } catch (logError) {
-    console.error('[OpenAI] Error logging API call:', logError);
+    logger.error({ 
+      org_id: params.orgId,
+      user_id: params.userId,
+      error: logError instanceof Error ? logError.message : String(logError)
+    }, 'Error logging API call');
     // Don't throw - logging failure shouldn't break enrichment
   }
 }
@@ -250,7 +262,14 @@ ${messagesToAnalyze.map((m, i) => {
     const totalTokens = response.usage?.total_tokens || 0;
     const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
     
-    console.log(`[AI Enrichment] ${messages.length} msgs → ${result.interests?.length || 0} interests, ${totalTokens} tokens, $${costUsd.toFixed(4)}`);
+    logger.info({ 
+      participant_id: participantId,
+      participant_name: participantName,
+      messages_count: messages.length,
+      interests_count: result.interests?.length || 0,
+      total_tokens: totalTokens,
+      cost_usd: costUsd
+    }, 'AI enrichment completed');
     
     // ⭐ Log API call to database
     await logOpenAICall({
@@ -282,7 +301,13 @@ ${messagesToAnalyze.map((m, i) => {
       analysis_date: new Date().toISOString()
     };
   } catch (error) {
-    console.error('[AI Enrichment] Error:', error);
+    logger.error({ 
+      participant_id: participantId,
+      participant_name: participantName,
+      org_id: orgId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'AI enrichment error');
     throw new Error(`AI analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

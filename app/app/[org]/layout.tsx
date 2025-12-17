@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('OrgLayout');
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -14,8 +17,7 @@ export default async function OrgLayout({
   params: Promise<{ org: string }>
 }) {
   const { org: orgId } = await params
-  console.log('=== OrgLayout START ===')
-  console.log('orgId:', orgId)
+  logger.debug({ org_id: orgId }, 'OrgLayout start');
   
   const supabase = await createClientServer()
 
@@ -25,18 +27,25 @@ export default async function OrgLayout({
     error: userError
   } = await supabase.auth.getUser()
 
-  console.log('user:', user?.id, 'error:', userError)
+  logger.debug({ 
+    user_id: user?.id,
+    has_error: !!userError,
+    error: userError?.message
+  }, 'User auth check');
 
   // Debug: проверяем cookies
   const { cookies: cookieFn } = await import('next/headers')
   const cookieStore = await cookieFn()
   const allCookies = cookieStore.getAll()
-  console.log('All cookies count:', allCookies.length)
   const authCookies = allCookies.filter(c => c.name.includes('auth'))
-  console.log('Auth cookies:', authCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
+  
+  logger.debug({ 
+    cookies_count: allCookies.length,
+    auth_cookies_count: authCookies.length
+  }, 'Cookies check');
 
   if (!user) {
-    console.log('No user, redirecting to signin')
+    logger.warn({ org_id: orgId }, 'No user, redirecting to signin');
     redirect('/signin')
   }
 
@@ -44,22 +53,23 @@ export default async function OrgLayout({
   const adminSupabase = createAdminServer()
 
   // Получаем информацию об организации
-  console.log('Fetching organization...')
+  logger.debug({ org_id: orgId }, 'Fetching organization');
   const { data: org, error: orgError } = await adminSupabase
     .from('organizations')
     .select('id, name, logo_url')
     .eq('id', orgId)
     .single()
 
-  console.log('org:', org, 'error:', orgError)
-
   if (orgError || !org) {
-    console.error('Organization not found:', orgError)
+    logger.error({ 
+      org_id: orgId,
+      error: orgError?.message
+    }, 'Organization not found');
     redirect('/orgs')
   }
 
   // Проверяем членство пользователя через admin client
-  console.log('Fetching membership for user:', user.id, 'org:', org.id)
+  logger.debug({ user_id: user.id, org_id: org.id }, 'Fetching membership');
   const { data: membership, error: memberError } = await adminSupabase
     .from('memberships')
     .select('role')
@@ -67,28 +77,38 @@ export default async function OrgLayout({
     .eq('org_id', org.id)
     .maybeSingle()
 
-  console.log('membership:', membership, 'error:', memberError)
-
   // Если нет membership - нет доступа
   if (!membership) {
-    console.log('❌ No membership found!')
-    console.log('Available memberships check:')
+    logger.warn({ 
+      user_id: user.id,
+      org_id: org.id
+    }, 'No membership found');
+    
     const { data: allMemberships } = await adminSupabase
       .from('memberships')
       .select('org_id, role')
       .eq('user_id', user.id)
-    console.log('User memberships:', allMemberships)
+    
+    logger.debug({ 
+      user_id: user.id,
+      memberships_count: allMemberships?.length || 0
+    }, 'User memberships check');
+    
     redirect('/orgs')
   }
 
-  console.log('✅ Membership found, role:', membership.role)
+  logger.debug({ 
+    user_id: user.id,
+    org_id: org.id,
+    role: membership.role
+  }, 'Membership found');
 
   const role = membership.role as UserRole
 
   // Получаем Telegram-группы для админов
   let telegramGroups: any[] = []
   if (role === 'owner' || role === 'admin') {
-    console.log('Fetching telegram groups for org:', org.id)
+    logger.debug({ org_id: org.id }, 'Fetching telegram groups');
     
     // Загружаем группы через org_telegram_groups (новая схема many-to-many)
     const { data: orgGroups, error: groupsError } = await adminSupabase
@@ -103,8 +123,6 @@ export default async function OrgLayout({
       `)
       .eq('org_id', org.id)
     
-    console.log('orgGroups:', orgGroups, 'error:', groupsError)
-    
     if (orgGroups && !groupsError) {
       // Извлекаем telegram_groups из результата JOIN
       telegramGroups = orgGroups
@@ -116,14 +134,20 @@ export default async function OrgLayout({
           return titleA.localeCompare(titleB)
         })
       
-      console.log('Loaded telegram groups:', telegramGroups.length)
+      logger.debug({ 
+        org_id: org.id,
+        groups_count: telegramGroups.length
+      }, 'Loaded telegram groups');
     } else {
-      console.log('No telegram groups found or error occurred')
+      logger.debug({ 
+        org_id: org.id,
+        error: groupsError?.message
+      }, 'No telegram groups found or error occurred');
     }
   }
 
   // Получаем данные профиля пользователя для отображения в меню
-  console.log('Fetching user profile data for sidebar...')
+  logger.debug({ user_id: user.id, org_id: org.id }, 'Fetching user profile data');
   
   let userProfile: {
     id: string
@@ -171,13 +195,21 @@ export default async function OrgLayout({
       participantId: participant?.id || null
     }
 
-    console.log('User profile loaded:', { displayName, hasPhoto: !!participant?.photo_url })
+    logger.debug({ 
+      user_id: user.id,
+      display_name: displayName,
+      has_photo: !!participant?.photo_url
+    }, 'User profile loaded');
   } catch (profileError) {
-    console.error('Error loading user profile:', profileError)
+    logger.error({ 
+      user_id: user.id,
+      org_id: org.id,
+      error: profileError instanceof Error ? profileError.message : String(profileError)
+    }, 'Error loading user profile');
     // Continue without profile - sidebar will show fallback
   }
 
-  console.log('=== OrgLayout SUCCESS ===')
+  logger.debug({ org_id: orgId, user_id: user.id }, 'OrgLayout success');
 
   return (
     <div className="flex h-screen overflow-hidden">

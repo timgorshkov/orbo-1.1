@@ -1,6 +1,9 @@
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { cookies } from 'next/headers';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('RootPage');
 
 export default async function Home() {
   try {
@@ -13,7 +16,7 @@ export default async function Home() {
       if (error.message?.includes('missing sub claim') || 
           error.message?.includes('invalid claim') ||
           error.status === 403) {
-        console.log('[Root Page] Invalid auth token detected, clearing session');
+        logger.warn({ error: error.message }, 'Invalid auth token detected, clearing session');
         
         // Очищаем все Supabase cookies
         const cookieStore = await cookies();
@@ -26,7 +29,7 @@ export default async function Home() {
           }
         });
       } else {
-        console.log('[Root Page] Auth error (non-critical):', error.message);
+        logger.debug({ error: error.message }, 'Auth error (non-critical)');
       }
       
       redirect('/signin');
@@ -45,7 +48,10 @@ export default async function Home() {
     }
     
     // Реальная неожиданная ошибка
-    console.error('[Root Page] Unexpected error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Unexpected error');
     redirect('/signin');
   }
 }

@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('OrgsPage');
 
 export default async function OrganizationsPage() {
   try {
@@ -17,7 +20,7 @@ export default async function OrganizationsPage() {
       if (error.message?.includes('missing sub claim') || 
           error.message?.includes('invalid claim') ||
           error.status === 403) {
-        console.log('[Orgs Page] Invalid auth token detected, clearing session');
+        logger.warn({ error: error.message }, 'Invalid auth token detected, clearing session');
         
         const cookieStore = await cookies();
         const allCookies = cookieStore.getAll();
@@ -29,7 +32,7 @@ export default async function OrganizationsPage() {
           }
         });
       } else {
-        console.log('[Orgs Page] Auth error:', error.message);
+        logger.debug({ error: error.message }, 'Auth error');
       }
       
       redirect('/signin');
@@ -57,7 +60,10 @@ export default async function OrganizationsPage() {
     .order('role', { ascending: true })
 
   if (membershipsError) {
-    console.error('Error fetching memberships:', membershipsError)
+    logger.error({ 
+      user_id: user.id,
+      error: membershipsError.message
+    }, 'Error fetching memberships');
   }
 
   let organizations = memberships?.map(m => {
@@ -120,7 +126,10 @@ export default async function OrganizationsPage() {
     }
   }
 
-  console.log('User:', user.id, 'Organizations:', organizations.length)
+  logger.debug({ 
+    user_id: user.id,
+    organizations_count: organizations.length
+  }, 'User organizations loaded');
 
   // Если организаций нет - предлагаем создать
   if (organizations.length === 0) {
@@ -304,7 +313,10 @@ export default async function OrganizationsPage() {
     }
     
     // Реальная неожиданная ошибка
-    console.error('[Orgs Page] Unexpected error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Unexpected error');
     redirect('/signin');
   }
 }

@@ -3,6 +3,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser } from '@/lib/services/telegramJsonParser';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: 'telegram/import-history/import' });
+  
   try {
     const { id: groupId } = await params
     const requestUrl = new URL(request.url)
@@ -49,11 +52,11 @@ export async function POST(
         .maybeSingle();
 
       if (!membership || !['owner', 'admin'].includes(membership.role)) {
-        console.log('[Import History] Access denied (pre-check):', {
-          userId: user.id,
-          orgId: expectedOrgId,
-          membership: membership?.role || 'none'
-        });
+        logger.warn({ 
+          user_id: user.id,
+          org_id: expectedOrgId,
+          membership_role: membership?.role || 'none'
+        }, 'Access denied (pre-check)');
         return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
       }
     }
@@ -100,7 +103,10 @@ export async function POST(
     }
 
     if (groupError && !group) {
-      console.error('Group fetch error:', groupError);
+      logger.error({ 
+        group_id: groupId,
+        error: groupError.message
+      }, 'Group fetch error');
     }
 
     if (!group) {
@@ -141,11 +147,11 @@ export async function POST(
         .maybeSingle();
 
       if (!membership || !['owner', 'admin'].includes(membership.role)) {
-        console.log('[Import History] Access denied:', {
-          userId: user.id,
-          orgId,
-          membership: membership?.role || 'none'
-        });
+        logger.warn({ 
+          user_id: user.id,
+          org_id: orgId,
+          membership_role: membership?.role || 'none'
+        }, 'Access denied');
         return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
       }
     }
@@ -190,7 +196,12 @@ export async function POST(
       }
       parsingResult = TelegramJsonParser.parse(fileContent);
       authors = parsingResult.authors;
-      console.log(`✅ Importing from JSON: ${parsingResult.stats.totalMessages} messages, ${decisions.length} decisions`);
+      logger.info({ 
+        format: 'json',
+        total_messages: parsingResult.stats.totalMessages,
+        decisions_count: decisions.length,
+        group_id: groupId
+      }, 'Importing from JSON');
     } else {
       // Parse HTML format
       const validation = TelegramHistoryParser.validate(fileContent);
@@ -199,7 +210,12 @@ export async function POST(
       }
       parsingResult = TelegramHistoryParser.parse(fileContent);
       authors = parsingResult.authors;
-      console.log(`⚠️ Importing from HTML: ${parsingResult.stats.totalMessages} messages, ${decisions.length} decisions`);
+      logger.info({ 
+        format: 'html',
+        total_messages: parsingResult.stats.totalMessages,
+        decisions_count: decisions.length,
+        group_id: groupId
+      }, 'Importing from HTML');
     }
 
     // Создаем батч импорта
@@ -220,7 +236,11 @@ export async function POST(
       .single();
 
     if (batchError || !batch) {
-      console.error('Error creating import batch:', batchError);
+      logger.error({ 
+        group_id: groupId,
+        org_id: orgId,
+        error: batchError?.message
+      }, 'Error creating import batch');
       return NextResponse.json({ error: 'Failed to create import batch' }, { status: 500 });
     }
 
@@ -247,13 +267,13 @@ export async function POST(
         const decision = decisionsMap.get(authorKey);
         if (!decision) {
           // Author was filtered out (bot) or not included in decisions - skip silently
-          console.log(`ℹ️ Skipping author without decision: ${authorKey} (likely filtered as bot or not selected)`);
+          logger.debug({ author_key: authorKey }, 'Skipping author without decision');
           continue;
         }
 
         // ⭐ Пропускаем, если выбрано "Игнорировать"
         if (decision.action === 'skip') {
-          console.log(`Skipping author: ${authorKey}`);
+          logger.debug({ author_key: authorKey }, 'Skipping author (skip action)');
           continue;
         }
 
@@ -286,7 +306,12 @@ export async function POST(
             .single();
 
           if (participantError || !newParticipant) {
-            console.error(`Failed to create participant ${author.name}:`, participantError);
+            logger.error({ 
+              author_name: author.name,
+              author_key: authorKey,
+              org_id: orgId,
+              error: participantError?.message
+            }, 'Failed to create participant');
             continue;
           }
 
@@ -310,7 +335,10 @@ export async function POST(
         participantMap.set(authorKey, participantId);
       }
 
-      console.log(`Created ${newParticipantsCount} new participants`);
+      logger.info({ 
+        new_participants_count: newParticipantsCount,
+        org_id: orgId
+      }, 'Created new participants');
 
       // Импортируем сообщения батчами по 500
       const BATCH_SIZE = 500;
@@ -399,7 +427,10 @@ export async function POST(
           .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
         if (activityEvents.length > 0) {
-          console.log(`📝 Attempting to insert ${activityEvents.length} activity events...`);
+          logger.debug({ 
+            batch_size: activityEvents.length,
+            batch_index: Math.floor(i / BATCH_SIZE) + 1
+          }, 'Attempting to insert activity events');
           
           // Store full texts and participant IDs before insert (they're not DB columns)
           const messageTextsMap = new Map<number, { text: string; participantId: string; tgUserId: number | null; messageId: number | null; timestamp: string }>();
@@ -432,10 +463,12 @@ export async function POST(
             // Remove debug fields before logging
             const { _originalTimestamp, ...eventForLog } = firstEvent;
             
-            console.log(`📝 First event sample:`, JSON.stringify({
-              ...eventForLog,
-              _timezoneDebug: timezoneDebug
-            }, null, 2));
+            logger.debug({ 
+              first_event: {
+                ...eventForLog,
+                _timezoneDebug: timezoneDebug
+              }
+            }, 'First event sample');
             
             // Remove debug field before DB insert
             activityEvents.forEach((event: any) => {
@@ -448,13 +481,21 @@ export async function POST(
             .insert(activityEvents as any)
             .select('id') as { data: any[] | null; error: any };
 
-          console.log(`📝 Insert result: data=${data?.length || 0} records, error=${insertError ? 'YES' : 'NO'}`);
+          logger.debug({ 
+            inserted_count: data?.length || 0,
+            attempted_count: activityEvents.length,
+            has_error: !!insertError
+          }, 'Insert result');
           
           if (insertError) {
-            console.error('❌ Error inserting activity events:', insertError);
+            logger.error({ 
+              batch_size: activityEvents.length,
+              error: insertError.message,
+              code: insertError.code
+            }, 'Error inserting activity events');
             // Проверяем дубликаты
             if (insertError.code === '23505') {
-              console.warn('⚠️ Some messages were duplicates, attempting to find existing records...');
+              logger.warn({ batch_size: activityEvents.length }, 'Some messages were duplicates, attempting to find existing records');
               
               // Try to find existing records for duplicate messages
               // Query all potential duplicates in one batch query
@@ -485,7 +526,10 @@ export async function POST(
                 });
               }
               
-              console.log(`🔍 Found ${existingEventsMap.size} existing records by message_id out of ${activityEvents.length} attempted`);
+              logger.debug({ 
+                existing_count: existingEventsMap.size,
+                attempted_count: activityEvents.length
+              }, 'Found existing records by message_id');
               
               // Match existing events with our activity events
               // First by message_id (most precise), then by composite key for unmatched events
@@ -545,10 +589,11 @@ export async function POST(
               const confirmedDuplicates = matchedEvents.length;
               const unconfirmedCount = activityEvents.length - confirmedDuplicates;
               
-              console.log(`📊 Duplicate batch analysis:`);
-              console.log(`  - Confirmed duplicates (found in DB): ${confirmedDuplicates}`);
-              console.log(`  - Unconfirmed (not found in DB): ${unconfirmedCount}`);
-              console.log(`  - Total in batch: ${activityEvents.length}`);
+              logger.info({ 
+                confirmed_duplicates: confirmedDuplicates,
+                unconfirmed: unconfirmedCount,
+                total_in_batch: activityEvents.length
+              }, 'Duplicate batch analysis');
               
               // Only count confirmed duplicates (found in DB) as duplicates
               duplicateCount += confirmedDuplicates;
@@ -589,7 +634,9 @@ export async function POST(
                   .filter((m: any): m is NonNullable<typeof m> => m !== null);
                 
                 if (participantMessagesData.length > 0) {
-                  console.log(`📝 Attempting to save ${participantMessagesData.length} message texts for existing events...`);
+                  logger.debug({ 
+                    messages_count: participantMessagesData.length
+                  }, 'Attempting to save message texts for existing events');
                   
                   const { data: savedMessages, error: messagesError } = await supabaseAdmin
                     .from('participant_messages')
@@ -600,13 +647,19 @@ export async function POST(
                     .select('id');
                   
                   if (messagesError) {
-                    console.error('⚠️  Failed to save message texts for existing events:', messagesError);
+                    logger.warn({ 
+                      error: messagesError.message,
+                      messages_count: participantMessagesData.length
+                    }, 'Failed to save message texts for existing events');
                   } else {
                     const savedCount = savedMessages?.length || 0;
                     const skippedMessagesCount = participantMessagesData.length - savedCount;
                     messagesSavedCount += savedCount;
                     messagesSkippedCount += skippedMessagesCount;
-                    console.log(`✅ Saved ${savedCount} message texts for existing events, skipped ${skippedMessagesCount} duplicates`);
+                    logger.info({ 
+                      saved_count: savedCount,
+                      skipped_count: skippedMessagesCount
+                    }, 'Saved message texts for existing events');
                   }
                 }
               }
@@ -615,8 +668,10 @@ export async function POST(
             }
           } else {
             const insertedCount = data?.length || 0;
-            console.log(`✅ Successfully inserted ${insertedCount} activity events`);
-            console.log(`✅ Inserted IDs:`, data?.map(d => d.id).join(', '));
+            logger.info({ 
+              inserted_count: insertedCount,
+              attempted_count: activityEvents.length
+            }, 'Successfully inserted activity events');
             importedCount += insertedCount;
             
             // Phase 2: Save full message texts to participant_messages
@@ -648,7 +703,9 @@ export async function POST(
                 .filter((m: any): m is NonNullable<typeof m> => m !== null);
               
               if (participantMessagesData.length > 0) {
-                console.log(`📝 Saving ${participantMessagesData.length} message texts to participant_messages...`);
+                logger.debug({ 
+                  messages_count: participantMessagesData.length
+                }, 'Saving message texts to participant_messages');
                 
                 const { data: savedMessages, error: messagesError } = await supabaseAdmin
                   .from('participant_messages')
@@ -659,20 +716,28 @@ export async function POST(
                   .select('id');
                 
                 if (messagesError) {
-                  console.error('⚠️  Failed to save message texts:', messagesError);
+                  logger.warn({ 
+                    error: messagesError.message,
+                    messages_count: participantMessagesData.length
+                  }, 'Failed to save message texts');
                   // Non-critical error, continue
                 } else {
                   const savedCount = savedMessages?.length || 0;
                   const skippedMessagesCount = participantMessagesData.length - savedCount;
                   messagesSavedCount += savedCount;
                   messagesSkippedCount += skippedMessagesCount;
-                  console.log(`✅ Saved ${savedCount} message texts, skipped ${skippedMessagesCount} duplicates`);
+                  logger.info({ 
+                    saved_count: savedCount,
+                    skipped_count: skippedMessagesCount
+                  }, 'Saved message texts');
                 }
               }
             }
             
             if (insertedCount === 0 && activityEvents.length > 0) {
-              console.warn(`⚠️ WARNING: Tried to insert ${activityEvents.length} events but got 0 back!`);
+              logger.warn({ 
+                attempted_count: activityEvents.length
+              }, 'Tried to insert events but got 0 back');
             }
             
             // 🔍 ДИАГНОСТИКА: Проверяем, действительно ли записи в БД
@@ -683,15 +748,22 @@ export async function POST(
                 .eq('import_batch_id', batchId)
                 .limit(3);
               
-              console.log(`🔍 Verification check - found ${checkData?.length || 0} records with batch_id=${batchId}`);
+              logger.debug({ 
+                batch_id: batchId,
+                found_count: checkData?.length || 0
+              }, 'Verification check');
+              
               if (checkData && checkData.length > 0) {
-                console.log(`🔍 Sample record:`, JSON.stringify(checkData[0], null, 2));
+                logger.debug({ sample_record: checkData[0] }, 'Sample record');
               } else {
-                console.error(`❌ CRITICAL: Records were inserted but cannot be found by batch_id!`);
+                logger.error({ batch_id: batchId }, 'CRITICAL: Records were inserted but cannot be found by batch_id');
               }
               
               if (checkError) {
-                console.error(`❌ Error checking records:`, checkError);
+                logger.error({ 
+                  batch_id: batchId,
+                  error: checkError.message
+                }, 'Error checking records');
               }
             }
           }
@@ -706,11 +778,17 @@ export async function POST(
           .eq('id', batchId);
       }
 
-      console.log(`Import completed: ${importedCount} imported, ${skippedCount} skipped (${duplicateCount} duplicates)`);
-      console.log(`Messages saved: ${messagesSavedCount} saved, ${messagesSkippedCount} skipped (duplicates)`);
+      logger.info({ 
+        imported_count: importedCount,
+        skipped_count: skippedCount,
+        duplicate_count: duplicateCount,
+        messages_saved: messagesSavedCount,
+        messages_skipped: messagesSkippedCount,
+        batch_id: batchId
+      }, 'Import completed');
 
       // Пересчитываем метрики группы
-      await recalculateGroupMetrics(supabaseAdmin, orgId, group.tg_chat_id);
+      await recalculateGroupMetrics(supabaseAdmin, orgId, group.tg_chat_id, logger);
 
       // Обновляем статус батча
       await supabaseAdmin
@@ -768,7 +846,11 @@ export async function POST(
       throw error;
     }
   } catch (error: any) {
-    console.error('Error importing Telegram history:', error);
+    logger.error({ 
+      group_id: groupId,
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error importing Telegram history');
     return NextResponse.json({
       error: 'Import failed',
       message: error.message || 'Unknown error',
@@ -782,9 +864,10 @@ export async function POST(
 async function recalculateGroupMetrics(
   supabase: any,
   orgId: string,
-  tgChatId: number
+  tgChatId: number,
+  logger: ReturnType<typeof createAPILogger>
 ) {
-  console.log('Recalculating group metrics...');
+  logger.debug({ org_id: orgId, chat_id: tgChatId }, 'Recalculating group metrics');
 
   // 1. Обновляем member_count
   const { count: memberCount } = await supabase
@@ -838,6 +921,6 @@ async function recalculateGroupMetrics(
     }
   }
 
-  console.log('Group metrics recalculated');
+  logger.debug({ org_id: orgId, chat_id: tgChatId }, 'Group metrics recalculated');
 }
 
