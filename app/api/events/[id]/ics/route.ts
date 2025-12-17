@@ -156,7 +156,7 @@ export async function GET(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      event_id: eventId
+      event_id: eventId || 'unknown'
     }, 'Error generating ICS file');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
