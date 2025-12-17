@@ -68,7 +68,7 @@ export function captureError(
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    HawkCatcher.send(error, context as any, user);
+    HawkCatcher.send(error, context as any, user as any);
   } catch (e) {
     console.error('[Hawk] Failed to send error:', e);
   }
