@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createCronLogger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,8 @@ export const dynamic = 'force-dynamic';
 // Cron job to send event reminders 24 hours before event
 // Runs daily at 9:00 AM
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('send-event-reminders');
+  
   try {
     // Verify cron secret
     const authHeader = request.headers.get('authorization');
@@ -15,7 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[Event Reminders] Starting cron job...');
+    logger.info({}, 'Starting cron job');
 
     const adminSupabase = createAdminServer();
     const telegramService = new TelegramService('main');
@@ -30,7 +33,10 @@ export async function GET(request: NextRequest) {
     dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     dayAfterTomorrow.setHours(0, 0, 0, 0); // Start of day after tomorrow
 
-    console.log('[Event Reminders] Checking for events between', tomorrow.toISOString(), 'and', dayAfterTomorrow.toISOString());
+    logger.debug({ 
+      start_date: tomorrow.toISOString(),
+      end_date: dayAfterTomorrow.toISOString()
+    }, 'Checking for events');
 
     // Fetch published events happening tomorrow
     const { data: events, error: eventsError } = await adminSupabase
@@ -53,16 +59,16 @@ export async function GET(request: NextRequest) {
       .lt('event_date', dayAfterTomorrow.toISOString().split('T')[0]);
 
     if (eventsError) {
-      console.error('[Event Reminders] Error fetching events:', eventsError);
+      logger.error({ error: eventsError.message }, 'Error fetching events');
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
     if (!events || events.length === 0) {
-      console.log('[Event Reminders] No events found for tomorrow');
+      logger.info({}, 'No events found for tomorrow');
       return NextResponse.json({ message: 'No events to remind about', sent: 0 });
     }
 
-    console.log(`[Event Reminders] Found ${events.length} events for tomorrow`);
+    logger.info({ events_count: events.length }, 'Found events for tomorrow');
 
     let totalSent = 0;
     const errors: string[] = [];
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
     // For each event, get registrations and send reminders
     for (const event of events) {
       try {
-        console.log(`[Event Reminders] Processing event: ${event.title} (${event.id})`);
+        logger.debug({ event_id: event.id, event_title: event.title }, 'Processing event');
 
         // Get registrations for this event
         const { data: registrations, error: regsError } = await adminSupabase
@@ -89,13 +95,13 @@ export async function GET(request: NextRequest) {
           .eq('status', 'registered');
 
         if (regsError) {
-          console.error(`[Event Reminders] Error fetching registrations for event ${event.id}:`, regsError);
+          logger.error({ event_id: event.id, error: regsError.message }, 'Error fetching registrations');
           errors.push(`Event ${event.id}: ${regsError.message}`);
           continue;
         }
 
         if (!registrations || registrations.length === 0) {
-          console.log(`[Event Reminders] No registrations for event ${event.title}`);
+          logger.debug({ event_id: event.id, event_title: event.title }, 'No registrations for event');
           continue;
         }
 
@@ -104,7 +110,11 @@ export async function GET(request: NextRequest) {
           (reg: any) => reg.participants?.merged_into === null && reg.participants?.tg_user_id
         );
 
-        console.log(`[Event Reminders] Sending ${validRegistrations.length} reminders for event ${event.title}`);
+        logger.info({ 
+          event_id: event.id,
+          event_title: event.title,
+          reminders_count: validRegistrations.length
+        }, 'Sending reminders for event');
 
         // Send reminder to each registered participant
         for (const registration of validRegistrations) {
@@ -156,10 +166,19 @@ export async function GET(request: NextRequest) {
             });
 
             if (result.ok) {
-              console.log(`[Event Reminders] ✅ Sent reminder to ${participant.full_name || tgUserId} for event ${event.title}`);
+              logger.debug({ 
+                tg_user_id: tgUserId,
+                participant_name: participant.full_name,
+                event_id: event.id,
+                event_title: event.title
+              }, 'Sent reminder');
               totalSent++;
             } else {
-              console.error(`[Event Reminders] ❌ Failed to send reminder to ${tgUserId}:`, result.description);
+              logger.warn({ 
+                tg_user_id: tgUserId,
+                event_id: event.id,
+                error: result.description
+              }, 'Failed to send reminder');
               errors.push(`Participant ${tgUserId}: ${result.description}`);
             }
 
@@ -167,18 +186,29 @@ export async function GET(request: NextRequest) {
             await new Promise(resolve => setTimeout(resolve, 100));
 
           } catch (participantError: any) {
-            console.error('[Event Reminders] Error sending to participant:', participantError);
+            logger.error({ 
+              error: participantError.message || String(participantError),
+              stack: participantError.stack
+            }, 'Error sending to participant');
             errors.push(`Participant error: ${participantError.message}`);
           }
         }
 
       } catch (eventError: any) {
-        console.error(`[Event Reminders] Error processing event ${event.id}:`, eventError);
+        logger.error({ 
+          event_id: event.id,
+          error: eventError.message || String(eventError),
+          stack: eventError.stack
+        }, 'Error processing event');
         errors.push(`Event ${event.id}: ${eventError.message}`);
       }
     }
 
-    console.log(`[Event Reminders] Completed. Sent ${totalSent} reminders.`);
+    logger.info({ 
+      sent: totalSent,
+      events_count: events.length,
+      errors_count: errors.length
+    }, 'Completed sending reminders');
 
     return NextResponse.json({
       success: true,
@@ -189,7 +219,10 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[Event Reminders] Fatal error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Fatal error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

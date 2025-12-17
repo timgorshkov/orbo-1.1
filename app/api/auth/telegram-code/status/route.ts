@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/auth/telegram-code/status?code=XXX - Check if code has been verified
 export async function GET(request: NextRequest) {
   try {

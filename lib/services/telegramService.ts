@@ -1,6 +1,10 @@
 /**
  * Сервис для взаимодействия с Telegram Bot API
  */
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('TelegramService');
+
 export class TelegramService {
   private apiBase = 'https://api.telegram.org/bot';
   private token: string;
@@ -19,7 +23,7 @@ export class TelegramService {
     }
     
     this.token = token;
-    console.log(`TelegramService initialized for ${botType} bot with token: ${token.substring(0, 5)}...`);
+    logger.debug({ bot_type: botType, token_prefix: token.substring(0, 5) }, 'TelegramService initialized');
   }
 
   /**
@@ -142,13 +146,13 @@ async getChatMember(chatId: number, userId: number) {
     try {
       // Если установлен флаг deleteWebhook, сначала удаляем вебхук
       if (options.deleteWebhook) {
-        console.log('Deleting webhook before getting updates...');
+        logger.debug({}, 'Deleting webhook before getting updates');
         const deleteResult = await this.callApi('deleteWebhook');
         if (!deleteResult.ok) {
-          console.error('Failed to delete webhook:', deleteResult);
+          logger.error({ error: deleteResult.description || 'Unknown error' }, 'Failed to delete webhook');
           throw new Error(`Failed to delete webhook: ${deleteResult.description || 'Unknown error'}`);
         }
-        console.log('Webhook deleted successfully');
+        logger.debug({}, 'Webhook deleted successfully');
       }
       
       // Добавляем параметры запроса
@@ -165,7 +169,10 @@ async getChatMember(chatId: number, userId: number) {
           timeout: options.timeout 
         } : {});
     } catch (error) {
-      console.error('Error getting Telegram updates:', error);
+      logger.error({ 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Error getting Telegram updates');
       throw error; // Пробрасываем ошибку дальше для обработки
     }
   }
@@ -303,10 +310,14 @@ async getChatMember(chatId: number, userId: number) {
       
       if (isExpectedError) {
         // Log as info for expected errors (common Telegram API responses)
-        console.log(`[Telegram API] Expected response in ${method}:`, errorMessage);
+        logger.debug({ method, error: errorMessage }, 'Expected Telegram API response');
       } else {
         // Log as error for unexpected issues
-        console.error(`Error calling Telegram API (${method}):`, error);
+        logger.error({ 
+          method,
+          error: errorMessage,
+          stack: error instanceof Error ? error.stack : undefined
+        }, 'Error calling Telegram API');
       }
       
       throw error;

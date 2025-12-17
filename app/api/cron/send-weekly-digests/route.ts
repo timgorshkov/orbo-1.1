@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';
 import { formatDigestForTelegram } from '@/lib/templates/weeklyDigest';
 import { sendDigestBatch } from '@/lib/services/telegramNotificationService';
+import { createCronLogger } from '@/lib/logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,6 +27,8 @@ const supabaseAdmin = createClient(
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('send-weekly-digests');
+  
   // Authorization check
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -38,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  console.log('[Cron] Weekly digest job started');
+  logger.info({}, 'Weekly digest job started');
 
   try {
     // Get current UTC time
@@ -46,7 +49,7 @@ export async function GET(request: NextRequest) {
     const currentDay = now.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
     const currentHour = now.getUTCHours();
 
-    console.log(`[Cron] Current UTC: Day=${currentDay}, Hour=${currentHour}`);
+    logger.debug({ current_day: currentDay, current_hour: currentHour }, 'Current UTC time');
 
     // Find organizations that should receive digest now
     const { data: orgs, error: orgsError } = await supabaseAdmin
@@ -55,38 +58,40 @@ export async function GET(request: NextRequest) {
       .eq('digest_enabled', true);
 
     if (orgsError) {
-      console.error('[Cron] Failed to fetch organizations:', orgsError);
+      logger.error({ error: orgsError.message }, 'Failed to fetch organizations');
       return NextResponse.json({ error: 'Failed to fetch organizations' }, { status: 500 });
     }
 
     if (!orgs || orgs.length === 0) {
-      console.log('[Cron] No organizations with digest enabled');
+      logger.info({}, 'No organizations with digest enabled');
       return NextResponse.json({ message: 'No orgs to process', processed: 0 });
     }
 
-    console.log(`[Cron] Found ${orgs.length} orgs with digest enabled`);
+    logger.info({ orgs_count: orgs.length }, 'Found orgs with digest enabled');
 
     const results = [];
 
     for (const org of orgs) {
       try {
         // Log org settings for debugging
-        console.log(`[Cron] Checking ${org.name}:`, {
+        logger.debug({ 
+          org_id: org.id,
+          org_name: org.name,
           digest_day: org.digest_day,
           digest_time: org.digest_time,
           timezone: org.timezone,
           last_digest_sent_at: org.last_digest_sent_at
-        });
+        }, 'Checking org');
 
         // Check if digest should be sent today
-        const shouldSend = await shouldSendDigestNow(org, now);
+        const shouldSend = await shouldSendDigestNow(org, now, logger);
 
         if (!shouldSend) {
-          console.log(`[Cron] Skipping ${org.name} (not scheduled for now)`);
+          logger.debug({ org_id: org.id, org_name: org.name }, 'Skipping org (not scheduled for now)');
           continue;
         }
 
-        console.log(`[Cron] ✅ Processing ${org.name}...`);
+        logger.info({ org_id: org.id, org_name: org.name }, 'Processing org');
 
         // Get recipients (owners/admins with digest_notifications enabled)
         // Step 1: Fetch memberships
@@ -98,13 +103,13 @@ export async function GET(request: NextRequest) {
           .eq('digest_notifications', true);
 
         if (membershipsError) {
-          console.error(`[Cron] Failed to fetch memberships for ${org.name}:`, membershipsError);
+          logger.error({ org_id: org.id, org_name: org.name, error: membershipsError.message }, 'Failed to fetch memberships');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'Failed to fetch memberships' });
           continue;
         }
 
         if (!memberships || memberships.length === 0) {
-          console.warn(`[Cron] No memberships found for ${org.name}`);
+          logger.warn({ org_id: org.id, org_name: org.name }, 'No memberships found');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'No memberships' });
           continue;
         }
@@ -118,13 +123,13 @@ export async function GET(request: NextRequest) {
           .in('user_id', userIds);
 
         if (telegramError) {
-          console.error(`[Cron] Failed to fetch telegram accounts for ${org.name}:`, telegramError);
+          logger.error({ org_id: org.id, org_name: org.name, error: telegramError.message }, 'Failed to fetch telegram accounts');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'Failed to fetch telegram accounts' });
           continue;
         }
 
         if (!telegramAccounts || telegramAccounts.length === 0) {
-          console.warn(`[Cron] No telegram accounts found for ${org.name}`);
+          logger.warn({ org_id: org.id, org_name: org.name }, 'No telegram accounts found');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'No telegram accounts' });
           continue;
         }
@@ -140,7 +145,7 @@ export async function GET(request: NextRequest) {
           .in('tg_user_id', tgUserIds);
 
         if (participantsError) {
-          console.error(`[Cron] Failed to fetch participants for ${org.name}:`, participantsError);
+          logger.error({ org_id: org.id, org_name: org.name, error: participantsError.message }, 'Failed to fetch participants');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'Failed to fetch participants' });
           continue;
         }
@@ -162,7 +167,7 @@ export async function GET(request: NextRequest) {
           .filter((r): r is { tgUserId: number; name: string } => r.tgUserId !== null && r.tgUserId !== undefined);
 
         if (validRecipients.length === 0) {
-          console.warn(`[Cron] No valid recipients for ${org.name}`);
+          logger.warn({ org_id: org.id, org_name: org.name }, 'No valid recipients');
           results.push({ orgId: org.id, orgName: org.name, success: false, error: 'No recipients' });
           continue;
         }
@@ -192,10 +197,22 @@ export async function GET(request: NextRequest) {
           costUsd: digest.cost.totalUsd
         });
 
-        console.log(`[Cron] ${org.name}: ${sendResult.sent}/${sendResult.total} sent, cost $${digest.cost.totalUsd.toFixed(4)}`);
+        logger.info({ 
+          org_id: org.id,
+          org_name: org.name,
+          sent: sendResult.sent,
+          total: sendResult.total,
+          cost_usd: digest.cost.totalUsd
+        }, 'Digest sent');
 
       } catch (error) {
-        console.error(`[Cron] Error processing ${org.name}:`, error);
+        logger.error({ 
+          org_id: org.id,
+          org_name: org.name,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        }, 'Error processing org');
+        
         results.push({
           orgId: org.id,
           orgName: org.name,
@@ -208,7 +225,11 @@ export async function GET(request: NextRequest) {
     const successCount = results.filter(r => r.success).length;
     const totalCost = results.reduce((sum, r) => sum + (r.costUsd || 0), 0);
 
-    console.log(`[Cron] Job complete: ${successCount}/${results.length} orgs processed, total cost $${totalCost.toFixed(4)}`);
+    logger.info({ 
+      success_count: successCount,
+      total_orgs: results.length,
+      total_cost_usd: totalCost
+    }, 'Job complete');
 
     return NextResponse.json({
       success: true,
@@ -219,7 +240,11 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Cron] Fatal error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Fatal error');
+    
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -237,7 +262,8 @@ async function shouldSendDigestNow(
     timezone: string;
     last_digest_sent_at: string | null;
   },
-  now: Date
+  now: Date,
+  logger: ReturnType<typeof createCronLogger>
 ): Promise<boolean> {
   // Convert current UTC time to org's timezone
   const orgTime = new Date(now.toLocaleString('en-US', { timeZone: org.timezone || 'UTC' }));
@@ -248,26 +274,26 @@ async function shouldSendDigestNow(
   // Parse digest_time (format: "HH:MM:SS")
   const [digestHour, digestMinute] = org.digest_time.split(':').map(Number);
 
-  console.log(`[Cron] shouldSendDigestNow check:`, {
-    orgTime: orgTime.toISOString(),
-    orgDay,
-    orgHour,
-    digestDay: org.digest_day,
-    digestHour,
-    dayMatch: orgDay === org.digest_day,
-    hourMatch: orgHour === digestHour
-  });
+  logger.debug({
+    org_time: orgTime.toISOString(),
+    org_day: orgDay,
+    org_hour: orgHour,
+    digest_day: org.digest_day,
+    digest_hour: digestHour,
+    day_match: orgDay === org.digest_day,
+    hour_match: orgHour === digestHour
+  }, 'shouldSendDigestNow check');
 
   // Check if today is the scheduled day
   if (orgDay !== org.digest_day) {
-    console.log(`[Cron] Day mismatch: org day ${orgDay} !== digest day ${org.digest_day}`);
+    logger.debug({ org_day: orgDay, digest_day: org.digest_day }, 'Day mismatch');
     return false;
   }
 
   // Check if current time is close to scheduled time (within 1 hour window)
   // This accounts for cron running once per hour
   if (orgHour !== digestHour) {
-    console.log(`[Cron] Hour mismatch: org hour ${orgHour} !== digest hour ${digestHour}`);
+    logger.debug({ org_hour: orgHour, digest_hour: digestHour }, 'Hour mismatch');
     return false;
   }
 
@@ -276,15 +302,15 @@ async function shouldSendDigestNow(
     const lastSent = new Date(org.last_digest_sent_at);
     const lastSentOrgTime = new Date(lastSent.toLocaleString('en-US', { timeZone: org.timezone || 'UTC' }));
     
-    console.log(`[Cron] Last sent check:`, {
-      lastSent: lastSent.toISOString(),
-      lastSentOrgTime: lastSentOrgTime.toISOString(),
-      lastSentDate: lastSentOrgTime.getDate(),
-      currentDate: orgTime.getDate(),
-      sameDay: lastSentOrgTime.getDate() === orgTime.getDate() &&
+    logger.debug({
+      last_sent: lastSent.toISOString(),
+      last_sent_org_time: lastSentOrgTime.toISOString(),
+      last_sent_date: lastSentOrgTime.getDate(),
+      current_date: orgTime.getDate(),
+      same_day: lastSentOrgTime.getDate() === orgTime.getDate() &&
                lastSentOrgTime.getMonth() === orgTime.getMonth() &&
                lastSentOrgTime.getFullYear() === orgTime.getFullYear()
-    });
+    }, 'Last sent check');
     
     // If last sent was today (same day), skip
     if (
@@ -292,12 +318,12 @@ async function shouldSendDigestNow(
       lastSentOrgTime.getMonth() === orgTime.getMonth() &&
       lastSentOrgTime.getFullYear() === orgTime.getFullYear()
     ) {
-      console.log(`[Cron] Already sent today, skipping`);
+      logger.debug({}, 'Already sent today, skipping');
       return false;
     }
   }
 
-  console.log(`[Cron] ✅ Should send digest NOW`);
+  logger.debug({}, 'Should send digest NOW');
   return true;
 }
 

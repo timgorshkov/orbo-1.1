@@ -9,6 +9,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { openai } from './openaiClient';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('AIConstructorService');
 
 // Supabase admin client for logging
 const supabaseAdmin = createClient(
@@ -54,12 +57,18 @@ async function logOpenAICall(params: {
       });
     
     if (error) {
-      console.error('[AI Constructor] Failed to log API call:', error);
+      logger.error({ error: error.message }, 'Failed to log API call');
     } else {
-      console.log(`[AI Constructor] Logged: ${params.requestType}, ${params.totalTokens} tokens, $${params.costUsd.toFixed(4)}`);
+      logger.debug({ 
+        request_type: params.requestType,
+        total_tokens: params.totalTokens,
+        cost_usd: params.costUsd
+      }, 'Logged API call');
     }
   } catch (logError) {
-    console.error('[AI Constructor] Error logging API call:', logError);
+    logger.error({ 
+      error: logError instanceof Error ? logError.message : String(logError)
+    }, 'Error logging API call');
   }
 }
 
@@ -103,12 +112,14 @@ export async function logAIRequest(params: {
       });
     
     if (error) {
-      console.error('[AI Constructor] Failed to log AI request:', error);
+      logger.error({ error: error.message }, 'Failed to log AI request');
     } else {
-      console.log(`[AI Constructor] AI request logged: ${params.requestType}`);
+      logger.debug({ request_type: params.requestType }, 'AI request logged');
     }
   } catch (logError) {
-    console.error('[AI Constructor] Error logging AI request:', logError);
+    logger.error({ 
+      error: logError instanceof Error ? logError.message : String(logError)
+    }, 'Error logging AI request');
   }
 }
 
@@ -305,7 +316,9 @@ export async function chatWithAIConstructor(
           cleanMessage = '🎉 Отлично! Я создал конфигурацию вашего приложения. Проверьте и нажмите "Создать приложение"!';
         }
       } catch (parseError) {
-        console.error('[AI Constructor] Failed to parse generated config:', parseError);
+        logger.error({ 
+          error: parseError instanceof Error ? parseError.message : String(parseError)
+        }, 'Failed to parse generated config');
         appConfig = null;
       }
     }
@@ -316,8 +329,12 @@ export async function chatWithAIConstructor(
     const totalTokens = response.usage?.total_tokens || 0;
     const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
     
-    console.log(`[AI Constructor] Chat response in ${Date.now() - startTime}ms`);
-    console.log(`[AI Constructor] Tokens: ${totalTokens}, Cost: $${costUsd.toFixed(4)}`);
+    const duration = Date.now() - startTime;
+    logger.info({ 
+      duration_ms: duration,
+      total_tokens: totalTokens,
+      cost_usd: costUsd
+    }, 'Chat response completed');
     
     // Log API call (for cost tracking)
     await logOpenAICall({
@@ -358,7 +375,10 @@ export async function chatWithAIConstructor(
       isComplete: !!appConfig
     };
   } catch (error) {
-    console.error('[AI Constructor] Error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'AI chat failed');
     throw new Error(`AI chat failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

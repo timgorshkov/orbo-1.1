@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/whatsapp/imports?orgId=xxx
  * Get list of WhatsApp imports for an organization

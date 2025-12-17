@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
+import { createCronLogger } from '@/lib/logger'
 
 // Force dynamic rendering for cron endpoints
 export const dynamic = 'force-dynamic'
@@ -8,6 +9,8 @@ export const dynamic = 'force-dynamic'
 // GET /api/cron/event-notifications - Send scheduled event notifications
 // This endpoint should be called by a cron job (e.g., Vercel Cron, every hour)
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('event-notifications');
+  
   try {
     // Verify cron secret to prevent unauthorized access
     const authHeader = request.headers.get('authorization')
@@ -32,13 +35,16 @@ export async function GET(request: NextRequest) {
       .gte('event_date', now.toISOString().split('T')[0])
 
     if (eventsError) {
-      console.error('Error fetching events:', eventsError)
+      logger.error({ error: eventsError.message }, 'Error fetching events');
       return NextResponse.json({ error: eventsError.message }, { status: 500 })
     }
 
     if (!events || events.length === 0) {
+      logger.info({}, 'No events to process');
       return NextResponse.json({ message: 'No events to process' })
     }
+    
+    logger.info({ events_count: events.length }, 'Found events to process');
 
     const results: any[] = []
 
@@ -133,7 +139,7 @@ export async function GET(request: NextRequest) {
       // Get bot token
       const botToken = process.env.TELEGRAM_BOT_TOKEN
       if (!botToken) {
-        console.error('Telegram bot token not configured')
+        logger.error({ event_id: event.id }, 'Telegram bot token not configured');
         continue
       }
 
@@ -216,6 +222,12 @@ export async function GET(request: NextRequest) {
               success: true
             })
           } else {
+            logger.warn({ 
+              event_id: event.id,
+              group_id: group.id,
+              error: telegramData.description || 'Unknown error'
+            }, 'Failed to send notification');
+            
             await supabase
               .from('event_telegram_notifications')
               .insert({
@@ -238,7 +250,13 @@ export async function GET(request: NextRequest) {
             })
           }
         } catch (error: any) {
-          console.error(`Error sending to group ${group.id}:`, error)
+          logger.error({ 
+            event_id: event.id,
+            group_id: group.id,
+            error: error.message || String(error),
+            stack: error.stack
+          }, 'Error sending to group');
+          
           results.push({
             event_id: event.id,
             event_title: event.title,
@@ -252,13 +270,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    logger.info({ processed: results.length }, 'Event notifications cron completed');
+
     return NextResponse.json({
       success: true,
       processed: results.length,
       results
     })
   } catch (error: any) {
-    console.error('Error in event notifications cron:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in event notifications cron');
+    
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

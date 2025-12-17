@@ -4,6 +4,8 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { createServiceLogger } from '@/lib/logger'
 
+export const dynamic = 'force-dynamic';
+
 const logger = createServiceLogger('OrgsPage');
 
 export default async function OrganizationsPage() {

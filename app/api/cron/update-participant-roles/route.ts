@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getActiveParticipantsForEnrichment } from '@/lib/services/participantStatsService';
 import { enrichParticipant } from '@/lib/services/participantEnrichmentService';
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
+import { createCronLogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,24 +44,25 @@ function verifyCronAuth(request: NextRequest): boolean {
 }
 
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('update-participant-roles');
   const startTime = Date.now();
   
-  console.log('[Cron: Update Roles] ==================== STARTED ====================');
+  logger.info({}, 'Started');
   
   // Verify authorization
   if (!verifyCronAuth(request)) {
-    console.error('[Cron: Update Roles] ❌ Unauthorized request');
+    logger.warn({}, 'Unauthorized request');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
   try {
     // Step 1: Fetch active participants
-    console.log('[Cron: Update Roles] Step 1: Fetching active participants...');
+    logger.debug({}, 'Step 1: Fetching active participants');
     const participants = await getActiveParticipantsForEnrichment(100);
-    console.log(`[Cron: Update Roles] Found ${participants.length} participants to enrich`);
+    logger.info({ participants_count: participants.length }, 'Found participants to enrich');
     
     if (participants.length === 0) {
-      console.log('[Cron: Update Roles] ✅ No participants to enrich');
+      logger.info({}, 'No participants to enrich');
       return NextResponse.json({
         ok: true,
         updated: 0,
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
       errors: [] as string[]
     };
     
-    console.log('[Cron: Update Roles] Step 2: Enriching participants (rule-based, NO AI)...');
+    logger.debug({}, 'Step 2: Enriching participants (rule-based, NO AI)');
     
     for (const participant of participants) {
       try {
@@ -91,7 +93,7 @@ export async function GET(request: NextRequest) {
         results.failed++;
         const errorMsg = error instanceof Error ? error.message : String(error);
         results.errors.push(`Participant ${participant.id}: ${errorMsg}`);
-        console.error(`[Cron: Update Roles] ❌ Failed to enrich participant ${participant.id}:`, error);
+        logger.error({ participant_id: participant.id, error: errorMsg }, 'Failed to enrich participant');
       }
     }
     
@@ -113,8 +115,11 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log('[Cron: Update Roles] ==================== COMPLETED ====================');
-    console.log(`[Cron: Update Roles] Success: ${results.success}, Failed: ${results.failed}, Duration: ${duration}ms`);
+    logger.info({ 
+      success: results.success,
+      failed: results.failed,
+      duration_ms: duration
+    }, 'Completed');
     
     return NextResponse.json({
       ok: true,
@@ -126,12 +131,16 @@ export async function GET(request: NextRequest) {
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('[Cron: Update Roles] ❌ Fatal error:', error);
-    
-    // Log fatal error to database
     const errorMsg = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
     
+    logger.error({ 
+      error: errorMsg,
+      stack: errorStack,
+      duration_ms: duration
+    }, 'Fatal error');
+    
+    // Log fatal error to database
     await logErrorToDatabase({
       level: 'error',
       message: `Daily role update failed: ${errorMsg}`,

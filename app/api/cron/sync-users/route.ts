@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createCronLogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 минут для Vercel cron
 
 // Этот маршрут будет вызываться через Vercel Cron
 export async function GET(req: NextRequest) {
+  const logger = createCronLogger('sync-users');
+  
   try {
     // Проверяем авторизацию (защита от публичного доступа)
     // В продакшене для большей безопасности можно использовать JWT токен или другой метод
@@ -49,6 +52,7 @@ export async function GET(req: NextRequest) {
         if (updateError) {
           results.errors++
           results.details.push(`Error updating group ${group.id}: ${updateError.message}`)
+          logger.warn({ group_id: group.id, error: updateError.message }, 'Error updating group')
         } else {
           results.updated++
         }
@@ -56,21 +60,31 @@ export async function GET(req: NextRequest) {
         results.processed++
       } catch (error) {
         results.errors++
-        results.details.push(`Error processing group ${group.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        results.details.push(`Error processing group ${group.id}: ${errorMsg}`)
+        logger.error({ group_id: group.id, error: errorMsg }, 'Error processing group')
       }
     }
     
-    // Записываем результат в лог
-    console.log(`Sync completed in ${Date.now() - startTime}ms`, results)
+    const duration = Date.now() - startTime
+    logger.info({ 
+      duration_ms: duration,
+      processed: results.processed,
+      updated: results.updated,
+      errors: results.errors
+    }, 'Sync completed')
     
     return NextResponse.json({
       success: true,
-      execution_time_ms: Date.now() - startTime,
+      execution_time_ms: duration,
       stats: results
     })
     
   } catch (error) {
-    console.error('Sync error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Sync error')
     
     return NextResponse.json({
       success: false,

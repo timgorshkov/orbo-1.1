@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createTelegramService } from '@/lib/services/telegramService';
 import { createClient } from '@supabase/supabase-js';
+import { createCronLogger } from '@/lib/logger';
 
 /**
  * Cron job: Синхронизация прав администраторов из Telegram
@@ -10,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
  * Vercel Cron: "0 *\/6 * * *" (every 6 hours)
  */
 export async function GET(request: NextRequest) {
+  const logger = createCronLogger('sync-admin-rights');
   const authHeader = request.headers.get('authorization');
   
   // Проверка Vercel Cron Secret (или любой другой секрет для защиты endpoint)
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  console.log('[Cron] Starting admin rights sync...');
+  logger.info({}, 'Starting admin rights sync');
   const startTime = Date.now();
 
   try {
@@ -43,17 +45,17 @@ export async function GET(request: NextRequest) {
       `);
 
     if (orgsError) {
-      console.error('[Cron] Error fetching organizations:', orgsError);
+      logger.error({ error: orgsError.message }, 'Error fetching organizations');
       return NextResponse.json({ error: 'Failed to fetch organizations' }, { status: 500 });
     }
 
-    console.log(`[Cron] Found ${orgs?.length || 0} organizations with Telegram groups`);
+    logger.info({ orgs_count: orgs?.length || 0 }, 'Found organizations with Telegram groups');
 
     const results = [];
     const telegramService = createTelegramService('main');
 
     for (const org of orgs || []) {
-      console.log(`[Cron] Processing org ${org.id} (${org.name})`);
+      logger.debug({ org_id: org.id, org_name: org.name }, 'Processing org');
       
       // Получаем все группы организации
       const { data: groups, error: groupsError } = await adminSupabase
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
         .eq('org_id', org.id);
 
       if (groupsError) {
-        console.error(`[Cron] Error fetching groups for org ${org.id}:`, groupsError);
+        logger.error({ org_id: org.id, error: groupsError.message }, 'Error fetching groups for org');
         continue;
       }
 
@@ -79,18 +81,21 @@ export async function GET(request: NextRequest) {
         const groupTitle = (groupBinding.telegram_groups as any)?.title || chatId;
 
         try {
-          console.log(`[Cron] Fetching admins for group ${chatId} (${groupTitle})`);
+          logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
           
           // Получаем всех администраторов группы из Telegram
           const adminsResponse = await telegramService.getChatAdministrators(Number(chatId));
 
           if (!adminsResponse.ok) {
-            console.warn(`[Cron] Failed to get admins for chat ${chatId}:`, adminsResponse);
+            logger.warn({ 
+              chat_id: chatId, 
+              error: adminsResponse.description || 'Unknown error' 
+            }, 'Failed to get admins for chat');
             continue;
           }
 
           const administrators = adminsResponse.result || [];
-          console.log(`[Cron] Found ${administrators.length} administrators in group ${chatId}`);
+          logger.debug({ chat_id: chatId, admins_count: administrators.length }, 'Found administrators in group');
 
           // Деактивируем все существующие записи для этой группы
           await supabaseService
@@ -133,7 +138,7 @@ export async function GET(request: NextRequest) {
           
           // Группа была конвертирована в супергруппу - это ожидаемая ситуация
           if (errorMessage.includes('upgraded to a supergroup')) {
-            console.warn(`[Cron] Group ${chatId} (${groupTitle}) was upgraded to supergroup - marking for migration`);
+            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Group upgraded to supergroup - marking for migration');
             
             // Помечаем группу как требующую миграции
             await supabaseService
@@ -145,7 +150,7 @@ export async function GET(request: NextRequest) {
               .eq('tg_chat_id', chatId);
           } else if (errorMessage.includes('bot was kicked') || errorMessage.includes('was kicked from')) {
             // Бот был удалён из группы - это ожидаемая ситуация
-            console.warn(`[Cron] Bot was kicked from group ${chatId} (${groupTitle}) - marking as inactive`);
+            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Bot was kicked from group - marking as inactive');
             
             // Помечаем группу как неактивную
             await supabaseService
@@ -156,14 +161,14 @@ export async function GET(request: NextRequest) {
               })
               .eq('tg_chat_id', chatId);
           } else {
-            console.error(`[Cron] Error processing group ${chatId}:`, errorMessage);
+            logger.error({ chat_id: chatId, error: errorMessage }, 'Error processing group');
           }
         }
       }
 
       // Синхронизируем memberships для организации
       if (updatedGroups > 0) {
-        console.log(`[Cron] Syncing memberships for org ${org.id} (updated ${updatedGroups} groups)`);
+        logger.info({ org_id: org.id, updated_groups: updatedGroups }, 'Syncing memberships for org');
         
         const { data: syncResult, error: syncError } = await supabaseService.rpc(
           'sync_telegram_admins',
@@ -171,9 +176,9 @@ export async function GET(request: NextRequest) {
         );
 
         if (syncError) {
-          console.error(`[Cron] Error syncing memberships for org ${org.id}:`, syncError);
+          logger.error({ org_id: org.id, error: syncError.message }, 'Error syncing memberships for org');
         } else {
-          console.log(`[Cron] ✅ Memberships synced for org ${org.id}:`, syncResult);
+          logger.info({ org_id: org.id, sync_result: syncResult }, 'Memberships synced for org');
         }
       }
 
@@ -186,7 +191,10 @@ export async function GET(request: NextRequest) {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[Cron] Admin rights sync completed in ${duration}ms`);
+    logger.info({ 
+      duration_ms: duration,
+      organizations_processed: results.length
+    }, 'Admin rights sync completed');
 
     return NextResponse.json({
       success: true,
@@ -195,7 +203,10 @@ export async function GET(request: NextRequest) {
       results
     });
   } catch (error: any) {
-    console.error('[Cron] Error in admin rights sync:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in admin rights sync');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

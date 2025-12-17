@@ -3,6 +3,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import JSZip from 'jszip'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * Parse VCF file content to extract contact name and phone
@@ -55,6 +56,7 @@ function parseVCF(content: string): { name: string; phone: string } | null {
  * - .zip archive (contains .txt + .vcf files for contacts)
  */
 export async function POST(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: 'whatsapp/import' });
   const startTime = Date.now()
   
   try {
@@ -64,14 +66,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'orgId is required' }, { status: 400 })
     }
     
-    console.log(`[WhatsApp Import] Starting import for org ${orgId}`)
+    logger.info({ org_id: orgId }, 'Starting import');
     
     // Auth check
     const supabase = await createClientServer()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      console.error('[WhatsApp Import] Auth error:', authError)
+      logger.error({ error: authError?.message }, 'Auth error');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
       .single()
     
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
-      console.error('[WhatsApp Import] User not admin:', user.id)
+      logger.warn({ user_id: user.id, org_id: orgId }, 'User not admin');
       return NextResponse.json({ error: 'Only admins can import' }, { status: 403 })
     }
     
@@ -96,7 +98,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
     
-    console.log(`[WhatsApp Import] File received: ${file.name}, size: ${file.size} bytes, type: ${file.type}`)
+    logger.info({ 
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type
+    }, 'File received');
     
     let chatContent = ''
     let groupName = 'WhatsApp'
@@ -105,14 +111,14 @@ export async function POST(request: NextRequest) {
     
     // Handle ZIP or TXT file
     if (file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip') {
-      console.log('[WhatsApp Import] Processing ZIP archive...')
+      logger.debug({}, 'Processing ZIP archive');
       
       const arrayBuffer = await file.arrayBuffer()
       const zip = await JSZip.loadAsync(arrayBuffer)
       
       // Find .txt and .vcf files
       const files = Object.keys(zip.files)
-      console.log(`[WhatsApp Import] ZIP contains ${files.length} files:`, files.slice(0, 10))
+      logger.debug({ files_count: files.length, sample_files: files.slice(0, 10) }, 'ZIP contains files');
       
       for (const fileName of files) {
         const zipFile = zip.files[fileName]
@@ -123,7 +129,7 @@ export async function POST(request: NextRequest) {
         // Chat history file
         if (lowerName.endsWith('.txt') && !lowerName.startsWith('__macosx')) {
           chatContent = await zipFile.async('string')
-          console.log(`[WhatsApp Import] Found chat file: ${fileName} (${chatContent.length} chars)`)
+          logger.debug({ file_name: fileName, content_length: chatContent.length }, 'Found chat file');
           
           // Extract group name from txt filename
           // Handle: "Чат WhatsApp с контактом GROUP_NAME.txt" or "Чат WhatsApp с GROUP_NAME.txt"
@@ -138,7 +144,7 @@ export async function POST(request: NextRequest) {
           if (extractedName && extractedName.length > 0) {
             groupName = extractedName
           }
-          console.log(`[WhatsApp Import] Extracted group name: ${groupName}`)
+          logger.debug({ group_name: groupName }, 'Extracted group name');
         }
         
         // VCF contact file
@@ -150,10 +156,10 @@ export async function POST(request: NextRequest) {
               // Normalize phone for matching (last 10 digits)
               const last10 = contact.phone.slice(-10)
               vcfContacts.set(last10, contact.name)
-              console.log(`[WhatsApp Import] VCF: ${contact.phone} (key: ${last10}) → ${contact.name}`)
+              logger.debug({ phone: contact.phone, key: last10, name: contact.name }, 'VCF contact parsed');
             }
           } catch (e) {
-            console.warn(`[WhatsApp Import] Failed to parse VCF ${fileName}:`, e)
+            logger.warn({ file_name: fileName, error: e instanceof Error ? e.message : String(e) }, 'Failed to parse VCF');
           }
         }
       }
@@ -175,7 +181,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No chat .txt file found in archive' }, { status: 400 })
       }
       
-      console.log(`[WhatsApp Import] Loaded ${vcfContacts.size} contacts from VCF files`)
+      logger.info({ contacts_count: vcfContacts.size }, 'Loaded contacts from VCF files');
       
     } else if (file.name.toLowerCase().endsWith('.txt')) {
       // Direct TXT file
@@ -192,33 +198,35 @@ export async function POST(request: NextRequest) {
       if (extractedName && extractedName.length > 0) {
         groupName = extractedName
       }
-      console.log(`[WhatsApp Import] Extracted group name: ${groupName}`)
+      logger.debug({ group_name: groupName }, 'Extracted group name');
     } else {
       return NextResponse.json({ 
         error: 'Unsupported file format. Please upload .txt or .zip file' 
       }, { status: 400 })
     }
     
-    console.log(`[WhatsApp Import] Group name: ${groupName}`)
+    logger.info({ group_name: groupName }, 'Group name');
     
     // Remove BOM (Byte Order Mark) if present
     if (chatContent.charCodeAt(0) === 0xFEFF) {
       chatContent = chatContent.slice(1)
-      console.log(`[WhatsApp Import] Removed BOM from content`)
+      logger.debug({}, 'Removed BOM from content');
     }
     
     // Normalize line endings (handle Windows CRLF, Mac CR, Unix LF)
     chatContent = chatContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     
     const lines = chatContent.split('\n').filter(line => line.trim())
-    console.log(`[WhatsApp Import] Total lines: ${lines.length}`)
+    logger.debug({ total_lines: lines.length }, 'Total lines');
     
     // Log first few lines for debugging
     if (lines.length > 0) {
-      console.log(`[WhatsApp Import] First 3 lines:`)
-      lines.slice(0, 3).forEach((line, i) => {
-        console.log(`  Line ${i + 1}: "${line.substring(0, 150)}${line.length > 150 ? '...' : ''}"`)
-      })
+      logger.debug({ 
+        first_lines: lines.slice(0, 3).map((line, i) => ({
+          line_number: i + 1,
+          preview: line.substring(0, 150) + (line.length > 150 ? '...' : '')
+        }))
+      }, 'First 3 lines');
     }
     
     // Parse messages - support multiple formats
@@ -245,16 +253,21 @@ export async function POST(request: NextRequest) {
       const testMatches = lines.filter(line => pattern.test(line)).length
       if (testMatches > 0) {
         workingPattern = pattern
-        console.log(`[WhatsApp Import] Pattern matched: ${testMatches} lines with pattern ${messagePatterns.indexOf(pattern) + 1}`)
+        logger.info({ 
+          pattern_index: messagePatterns.indexOf(pattern) + 1,
+          matched_lines: testMatches
+        }, 'Pattern matched');
         break
       }
     }
     
     if (!workingPattern) {
-      console.error(`[WhatsApp Import] No pattern matched any lines. Sample lines:`)
-      lines.slice(0, 5).forEach((line, i) => {
-        console.error(`  Line ${i + 1}: "${line}"`)
-      })
+      logger.error({ 
+        sample_lines: lines.slice(0, 5).map((line, i) => ({
+          line_number: i + 1,
+          content: line
+        }))
+      }, 'No pattern matched any lines');
       return NextResponse.json({ 
         error: 'Неподдерживаемый формат файла. Попробуйте экспортировать чат заново через WhatsApp.',
         details: `First line: ${lines[0]?.substring(0, 100) || 'empty'}`
@@ -365,7 +378,7 @@ export async function POST(request: NextRequest) {
         const vcfName = vcfContacts.get(last10)
         if (vcfName) {
           displayName = vcfName
-          console.log(`[WhatsApp Import] VCF match: ${senderTrimmed} (key: ${last10}) → ${vcfName}`)
+          logger.debug({ sender: senderTrimmed, key: last10, vcf_name: vcfName }, 'VCF match');
         }
       }
       
@@ -399,8 +412,12 @@ export async function POST(request: NextRequest) {
       })
     }
     
-    console.log(`[WhatsApp Import] Parsed ${messages.length} messages from ${participantNames.size} participants`)
-    console.log(`[WhatsApp Import] Skipped: ${skippedNoMatch} no match, ${skippedSystem} system messages`)
+    logger.info({ 
+      messages_count: messages.length,
+      participants_count: participantNames.size,
+      skipped_no_match: skippedNoMatch,
+      skipped_system: skippedSystem
+    }, 'Parsed messages');
     
     if (messages.length === 0) {
       return NextResponse.json({ 
@@ -450,10 +467,18 @@ export async function POST(request: NextRequest) {
               .from('participants')
               .update({ full_name: info.name })
               .eq('id', matchedByPhone.id)
-            console.log(`[WhatsApp Import] Updated name from VCF: ${matchedByPhone.full_name} → ${info.name}`)
+            logger.debug({ 
+              participant_id: matchedByPhone.id,
+              old_name: matchedByPhone.full_name,
+              new_name: info.name
+            }, 'Updated name from VCF');
           }
           
-          console.log(`[WhatsApp Import] Found existing participant by phone: ${info.phone} → ${matchedByPhone.full_name || matchedByPhone.id}`)
+          logger.debug({ 
+            phone: info.phone,
+            participant_id: matchedByPhone.id,
+            participant_name: matchedByPhone.full_name || matchedByPhone.id
+          }, 'Found existing participant by phone');
         }
       } else {
         // Search by exact name match
@@ -469,7 +494,7 @@ export async function POST(request: NextRequest) {
         if (existingByName) {
           participantId = existingByName.id
           participantsExisting++
-          console.log(`[WhatsApp Import] Found existing participant by name: ${info.name}`)
+          logger.debug({ participant_name: info.name }, 'Found existing participant by name');
         }
       }
       
@@ -491,13 +516,16 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (createError) {
-          console.error(`[WhatsApp Import] Error creating participant:`, createError)
+          logger.error({ 
+            participant_name: info.name,
+            error: createError.message
+          }, 'Error creating participant');
           continue
         }
         
         participantId = newParticipant.id
         participantsCreated++
-        console.log(`[WhatsApp Import] Created participant: ${info.name}`)
+        logger.debug({ participant_name: info.name }, 'Created participant');
       }
       
       if (participantId) {
@@ -521,13 +549,19 @@ export async function POST(request: NextRequest) {
             .eq('id', participantId)
           
           if (updateError) {
-            console.warn(`[WhatsApp Import] Failed to update participant activity: ${updateError.message}`)
+            logger.warn({ 
+              participant_id: participantId,
+              error: updateError.message
+            }, 'Failed to update participant activity');
           }
         }
       }
     }
     
-    console.log(`[WhatsApp Import] Participants: ${participantsCreated} created, ${participantsExisting} existing`)
+    logger.info({ 
+      created: participantsCreated,
+      existing: participantsExisting
+    }, 'Participants processed');
     
     // Import messages as activity_events
     let messagesImported = 0
@@ -571,7 +605,11 @@ export async function POST(request: NextRequest) {
           .insert(eventsToInsert)
         
         if (insertError) {
-          console.error(`[WhatsApp Import] Error inserting messages batch:`, insertError)
+          logger.error({ 
+            batch_number: Math.floor(i / BATCH_SIZE) + 1,
+            error: insertError.message,
+            error_code: insertError.code
+          }, 'Error inserting messages batch');
           if (insertError.code === '23505') {
             messagesDuplicates += eventsToInsert.length
           }
@@ -580,7 +618,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      console.log(`[WhatsApp Import] Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(messages.length / BATCH_SIZE)}`)
+      logger.debug({ 
+        batch: Math.floor(i / BATCH_SIZE) + 1,
+        total_batches: Math.ceil(messages.length / BATCH_SIZE)
+      }, 'Processed batch');
     }
     
     const duration = Date.now() - startTime
@@ -607,12 +648,15 @@ export async function POST(request: NextRequest) {
       .single()
     
     if (importError) {
-      console.warn('[WhatsApp Import] Failed to save import history:', importError)
+      logger.warn({ error: importError.message }, 'Failed to save import history');
     } else {
-      console.log(`[WhatsApp Import] Saved import record: ${importRecord?.id}`)
+      logger.info({ import_record_id: importRecord?.id }, 'Saved import record');
     }
     
-    console.log(`[WhatsApp Import] Complete! ${messagesImported} messages imported in ${duration}ms`)
+    logger.info({ 
+      messages_imported: messagesImported,
+      duration_ms: duration
+    }, 'Import complete');
     
     // Log admin action
     await logAdminAction({
