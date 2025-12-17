@@ -49,11 +49,12 @@ function normalizeEmail(email?: string | null): string | null {
 
 export async function POST(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/create' });
+  let orgId: string | undefined;
   try {
     const supabaseAdmin = createAdminServer();
     
     const payload = await request.json();
-    const orgId = payload?.orgId as string | undefined;
+    orgId = payload?.orgId as string | undefined;
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
@@ -141,7 +142,7 @@ export async function POST(request: Request) {
     logger.error({ 
       error: error?.message || String(error),
       stack: error?.stack,
-      org_id: orgId
+      org_id: orgId || 'unknown'
     }, 'Error creating participant');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }

@@ -9,10 +9,14 @@ import { createAPILogger } from '@/lib/logger'
  */
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/groups/migrate-chat' });
+  let oldChatId: number | undefined;
+  let newChatId: number | undefined;
   try {
     const supabase = createAdminServer()
     
-    const { oldChatId, newChatId } = await req.json()
+    const body = await req.json();
+    oldChatId = body.oldChatId;
+    newChatId = body.newChatId;
     
     if (!oldChatId || !newChatId) {
       return NextResponse.json(
@@ -57,8 +61,8 @@ export async function POST(req: NextRequest) {
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      old_chat_id: oldChatId,
-      new_chat_id: newChatId
+      old_chat_id: oldChatId || 'unknown',
+      new_chat_id: newChatId || 'unknown'
     }, '[Chat Migration] Unexpected error');
     return NextResponse.json(
       { error: error.message || 'An unexpected error occurred' },

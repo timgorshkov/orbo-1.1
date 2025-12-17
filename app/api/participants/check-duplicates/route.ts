@@ -27,9 +27,10 @@ async function ensureOrgAccess(orgId: string) {
 
 export async function POST(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/check-duplicates' });
+  let orgId: string | undefined;
   try {
     const payload = await request.json();
-    const orgId = payload?.orgId as string | undefined;
+    orgId = payload?.orgId as string | undefined;
     const currentParticipantId = payload?.currentParticipantId as string | undefined;
 
     if (!orgId) {
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     logger.error({ 
       error: error?.message || String(error),
       stack: error?.stack,
-      org_id: orgId
+      org_id: orgId || 'unknown'
     }, 'Error checking participant duplicates');
     return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
   }
