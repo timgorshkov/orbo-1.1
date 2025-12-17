@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/refresh-group' });
+  let orgId: string | undefined;
+  let groupId: string | undefined;
   try {
     // Проверяем авторизацию
     const supabase = await createClientServer()
@@ -15,7 +19,9 @@ export async function POST(req: NextRequest) {
     }
     
     // Получаем данные из запроса
-    const { orgId, groupId } = await req.json()
+    const body = await req.json()
+    orgId = body.orgId
+    groupId = body.groupId
     
     if (!orgId || !groupId) {
       return NextResponse.json({ 
@@ -34,6 +40,8 @@ export async function POST(req: NextRequest) {
     if (memberError || !membership) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    
+    logger.info({ org_id: orgId, group_id: groupId, user_id: user.id }, 'Refreshing group info');
     
     // Получаем группу по ID
     const { data: group, error: groupError } = await supabase
@@ -99,7 +107,12 @@ export async function POST(req: NextRequest) {
       status: isAdmin ? 'connected' : 'pending'
     })
   } catch (error: any) {
-    console.error('Error refreshing group info:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId,
+      group_id: groupId
+    }, 'Error refreshing group info');
     return NextResponse.json({ 
       error: error.message || 'An unexpected error occurred' 
     }, { status: 500 })

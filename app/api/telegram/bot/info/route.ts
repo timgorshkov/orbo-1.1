@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/info' });
   try {
     // Проверяем авторизацию
     const supabase = await createClientServer()
@@ -34,6 +36,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     
+    logger.debug({ org_id: orgId, user_id: user.id }, 'Getting bot info');
+    
     // Получаем информацию о боте
     const telegramService = createTelegramService()
     const botInfo = await telegramService.getMe()
@@ -45,7 +49,7 @@ export async function GET(req: NextRequest) {
       .eq('org_id', orgId)
     
     if (groupsError) {
-      console.error('Error fetching groups:', groupsError)
+      logger.error({ error: groupsError.message, org_id: orgId }, 'Error fetching groups');
     }
     
     return NextResponse.json({ 
@@ -53,7 +57,10 @@ export async function GET(req: NextRequest) {
       groups: groups || []
     })
   } catch (error: unknown) {
-    console.error('Error getting bot info:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error getting bot info');
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

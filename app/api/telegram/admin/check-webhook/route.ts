@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
 // Простой endpoint для проверки текущего состояния webhook
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/admin/check-webhook' });
   try {
     const password = req.nextUrl.searchParams.get('password')
     
@@ -88,7 +90,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(results, { status: 200 })
   } catch (error: any) {
-    console.error('Error checking webhooks:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error checking webhooks');
     return NextResponse.json(
       { error: error.message || 'Failed to check webhooks' },
       { status: 500 }
@@ -98,6 +103,7 @@ export async function GET(req: NextRequest) {
 
 // DELETE endpoint для удаления webhook
 export async function DELETE(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/admin/check-webhook' });
   try {
     const { password, botType } = await req.json()
     
@@ -137,7 +143,10 @@ export async function DELETE(req: NextRequest) {
       note: 'Webhooks have been deleted. You should set them again.'
     })
   } catch (error: any) {
-    console.error('Error deleting webhooks:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error deleting webhooks');
     return NextResponse.json(
       { error: error.message || 'Failed to delete webhooks' },
       { status: 500 }

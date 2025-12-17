@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/notifications/send-verification' });
   try {
     const body = await request.json();
     const { telegramUserId, verificationCode, orgId, userId } = body;
@@ -11,6 +13,8 @@ export async function POST(request: Request) {
     if (!telegramUserId || !verificationCode) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
+
+    logger.info({ telegram_user_id: telegramUserId, org_id: orgId, user_id: userId }, 'Sending verification code');
 
     // Инициализируем бота уведомлений
     const notificationsBot = new TelegramService('notifications');
@@ -37,14 +41,18 @@ export async function POST(request: Request) {
           message: 'Verification code sent successfully'
         });
       } else {
-        console.error('Failed to send verification code:', result);
+        logger.error({ telegram_user_id: telegramUserId, result }, 'Failed to send verification code');
         return NextResponse.json({ 
           error: 'Failed to send verification code',
           details: result
         }, { status: 500 });
       }
     } catch (telegramError: any) {
-      console.error('Telegram API error:', telegramError);
+      logger.error({ 
+        telegram_user_id: telegramUserId,
+        error: telegramError.message || String(telegramError),
+        stack: telegramError.stack
+      }, 'Telegram API error');
       
       // Если пользователь не начал диалог с ботом
       if (telegramError.message?.includes('chat not found') || 
@@ -62,7 +70,10 @@ export async function POST(request: Request) {
     }
 
   } catch (error: any) {
-    console.error('Error in send-verification:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in send-verification');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

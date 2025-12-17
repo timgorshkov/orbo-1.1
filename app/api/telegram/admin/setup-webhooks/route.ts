@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ interface WebhookStatus {
 }
 
 export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/admin/setup-webhooks' });
   try {
     const mainBot = new TelegramService('main');
     const assistantBot = new TelegramService('notifications');
@@ -82,7 +84,10 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error checking webhook status:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error checking webhook status');
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to check webhook status'
@@ -91,6 +96,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/admin/setup-webhooks' });
   try {
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     
@@ -105,10 +111,11 @@ export async function POST(request: Request) {
     const mainWebhookUrl = `${baseUrl}/api/telegram/webhook`;
     const assistantWebhookUrl = `${baseUrl}/api/telegram/notifications/webhook`;
 
-    console.log('Setting up webhooks...');
-    console.log('Main bot URL:', mainWebhookUrl);
-    console.log('Assistant bot URL:', assistantWebhookUrl);
-    console.log('Secret length:', webhookSecret.length);
+    logger.info({ 
+      main_webhook_url: mainWebhookUrl,
+      assistant_webhook_url: assistantWebhookUrl,
+      secret_length: webhookSecret.length
+    }, 'Setting up webhooks');
 
     const mainBot = new TelegramService('main');
     const assistantBot = new TelegramService('notifications');
@@ -175,7 +182,10 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error setting up webhooks:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error setting up webhooks');
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to set up webhooks'

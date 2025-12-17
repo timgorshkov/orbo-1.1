@@ -49,6 +49,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/accounts' });
   try {
     const body = await request.json();
     const { orgId, telegramUserId, telegramUsername, telegramFirstName, telegramLastName } = body;
@@ -211,6 +212,7 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/accounts' });
   try {
     const body = await request.json();
     const { orgId, verificationCode } = body;

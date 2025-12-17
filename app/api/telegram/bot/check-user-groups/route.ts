@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/check-user-groups' });
   try {
     const { orgId, userId, telegramId } = await req.json()
     
     if (!telegramId || !userId || !orgId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
+    
+    logger.info({ org_id: orgId, user_id: userId, telegram_id: telegramId }, 'Checking user groups');
     
     const supabase = await createClientServer()
     const telegramService = createTelegramService()
@@ -64,13 +68,19 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (e) {
-        console.error(`Error checking chat ${chatId}:`, e)
+        logger.error({ 
+          chat_id: chatId,
+          error: e instanceof Error ? e.message : String(e)
+        }, 'Error checking chat');
       }
     }
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error checking user groups:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error checking user groups');
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

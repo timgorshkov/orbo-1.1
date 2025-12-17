@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/clone-to-org' });
+  let groupId: string | number | undefined;
+  let orgId: string | undefined;
   try {
     const body = await request.json();
-    const { groupId, orgId } = body;
+    groupId = body.groupId;
+    orgId = body.orgId;
     
     if (!groupId || !orgId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
@@ -20,7 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    console.log(`Cloning group ${groupId} to org ${orgId} by user ${user.id}`);
+    logger.info({ group_id: groupId, org_id: orgId, user_id: user.id }, 'Cloning group to org');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
@@ -34,7 +39,7 @@ export async function POST(request: Request) {
       .single();
       
     if (membershipError || !membership) {
-      console.error('Error checking membership:', membershipError);
+      logger.error({ error: membershipError?.message, user_id: user.id, org_id: orgId }, 'Error checking membership');
       return NextResponse.json({ 
         error: 'You do not have access to this organization' 
       }, { status: 403 });
@@ -48,7 +53,7 @@ export async function POST(request: Request) {
       .single();
       
     if (groupError || !group) {
-      console.error('Error fetching group:', groupError);
+      logger.error({ error: groupError?.message, group_id: groupId }, 'Error fetching group');
       return NextResponse.json({ 
         error: 'Group not found' 
       }, { status: 404 });
@@ -62,7 +67,7 @@ export async function POST(request: Request) {
       .eq('is_verified', true);
       
     if (accountsError) {
-      console.error('Error fetching Telegram accounts:', accountsError);
+      logger.error({ error: accountsError.message, user_id: user.id }, 'Error fetching Telegram accounts');
       return NextResponse.json({ 
         error: 'Error fetching Telegram accounts',
         details: accountsError
@@ -70,7 +75,7 @@ export async function POST(request: Request) {
     }
     
     if (!telegramAccounts || telegramAccounts.length === 0) {
-      console.log(`No verified Telegram accounts found for user ${user.id}`);
+      logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
       return NextResponse.json({ 
         error: 'No verified Telegram accounts found for this user' 
       }, { status: 400 });
@@ -82,7 +87,7 @@ export async function POST(request: Request) {
     // Выбираем аккаунт для текущей организации или первый доступный
     const activeAccount = telegramAccount || telegramAccounts[0];
     
-    console.log(`Using Telegram account: ${activeAccount.telegram_user_id} (from org: ${activeAccount.org_id})`);
+    logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
     
     // Проверяем права администратора
     const { data: adminRights, error: adminError } = await supabaseService
@@ -94,7 +99,7 @@ export async function POST(request: Request) {
       .single();
       
     if (adminError || !adminRights) {
-      console.error('Error checking admin rights:', adminError);
+      logger.error({ error: adminError?.message, tg_chat_id: group.tg_chat_id, tg_user_id: activeAccount.telegram_user_id }, 'Error checking admin rights');
       return NextResponse.json({ 
         error: 'You are not an admin of this group' 
       }, { status: 403 });
@@ -109,7 +114,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     
     if (existingMapping) {
-      console.log(`Mapping for ${group.tg_chat_id} already exists in org ${orgId}`);
+      logger.info({ tg_chat_id: group.tg_chat_id, org_id: orgId }, 'Mapping already exists');
       return NextResponse.json({
         success: true,
         message: 'Group already linked to this organization'
@@ -117,7 +122,7 @@ export async function POST(request: Request) {
     }
     
     // Создаем связь организация ↔ группа без дублирования записи самой группы
-    console.log(`Linking group ${group.tg_chat_id} to org ${orgId}`);
+    logger.info({ tg_chat_id: group.tg_chat_id, org_id: orgId }, 'Linking group to org');
     try {
       const { error: linkError } = await supabaseService
         .from('org_telegram_groups')
@@ -129,15 +134,15 @@ export async function POST(request: Request) {
       
       if (linkError) {
         if (linkError.code === '42P01') {
-          console.error('Mapping table org_telegram_groups not found - database schema issue');
+          logger.error({}, 'Mapping table org_telegram_groups not found - database schema issue');
           return NextResponse.json({
             error: 'Database schema error: org_telegram_groups table missing',
             details: linkError
           }, { status: 500 });
         } else if (linkError.code === '23505') {
-          console.log('Mapping already exists, returning success');
+          logger.info({ tg_chat_id: group.tg_chat_id, org_id: orgId }, 'Mapping already exists, returning success');
         } else {
-          console.error('Error linking group to org:', linkError);
+          logger.error({ error: linkError.message, tg_chat_id: group.tg_chat_id, org_id: orgId }, 'Error linking group to org');
           return NextResponse.json({
             error: 'Failed to link group to organization',
             details: linkError
@@ -151,21 +156,30 @@ export async function POST(request: Request) {
       });
     } catch (linkEx: any) {
       if (linkEx.code === '42P01') {
-        console.error('Mapping table org_telegram_groups not found - database schema issue');
+        logger.error({}, 'Mapping table org_telegram_groups not found - database schema issue');
         return NextResponse.json({
           error: 'Database schema error: org_telegram_groups table missing',
           details: linkEx instanceof Error ? linkEx.message : String(linkEx)
         }, { status: 500 });
       }
-      console.error('Exception during linking:', linkEx);
+      logger.error({ 
+        error: linkEx instanceof Error ? linkEx.message : String(linkEx),
+        stack: linkEx instanceof Error ? linkEx.stack : undefined,
+        tg_chat_id: group.tg_chat_id,
+        org_id: orgId
+      }, 'Exception during linking');
       return NextResponse.json({
         error: 'Exception during linking',
         details: linkEx instanceof Error ? linkEx.message : String(linkEx)
       }, { status: 500 });
     }
-    console.log(`Successfully cloned group ${groupId} to org ${orgId}`);
   } catch (error: any) {
-    console.error('Error in clone-to-org:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      group_id: groupId,
+      org_id: orgId
+    }, 'Error in clone-to-org');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

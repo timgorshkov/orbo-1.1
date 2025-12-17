@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/archive' });
+  let chatId: string | number | undefined;
+  let orgId: string | undefined;
   try {
     const body = await request.json();
-    const { chatId, orgId, reason } = body;
+    chatId = body.chatId;
+    orgId = body.orgId;
+    const reason = body.reason;
 
     if (!chatId || !orgId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
@@ -18,6 +24,8 @@ export async function POST(request: Request) {
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    logger.info({ chat_id: chatId, org_id: orgId, reason, user_id: user.id }, 'Archiving group');
 
     const supabaseService = createAdminServer();
 
@@ -57,7 +65,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error archiving mapping:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      chat_id: chatId,
+      org_id: orgId
+    }, 'Error archiving mapping');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

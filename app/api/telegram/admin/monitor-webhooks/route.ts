@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TelegramService } from '@/lib/services/telegramService';
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic';
  * Этот endpoint можно вызывать через GitHub Actions или другой cron service
  */
 export async function GET(request: Request) {
-  console.log('[Webhook Monitor] ========== MONITORING START ==========');
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/admin/monitor-webhooks' });
+  logger.info({}, '[Webhook Monitor] MONITORING START');
   
   try {
     const mainBot = new TelegramService('main');
@@ -46,15 +48,14 @@ export async function GET(request: Request) {
       lastErrorDate: notificationsWebhookInfo.result?.last_error_date || null
     };
 
-    console.log('[Webhook Monitor] Main bot status:', mainStatus);
-    console.log('[Webhook Monitor] Notifications bot status:', notificationsStatus);
+    logger.debug({ main_status: mainStatus, notifications_status: notificationsStatus }, '[Webhook Monitor] Bot statuses');
 
     // Восстановление webhook при необходимости
     const recoveryActions = [];
 
     // Main bot
     if (!mainStatus.configured) {
-      console.log('[Webhook Monitor] 🔧 Main bot webhook misconfigured, attempting recovery');
+      logger.warn({}, '[Webhook Monitor] Main bot webhook misconfigured, attempting recovery');
       const recovered = await webhookRecoveryService.recoverWebhook('main', 'monitoring_detected_misconfiguration');
       recoveryActions.push({
         bot: 'main',
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
 
     // Notifications bot
     if (!notificationsStatus.configured) {
-      console.log('[Webhook Monitor] 🔧 Notifications bot webhook misconfigured, attempting recovery');
+      logger.warn({}, '[Webhook Monitor] Notifications bot webhook misconfigured, attempting recovery');
       const recovered = await webhookRecoveryService.recoverWebhook('notifications', 'monitoring_detected_misconfiguration');
       recoveryActions.push({
         bot: 'notifications',
@@ -89,13 +90,15 @@ export async function GET(request: Request) {
       allConfigured: mainStatus.configured && notificationsStatus.configured
     };
 
-    console.log('[Webhook Monitor] ========== MONITORING COMPLETE ==========');
-    console.log('[Webhook Monitor] All webhooks configured:', response.allConfigured);
+    logger.info({ all_configured: response.allConfigured }, '[Webhook Monitor] MONITORING COMPLETE');
 
     return NextResponse.json(response);
 
   } catch (error: any) {
-    console.error('[Webhook Monitor] Error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, '[Webhook Monitor] Error');
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to monitor webhooks',
@@ -109,7 +112,8 @@ export async function GET(request: Request) {
  * Принудительная проверка и восстановление webhook (игнорирует rate limiting)
  */
 export async function POST(request: Request) {
-  console.log('[Webhook Monitor] ========== FORCED RECOVERY START ==========');
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/admin/monitor-webhooks' });
+  logger.info({}, '[Webhook Monitor] FORCED RECOVERY START');
   
   try {
     const body = await request.json();
@@ -118,7 +122,7 @@ export async function POST(request: Request) {
     const results = [];
 
     if (bot === 'main' || bot === 'both') {
-      console.log('[Webhook Monitor] Forcing recovery for main bot');
+      logger.info({ bot: 'main' }, '[Webhook Monitor] Forcing recovery for main bot');
       const recovered = await webhookRecoveryService.recoverWebhook('main', 'forced_recovery');
       results.push({
         bot: 'main',
@@ -127,7 +131,7 @@ export async function POST(request: Request) {
     }
 
     if (bot === 'notifications' || bot === 'both') {
-      console.log('[Webhook Monitor] Forcing recovery for notifications bot');
+      logger.info({ bot: 'notifications' }, '[Webhook Monitor] Forcing recovery for notifications bot');
       const recovered = await webhookRecoveryService.recoverWebhook('notifications', 'forced_recovery');
       results.push({
         bot: 'notifications',
@@ -135,7 +139,7 @@ export async function POST(request: Request) {
       });
     }
 
-    console.log('[Webhook Monitor] ========== FORCED RECOVERY COMPLETE ==========');
+    logger.info({ results }, '[Webhook Monitor] FORCED RECOVERY COMPLETE');
 
     return NextResponse.json({
       success: true,
@@ -144,7 +148,10 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('[Webhook Monitor] Error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, '[Webhook Monitor] Error');
     return NextResponse.json({
       success: false,
       error: error.message || 'Failed to force recovery',

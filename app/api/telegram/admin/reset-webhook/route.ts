@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
 // Защищенный endpoint для переустановки webhook
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/admin/reset-webhook' });
   try {
     // Простая защита - требуем пароль
     const { password, botType } = await req.json()
@@ -87,7 +89,10 @@ export async function POST(req: NextRequest) {
       note: 'Webhooks have been reset with current environment variables'
     })
   } catch (error: any) {
-    console.error('Error resetting webhooks:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error resetting webhooks');
     return NextResponse.json(
       { error: error.message || 'Failed to reset webhooks' },
       { status: 500 }
@@ -97,6 +102,7 @@ export async function POST(req: NextRequest) {
 
 // GET endpoint для проверки текущего состояния webhooks
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/admin/reset-webhook' });
   try {
     const password = req.nextUrl.searchParams.get('password')
     
@@ -150,7 +156,10 @@ export async function GET(req: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error checking webhooks:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error checking webhooks');
     return NextResponse.json(
       { error: error.message || 'Failed to check webhooks' },
       { status: 500 }

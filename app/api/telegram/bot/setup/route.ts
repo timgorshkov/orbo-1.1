@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/setup' });
   try {
     // Проверяем авторизацию (должен быть админ)
     const supabase = await createClientServer()
@@ -33,6 +35,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     
+    logger.info({ org_id: orgId, user_id: user.id }, 'Setting up bot webhook');
+    
     // Инициализируем бота
     const telegramService = createTelegramService()
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/webhook`
@@ -46,7 +50,10 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ success: true, webhook: webhookResult, botInfo })
   } catch (error: unknown) {
-    console.error('Error sending Telegram message:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error setting up bot');
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

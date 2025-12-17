@@ -3,6 +3,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser, type ParsedJsonAuthor } from '@/lib/services/telegramJsonParser';
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/import-history/[id]/parse' });
   try {
     const { id: groupId } = await params
     const requestUrl = new URL(request.url)
@@ -65,11 +67,11 @@ export async function POST(
         .maybeSingle();
 
       if (!membership || !['owner', 'admin'].includes(membership.role)) {
-        console.log('[Import History] Access denied (pre-check):', {
-          userId: user.id,
-          orgId: expectedOrgId,
-          membership: membership?.role || 'none'
-        });
+        logger.warn({ 
+          user_id: user.id,
+          org_id: expectedOrgId,
+          membership_role: membership?.role || 'none'
+        }, '[Import History] Access denied (pre-check)');
         return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
       }
     }
@@ -116,7 +118,7 @@ export async function POST(
     }
 
     if (groupError && !group) {
-      console.error('Group fetch error:', groupError);
+      logger.error({ error: groupError.message, group_id: groupId }, 'Group fetch error');
     }
 
     if (!group) {
@@ -157,11 +159,11 @@ export async function POST(
         .maybeSingle();
 
       if (!membership || !['owner', 'admin'].includes(membership.role)) {
-        console.log('[Import History] Access denied:', {
-          userId: user.id,
-          orgId,
-          membership: membership?.role || 'none'
-        });
+        logger.warn({ 
+          user_id: user.id,
+          org_id: orgId,
+          membership_role: membership?.role || 'none'
+        }, '[Import History] Access denied');
         return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
       }
     }
@@ -223,7 +225,13 @@ export async function POST(
     // Читаем содержимое файла
     const fileContent = await file.text();
 
-    console.log(`Parsing Telegram history from ${file.name} (${file.size} bytes, format: ${isJson ? 'JSON' : 'HTML'})`);
+    logger.info({ 
+      file_name: file.name,
+      file_size: file.size,
+      format: isJson ? 'JSON' : 'HTML',
+      group_id: groupId,
+      org_id: orgId
+    }, 'Parsing Telegram history');
 
     let parsingResult: any;
     let authors: Array<{ name: string; userId?: number; username?: string; messageCount: number; firstMessageDate: Date; lastMessageDate: Date }>;
@@ -270,14 +278,33 @@ export async function POST(
       
       // Логируем успешное сопоставление
       if (chatIdMatches && nameMatches) {
-        console.log(`✅ Chat ID and name match: ID ${importedChatId} (abs: ${importedChatIdAbs}) = ${expectedChatId} (abs: ${expectedChatIdAbs}), name "${importedGroupName}" = "${expectedGroupName}"`);
+        logger.debug({ 
+          imported_chat_id: importedChatId,
+          expected_chat_id: expectedChatId,
+          imported_group_name: importedGroupName,
+          expected_group_name: expectedGroupName
+        }, 'Chat ID and name match');
       } else if (chatIdMatches) {
-        console.log(`⚠️ Chat ID matches (abs: ${importedChatIdAbs}), but name differs: "${importedGroupName}" vs "${expectedGroupName}"`);
+        logger.warn({ 
+          imported_chat_id: importedChatId,
+          expected_chat_id: expectedChatId,
+          imported_group_name: importedGroupName,
+          expected_group_name: expectedGroupName
+        }, 'Chat ID matches but name differs');
       } else if (nameMatches) {
-        console.log(`⚠️ Chat name matches ("${importedGroupName}"), but ID differs: ${importedChatId} (abs: ${importedChatIdAbs}) vs ${expectedChatId} (abs: ${expectedChatIdAbs})`);
+        logger.warn({ 
+          imported_chat_id: importedChatId,
+          expected_chat_id: expectedChatId,
+          imported_group_name: importedGroupName,
+          expected_group_name: expectedGroupName
+        }, 'Chat name matches but ID differs');
       }
       
-      console.log(`✅ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (JSON format with user IDs)`);
+      logger.info({ 
+        total_messages: parsingResult.stats.totalMessages,
+        unique_authors: parsingResult.stats.uniqueAuthors,
+        format: 'JSON'
+      }, 'Parsed Telegram history (JSON format with user IDs)');
     } else {
       // Parse HTML (legacy format without user_id)
       const validation = TelegramHistoryParser.validate(fileContent);
@@ -294,7 +321,11 @@ export async function POST(
       
       // ⚠️ HTML format doesn't include chat_id, so we can't validate it matches the group
       // This is less secure than JSON format, but allowed for backward compatibility
-      console.log(`⚠️ Parsed ${parsingResult.stats.totalMessages} messages from ${parsingResult.stats.uniqueAuthors} authors (HTML format - no user IDs, no chat_id validation)`);
+      logger.warn({ 
+        total_messages: parsingResult.stats.totalMessages,
+        unique_authors: parsingResult.stats.uniqueAuthors,
+        format: 'HTML'
+      }, 'Parsed Telegram history (HTML format - no user IDs, no chat_id validation)');
     }
 
     // Получаем существующих участников организации (не только этой группы!)
@@ -313,7 +344,7 @@ export async function POST(
       .eq('org_id', orgId);
 
     if (participantsError) {
-      console.error('Error fetching participants:', participantsError);
+      logger.error({ error: participantsError.message, org_id: orgId }, 'Error fetching participants');
       return NextResponse.json({ error: 'Failed to fetch participants' }, { status: 500 });
     }
 
@@ -340,7 +371,7 @@ export async function POST(
     for (const author of authors) {
       // Пропускаем ботов
       if (isBot(author.name, author.username)) {
-        console.log(`Skipping bot: ${author.name} (@${author.username || 'no username'})`);
+        logger.debug({ name: author.name, username: author.username }, 'Skipping bot');
         continue;
       }
 
@@ -362,7 +393,11 @@ export async function POST(
     const fuzzyMatches = matches.filter(m => m.matchType === 'fuzzy').length;
     const newParticipants = matches.filter(m => m.matchType === 'none').length;
 
-    console.log(`Matches: ${exactMatches} exact, ${fuzzyMatches} fuzzy, ${newParticipants} new`);
+    logger.info({ 
+      exact_matches: exactMatches,
+      fuzzy_matches: fuzzyMatches,
+      new_participants: newParticipants
+    }, 'Participant matching complete');
 
     return NextResponse.json({
       success: true,
@@ -433,7 +468,6 @@ function findParticipantMatch(
       bestMatch = userIdMatch;
       matchType = 'exact';
       confidence = 100; // 💯 Perfect match!
-      console.log(`✅ Perfect match by user_id: ${importAuthor.name} (${importAuthor.userId})`);
       
       // Early return - no need for other checks
       const result: ParticipantMatch = {
@@ -457,8 +491,6 @@ function findParticipantMatch(
         },
       };
       return result;
-    } else {
-      console.log(`⚠️ No user_id match for ${importAuthor.name} (${importAuthor.userId}) - trying other methods`);
     }
   }
 

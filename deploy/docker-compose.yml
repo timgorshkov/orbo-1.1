@@ -125,6 +125,23 @@ services:
     # Run certificate renewal every 12 hours
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
+  # ============================================
+  # Adminer - Database Management UI
+  # Access via SSH tunnel: ssh -L 8080:localhost:8080 selectel-orbo
+  # Then open http://localhost:8080
+  # ============================================
+  adminer:
+    image: adminer:latest
+    container_name: orbo_adminer
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: hydra
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - postgres
+
 networks:
   default:
     name: orbo_network

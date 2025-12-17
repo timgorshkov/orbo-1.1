@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 /**
  * API для миграции chat_id когда Telegram группа становится supergroup
@@ -7,6 +8,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
  * Body: { oldChatId: number, newChatId: number }
  */
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/groups/migrate-chat' });
   try {
     const supabase = createAdminServer()
     
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
       )
     }
     
-    console.log(`[Chat Migration] Migrating from ${oldChatId} to ${newChatId}`)
+    logger.info({ old_chat_id: oldChatId, new_chat_id: newChatId }, '[Chat Migration] Migrating');
     
     // Вызываем функцию миграции
     const { data: result, error } = await supabase
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
       })
     
     if (error) {
-      console.error('[Chat Migration] Error:', error)
+      logger.error({ error: error.message, old_chat_id: oldChatId, new_chat_id: newChatId }, '[Chat Migration] Error');
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
@@ -45,14 +47,19 @@ export async function POST(req: NextRequest) {
         migration_result: result
       })
     
-    console.log('[Chat Migration] Success:', result)
+    logger.info({ old_chat_id: oldChatId, new_chat_id: newChatId, result }, '[Chat Migration] Success');
     
     return NextResponse.json({
       success: true,
       result
     })
   } catch (error: any) {
-    console.error('[Chat Migration] Unexpected error:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      old_chat_id: oldChatId,
+      new_chat_id: newChatId
+    }, '[Chat Migration] Unexpected error');
     return NextResponse.json(
       { error: error.message || 'An unexpected error occurred' },
       { status: 500 }

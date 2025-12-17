@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/notifications/setup' });
   try {
     const { token, org_id } = await req.json()
     
     if (!token || !org_id) {
       return NextResponse.json({ success: false, error: 'Missing token or org_id' }, { status: 400 })
     }
+    
+    logger.info({ org_id }, 'Setting up notifications bot');
     
     // Проверяем валидность токена
     const telegramService = createTelegramService('notifications')
@@ -79,7 +83,10 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error setting up notifications bot:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error setting up notifications bot');
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 })
   }
 }

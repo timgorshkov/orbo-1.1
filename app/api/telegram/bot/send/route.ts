@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/send' });
   try {
     // Проверяем авторизацию
     const supabase = await createClientServer()
@@ -35,6 +37,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     
+    logger.info({ org_id: orgId, chat_id: chatId, user_id: user.id }, 'Sending bot message');
+    
     // Проверяем, что группа принадлежит организации
     const { data: group, error: groupError } = await supabase
       .from('telegram_groups')
@@ -64,9 +68,14 @@ export async function POST(req: NextRequest) {
       }
     })
     
+    logger.debug({ chat_id: chatId, message_id: result.result?.message_id }, 'Bot message sent');
+    
     return NextResponse.json({ success: true, messageId: result.result?.message_id })
   } catch (error: unknown) {
-    console.error('Error sending Telegram message:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error sending Telegram message');
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
