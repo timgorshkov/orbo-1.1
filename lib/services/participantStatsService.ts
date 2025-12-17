@@ -6,6 +6,9 @@
  */
 
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('ParticipantStats');
 
 /**
  * Update participant's last activity timestamp
@@ -49,12 +52,14 @@ export async function updateParticipantActivity(
         }
         
         // Only log on final attempt to reduce noise
-        console.warn('[Stats] Participant activity update failed:', {
-          tgUserId,
-          orgId,
-          message: error.message,
-          code: error.code || ''
-        });
+        if (attempt === maxRetries) {
+          logger.warn({ 
+            tg_user_id: tgUserId,
+            org_id: orgId,
+            error: error.message,
+            code: error.code || ''
+          }, 'Participant activity update failed');
+        }
       } else {
         // Success - exit loop
         return;
@@ -74,11 +79,13 @@ export async function updateParticipantActivity(
       }
       
       // Only log on final attempt to reduce noise
-      console.warn('[Stats] Participant activity network error:', {
-        tgUserId,
-        orgId,
-        error: errorMessage
-      });
+      if (attempt === maxRetries) {
+        logger.warn({ 
+          tg_user_id: tgUserId,
+          org_id: orgId,
+          error: errorMessage
+        }, 'Participant activity network error');
+      }
       
       break;
     }
@@ -112,11 +119,11 @@ export async function incrementGroupMessageCount(
       if (error) {
         // Only log on final attempt to reduce noise
         if (attempt === maxRetries) {
-          console.warn('[Stats] Failed to update group sync time:', {
-            tgChatId,
+          logger.warn({ 
+            tg_chat_id: tgChatId,
             error: error.message,
             code: error.code || ''
-          });
+          }, 'Failed to update group sync time');
         }
         
         // Retry for transient errors
@@ -138,10 +145,10 @@ export async function incrementGroupMessageCount(
       
       // Only log on final attempt to reduce noise
       if (attempt === maxRetries) {
-        console.warn('[Stats] Group sync time update failed:', {
-          tgChatId,
+        logger.warn({ 
+          tg_chat_id: tgChatId,
           error: errorMessage
-        });
+        }, 'Group sync time update failed');
       }
       
       if (isTransient && attempt < maxRetries) {
@@ -183,7 +190,7 @@ export async function getActiveParticipantsForEnrichment(
       .limit(limit);
     
     if (error) {
-      console.error('[Stats] Failed to fetch active participants:', error);
+      logger.error({ error: error.message }, 'Failed to fetch active participants');
       return [];
     }
     
@@ -200,7 +207,10 @@ export async function getActiveParticipantsForEnrichment(
       tg_user_id: p.tg_user_id
     }));
   } catch (error) {
-    console.error('[Stats] Error fetching active participants:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error fetching active participants');
     return [];
   }
 }
@@ -249,7 +259,10 @@ export async function getEnrichmentStats(): Promise<{
       avg_enrichment_age_hours: avgAge
     };
   } catch (error) {
-    console.error('[Stats] Error getting enrichment stats:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error getting enrichment stats');
     return {
       total_participants: 0,
       enriched_participants: 0,

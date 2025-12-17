@@ -1,5 +1,8 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { PostgrestSingleResponse } from '@supabase/supabase-js';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('ParticipantMatcher');
 
 export type MatchIntent = {
   orgId: string;
@@ -70,7 +73,14 @@ export class ParticipantMatcher {
     const tgUserId = intent.tg_user_id ?? null;
     const fullName = buildFullName(intent.first_name, intent.last_name, intent.full_name);
     
-    console.log('Finding matches for:', { orgId: intent.orgId, email, phone, username, tgUserId, fullName });
+    logger.debug({ 
+      org_id: intent.orgId,
+      email,
+      phone,
+      username,
+      tg_user_id: tgUserId,
+      full_name: fullName
+    }, 'Finding matches');
 
     const reasonsById = new Map<string, string[]>();
     const scoresById = new Map<string, number>();
@@ -120,7 +130,7 @@ export class ParticipantMatcher {
       }
 
       const { data: exactMatches } = (await query) as PostgrestSingleResponse<any[]>;
-      console.log('Exact matches found:', exactMatches?.length || 0);
+      logger.debug({ count: exactMatches?.length || 0 }, 'Exact matches found');
       (exactMatches || []).forEach(row => {
         if (email && row.email === email) addReason(row, 'Точный e-mail', 60);
         if (phone && row.phone === phone) addReason(row, 'Точный телефон', 65);
@@ -146,7 +156,7 @@ export class ParticipantMatcher {
         .is('merged_into', null) // Исключаем уже объединенных участников
         .or(nameFilters.join(','))) as PostgrestSingleResponse<any[]>;
 
-      console.log('Fuzzy matches found:', fuzzyMatches?.length || 0);
+      logger.debug({ count: fuzzyMatches?.length || 0 }, 'Fuzzy matches found');
       (fuzzyMatches || []).forEach(row => {
         addReason(row, 'Похожее имя', 20);
       });
@@ -159,7 +169,7 @@ export class ParticipantMatcher {
     }))
       .sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
     
-    console.log('Total matches returned:', results.length);
+    logger.debug({ count: results.length }, 'Total matches returned');
     return results;
   }
 }

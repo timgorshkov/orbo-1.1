@@ -8,6 +8,10 @@
  * - Alerts
  */
 
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('TelegramNotification');
+
 interface TelegramSendMessageParams {
   chat_id: number | string;
   text: string;
@@ -79,7 +83,10 @@ async function checkBotAccess(
       }
     }
   } catch (error) {
-    console.error('[TelegramNotification] Failed to check bot access:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Failed to check bot access');
     return { canSendDM: false, reason: 'Network error' };
   }
 }
@@ -94,14 +101,14 @@ export async function sendDigestDM(
   const botToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
 
   if (!botToken) {
-    console.error('[TelegramNotification] TELEGRAM_NOTIFICATIONS_BOT_TOKEN not configured');
+    logger.error({}, 'TELEGRAM_NOTIFICATIONS_BOT_TOKEN not configured');
     return { success: false, error: 'Bot token not configured' };
   }
 
   // Check if we can send DM
   const accessCheck = await checkBotAccess(botToken, tgUserId);
   if (!accessCheck.canSendDM) {
-    console.warn(`[TelegramNotification] Cannot send DM to ${tgUserId}: ${accessCheck.reason}`);
+    logger.warn({ tg_user_id: tgUserId, reason: accessCheck.reason }, 'Cannot send DM');
     return { success: false, error: accessCheck.reason };
   }
 
@@ -115,20 +122,30 @@ export async function sendDigestDM(
     });
 
     if (response.ok && response.result) {
-      console.log(`[TelegramNotification] Digest sent to ${tgUserId}, message_id: ${response.result.message_id}`);
+      logger.info({ 
+        tg_user_id: tgUserId,
+        message_id: response.result.message_id
+      }, 'Digest sent');
       return {
         success: true,
         messageId: response.result.message_id,
       };
     } else {
-      console.error(`[TelegramNotification] Failed to send to ${tgUserId}:`, response.description);
+      logger.error({ 
+        tg_user_id: tgUserId,
+        error: response.description || 'Unknown error'
+      }, 'Failed to send');
       return {
         success: false,
         error: response.description || 'Unknown error',
       };
     }
   } catch (error) {
-    console.error('[TelegramNotification] Error sending message:', error);
+    logger.error({ 
+      tg_user_id: tgUserId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error sending message');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -148,7 +165,7 @@ export async function sendDigestBatch(
   failed: number;
   results: Array<{ tgUserId: number; name: string; success: boolean; error?: string }>;
 }> {
-  console.log(`[TelegramNotification] Sending digest to ${recipients.length} recipients`);
+  logger.info({ recipients_count: recipients.length }, 'Sending digest to recipients');
 
   const results = await Promise.all(
     recipients.map(async (recipient) => {
@@ -165,7 +182,11 @@ export async function sendDigestBatch(
   const sent = results.filter((r) => r.success).length;
   const failed = results.filter((r) => !r.success).length;
 
-  console.log(`[TelegramNotification] Batch complete: ${sent}/${recipients.length} sent, ${failed} failed`);
+  logger.info({ 
+    sent,
+    failed,
+    total: recipients.length
+  }, 'Batch complete');
 
   return {
     total: recipients.length,

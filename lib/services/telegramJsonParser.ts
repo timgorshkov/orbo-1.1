@@ -3,6 +3,10 @@
  * JSON format provides user_id which is crucial for participant matching
  */
 
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('TelegramJsonParser');
+
 export interface ParsedJsonMessage {
   authorName: string;
   authorUserId?: number; // ⭐ KEY ADVANTAGE: Telegram user ID from JSON
@@ -144,7 +148,10 @@ export class TelegramJsonParser {
           }
         }
       } catch (error) {
-        console.warn(`Failed to parse message ${msg.id}:`, error);
+        logger.warn({ 
+          message_id: msg.id,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Failed to parse message');
         // Continue parsing other messages
       }
     }
@@ -212,7 +219,7 @@ export class TelegramJsonParser {
     }
     
     if (isNaN(timestamp.getTime())) {
-      console.warn(`Invalid date format: ${msg.date}`);
+      logger.warn({ date: msg.date }, 'Invalid date format');
       return null;
     }
     

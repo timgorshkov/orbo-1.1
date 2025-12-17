@@ -1,4 +1,7 @@
 import { parse } from 'node-html-parser';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('TelegramHistoryParser');
 
 export interface ParsedMessage {
   authorName: string;
@@ -76,7 +79,9 @@ export class TelegramHistoryParser {
           }
         }
       } catch (error) {
-        console.warn('Failed to parse message:', error);
+        logger.warn({ 
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Failed to parse message');
         // Продолжаем парсинг остальных сообщений
       }
     });

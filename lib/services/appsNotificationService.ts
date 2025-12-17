@@ -7,6 +7,9 @@
  */
 
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('AppsNotification');
 
 interface TelegramResponse {
   ok: boolean;
@@ -85,7 +88,7 @@ export async function notifyItemApproved(itemId: string): Promise<{
       .single();
 
     if (itemError || !item) {
-      console.error('[AppsNotification] Item not found:', itemError);
+      logger.error({ item_id: itemId, error: itemError?.message }, 'Item not found');
       return { success: false, error: 'Item not found' };
     }
 
@@ -97,13 +100,13 @@ export async function notifyItemApproved(itemId: string): Promise<{
       .eq('is_active', true);
 
     if (groupsError || !groups || groups.length === 0) {
-      console.error('[AppsNotification] No active Telegram groups found');
+      logger.error({ org_id: item.org_id }, 'No active Telegram groups found');
       return { success: false, error: 'No Telegram groups configured' };
     }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
-      console.error('[AppsNotification] TELEGRAM_BOT_TOKEN not configured');
+      logger.error({}, 'TELEGRAM_BOT_TOKEN not configured');
       return { success: false, error: 'Bot not configured' };
     }
 
@@ -188,19 +191,24 @@ export async function notifyItemApproved(itemId: string): Promise<{
         });
 
         if (telegramResponse.ok) {
-          console.log(
-            `[AppsNotification] Item ${itemId} posted to group ${group.tg_chat_id}`
-          );
+          logger.info({ 
+            item_id: itemId,
+            group_id: group.id,
+            tg_chat_id: group.tg_chat_id,
+            message_id: telegramResponse.result?.message_id
+          }, 'Item posted to group');
           results.push({
             groupId: group.id,
             success: true,
             messageId: telegramResponse.result?.message_id,
           });
         } else {
-          console.error(
-            `[AppsNotification] Failed to post to group ${group.tg_chat_id}:`,
-            telegramResponse.description
-          );
+          logger.error({ 
+            item_id: itemId,
+            group_id: group.id,
+            tg_chat_id: group.tg_chat_id,
+            error: telegramResponse.description
+          }, 'Failed to post to group');
           results.push({
             groupId: group.id,
             success: false,
@@ -208,7 +216,12 @@ export async function notifyItemApproved(itemId: string): Promise<{
           });
         }
       } catch (error) {
-        console.error(`[AppsNotification] Error posting to group ${group.id}:`, error);
+        logger.error({ 
+          item_id: itemId,
+          group_id: group.id,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        }, 'Error posting to group');
         results.push({
           groupId: group.id,
           success: false,
@@ -225,7 +238,11 @@ export async function notifyItemApproved(itemId: string): Promise<{
       error: successCount === 0 ? 'Failed to post to any group' : undefined,
     };
   } catch (error) {
-    console.error('[AppsNotification] Error in notifyItemApproved:', error);
+    logger.error({ 
+      item_id: itemId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error in notifyItemApproved');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -282,19 +299,19 @@ export async function notifyItemRejected(
       .single();
 
     if (itemError || !item) {
-      console.error('[AppsNotification] Item not found:', itemError);
+      logger.error({ item_id: itemId, error: itemError?.message }, 'Item not found');
       return { success: false, error: 'Item not found' };
     }
 
     const creator = item.participants as any;
     if (!creator?.tg_user_id) {
-      console.error('[AppsNotification] Creator Telegram ID not found');
+      logger.error({ item_id: itemId }, 'Creator Telegram ID not found');
       return { success: false, error: 'Creator Telegram ID not found' };
     }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
-      console.error('[AppsNotification] TELEGRAM_BOT_TOKEN not configured');
+      logger.error({}, 'TELEGRAM_BOT_TOKEN not configured');
       return { success: false, error: 'Bot not configured' };
     }
 
@@ -341,27 +358,40 @@ export async function notifyItemRejected(
       });
 
       if (telegramResponse.ok) {
-        console.log(`[AppsNotification] Rejection DM sent to user ${creator.tg_user_id}`);
+        logger.info({ 
+          item_id: itemId,
+          tg_user_id: creator.tg_user_id
+        }, 'Rejection DM sent');
         return { success: true };
       } else {
-        console.error(
-          `[AppsNotification] Failed to send DM to user ${creator.tg_user_id}:`,
-          telegramResponse.description
-        );
+        logger.error({ 
+          item_id: itemId,
+          tg_user_id: creator.tg_user_id,
+          error: telegramResponse.description
+        }, 'Failed to send DM');
         return {
           success: false,
           error: telegramResponse.description || 'Failed to send DM',
         };
       }
     } catch (error) {
-      console.error('[AppsNotification] Error sending DM:', error);
+      logger.error({ 
+        item_id: itemId,
+        tg_user_id: creator.tg_user_id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Error sending DM');
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   } catch (error) {
-    console.error('[AppsNotification] Error in notifyItemRejected:', error);
+    logger.error({ 
+      item_id: itemId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error in notifyItemRejected');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

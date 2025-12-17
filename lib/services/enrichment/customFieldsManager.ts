@@ -5,6 +5,10 @@
  * Allows org owners to add their own fields without breaking AI enrichment.
  */
 
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('CustomFieldsManager');
+
 // System-reserved field prefixes (cannot be edited by owners)
 const RESERVED_PREFIXES = [
   'ai_',           // AI-extracted fields
@@ -106,7 +110,7 @@ export function sanitizeCustomAttributes(
   for (const [key, value] of Object.entries(attributes)) {
     // Skip reserved fields (unless explicitly allowed)
     if (isReservedField(key) && !allowedFields?.includes(key)) {
-      console.warn(`Attempted to set reserved field: ${key}`);
+      logger.warn({ field: key }, 'Attempted to set reserved field');
       continue;
     }
     
@@ -136,7 +140,7 @@ export function mergeCustomAttributes(
     
     // Allow system fields only if explicitly permitted
     if (isReserved && !options.allowSystemFields && !options.allowedFields?.includes(key)) {
-      console.warn(`Skipping reserved field in merge: ${key}`);
+      logger.warn({ field: key }, 'Skipping reserved field in merge');
       continue;
     }
     

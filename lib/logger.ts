@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { captureError } from './hawk';
 
 // Create base logger instance
 export const logger = pino({
@@ -23,6 +24,22 @@ export const logger = pino({
   
   // Timestamp
   timestamp: pino.stdTimeFunctions.isoTime,
+  
+  // Hook для отправки ошибок в Hawk
+  hooks: {
+    logMethod(inputArgs, method, level) {
+      // Если уровень error (50) - отправляем в Hawk
+      if (level >= 50 && typeof window === 'undefined') {
+        const [obj, msg] = inputArgs as [Record<string, unknown>, string];
+        if (obj?.error instanceof Error) {
+          captureError(obj.error, { message: msg, ...obj });
+        } else if (obj?.stack) {
+          captureError(new Error(msg || String(obj.message)), obj);
+        }
+      }
+      return method.apply(this, inputArgs);
+    },
+  },
   
   // Use pino-pretty in development
   ...(process.env.NODE_ENV === 'development' && {

@@ -12,7 +12,9 @@ import { analyzeParticipantWithAI, estimateAICost, type AIEnrichmentResult } fro
 import { analyzeReactionPatterns, type ReactionPatterns } from './enrichment/reactionAnalyzer';
 import { classifyBehavioralRole, type RoleClassification } from './enrichment/roleClassifier';
 import { mergeCustomAttributes } from './enrichment/customFieldsManager';
+import { createServiceLogger } from '@/lib/logger';
 
+const logger = createServiceLogger('ParticipantEnrichment');
 const supabaseAdmin = createAdminServer();
 
 /**
@@ -89,7 +91,7 @@ export async function enrichParticipant(
     const chatIds = (orgGroups || []).map(g => Number(g.tg_chat_id));
     
     if (chatIds.length === 0) {
-      console.warn(`[Enrichment] No telegram groups found for org ${orgId}`);
+      logger.warn({ org_id: orgId }, 'No telegram groups found for org');
     }
     
     // 2. Fetch messages (ALL available, not filtered by date)
@@ -188,7 +190,7 @@ export async function enrichParticipant(
       );
       
       if (messagesWithContext.length === 0) {
-        console.warn(`[Enrichment] No messages with text found for participant ${participantId}`);
+        logger.warn({ participant_id: participantId }, 'No messages with text found for participant');
       }
       
       // Prepare reacted messages as interest signals
@@ -207,7 +209,7 @@ export async function enrichParticipant(
       result.ai_analysis = aiAnalysis;
       result.cost_usd = aiAnalysis.cost_usd;
     } else if (options.useAI && participantMessages.length === 0) {
-      console.warn(`[Enrichment] ⚠️ AI analysis requested but no participant messages found!`);
+      logger.warn({ participant_id: participantId }, 'AI analysis requested but no participant messages found');
     }
     
     // 7. Behavioral Role Classification (rule-based)
@@ -285,7 +287,12 @@ export async function enrichParticipant(
     
     return result;
   } catch (error) {
-    console.error('[Enrichment] Error:', error);
+    logger.error({ 
+      participant_id: participantId,
+      org_id: orgId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Enrichment error');
     return {
       participant_id: participantId,
       success: false,
@@ -802,7 +809,7 @@ export async function estimateEnrichmentCost(
   const chatIds = (orgGroups || []).map(g => Number(g.tg_chat_id));
   
   if (chatIds.length === 0) {
-    console.warn(`[Enrichment] No telegram groups found for org ${orgId} when estimating cost`);
+    logger.warn({ org_id: orgId }, 'No telegram groups found for org when estimating cost');
     return { messageCount: 0, estimatedTokens: 0, estimatedCostUsd: 0, estimatedCostRub: 0 };
   }
   

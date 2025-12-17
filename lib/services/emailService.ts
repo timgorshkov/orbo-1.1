@@ -1,5 +1,8 @@
 import formData from 'form-data'
 import Mailgun from 'mailgun.js'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('EmailService');
 
 interface SendEmailParams {
   to: string
@@ -19,7 +22,7 @@ class EmailService {
     const fromEmail = process.env.MAILGUN_FROM_EMAIL || 'noreply@orbo.ru'
 
     if (!apiKey || !domain) {
-      console.warn('Mailgun not configured. Email sending will be disabled.')
+      logger.warn({}, 'Mailgun not configured. Email sending will be disabled.');
       this.mailgun = null
       this.domain = ''
       this.fromEmail = fromEmail
@@ -34,10 +37,11 @@ class EmailService {
 
   async sendEmail({ to, subject, html, text }: SendEmailParams): Promise<boolean> {
     if (!this.mailgun) {
-      console.log('[EmailService] Mailgun not configured, skipping email send')
-      console.log(`[DEV] Would send email to: ${to}`)
-      console.log(`[DEV] Subject: ${subject}`)
-      console.log(`[DEV] Content: ${text || html}`)
+      logger.debug({ 
+        to,
+        subject,
+        content_preview: (text || html).substring(0, 100)
+      }, 'Mailgun not configured, skipping email send');
       return false
     }
 
@@ -50,10 +54,14 @@ class EmailService {
         text: text || this.stripHtml(html)
       })
 
-      console.log(`[EmailService] Email sent successfully to ${to}:`, result.id)
+      logger.info({ to, message_id: result.id }, 'Email sent successfully');
       return true
     } catch (error) {
-      console.error('[EmailService] Failed to send email:', error)
+      logger.error({ 
+        to,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Failed to send email');
       return false
     }
   }

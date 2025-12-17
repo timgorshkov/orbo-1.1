@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +12,10 @@ export const dynamic = 'force-dynamic';
 async function copyGroupParticipantsToOrg(
   supabase: any,
   tgChatId: string,
-  targetOrgId: string
+  targetOrgId: string,
+  logger: ReturnType<typeof createAPILogger>
 ) {
-  console.log(`[CopyParticipants] Starting copy for group ${tgChatId} to org ${targetOrgId}`);
+  logger.info({ tg_chat_id: tgChatId, org_id: targetOrgId }, '[CopyParticipants] Starting copy');
 
   // 1. Получаем всех участников группы из participant_groups
   const { data: groupParticipants, error: pgError } = await supabase
@@ -37,16 +39,16 @@ async function copyGroupParticipantsToOrg(
     .eq('tg_group_id', tgChatId);
 
   if (pgError) {
-    console.error('[CopyParticipants] Error fetching group participants:', pgError);
+    logger.error({ error: pgError.message, tg_chat_id: tgChatId }, '[CopyParticipants] Error fetching group participants');
     return;
   }
 
   if (!groupParticipants || groupParticipants.length === 0) {
-    console.log('[CopyParticipants] No participants found in this group');
+    logger.info({ tg_chat_id: tgChatId }, '[CopyParticipants] No participants found in this group');
     return;
   }
 
-  console.log(`[CopyParticipants] Found ${groupParticipants.length} participants in group`);
+  logger.info({ tg_chat_id: tgChatId, participants_count: groupParticipants.length }, '[CopyParticipants] Found participants');
 
   let created = 0;
   let skipped = 0;
@@ -56,7 +58,7 @@ async function copyGroupParticipantsToOrg(
     const participant = gp.participants;
 
     if (!participant || !participant.tg_user_id) {
-      console.log('[CopyParticipants] Skipping participant without tg_user_id');
+      logger.debug({ tg_chat_id: tgChatId }, '[CopyParticipants] Skipping participant without tg_user_id');
       skipped++;
       continue;
     }
@@ -71,7 +73,7 @@ async function copyGroupParticipantsToOrg(
       .maybeSingle();
 
     if (existing) {
-      console.log(`[CopyParticipants] Participant ${participant.tg_user_id} already exists in org`);
+      logger.debug({ tg_user_id: participant.tg_user_id, org_id: targetOrgId }, '[CopyParticipants] Participant already exists in org');
       
       // Проверяем, есть ли связь в participant_groups
       const { data: existingPG } = await supabase
@@ -89,7 +91,7 @@ async function copyGroupParticipantsToOrg(
             participant_id: existing.id,
             tg_group_id: tgChatId
           });
-        console.log(`[CopyParticipants] Added participant_groups link for ${participant.tg_user_id}`);
+        logger.debug({ tg_user_id: participant.tg_user_id }, '[CopyParticipants] Added participant_groups link');
       }
       
       skipped++;
@@ -117,7 +119,7 @@ async function copyGroupParticipantsToOrg(
       .single();
 
     if (insertError) {
-      console.error(`[CopyParticipants] Error creating participant ${participant.tg_user_id}:`, insertError);
+      logger.error({ tg_user_id: participant.tg_user_id, error: insertError.message }, '[CopyParticipants] Error creating participant');
       continue;
     }
 
@@ -130,18 +132,19 @@ async function copyGroupParticipantsToOrg(
       });
 
     if (pgLinkError) {
-      console.error(`[CopyParticipants] Error linking participant to group:`, pgLinkError);
+      logger.error({ tg_user_id: participant.tg_user_id, error: pgLinkError.message }, '[CopyParticipants] Error linking participant to group');
       // Не прерываем, продолжаем с другими
     }
 
     created++;
-    console.log(`[CopyParticipants] Created participant ${participant.tg_user_id} for org ${targetOrgId}`);
+    logger.debug({ tg_user_id: participant.tg_user_id, org_id: targetOrgId }, '[CopyParticipants] Created participant');
   }
 
-  console.log(`[CopyParticipants] Completed: ${created} created, ${skipped} skipped`);
+  logger.info({ created, skipped, tg_chat_id: tgChatId, org_id: targetOrgId }, '[CopyParticipants] Completed');
 }
 
 export async function POST(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/add-to-org' });
   try {
     const body = await request.json();
     const { groupId, orgId } = body;
@@ -158,7 +161,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    console.log(`Adding group ${groupId} to org ${orgId} by user ${user.id}`);
+    logger.info({ group_id: groupId, org_id: orgId, user_id: user.id }, 'Adding group to org');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
@@ -217,7 +220,7 @@ export async function POST(request: Request) {
     
     // Приводим tg_chat_id к строке для совместимости с БД
     const tgChatIdStr = String(group.tg_chat_id);
-    console.log(`Group tg_chat_id: ${tgChatIdStr} (original type: ${typeof group.tg_chat_id})`);
+    logger.debug({ tg_chat_id: tgChatIdStr, original_type: typeof group.tg_chat_id }, 'Group tg_chat_id');
     
     // Проверяем, что пользователь является администратором группы
     // Получаем все верифицированные Telegram аккаунты пользователя
@@ -228,7 +231,7 @@ export async function POST(request: Request) {
       .eq('is_verified', true);
       
     if (accountsError) {
-      console.error('Error fetching Telegram accounts:', accountsError);
+      logger.error({ error: accountsError.message, user_id: user.id }, 'Error fetching Telegram accounts');
       return NextResponse.json({ 
         error: 'Error fetching Telegram accounts',
         details: accountsError
@@ -236,7 +239,7 @@ export async function POST(request: Request) {
     }
     
     if (!telegramAccounts || telegramAccounts.length === 0) {
-      console.log(`No verified Telegram accounts found for user ${user.id}`);
+      logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
       return NextResponse.json({ 
         error: 'No verified Telegram accounts found for this user' 
       }, { status: 400 });
@@ -248,7 +251,7 @@ export async function POST(request: Request) {
     // Выбираем аккаунт для текущей организации или первый доступный
     const activeAccount = telegramAccount || telegramAccounts[0];
     
-    console.log(`Using Telegram account: ${activeAccount.telegram_user_id} (from org: ${activeAccount.org_id})`);
+    logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
     
     // Проверяем права администратора
     const { data: adminRights, error: adminError } = await supabaseService
@@ -299,7 +302,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    console.log(`Checking existing mapping for org ${orgId}, group tg_chat_id: ${tgChatIdStr}`);
+    logger.debug({ org_id: orgId, tg_chat_id: tgChatIdStr }, 'Checking existing mapping');
 
     // Проверяем существование записи (без `status`, так как этот столбец может не существовать)
     const { data: existingMapping, error: mappingCheckError } = await supabaseService
@@ -310,14 +313,12 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (mappingCheckError) {
-      console.error('Error checking group mapping:', {
+      logger.error({ 
         code: mappingCheckError.code,
-        message: mappingCheckError.message,
-        details: mappingCheckError.details,
-        hint: mappingCheckError.hint,
+        error: mappingCheckError.message,
         tg_chat_id: tgChatIdStr,
         tg_chat_id_type: typeof tgChatIdStr
-      });
+      }, 'Error checking group mapping');
       
       // Код 42P01 означает, что таблица не существует - это нормально для старых установок
       if (mappingCheckError.code !== '42P01') {
@@ -327,12 +328,12 @@ export async function POST(request: Request) {
         }, { status: 500 });
       }
       
-      console.log('org_telegram_groups table not found, will use legacy fallback');
+      logger.warn({}, 'org_telegram_groups table not found, will use legacy fallback');
     }
 
     try {
       if (existingMapping) {
-        console.log(`Mapping already exists for group ${tgChatIdStr} in org ${orgId}, created at: ${existingMapping.created_at}`);
+        logger.info({ tg_chat_id: tgChatIdStr, org_id: orgId, created_at: existingMapping.created_at }, 'Mapping already exists');
         // Группа уже добавлена - возвращаем успех
         // ✅ Добавляем флаг suggestImport даже для уже добавленных групп
         return NextResponse.json({
@@ -343,7 +344,7 @@ export async function POST(request: Request) {
           suggestImport: true // ✅ Флаг для показа предложения импорта истории
         });
       } else {
-        console.log(`Creating new mapping for group ${tgChatIdStr} in org ${orgId}`);
+        logger.info({ tg_chat_id: tgChatIdStr, org_id: orgId }, 'Creating new mapping');
         // Не указываем status - если столбец существует, он будет использовать default 'active'
         // Если столбца нет, вставка пройдет успешно без него
         await supabaseService
@@ -360,10 +361,10 @@ export async function POST(request: Request) {
       }
 
       if (linkError?.code === '42P01') {
-        console.error('Mapping table org_telegram_groups not found - database schema issue');
+        logger.error({}, 'Mapping table org_telegram_groups not found - database schema issue');
         return NextResponse.json({ error: 'Database schema error: org_telegram_groups table missing' }, { status: 500 });
       } else {
-        console.error('Error creating group mapping:', linkError);
+        logger.error({ error: linkError.message || String(linkError) }, 'Error creating group mapping');
         return NextResponse.json({ 
           error: 'Failed to link group to organization',
           details: linkError.message || String(linkError)
@@ -371,10 +372,10 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log(`Successfully linked group ${tgChatIdStr} to org ${orgId}`);
+    logger.info({ tg_chat_id: tgChatIdStr, org_id: orgId }, 'Successfully linked group to org');
 
     // Копируем участников группы в новую организацию
-    await copyGroupParticipantsToOrg(supabaseService, tgChatIdStr, orgId);
+    await copyGroupParticipantsToOrg(supabaseService, tgChatIdStr, orgId, logger);
 
     // Log admin action
     await logAdminAction({
