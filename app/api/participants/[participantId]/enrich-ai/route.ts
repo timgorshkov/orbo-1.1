@@ -22,8 +22,10 @@ export async function GET(
   { params }: { params: Promise<{ participantId: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/enrich-ai' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params;
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const supabase = await createClientServer();
     const searchParams = request.nextUrl.searchParams;
     const orgId = searchParams.get('orgId');
@@ -65,7 +67,7 @@ export async function GET(
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      participant_id: participantId
+      participant_id: participantId || 'unknown'
     }, '[API] Enrich AI estimation error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
@@ -79,8 +81,10 @@ export async function POST(
   { params }: { params: Promise<{ participantId: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/participants/[participantId]/enrich-ai' });
+  let participantId: string | undefined;
   try {
-    const { participantId } = await params;
+    const paramsData = await params;
+    participantId = paramsData.participantId;
     const supabase = await createClientServer();
     const body = await request.json();
     const { orgId, useAI = true, includeBehavior = true, includeReactions = true, daysBack = 90 } = body;
@@ -170,7 +174,7 @@ export async function POST(
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      participant_id: participantId,
+      participant_id: participantId || 'unknown',
       org_id: orgId
     }, '[API] Enrich AI error');
     return NextResponse.json(

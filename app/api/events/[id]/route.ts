@@ -10,8 +10,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
+  let eventId: string | undefined;
   try {
-    const { id: eventId } = await params
+    const paramsData = await params;
+    eventId = paramsData.id;
     const supabase = await createClientServer()
 
     const adminSupabase = createAdminServer()
@@ -120,7 +122,7 @@ export async function GET(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      event_id: eventId
+      event_id: eventId || 'unknown'
     }, 'Error in GET /api/events/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
@@ -135,8 +137,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
+  let eventId: string | undefined;
   try {
-    const { id: eventId } = await params
+    const paramsData = await params;
+    eventId = paramsData.id;
     const body = await request.json()
     const {
       title,
@@ -359,8 +363,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]' });
+  let eventId: string | undefined;
   try {
-    const { id: eventId } = await params
+    const paramsData = await params;
+    eventId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check if user has admin rights
@@ -421,7 +427,7 @@ export async function DELETE(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      event_id: eventId
+      event_id: eventId || 'unknown'
     }, 'Error in DELETE /api/events/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
