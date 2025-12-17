@@ -84,10 +84,44 @@ export function createStorage(): StorageProvider {
 // Хелперы для частых операций
 // ============================================
 
-/** Bucket для материалов (логотипы, обложки, фото) */
+/**
+ * Получить имя bucket в зависимости от провайдера
+ * - Supabase: несколько buckets ('materials', 'participant-photos', etc.)
+ * - S3/Selectel: один bucket из env, логические разделы через path prefix
+ */
+export function getBucket(logicalBucket: string): string {
+  const provider = getStorageProvider();
+  
+  if (provider === 's3' || provider === 'r2') {
+    // Для S3 используем один bucket из env
+    return process.env.SELECTEL_BUCKET || process.env.S3_BUCKET || 'orbo-storage';
+  }
+  
+  // Для Supabase используем логический bucket напрямую
+  return logicalBucket;
+}
+
+/**
+ * Получить путь с учётом провайдера
+ * - Supabase: path как есть
+ * - S3: добавляем логический bucket как prefix
+ */
+export function getStoragePath(logicalBucket: string, path: string): string {
+  const provider = getStorageProvider();
+  
+  if (provider === 's3' || provider === 'r2') {
+    // Для S3: materials/org-logos/123.jpg -> materials/org-logos/123.jpg
+    // Логический bucket становится частью пути
+    return `${logicalBucket}/${path}`;
+  }
+  
+  return path;
+}
+
+/** Логический bucket для материалов (логотипы, обложки, фото) */
 export const BUCKET_MATERIALS = 'materials';
 
-/** Bucket для файлов приложений */
+/** Логический bucket для файлов приложений */
 export const BUCKET_APP_FILES = 'app-files';
 
 /**

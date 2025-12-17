@@ -220,8 +220,12 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   getPublicUrl(bucket: string, path: string, options?: UrlOptions): string {
+    // Для Selectel: publicUrlBase уже включает bucket в поддомене
+    // https://orbucket.s3.ru-3.storage.selcloud.ru
     if (this.config.publicUrlBase) {
-      return `${this.config.publicUrlBase}/${bucket}/${path}`;
+      // Если publicUrlBase уже включает bucket в URL, не добавляем его снова
+      const base = this.config.publicUrlBase.replace(/\/$/, '');
+      return `${base}/${path}`;
     }
     
     // Формируем URL в зависимости от endpoint

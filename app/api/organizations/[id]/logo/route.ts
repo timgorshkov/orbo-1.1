@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
-import { createClient } from '@supabase/supabase-js'
+import { createClientServer } from '@/lib/server/supabaseServer'
+import { createStorage, BUCKET_MATERIALS, getBucket, getStoragePath } from '@/lib/storage'
 import { createAPILogger } from '@/lib/logger'
 import sharp from 'sharp'
 
@@ -67,11 +67,9 @@ export async function POST(
       )
     }
 
-    // Create admin Supabase client for storage
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    // Create storage provider
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_MATERIALS)
 
     // Delete old logo if exists
     const { data: org } = await supabase
@@ -81,11 +79,12 @@ export async function POST(
       .single()
 
     if (org?.logo_url) {
-      const oldPath = org.logo_url.split('/').pop()
+      // Extract path from URL (handle both Supabase and S3 URLs)
+      const oldPath = org.logo_url.split('/').slice(-2).join('/')
       if (oldPath) {
-        await adminSupabase.storage
-          .from('materials')
-          .remove([`org-logos/${oldPath}`])
+        const fullOldPath = getStoragePath(BUCKET_MATERIALS, oldPath)
+        logger.info({ old_path: fullOldPath, bucket }, 'Deleting old logo')
+        await storage.delete(bucket, fullOldPath)
       }
     }
 
@@ -129,31 +128,51 @@ export async function POST(
       outputExt = file.name.split('.').pop() || 'jpg'
     }
     
-    // Update file path with new extension
-    const resizedFilePath = `org-logos/${orgId}.${outputExt}`
+    // Path within the logical bucket
+    const logicalPath = `org-logos/${orgId}.${outputExt}`
+    // Full path for S3 (includes logical bucket as prefix)
+    const storagePath = getStoragePath(BUCKET_MATERIALS, logicalPath)
 
-    const { data: uploadData, error: uploadError } = await adminSupabase.storage
-      .from('materials')
-      .upload(resizedFilePath, resizedBuffer, {
+    logger.info({ 
+      bucket, 
+      storage_path: storagePath,
+      logical_path: logicalPath,
+      size: resizedBuffer.length 
+    }, 'Uploading logo')
+
+    // Upload via storage abstraction
+    const { error: uploadError } = await storage.upload(
+      bucket, 
+      storagePath, 
+      resizedBuffer, 
+      {
         contentType: outputContentType,
         upsert: true
-      })
+      }
+    )
 
     if (uploadError) {
       logger.error({ 
         error: uploadError.message,
-        org_id: orgId
+        org_id: orgId,
+        bucket,
+        path: storagePath
       }, 'Upload error');
       return NextResponse.json(
-        { error: 'Failed to upload file' },
+        { error: 'Failed to upload file: ' + uploadError.message },
         { status: 500 }
       )
     }
 
     // Get public URL
-    const { data: { publicUrl } } = adminSupabase.storage
-      .from('materials')
-      .getPublicUrl(resizedFilePath)
+    const publicUrl = storage.getPublicUrl(bucket, storagePath)
+    
+    logger.info({ 
+      org_id: orgId, 
+      logo_url: publicUrl,
+      bucket,
+      path: storagePath
+    }, 'Logo uploaded successfully')
 
     // Update organization
     const { data: updatedOrg, error: updateError } = await supabase
@@ -164,17 +183,13 @@ export async function POST(
       .single()
 
     if (updateError) {
-      logger.error({ 
-        error: updateError.message,
-        org_id: orgId
-      }, 'Update error');
+      logger.error({ error: updateError.message, org_id: orgId }, 'Update error')
       return NextResponse.json(
         { error: 'Failed to update organization' },
         { status: 500 }
       )
     }
 
-    logger.info({ org_id: orgId }, 'Logo uploaded successfully');
     return NextResponse.json({
       success: true,
       logo_url: publicUrl,
@@ -182,10 +197,10 @@ export async function POST(
     })
   } catch (error: any) {
     logger.error({ 
-      error: error.message || String(error),
+      error: error.message, 
       stack: error.stack,
-      org_id: orgId || 'unknown'
-    }, 'Error in POST /api/organizations/[id]/logo');
+      org_id: orgId 
+    }, 'Error in POST /api/organizations/[id]/logo')
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -199,10 +214,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/logo' });
-  let orgId: string | undefined;
   try {
-    const paramsData = await params;
-    orgId = paramsData.id;
+    const { id: orgId } = await params
     const supabase = await createClientServer()
 
     // Check authentication
@@ -241,16 +254,15 @@ export async function DELETE(
     }
 
     // Delete from storage
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_MATERIALS)
 
-    const oldPath = org.logo_url.split('/').pop()
+    // Extract path from URL
+    const oldPath = org.logo_url.split('/').slice(-2).join('/')
     if (oldPath) {
-      await adminSupabase.storage
-        .from('materials')
-        .remove([`org-logos/${oldPath}`])
+      const fullPath = getStoragePath(BUCKET_MATERIALS, oldPath)
+      logger.info({ path: fullPath, bucket }, 'Deleting logo')
+      await storage.delete(bucket, fullPath)
     }
 
     // Update organization
@@ -262,31 +274,24 @@ export async function DELETE(
       .single()
 
     if (updateError) {
-      logger.error({ 
-        error: updateError.message,
-        org_id: orgId
-      }, 'Update error');
+      logger.error({ error: updateError.message, org_id: orgId }, 'Update error')
       return NextResponse.json(
         { error: 'Failed to update organization' },
         { status: 500 }
       )
     }
 
-    logger.info({ org_id: orgId }, 'Logo deleted successfully');
+    logger.info({ org_id: orgId }, 'Logo deleted successfully')
+
     return NextResponse.json({
       success: true,
       organization: updatedOrg
     })
   } catch (error: any) {
-    logger.error({ 
-      error: error.message || String(error),
-      stack: error.stack,
-      org_id: orgId || 'unknown'
-    }, 'Error in DELETE /api/organizations/[id]/logo');
+    logger.error({ error: error.message }, 'Error in DELETE /api/organizations/[id]/logo')
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
     )
   }
 }
-
