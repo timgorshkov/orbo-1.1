@@ -2,11 +2,7 @@ import { createClientServer } from '@/lib/server/supabaseServer';
 import { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChatMemberUpdate } from './telegramService';
 import { createTelegramService } from './telegramService';
 import { createClient } from '@supabase/supabase-js';
-
-// Уровень логирования для EventProcessingService
-const LOG_LEVEL = process.env.WEBHOOK_LOG_LEVEL || 'minimal';
-const isVerbose = LOG_LEVEL === 'verbose';
-const isNormal = LOG_LEVEL === 'normal' || isVerbose;
+import { createServiceLogger } from '@/lib/logger';
 
 /**
  * Сервис для обработки и нормализации событий Telegram
@@ -25,6 +21,7 @@ type ParticipantRow = {
 
 export class EventProcessingService {
   private supabase;
+  private logger;
   
   /**
    * Устанавливает клиент Supabase
@@ -44,6 +41,9 @@ export class EventProcessingService {
         }
       }
     );
+    
+    // Создаем logger для сервиса
+    this.logger = createServiceLogger('EventProcessing');
   }
   
   // REMOVED: isUpdateProcessed() and markUpdateProcessed()
@@ -61,9 +61,13 @@ export class EventProcessingService {
 
       if (mappingError) {
         if (mappingError.code === '42P01') {
-          console.warn('org_telegram_groups table not found while fetching mappings for chat', chatIdStr);
+          this.logger.warn({ chat_id: chatIdStr }, 'org_telegram_groups table not found');
         } else {
-          console.error('Error fetching org mappings for chat', chatIdStr, mappingError);
+          this.logger.error({ 
+            chat_id: chatIdStr,
+            error: mappingError.message,
+            code: mappingError.code
+          }, 'Error fetching org mappings');
         }
       }
 
@@ -73,13 +77,16 @@ export class EventProcessingService {
         }
       });
     } catch (error) {
-      console.error('Unexpected error fetching mapping orgs for chat', chatIdStr, error);
+      this.logger.error({ 
+        chat_id: chatIdStr,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Unexpected error fetching mapping orgs');
     }
 
     const orgList = Array.from(orgIds);
 
     if (orgList.length === 0) {
-      console.log(`No organizations mapped for chat ${chatIdStr}`);
+      this.logger.debug({ chat_id: chatIdStr }, 'No organizations mapped for chat');
     }
 
     return orgList;
@@ -96,7 +103,11 @@ export class EventProcessingService {
         .maybeSingle();
 
       if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error checking existing group record for chat', chatIdStr, fetchError);
+        this.logger.error({ 
+          chat_id: chatIdStr,
+          error: fetchError.message,
+          code: fetchError.code
+        }, 'Error checking existing group record');
         return;
       }
 
@@ -114,13 +125,17 @@ export class EventProcessingService {
           await this.supabase
             .from('telegram_groups')
             .insert(insertPayload);
-          console.log(`Created canonical group record for chat ${chatIdStr}`);
+          this.logger.info({ chat_id: chatIdStr, title }, 'Created canonical group record');
         } catch (insertError: any) {
           if (insertError?.code === '23505') {
             // Record already created concurrently
             return;
           }
-          console.error('Error inserting canonical group record for chat', chatIdStr, insertError);
+          this.logger.error({ 
+            chat_id: chatIdStr,
+            error: insertError.message,
+            code: insertError.code
+          }, 'Error inserting canonical group record');
         }
       } else {
         const updatePatch: Record<string, any> = {};
@@ -141,12 +156,18 @@ export class EventProcessingService {
               .update(updatePatch)
               .eq('id', existingGroup.id);
           } catch (updateError) {
-            console.error('Error updating canonical group data for chat', chatIdStr, updateError);
+            this.logger.error({ 
+              chat_id: chatIdStr,
+              error: updateError instanceof Error ? updateError.message : String(updateError)
+            }, 'Error updating canonical group data');
           }
         }
       }
     } catch (error) {
-      console.error('Unexpected ensureGroupRecord error for chat', chatIdStr, error);
+      this.logger.error({ 
+        chat_id: chatIdStr,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Unexpected ensureGroupRecord error');
     }
   }
 
@@ -174,7 +195,13 @@ export class EventProcessingService {
 
       if (updateError) {
         if (updateError.code !== 'PGRST116') {
-          console.error('Error updating mapping status', chatIdStr, orgId, updateError);
+          this.logger.error({ 
+            chat_id: chatIdStr,
+            org_id: orgId,
+            status,
+            error: updateError.message,
+            code: updateError.code
+          }, 'Error updating mapping status');
         }
         return;
       }
@@ -188,7 +215,11 @@ export class EventProcessingService {
             .eq('status', 'active');
 
           if (activeCountError) {
-            console.error('Error counting active mappings for chat', chatIdStr, activeCountError);
+            this.logger.error({ 
+              chat_id: chatIdStr,
+              error: activeCountError.message,
+              code: activeCountError.code
+            }, 'Error counting active mappings');
           }
 
           if (!count || count === 0) {
@@ -213,7 +244,11 @@ export class EventProcessingService {
           .filter('tg_chat_id::text', 'eq', chatIdStr);
       }
     } catch (error) {
-      console.error('Unexpected mapping status update error for chat', chatIdStr, orgId, error);
+      this.logger.error({ 
+        chat_id: chatIdStr,
+        org_id: orgId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Unexpected mapping status update error');
     }
   }
 
@@ -226,7 +261,11 @@ export class EventProcessingService {
 
       if (error) {
         if (error.code !== '42P01') {
-          console.error('Error fetching mappings for archival', chatIdStr, error);
+          this.logger.error({ 
+            chat_id: chatIdStr,
+            error: error.message,
+            code: error.code
+          }, 'Error fetching mappings for archival');
         }
         return;
       }
@@ -237,7 +276,10 @@ export class EventProcessingService {
         }
       });
     } catch (err) {
-      console.error('Unexpected error archiving mappings for chat', chatIdStr, err);
+      this.logger.error({ 
+        chat_id: chatIdStr,
+        error: err instanceof Error ? err.message : String(err)
+      }, 'Unexpected error archiving mappings');
     }
   }
 
@@ -250,7 +292,11 @@ export class EventProcessingService {
 
       if (error) {
         if (error.code !== '42P01') {
-          console.error('Error fetching mappings for activation', chatIdStr, error);
+          this.logger.error({ 
+            chat_id: chatIdStr,
+            error: error.message,
+            code: error.code
+          }, 'Error fetching mappings for activation');
         }
         return;
       }
@@ -261,7 +307,10 @@ export class EventProcessingService {
         }
       });
     } catch (err) {
-      console.error('Unexpected error activating mappings for chat', chatIdStr, err);
+      this.logger.error({ 
+        chat_id: chatIdStr,
+        error: err instanceof Error ? err.message : String(err)
+      }, 'Unexpected error activating mappings');
     }
   }
   
@@ -318,7 +367,11 @@ export class EventProcessingService {
       // REMOVED: markUpdateProcessed call
       // Method was removed along with telegram_processed_updates table in migration 42
     } catch (error) {
-      console.error(`Error processing update ${update.update_id}:`, error);
+      this.logger.error({ 
+        update_id: update.update_id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Error processing update');
       throw error;
     }
   }
@@ -328,15 +381,19 @@ export class EventProcessingService {
    */
   private async processMessage(message: TelegramMessage): Promise<void> {
     const chatId = message.chat.id;
-    console.log('Processing message from chat ID:', chatId, 'Type:', typeof chatId);
+    this.logger.debug({ chat_id: chatId, chat_type: typeof chatId }, 'Processing message');
 
     if (message.from && (message.from.id === 1087968824 || message.from.username === 'GroupAnonymousBot')) {
-      console.log('Skipping message from GroupAnonymousBot');
+      this.logger.debug({ chat_id: chatId }, 'Skipping message from GroupAnonymousBot');
       return;
     }
 
     if (message.from?.is_bot) {
-      console.log('Skipping message from bot user', message.from.username || message.from.id);
+      this.logger.debug({ 
+        chat_id: chatId,
+        bot_username: message.from.username,
+        bot_id: message.from.id
+      }, 'Skipping message from bot user');
       return;
     }
 
@@ -344,7 +401,11 @@ export class EventProcessingService {
       const orgIds = await this.getOrgIdsForChat(chatId);
 
       if (orgIds.length > 0) {
-        console.log(`Found ${orgIds.length} organization bindings for chat ${chatId}`);
+        this.logger.debug({ 
+          chat_id: chatId,
+          org_count: orgIds.length,
+          org_ids: orgIds
+        }, 'Found organization bindings for chat');
         for (const orgId of orgIds) {
           await this.processMessageForOrg(message, orgId);
         }
@@ -354,14 +415,17 @@ export class EventProcessingService {
       // Если группа не найдена, но это группа/супергруппа, пробуем добавить
       if (message.chat.type === 'supergroup' || message.chat.type === 'group') {
         await this.ensureGroupRecord(chatId, message.chat.title);
-        console.log(`Message from unmapped group ${chatId}, waiting for explicit organization linking`);
+        this.logger.debug({ chat_id: chatId }, 'Message from unmapped group - waiting for organization linking');
         return;
       }
       
-      console.log(`Message from non-group chat ${chatId}, skipping`);
+      this.logger.debug({ chat_id: chatId, chat_type: message.chat.type }, 'Message from non-group chat - skipping');
       return;
     } catch (error) {
-      console.error('Error in processMessage:', error);
+      this.logger.error({ 
+        chat_id: chatId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Error in processMessage');
       return;
     }
   }
@@ -376,12 +440,17 @@ export class EventProcessingService {
     const member = message.left_chat_member;
     
     if (member.id === 1087968824 || member.username === 'GroupAnonymousBot') {
-      console.log('Skipping left event for GroupAnonymousBot');
+      this.logger.debug({ chat_id: chatId, org_id: orgId }, 'Skipping left event for GroupAnonymousBot');
       return;
     }
 
     if (member.is_bot) {
-      console.log('Skipping left event for bot user', member.username || member.id);
+      this.logger.debug({ 
+        chat_id: chatId,
+        org_id: orgId,
+        bot_username: member.username,
+        bot_id: member.id
+      }, 'Skipping left event for bot user');
       return;
     }
     
@@ -415,7 +484,12 @@ export class EventProcessingService {
       
       if (participant) {
         if (participant.merged_into) {
-          console.log(`Participant ${participant.id} merged into ${participant.merged_into}, skipping group update`);
+          this.logger.debug({ 
+            participant_id: participant.id,
+            merged_into: participant.merged_into,
+            chat_id: chatId,
+            org_id: orgId
+          }, 'Participant merged - skipping group update');
           return;
         }
 
@@ -441,7 +515,11 @@ export class EventProcessingService {
         // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
       }
     } catch (error) {
-      console.error('Error updating participant_groups for leave event:', error);
+      this.logger.error({ 
+        chat_id: chatId,
+        org_id: orgId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Error updating participant_groups for leave event');
     }
     
     // Обновляем счетчики и статистику
@@ -459,12 +537,17 @@ export class EventProcessingService {
     
     for (const member of message.new_chat_members) {
       if (member.id === 1087968824 || member.username === 'GroupAnonymousBot') {
-        console.log('Skipping join event for GroupAnonymousBot');
+        this.logger.debug({ chat_id: chatId, org_id: orgId }, 'Skipping join event for GroupAnonymousBot');
         continue;
       }
 
       if (member.is_bot) {
-        console.log('Skipping join event for bot user', member.username || member.id);
+        this.logger.debug({ 
+          chat_id: chatId,
+          org_id: orgId,
+          bot_username: member.username,
+          bot_id: member.id
+        }, 'Skipping join event for bot user');
         continue;
       }
 
@@ -524,7 +607,12 @@ export class EventProcessingService {
             .single();
           
           if (error) {
-            console.error('Error upserting participant:', error);
+            this.logger.error({ 
+              tg_user_id: member.id,
+              org_id: orgId,
+              error: error.message,
+              code: error.code
+            }, 'Error upserting participant');
             // Fallback: попытаться получить существующего участника
             const { data: existingParticipant } = await this.supabase
               .from('participants')
@@ -614,7 +702,12 @@ export class EventProcessingService {
           // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
         }
       } catch (error) {
-        console.error('Error processing new member:', error);
+        this.logger.error({ 
+          chat_id: chatId,
+          org_id: orgId,
+          tg_user_id: member.id,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Error processing new member');
       }
     }
     
@@ -625,14 +718,14 @@ export class EventProcessingService {
   private async processMessageForOrg(message: TelegramMessage, orgId: string): Promise<void> {
     const chatId = message.chat.id;
 
-    console.log('Processing message data:', {
-      chatId,
-      orgId,
-      messageId: message.message_id,
+    this.logger.debug({ 
+      chat_id: chatId,
+      org_id: orgId,
+      message_id: message.message_id,
       from: message.from?.username,
-      messageThreadId: (message as any)?.message_thread_id ?? null,
-      isTopicMessage: (message as any)?.is_topic_message ?? false
-    });
+      message_thread_id: (message as any)?.message_thread_id ?? null,
+      is_topic_message: (message as any)?.is_topic_message ?? false
+    }, 'Processing message data');
     
     // Обрабатываем новых участников
     await this.recordGlobalMessageEvent(message);
@@ -652,9 +745,12 @@ export class EventProcessingService {
    * Обрабатывает обычное сообщение пользователя
    */
   private async processUserMessage(message: TelegramMessage, orgId: string): Promise<void> {
-    if (isVerbose) {
-      console.log('[EventProcessing] Message:', orgId, message.message_id, message.chat.id, message.from?.username);
-    }
+    this.logger.debug({ 
+      org_id: orgId,
+      message_id: message.message_id,
+      chat_id: message.chat.id,
+      from: message.from?.username
+    }, 'Processing user message');
 
     if (!message.from) return;
   
@@ -700,7 +796,11 @@ export class EventProcessingService {
       
       // Если участника нет, создаем его через UPSERT
       if (!participant) {
-        console.log(`Creating/updating participant for user ${username} (${userId}) in org ${orgId}`);
+        this.logger.debug({ 
+          username,
+          tg_user_id: userId,
+          org_id: orgId
+        }, 'Creating/updating participant');
         
         const nowIso = new Date().toISOString();
         const { data: upsertedParticipant, error } = await this.supabase
@@ -722,7 +822,12 @@ export class EventProcessingService {
           .single();
         
         if (error) {
-          console.error('Error upserting participant from message:', error);
+          this.logger.error({ 
+            tg_user_id: userId,
+            org_id: orgId,
+            error: error.message,
+            code: error.code
+          }, 'Error upserting participant from message');
           // Fallback: попытаться получить существующего участника
           const { data: existingParticipant } = await this.supabase
             .from('participants')
@@ -734,11 +839,11 @@ export class EventProcessingService {
           
           if (existingParticipant) {
             participantId = existingParticipant.merged_into || existingParticipant.id;
-            console.log(`Using existing participant with ID ${participantId}`);
+            this.logger.debug({ participant_id: participantId }, 'Using existing participant');
           }
         } else {
           participantId = upsertedParticipant.id;
-          console.log(`Upserted participant with ID ${participantId}`);
+          this.logger.debug({ participant_id: participantId }, 'Upserted participant');
         }
       } else {
         participantId = participant.merged_into || participant.id;
@@ -762,7 +867,10 @@ export class EventProcessingService {
             .update(patch)
             .eq('id', participantId);
           
-          console.log(`Updated participant ${participantId} with Telegram names:`, patch);
+          this.logger.debug({ 
+            participant_id: participantId,
+            patch
+          }, 'Updated participant with Telegram names');
         }
       }
       
@@ -788,7 +896,10 @@ export class EventProcessingService {
               })
               .eq('id', existingGroup.id);
             
-            console.log(`Reactivated participant ${participantId} in group ${chatId}`);
+            this.logger.debug({ 
+              participant_id: participantId,
+              chat_id: chatId
+            }, 'Reactivated participant in group');
           }
         } else {
           // Если связи нет, создаем
@@ -801,13 +912,21 @@ export class EventProcessingService {
               is_active: true
             });
           
-          console.log(`Added participant ${participantId} to group ${chatId}`);
+          this.logger.debug({ 
+            participant_id: participantId,
+            chat_id: chatId
+          }, 'Added participant to group');
           
           // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
         }
       }
     } catch (error) {
-      console.error('Error processing participant data:', error);
+      this.logger.error({ 
+        chat_id: chatId,
+        org_id: orgId,
+        tg_user_id: userId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Error processing participant data');
     }
     
     // REMOVED: writeGlobalActivityEvent() call
@@ -815,9 +934,11 @@ export class EventProcessingService {
     // Activity events are now tracked through activity_events table directly
     
     try {
-      if (isVerbose) {
-        console.log('[EventProcessing] Insert event:', orgId, chatId, message.message_id);
-      }
+      this.logger.debug({ 
+        org_id: orgId,
+        chat_id: chatId,
+        message_id: message.message_id
+      }, 'Inserting activity event');
       
       // Unified metadata structure for activity_events
       const messageText = message.text || '';
@@ -897,7 +1018,13 @@ export class EventProcessingService {
               .single();
           
             if (error) {
-              console.error('[EventProcessing] Insert error:', error.message);
+              this.logger.error({ 
+                org_id: orgId,
+                chat_id: chatId,
+                message_id: message.message_id,
+                error: error.message,
+                code: error.code
+              }, 'Error inserting activity event');
               throw error;
             }
             insertedEvent = newEvent;
@@ -949,13 +1076,23 @@ export class EventProcessingService {
               });
             
             if (messageError) {
-              console.error('[EventProcessing] ⚠️  Failed to save message text:', messageError);
+              this.logger.warn({ 
+                org_id: orgId,
+                chat_id: chatId,
+                message_id: message.message_id,
+                error: messageError.message
+              }, 'Failed to save message text');
               // Non-critical error, continue processing
             }
           }
         }
       } catch (baseError) {
-        console.error('[EventProcessing] ❌ Error in base insert, trying with minimal fields:', baseError);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          message_id: message.message_id,
+          error: baseError instanceof Error ? baseError.message : String(baseError)
+        }, 'Error in base insert, trying with minimal fields');
         
         // Если не получилось, пробуем с минимальным набором полей (только обязательные поля из миграции)
         const minimalEventData = {
@@ -977,14 +1114,30 @@ export class EventProcessingService {
           const { error: minimalError } = await this.supabase.from('activity_events').insert(minimalEventData);
           
           if (minimalError) {
-            console.error('[EventProcessing] Minimal insert error:', minimalError.message);
+            this.logger.error({ 
+              org_id: orgId,
+              chat_id: chatId,
+              message_id: message.message_id,
+              error: minimalError.message
+            }, 'Minimal insert error');
           }
         } catch (minimalInsertError) {
-          console.error('[EventProcessing] ❌ Fatal error inserting activity event:', minimalInsertError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            message_id: message.message_id,
+            error: minimalInsertError instanceof Error ? minimalInsertError.message : String(minimalInsertError)
+          }, 'Fatal error inserting activity event');
         }
       }
     } catch (error) {
-      console.error('[EventProcessing] ❌ Exception in activity event insert:', error);
+      this.logger.error({ 
+        org_id: orgId,
+        chat_id: chatId,
+        message_id: message.message_id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Exception in activity event insert');
     }
     
     // Сохраняем текст сообщения (если есть)
@@ -1031,10 +1184,13 @@ export class EventProcessingService {
         .from('telegram_groups')
         .update({ last_activity_at: new Date().toISOString() })
         .eq('tg_chat_id', chatId);
-        
-      console.log('Last activity updated successfully');
     } catch (error) {
-      console.error('Error updating last activity:', error);
+      this.logger.error({ 
+        chat_id: chatId,
+        org_id: orgId,
+        tg_user_id: userId,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Error updating last activity');
     }
   }
  
@@ -1139,19 +1295,23 @@ export class EventProcessingService {
     const chatId = update.chat.id;
 
     if (update.new_chat_member?.user?.id === 1087968824 || update.new_chat_member?.user?.username === 'GroupAnonymousBot') {
-      console.log('Skipping chat member update for GroupAnonymousBot');
+      this.logger.debug({ chat_id: chatId }, 'Skipping chat member update for GroupAnonymousBot');
       return;
     }
 
     if (update.new_chat_member?.user?.is_bot) {
-      console.log('Skipping chat member update for bot user', update.new_chat_member.user.username || update.new_chat_member.user.id);
+      this.logger.debug({ 
+        chat_id: chatId,
+        bot_username: update.new_chat_member.user.username,
+        bot_id: update.new_chat_member.user.id
+      }, 'Skipping chat member update for bot user');
       return;
     }
 
     const orgIds = await this.getOrgIdsForChat(chatId);
 
     if (orgIds.length === 0) {
-      console.log(`Member update from unmapped group ${chatId}, skipping`);
+      this.logger.debug({ chat_id: chatId }, 'Member update from unmapped group - skipping');
       return;
     }
 
@@ -1253,19 +1413,23 @@ export class EventProcessingService {
     const chatId = request.chat.id;
 
     if (request.from?.id === 1087968824 || request.from?.username === 'GroupAnonymousBot') {
-      console.log('Skipping join request for GroupAnonymousBot');
+      this.logger.debug({ chat_id: chatId }, 'Skipping join request for GroupAnonymousBot');
       return;
     }
 
     if (request.from?.is_bot) {
-      console.log('Skipping join request for bot user', request.from.username || request.from.id);
+      this.logger.debug({ 
+        chat_id: chatId,
+        bot_username: request.from.username,
+        bot_id: request.from.id
+      }, 'Skipping join request for bot user');
       return;
     }
 
     const orgIds = await this.getOrgIdsForChat(chatId);
 
     if (orgIds.length === 0) {
-      console.log(`Join request from unmapped group ${chatId}, skipping`);
+      this.logger.debug({ chat_id: chatId }, 'Join request from unmapped group - skipping');
       return;
     }
 
@@ -1298,19 +1462,23 @@ export class EventProcessingService {
     const chatId = query.message.chat.id;
 
     if (query.from?.id === 1087968824 || query.from?.username === 'GroupAnonymousBot') {
-      console.log('Skipping callback query for GroupAnonymousBot');
+      this.logger.debug({ chat_id: chatId }, 'Skipping callback query for GroupAnonymousBot');
       return;
     }
 
     if (query.from?.is_bot) {
-      console.log('Skipping callback query for bot user', query.from.username || query.from.id);
+      this.logger.debug({ 
+        chat_id: chatId,
+        bot_username: query.from.username,
+        bot_id: query.from.id
+      }, 'Skipping callback query for bot user');
       return;
     }
 
     const orgIds = await this.getOrgIdsForChat(chatId);
 
     if (orgIds.length === 0) {
-      console.log(`Callback query from unmapped group ${chatId}, skipping`);
+      this.logger.debug({ chat_id: chatId }, 'Callback query from unmapped group - skipping');
       return;
     }
     const userId = query.from.id;
@@ -1344,7 +1512,7 @@ export class EventProcessingService {
    * Обновляет метрики группы
    */
   private async updateGroupMetrics(orgId: string, chatId: number): Promise<void> {
-    console.log(`Updating metrics for group ${chatId} in org ${orgId}`);
+    this.logger.debug({ chat_id: chatId, org_id: orgId }, 'Updating group metrics');
     
     // Сначала проверяем, существует ли таблица group_metrics
     try {
@@ -1355,8 +1523,10 @@ export class EventProcessingService {
         .limit(1);
         
       if (tableError) {
-        console.error('Error checking group_metrics table:', tableError);
-        console.log('Skipping metrics update - table might not exist yet');
+        this.logger.warn({ 
+          error: tableError.message,
+          code: tableError.code
+        }, 'Error checking group_metrics table - skipping metrics update');
         return;
       }
       
@@ -1372,11 +1542,13 @@ export class EventProcessingService {
         .maybeSingle();
       
       if (metricsError) {
-        console.error('Error fetching today metrics:', metricsError);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: metricsError.message
+        }, 'Error fetching today metrics');
         return;
       }
-      
-      console.log('Existing metrics for today:', todayMetrics);
       
       // Получаем количество сообщений за сегодня
       let messageCount = 0;
@@ -1391,15 +1563,21 @@ export class EventProcessingService {
           .lte('created_at', `${today}T23:59:59Z`);
         
         if (messageError) {
-          console.error('Error counting messages:', messageError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: messageError.message
+          }, 'Error counting messages');
         } else {
           messageCount = count || 0;
         }
       } catch (error) {
-        console.error('Exception counting messages:', error);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Exception counting messages');
       }
-      
-      console.log('Message count for today:', messageCount);
       
       // Получаем количество ответов за сегодня
       let replyCount = 0;
@@ -1415,12 +1593,20 @@ export class EventProcessingService {
           .lte('created_at', `${today}T23:59:59Z`);
         
         if (replyError) {
-          console.error('Error counting replies:', replyError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: replyError.message
+          }, 'Error counting replies');
         } else {
           replyCount = count || 0;
         }
       } catch (error) {
-        console.error('Exception counting replies:', error);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Exception counting replies');
       }
       
       // Получаем количество присоединений за сегодня
@@ -1436,12 +1622,20 @@ export class EventProcessingService {
           .lte('created_at', `${today}T23:59:59Z`);
         
         if (joinError) {
-          console.error('Error counting joins:', joinError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: joinError.message
+          }, 'Error counting joins');
         } else {
           joinCount = count || 0;
         }
       } catch (error) {
-        console.error('Exception counting joins:', error);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Exception counting joins');
       }
       
       // Получаем количество выходов за сегодня
@@ -1457,12 +1651,20 @@ export class EventProcessingService {
           .lte('created_at', `${today}T23:59:59Z`);
         
         if (leaveError) {
-          console.error('Error counting leaves:', leaveError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: leaveError.message
+          }, 'Error counting leaves');
         } else {
           leaveCount = count || 0;
         }
       } catch (error) {
-        console.error('Exception counting leaves:', error);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Exception counting leaves');
       }
       
       // Получаем количество уникальных пользователей за сегодня (DAU)
@@ -1478,12 +1680,20 @@ export class EventProcessingService {
           .lte('created_at', `${today}T23:59:59Z`);
         
         if (dauError) {
-          console.error('Error counting DAU:', dauError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: dauError.message
+          }, 'Error counting DAU');
         } else {
           dau = uniqueUsers ? new Set(uniqueUsers.map(u => u.tg_user_id)).size : 0;
         }
       } catch (error) {
-        console.error('Exception counting DAU:', error);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Exception counting DAU');
       }
       
       // Вычисляем reply ratio
@@ -1505,8 +1715,6 @@ export class EventProcessingService {
         net_member_change: netMemberChange
       };
       
-      console.log('Metrics data to save:', metricsData);
-      
       if (todayMetrics) {
         // Обновляем существующую запись
         const { error: updateError } = await this.supabase
@@ -1515,9 +1723,18 @@ export class EventProcessingService {
           .eq('id', todayMetrics.id);
           
         if (updateError) {
-          console.error('Error updating metrics:', updateError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            metrics_id: todayMetrics.id,
+            error: updateError.message
+          }, 'Error updating metrics');
         } else {
-          console.log('Group metrics updated successfully');
+          this.logger.debug({ 
+            org_id: orgId,
+            chat_id: chatId,
+            metrics: metricsData
+          }, 'Group metrics updated successfully');
         }
       } else {
         // Создаем новую запись
@@ -1526,13 +1743,26 @@ export class EventProcessingService {
           .insert(metricsData);
           
         if (insertError) {
-          console.error('Error inserting metrics:', insertError);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            error: insertError.message
+          }, 'Error inserting metrics');
         } else {
-          console.log('Group metrics created successfully');
+          this.logger.debug({ 
+            org_id: orgId,
+            chat_id: chatId,
+            metrics: metricsData
+          }, 'Group metrics created successfully');
         }
       }
     } catch (error) {
-      console.error('Exception in updateGroupMetrics:', error);
+      this.logger.error({ 
+        org_id: orgId,
+        chat_id: chatId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Exception in updateGroupMetrics');
     }
   }
 
@@ -1557,7 +1787,12 @@ export class EventProcessingService {
         return;
       }
 
-      if (isVerbose) console.log('[EventProcessing] Save text:', messageText.length);
+      this.logger.debug({ 
+        org_id: orgId,
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text_length: messageText.length
+      }, 'Saving message text');
 
       const mediaType = this.detectMediaType(message);
       const wordsCount = messageText.split(/\s+/).filter(w => w.length > 0).length;
@@ -1583,11 +1818,23 @@ export class EventProcessingService {
       if (error) {
         // Игнорируем ошибки duplicate key (сообщение уже сохранено)
         if (error.code !== '23505') {
-          console.error('[EventProcessing] Save text error:', error.message);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            error: error.message,
+            code: error.code
+          }, 'Save text error');
         }
       }
     } catch (error) {
-      console.error('[EventProcessing] ❌ Exception saving message text:', error);
+      this.logger.error({ 
+        org_id: orgId,
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Exception saving message text');
     }
   }
 
@@ -1621,9 +1868,12 @@ export class EventProcessingService {
         return;
       }
 
-      if (isVerbose) {
-        console.log('[EventProcessing] Reaction:', orgId, chatId, messageId, userId);
-      }
+      this.logger.debug({ 
+        org_id: orgId,
+        chat_id: chatId,
+        message_id: messageId,
+        user_id: userId
+      }, 'Processing reaction');
 
       // 1. Ensure participant exists
       const { data: participant } = await this.supabase
@@ -1649,7 +1899,12 @@ export class EventProcessingService {
           .single();
 
         if (participantError) {
-          console.error('[EventProcessing] Error creating participant:', participantError);
+          this.logger.error({ 
+            org_id: orgId,
+            tg_user_id: userId,
+            error: participantError.message,
+            code: participantError.code
+          }, 'Error creating participant');
           return;
         }
 
@@ -1668,7 +1923,12 @@ export class EventProcessingService {
         });
 
         if (updateError) {
-          console.error('[EventProcessing] Reactions update error:', updateError.message);
+          this.logger.error({ 
+            org_id: orgId,
+            chat_id: chatId,
+            message_id: messageId,
+            error: updateError.message
+          }, 'Reactions update error');
         }
       }
 
@@ -1703,7 +1963,13 @@ export class EventProcessingService {
         });
 
       if (insertError) {
-        console.error('[EventProcessing] Reaction insert error:', insertError.message);
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: chatId,
+          message_id: messageId,
+          error: insertError.message,
+          code: insertError.code
+        }, 'Reaction insert error');
       }
 
       // Update participant last_activity_at
@@ -1717,7 +1983,14 @@ export class EventProcessingService {
       // Update group metrics
       await this.updateGroupMetrics(orgId, chatId);
     } catch (error) {
-      console.error('[EventProcessing] Error processing reaction:', error);
+      this.logger.error({ 
+        org_id: orgId,
+        chat_id: reaction.chat?.id,
+        message_id: reaction.message_id,
+        user_id: reaction.user?.id,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Error processing reaction');
     }
   }
 }

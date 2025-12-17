@@ -1,10 +1,59 @@
 # План рефакторинга логирования
 
+## Статус
+- ✅ `app/api/telegram/webhook/route.ts` — **ГОТОВ** (рефакторинг выполнен)
+- ❌ `lib/services/eventProcessingService.ts` — **НЕ СДЕЛАН** (90+ console.log, главный шум!)
+- ❌ `lib/services/telegramAuthService.ts` — **НЕ СДЕЛАН** (58 console.log)
+
 ## Цель
 Заменить `console.log` на структурированный pino logger для улучшения мониторинга в production (Dozzle, поиск по логам).
 
 ## Приоритет
-🔴 **Критично** — эти области должны быть переведены первыми.
+🔴 **СРОЧНО** — `eventProcessingService.ts` вызывается из webhook и генерирует 90% шума в логах!
+
+---
+
+## 🔴 ПРИОРИТЕТ #1: eventProcessingService.ts
+
+Этот файл генерирует **90% неструктурированных логов** в production. Примеры текущего вывода:
+
+```
+Processing message from chat ID: -1001864016932 Type: number
+Found 1 organization bindings for chat -1001864016932
+Processing message data: { chatId: -1001864016932, orgId: '...', messageId: 67957 }
+Updated participant xxx with Telegram names: { tg_first_name: 'Александр' }
+Updating metrics for group -1001864016932 in org xxx
+Message count for today: 85
+Group metrics updated successfully
+```
+
+### Как рефакторить:
+
+```typescript
+// В начале файла добавить:
+import { createServiceLogger } from '@/lib/logger';
+const logger = createServiceLogger('EventProcessing');
+
+// Заменить:
+console.log(`Processing message from chat ID: ${chatId} Type: ${typeof chatId}`);
+// На:
+logger.debug({ chatId, chatIdType: typeof chatId }, 'Processing message');
+
+// Заменить:
+console.log(`Found ${orgBindings.length} organization bindings for chat ${chatId}`);
+// На:
+logger.debug({ chatId, bindingsCount: orgBindings.length }, 'Organization bindings found');
+
+// Заменить:
+console.log('Processing message data:', { chatId, orgId, messageId, from });
+// На:
+logger.info({ chatId, orgId, messageId, from }, 'Processing message data');
+
+// Заменить:
+console.log(`Group metrics updated successfully`);
+// На:
+logger.debug({ chatId, orgId }, 'Group metrics updated');
+```
 
 ---
 
