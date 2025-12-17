@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 // GET /api/organizations/[id]/public - Public organization info
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/public' });
+  const orgId = params.id;
   try {
-    const { id: orgId } = params;
     const adminSupabase = createAdminServer();
 
     // Fetch organization basic info (public data)
@@ -28,7 +30,11 @@ export async function GET(
       organization: org
     });
   } catch (error: any) {
-    console.error('Error fetching public org data:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId
+    }, 'Error fetching public org data');
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

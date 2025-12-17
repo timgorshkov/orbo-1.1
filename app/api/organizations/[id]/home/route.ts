@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { getHomePageData } from '@/lib/server/getHomePageData'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,8 +13,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/home' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -54,7 +58,11 @@ export async function GET(
     return NextResponse.json(homePageData)
 
   } catch (error) {
-    console.error('[Home API] Error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Error in GET /api/organizations/[id]/home');
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

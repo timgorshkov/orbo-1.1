@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { createClient } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +24,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
+  const orgId = params.id;
   try {
     const supabase = await createClientServer();
 
@@ -36,7 +39,7 @@ export async function GET(
     const { data: membership } = await supabase
       .from('memberships')
       .select('role')
-      .eq('org_id', params.id)
+      .eq('org_id', orgId)
       .eq('user_id', user.id)
       .single();
 
@@ -48,13 +51,18 @@ export async function GET(
     const { data: org, error } = await supabaseAdmin
       .from('organizations')
       .select('digest_enabled, digest_day, digest_time, last_digest_sent_at, timezone')
-      .eq('id', params.id)
+      .eq('id', orgId)
       .single();
 
     if (error) {
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Failed to fetch digest settings');
       return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
     }
 
+    logger.debug({ org_id: orgId }, 'Digest settings fetched');
     return NextResponse.json({
       enabled: org.digest_enabled ?? true,
       day: org.digest_day ?? 1,
@@ -64,7 +72,11 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('[API] Get digest settings error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Get digest settings error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -76,6 +88,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
+  const orgId = params.id;
   try {
     const supabase = await createClientServer();
     const body = await request.json();
@@ -91,7 +105,7 @@ export async function PATCH(
     const { data: membership } = await supabase
       .from('memberships')
       .select('role')
-      .eq('org_id', params.id)
+      .eq('org_id', orgId)
       .eq('user_id', user.id)
       .single();
 
@@ -121,19 +135,30 @@ export async function PATCH(
     const { error } = await supabaseAdmin
       .from('organizations')
       .update(updates)
-      .eq('id', params.id);
+      .eq('id', orgId);
 
     if (error) {
-      console.error('[API] Failed to update digest settings:', error);
+      logger.error({ 
+        error: error.message,
+        org_id: orgId,
+        updates
+      }, 'Failed to update digest settings');
       return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
     }
 
-    console.log(`[API] Digest settings updated for org ${params.id}:`, updates);
+    logger.info({ 
+      org_id: orgId,
+      updates
+    }, 'Digest settings updated');
 
     return NextResponse.json({ success: true, updates });
 
   } catch (error) {
-    console.error('[API] Update digest settings error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Update digest settings error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

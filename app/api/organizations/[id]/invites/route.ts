@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // GET - получить все приглашения организации
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/organizations/[id]/invites' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Проверяем авторизацию
@@ -42,13 +46,24 @@ export async function GET(
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching invites:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error fetching invites');
       return NextResponse.json({ error: 'Failed to fetch invites' }, { status: 500 })
     }
 
+    logger.info({ 
+      invite_count: invites?.length || 0,
+      org_id: orgId
+    }, 'Fetched invites');
     return NextResponse.json(invites)
   } catch (error) {
-    console.error('Error in GET /api/organizations/[id]/invites:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Error in GET /api/organizations/[id]/invites');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -58,8 +73,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/organizations/[id]/invites' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Проверяем авторизацию
@@ -96,7 +114,10 @@ export async function POST(
     const { data: tokenData, error: tokenError } = await supabase.rpc('generate_invite_token')
 
     if (tokenError) {
-      console.error('Error generating token:', tokenError)
+      logger.error({ 
+        error: tokenError.message,
+        org_id: orgId
+      }, 'Error generating token');
       return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 })
     }
 
@@ -117,13 +138,26 @@ export async function POST(
       .single()
 
     if (createError) {
-      console.error('Error creating invite:', createError)
+      logger.error({ 
+        error: createError.message,
+        org_id: orgId,
+        access_type
+      }, 'Error creating invite');
       return NextResponse.json({ error: 'Failed to create invite' }, { status: 500 })
     }
 
+    logger.info({ 
+      invite_id: invite.id,
+      org_id: orgId,
+      access_type
+    }, 'Invite created');
     return NextResponse.json(invite, { status: 201 })
   } catch (error) {
-    console.error('Error in POST /api/organizations/[id]/invites:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Error in POST /api/organizations/[id]/invites');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

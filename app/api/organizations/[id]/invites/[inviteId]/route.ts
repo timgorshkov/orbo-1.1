@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // DELETE - удалить приглашение
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; inviteId: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/organizations/[id]/invites/[inviteId]' });
+  let orgId: string | undefined;
+  let inviteId: string | undefined;
   try {
-    const { id: orgId, inviteId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
+    inviteId = paramsData.inviteId;
     const supabase = await createClientServer()
 
     // Проверяем авторизацию
@@ -39,13 +45,26 @@ export async function DELETE(
       .eq('org_id', orgId)
 
     if (error) {
-      console.error('Error deleting invite:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId,
+        invite_id: inviteId
+      }, 'Error deleting invite');
       return NextResponse.json({ error: 'Failed to delete invite' }, { status: 500 })
     }
 
+    logger.info({ 
+      org_id: orgId,
+      invite_id: inviteId
+    }, 'Invite deleted');
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error in DELETE /api/organizations/[id]/invites/[inviteId]:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown',
+      invite_id: inviteId || 'unknown'
+    }, 'Error in DELETE /api/organizations/[id]/invites/[inviteId]');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -55,8 +74,13 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; inviteId: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/organizations/[id]/invites/[inviteId]' });
+  let orgId: string | undefined;
+  let inviteId: string | undefined;
   try {
-    const { id: orgId, inviteId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
+    inviteId = paramsData.inviteId;
     const supabase = await createClientServer()
 
     // Проверяем авторизацию
@@ -99,13 +123,27 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error('Error updating invite:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId,
+        invite_id: inviteId
+      }, 'Error updating invite');
       return NextResponse.json({ error: 'Failed to update invite' }, { status: 500 })
     }
 
+    logger.info({ 
+      org_id: orgId,
+      invite_id: inviteId,
+      updates: body
+    }, 'Invite updated');
     return NextResponse.json(invite)
   } catch (error) {
-    console.error('Error in PUT /api/organizations/[id]/invites/[inviteId]:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown',
+      invite_id: inviteId || 'unknown'
+    }, 'Error in PUT /api/organizations/[id]/invites/[inviteId]');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

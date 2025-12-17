@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/team/add' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const body = await request.json()
     const { email } = body
 
@@ -119,8 +123,16 @@ export async function POST(
           existingUser.email!,
           org?.name || 'организации'
         )
+        logger.info({ 
+          email: existingUser.email,
+          org_id: orgId
+        }, 'Admin notification sent');
       } catch (emailError) {
-        console.error('[EmailService] Failed to send admin notification:', emailError)
+        logger.error({ 
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+          email: existingUser.email,
+          org_id: orgId
+        }, 'Failed to send admin notification');
       }
 
       return NextResponse.json({
@@ -166,7 +178,11 @@ export async function POST(
         .single()
 
       if (inviteError) {
-        console.error('Error creating invitation:', inviteError)
+        logger.error({ 
+          error: inviteError.message,
+          email,
+          org_id: orgId
+        }, 'Error creating invitation');
         return NextResponse.json(
           { error: 'Не удалось создать приглашение' },
           { status: 500 }
@@ -196,14 +212,25 @@ export async function POST(
           org?.name || 'организации',
           inviterName
         )
-        console.log(`[EmailService] Invitation sent to ${email}`)
+        logger.info({ 
+          email,
+          org_id: orgId,
+          invitation_id: invitation.id
+        }, 'Invitation sent');
       } catch (emailError) {
-        console.error('[EmailService] Failed to send invitation email:', emailError)
+        logger.error({ 
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+          email,
+          org_id: orgId
+        }, 'Failed to send invitation email');
       }
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV] Invitation created for ${email}, token: ${inviteToken}`)
-        console.log(`[DEV] Invite link: ${inviteLink}`)
+        logger.debug({ 
+          email,
+          token: inviteToken,
+          link: inviteLink
+        }, 'DEV: Invitation created');
       }
 
       return NextResponse.json({
@@ -215,7 +242,11 @@ export async function POST(
       })
     }
   } catch (error: any) {
-    console.error('Error in POST /api/organizations/[id]/team/add:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in POST /api/organizations/[id]/team/add');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

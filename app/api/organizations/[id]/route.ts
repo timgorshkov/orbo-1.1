@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/organizations/[id] - Get organization details
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -41,7 +45,11 @@ export async function GET(
 
     return NextResponse.json({ organization: org })
   } catch (error: any) {
-    console.error('Error in GET /api/organizations/[id]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in GET /api/organizations/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -54,8 +62,11 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
 
     // Check authentication
@@ -115,19 +126,27 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error('Error updating organization:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error updating organization');
       return NextResponse.json(
         { error: 'Failed to update organization' },
         { status: 500 }
       )
     }
 
+    logger.info({ org_id: orgId }, 'Organization updated successfully');
     return NextResponse.json({
       success: true,
       organization: org
     })
   } catch (error: any) {
-    console.error('Error in PUT /api/organizations/[id]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in PUT /api/organizations/[id]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

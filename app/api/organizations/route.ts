@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/organizations' });
   try {
     const { name } = await req.json()
     // Используем сервисную роль для обхода RLS
@@ -18,10 +20,15 @@ export async function POST(req: NextRequest) {
     const regularSupabase = await createClientServer()
     const { data: { user: regularUser }, error: regularUserError } = await regularSupabase.auth.getUser()
     
-    console.log('User data from regular client:', regularUser ? `User ID: ${regularUser.id}` : 'No user')
+    logger.debug({ 
+      user_id: regularUser?.id,
+      has_user: !!regularUser
+    }, 'User data from regular client');
     
     if (regularUserError) {
-      console.error('Error getting user with regular client:', regularUserError)
+      logger.warn({ 
+        error: regularUserError.message
+      }, 'Error getting user with regular client');
     }
     
     // Используем пользователя из стандартного клиента
@@ -31,14 +38,16 @@ export async function POST(req: NextRequest) {
     if (!user) {
       // Получаем все куки
       const allCookies = cookies().getAll()
-      console.log('Available cookies:', allCookies.map(c => c.name))
+      logger.debug({ 
+        cookie_names: allCookies.map(c => c.name)
+      }, 'Available cookies');
       
       // Проверяем, есть ли куки с идентификатором пользователя
       const sbAccessToken = cookies().get('sb-access-token')?.value
       const sbRefreshToken = cookies().get('sb-refresh-token')?.value
       
       if (sbAccessToken) {
-        console.log('Found access token in cookies')
+        logger.debug({}, 'Found access token in cookies');
         
         try {
           // Пробуем получить пользователя с помощью токена
@@ -46,12 +55,16 @@ export async function POST(req: NextRequest) {
           
           if (userData?.user) {
             user = userData.user
-            console.log('Got user from access token:', user.id)
+            logger.debug({ user_id: user.id }, 'Got user from access token');
           } else if (tokenError) {
-            console.error('Error getting user with token:', tokenError)
+            logger.warn({ 
+              error: tokenError.message
+            }, 'Error getting user with token');
           }
         } catch (e) {
-          console.error('Exception while getting user with token:', e)
+          logger.error({ 
+            error: e instanceof Error ? e.message : String(e)
+          }, 'Exception while getting user with token');
         }
       }
     }
@@ -61,13 +74,19 @@ export async function POST(req: NextRequest) {
       try {
         // Получаем список всех пользователей (только для отладки)
         const { data: allUsers, error: listError } = await supabase.auth.admin.listUsers()
-        console.log('All users count:', allUsers?.users?.length || 0)
+        logger.debug({ 
+          user_count: allUsers?.users?.length || 0
+        }, 'All users count');
         
         if (listError) {
-          console.error('Error listing users:', listError)
+          logger.warn({ 
+            error: listError.message
+          }, 'Error listing users');
         }
       } catch (e) {
-        console.error('Exception while listing users:', e)
+        logger.error({ 
+          error: e instanceof Error ? e.message : String(e)
+        }, 'Exception while listing users');
       }
     }
     
@@ -91,7 +110,11 @@ export async function POST(req: NextRequest) {
       .single()
     
     if (orgError) {
-      console.error('Error creating organization:', orgError)
+      logger.error({ 
+        error: orgError.message,
+        user_id: user.id,
+        org_name: name
+      }, 'Error creating organization');
       return NextResponse.json(
         { error: orgError.message }, 
         { status: 400 }
@@ -107,20 +130,36 @@ export async function POST(req: NextRequest) {
         role: 'owner' // Роль владельца
       })
 
-    console.log("Membership insertion attempt for user:", user.id, "org:", org.id);
+    logger.debug({ 
+      user_id: user.id,
+      org_id: org.id
+    }, 'Membership insertion attempt');
 
     if (memberError) {
-      console.error('Error creating membership:', memberError)
+      logger.error({ 
+        error: memberError.message,
+        user_id: user.id,
+        org_id: org.id
+      }, 'Error creating membership');
       return NextResponse.json(
         { error: memberError.message }, 
         { status: 400 }
       )
     }
     
+    logger.info({ 
+      org_id: org.id,
+      user_id: user.id,
+      org_name: name
+    }, 'Organization created successfully');
+    
     return NextResponse.json({ success: true, org_id: org.id })
     
   } catch (err: any) {
-    console.error('Unexpected error:', err)
+    logger.error({ 
+      error: err.message || String(err),
+      stack: err.stack
+    }, 'Unexpected error in POST /api/organizations');
     return NextResponse.json(
       { error: err.message || 'Произошла неизвестная ошибка' }, 
       { status: 500 }

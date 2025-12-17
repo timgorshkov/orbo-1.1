@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/organizations/[id]/team - Get organization team (owner + admins)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/team' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
@@ -36,14 +40,20 @@ export async function GET(
       .eq('org_id', orgId)
 
     if (error) {
-      console.error('Error fetching team:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error fetching team');
       return NextResponse.json(
         { error: 'Failed to fetch team' },
         { status: 500 }
       )
     }
 
-    console.log(`[Team API] Found ${team?.length || 0} team members for org ${orgId}`)
+    logger.info({ 
+      team_count: team?.length || 0,
+      org_id: orgId
+    }, 'Found team members');
 
     // For each admin, parse the groups they admin
     const teamWithGroups = (team || []).map((member: any) => {
@@ -60,7 +70,11 @@ export async function GET(
             title: groupTitles[index] || `Group ${id}`
           }))
         } catch (e) {
-          console.error('Error parsing group data:', e)
+          logger.warn({ 
+            error: e instanceof Error ? e.message : String(e),
+            member_id: member.user_id,
+            org_id: orgId
+          }, 'Error parsing group data');
         }
       }
       
@@ -82,14 +96,22 @@ export async function GET(
       }
     })
 
-    console.log(`[Team API] Processed team with ${teamWithGroups.filter((m: any) => m.role === 'admin').length} admins`)
+    logger.info({ 
+      admin_count: teamWithGroups.filter((m: any) => m.role === 'admin').length,
+      total_count: teamWithGroups.length,
+      org_id: orgId
+    }, 'Processed team');
 
     return NextResponse.json({
       success: true,
       team: teamWithGroups
     })
   } catch (error: any) {
-    console.error('Error in GET /api/organizations/[id]/team:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in GET /api/organizations/[id]/team');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -102,8 +124,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/team' });
+  let orgId: string | undefined;
   try {
-    const { id: orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.id;
     const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
@@ -129,7 +154,7 @@ export async function POST(
     }
 
     // Step 1: Update admin rights from Telegram API first
-    console.log(`[Team Sync] Step 1: Updating admin rights from Telegram for org ${orgId}`)
+    logger.info({ org_id: orgId }, 'Step 1: Updating admin rights from Telegram');
     try {
       const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/telegram/groups/update-admins`, {
         method: 'POST',
@@ -142,40 +167,60 @@ export async function POST(
       })
 
       if (!updateResponse.ok) {
-        console.warn(`[Team Sync] Warning: Failed to update admin rights from Telegram:`, await updateResponse.text())
+        const errorText = await updateResponse.text();
+        logger.warn({ 
+          org_id: orgId,
+          error: errorText
+        }, 'Failed to update admin rights from Telegram');
         // Continue anyway - maybe there are existing records to sync
       } else {
         const updateData = await updateResponse.json()
-        console.log(`[Team Sync] ✅ Updated admin rights from Telegram:`, updateData)
+        logger.info({ 
+          org_id: orgId,
+          update_data: updateData
+        }, 'Updated admin rights from Telegram');
       }
     } catch (updateError: any) {
-      console.warn(`[Team Sync] Warning: Error updating admin rights:`, updateError.message)
+      logger.warn({ 
+        org_id: orgId,
+        error: updateError.message || String(updateError)
+      }, 'Error updating admin rights');
       // Continue anyway
     }
 
     // Step 2: Sync memberships from telegram_group_admins
-    console.log(`[Team Sync] Step 2: Syncing memberships for org ${orgId}`)
+    logger.info({ org_id: orgId }, 'Step 2: Syncing memberships');
     const { data: syncResults, error } = await adminSupabase.rpc(
       'sync_telegram_admins',
       { p_org_id: orgId }
     )
 
     if (error) {
-      console.error('[Team Sync] Error syncing admins:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error syncing admins');
       return NextResponse.json(
         { error: 'Failed to sync admins' },
         { status: 500 }
       )
     }
 
-    console.log(`[Team Sync] ✅ Sync completed:`, syncResults)
+    logger.info({ 
+      org_id: orgId,
+      sync_results: syncResults
+    }, 'Sync completed');
 
     return NextResponse.json({
       success: true,
       results: syncResults
     })
   } catch (error: any) {
-    console.error('Error in POST /api/organizations/[id]/team/sync:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in POST /api/organizations/[id]/team/sync');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
