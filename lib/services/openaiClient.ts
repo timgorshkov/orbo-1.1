@@ -3,19 +3,28 @@
  * 
  * Использует прокси для обхода блокировок OpenAI API
  * Работает через undici ProxyAgent (встроен в Node.js 18+)
+ * 
+ * Required env variables:
+ * - OPENAI_API_KEY: API ключ OpenAI
+ * - OPENAI_PROXY_URL: URL прокси в формате http://user:pass@host:port
  */
 
 import OpenAI from 'openai';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
-// Прокси ProxyCove (можно переопределить через env)
-const PROXY_URL = process.env.OPENAI_PROXY_URL || 'http://bf2019a0359d1bb0c46d:a957970f219298b9@go.proxycove.com:10001';
+// Прокси URL из переменной окружения (обязательно!)
+const PROXY_URL = process.env.OPENAI_PROXY_URL;
 
-// Устанавливаем глобальный прокси для всех fetch запросов
-const proxyAgent = new ProxyAgent(PROXY_URL);
-setGlobalDispatcher(proxyAgent);
+if (PROXY_URL) {
+  // Устанавливаем глобальный прокси для всех fetch запросов
+  const proxyAgent = new ProxyAgent(PROXY_URL);
+  setGlobalDispatcher(proxyAgent);
+  console.log('[OpenAI] Proxy configured');
+} else {
+  console.warn('[OpenAI] No OPENAI_PROXY_URL set - requests may be blocked from Russia');
+}
 
-// OpenAI клиент (теперь все fetch запросы идут через прокси)
+// OpenAI клиент
 export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });

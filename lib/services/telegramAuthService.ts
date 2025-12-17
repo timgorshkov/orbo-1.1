@@ -233,11 +233,12 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       // Создаём нового пользователя
       console.log(`[Auth Service] Creating new user`)
       const email = `telegram_${telegramUserId}@orbo.temp`
-      const password = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
+      // Временный токен для создания пользователя (не используется для входа)
+      const tempAuthToken = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
 
       const { data: newUser, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
         email,
-        password,
+        password: tempAuthToken,
         email_confirm: true,
         user_metadata: {
           telegram_user_id: telegramUserId,
