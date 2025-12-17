@@ -372,8 +372,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
+  const eventId = params.id;
   try {
-    const eventId = params.id
     const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
