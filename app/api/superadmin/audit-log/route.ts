@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
+import { createClientServer } from '@/lib/server/supabaseServer';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,35 @@ const supabaseAdmin = createClient(
 );
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Verify that the current user is a superadmin
+ */
+async function verifySuperadmin(): Promise<{ authorized: boolean; userId?: string; error?: string }> {
+  try {
+    const supabase = await createClientServer();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return { authorized: false, error: 'Unauthorized' };
+    }
+    
+    // Check superadmin status
+    const { data: superadmin, error: saError } = await supabaseAdmin
+      .from('superadmins')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (saError || !superadmin) {
+      return { authorized: false, userId: user.id, error: 'Access denied: not a superadmin' };
+    }
+    
+    return { authorized: true, userId: user.id };
+  } catch (e) {
+    return { authorized: false, error: 'Authentication failed' };
+  }
+}
 
 /**
  * GET /api/superadmin/audit-log
@@ -31,7 +61,12 @@ export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'superadmin/audit-log' });
   
   try {
-    // TODO: Add superadmin authentication check here
+    // ✅ Superadmin authentication check
+    const auth = await verifySuperadmin();
+    if (!auth.authorized) {
+      logger.warn({ error: auth.error }, 'Unauthorized access attempt');
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
     
     const url = new URL(req.url);
     const orgId = url.searchParams.get('org_id');

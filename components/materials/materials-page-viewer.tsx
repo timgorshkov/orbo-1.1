@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Search, Sparkles, Loader2, ChevronLeft, Menu } from 'lucide-react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export type MaterialsPageViewerProps = {
   orgId: string;
@@ -284,7 +285,7 @@ export function MaterialsPageViewer({
                 <h2 className="text-2xl md:text-3xl font-semibold mb-4 md:mb-6 text-neutral-900">{page.title}</h2>
                 <div 
                   className="material-content" 
-                  dangerouslySetInnerHTML={{ __html: page.contentHtml || '<p class="text-neutral-500">Материал пока пуст.</p>' }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(page.contentHtml || '<p class="text-neutral-500">Материал пока пуст.</p>') }}
                 />
               </article>
             ) : (
