@@ -124,13 +124,13 @@ export async function POST(request: Request) {
           const isOwner = member.status === 'creator';
           
           if (!isAdmin) {
-            console.log(`User is not admin in chat ${chatId} (${chatInfo.title}), status: ${member.status}`);
+            console.log(`User is not admin in chat ${chatId} (${chatDetails.result.title}), status: ${member.status}`);
             continue;
           }
           
-          console.log(`User is admin in chat ${chatId} (${chatInfo.title}), status: ${member.status}`);
+          console.log(`User is admin in chat ${chatId} (${chatDetails.result.title}), status: ${member.status}`);
           
-          console.log(`Ensuring group ${chatId} (${chatInfo.title}) is registered globally`);
+          console.log(`Ensuring group ${chatId} (${chatDetails.result.title}) is registered globally`);
 
       const { data: existingGroupGlobal, error: existingGroupGlobalError } = await supabaseService
         .from('telegram_groups')
