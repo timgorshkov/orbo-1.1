@@ -35,11 +35,12 @@ export function initHawk() {
       },
       // Фильтрация sensitive данных
       beforeSend: (event) => {
-        // Удаляем пароли из контекста
-        if (event.context) {
-          delete event.context.password;
-          delete event.context.token;
-          delete event.context.secret;
+        // Удаляем пароли из контекста (только если context - объект)
+        if (event.context && typeof event.context === 'object' && !Array.isArray(event.context)) {
+          const ctx = event.context as Record<string, unknown>;
+          delete ctx.password;
+          delete ctx.token;
+          delete ctx.secret;
         }
         return event;
       },
