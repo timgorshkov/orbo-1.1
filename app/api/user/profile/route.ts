@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
             last_name: lastName,
             full_name: fullName,
             source: telegramAccount ? 'telegram_admin' : 'manual',
-            participant_status: membership.role === 'owner' ? 'owner' : 'admin'
+            participant_status: 'participant' // Valid enum values: participant, event_attendee, candidate, excluded
           })
           .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
           .single();

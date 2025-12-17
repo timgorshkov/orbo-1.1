@@ -243,23 +243,26 @@ async function processWebhookInBackground(body: any) {
         const memberChatId = chatMember.chat?.id;
         const newStatus = chatMember.new_chat_member?.status;
         
-        if (memberChatId && newStatus) {
+        if (memberChatId && memberChatId !== 'null' && newStatus) {
           let botStatus = 'pending';
           if (newStatus === 'administrator') botStatus = 'connected';
           else if (newStatus === 'left' || newStatus === 'kicked') botStatus = 'inactive';
           
           if (isNormal) console.log('[Webhook] Bot status:', memberChatId, botStatus);
           
-          const { error: updateError } = await supabaseServiceRole
+          // Upsert group so that it appears in available groups even если еще не было сообщений
+          const chatTitle = chatMember.chat?.title || `Chat ${memberChatId}`;
+          const { error: upsertError } = await supabaseServiceRole
             .from('telegram_groups')
-            .update({
+            .upsert({
+              tg_chat_id: String(memberChatId),
+              title: chatTitle,
               bot_status: botStatus,
               last_sync_at: new Date().toISOString()
-            })
-            .filter('tg_chat_id::text', 'eq', String(chatId));
+            }, { onConflict: 'tg_chat_id' });
           
-          if (updateError) {
-            console.error('[Webhook] Bot status update error:', updateError.message);
+          if (upsertError) {
+            console.error('[Webhook] Bot status upsert error:', upsertError.message);
           }
         }
       }

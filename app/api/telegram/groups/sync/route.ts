@@ -64,130 +64,43 @@ export async function POST(request: Request) {
 
     // Инициализируем основной бот для проверки групп
     const telegramService = new TelegramService('main');
+    const tgUserId = activeAccount.telegram_user_id;
     
-    console.log(`Syncing groups for user ${user.id}, Telegram ID: ${activeAccount.telegram_user_id} in org ${orgId}`);
+    console.log(`[Sync] Starting for user ${user.id}, TG ID: ${tgUserId}, org: ${orgId}`);
 
     try {
-      // Получаем все чаты, где есть бот
-      console.log('Getting all chats where bot is present...');
-      const botInfo = await telegramService.getMe();
+      // НОВАЯ ЛОГИКА: Получаем ВСЕ группы из БД, где бот подключен
+      // Вместо getUpdates (который ломает webhook) - ищем в telegram_groups
+      const { data: allGroups, error: groupsError } = await supabaseService
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status')
+        .in('bot_status', ['connected', 'pending']);
       
-      if (!botInfo.ok) {
+      if (groupsError) {
+        console.error('[Sync] Error fetching groups from DB:', groupsError);
         return NextResponse.json({ 
-          error: 'Failed to get bot info',
-          details: botInfo
+          error: 'Failed to fetch groups from database',
+          details: groupsError
         }, { status: 500 });
       }
       
-      console.log('Bot info:', botInfo.result);
+      console.log(`[Sync] Found ${allGroups?.length || 0} groups in database with active bot`);
       
-      // Получаем обновления, чтобы найти все группы
-      // Удаляем вебхук перед получением обновлений, чтобы избежать ошибки 409
-      let updates;
-      try {
-        updates = await telegramService.getUpdates({ limit: 100, deleteWebhook: true });
-        
-        if (!updates || !updates.ok) {
-          return NextResponse.json({ 
-            error: 'Failed to get updates',
-            details: updates
-          }, { status: 500 });
-        }
-      } catch (updatesError) {
-        console.error('Error getting updates:', updatesError);
-        
-        // Если не удалось получить обновления, попробуем использовать альтернативный метод
-        // Добавим группы напрямую через запрос к базе данных
-        console.log('Falling back to direct database query for groups...');
-        
-        // Используем сервисную роль для запроса к базе данных
-        // supabaseService уже определен выше
-        
-      // Получаем все группы, где бот уже добавлен
-      console.log('Falling back to direct database query for groups...');
-      
-      // Сначала получим группы для конкретной организации
-      const { data: orgGroups, error: orgGroupsError } = await supabaseService
-        .from('org_telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', orgId);
-        
-      if (orgGroupsError) {
-        console.error(`Error fetching groups for org ${orgId}:`, orgGroupsError);
-      } else {
-        console.log(`Found ${orgGroups?.length || 0} groups for org ${orgId}`);
-        
-        if (orgGroups && orgGroups.length > 0) {
-          const chatIds = orgGroups.map(group => group.tg_chat_id);
-          const { data: mappedGroups } = await supabaseService
-            .from('telegram_groups')
-            .select('*')
-            .in('tg_chat_id', chatIds);
-          return NextResponse.json({
-            success: true,
-            message: `Found ${mappedGroups?.length || 0} existing groups for this organization`,
-            groups: mappedGroups || []
-          });
-        }
-      }
-      
-      // Если для этой организации групп нет, получим все активные группы
-      const { data: existingGroups, error: groupsError } = await supabaseService
-        .from('telegram_groups')
-        .select('*')
-        .not('bot_status', 'eq', 'inactive');
-          
-        if (groupsError) {
-          console.error('Error fetching existing groups:', groupsError);
-          return NextResponse.json({ 
-            error: 'Failed to fetch existing groups',
-            details: groupsError
-          }, { status: 500 });
-        }
-        
-        // Возвращаем список существующих групп
+      if (!allGroups || allGroups.length === 0) {
+        // Нет групп с ботом — возвращаем пустой список
         return NextResponse.json({
           success: true,
-          message: `Found ${existingGroups?.length || 0} existing groups`,
-          groups: existingGroups || []
+          message: 'No groups found. Add bot to a group first.',
+          groups: []
         });
       }
       
-      console.log(`Got ${updates.result.length} updates`);
+      // Проверяем права администратора пользователя в каждой группе
+      const availableGroups = [];
       
-      // Извлекаем уникальные группы из обновлений
-      const uniqueGroups = new Map();
-      
-      for (const update of updates.result) {
-        const chat = update.message?.chat || 
-                     update.edited_message?.chat || 
-                     update.channel_post?.chat || 
-                     update.edited_channel_post?.chat || 
-                     update.my_chat_member?.chat ||
-                     update.chat_member?.chat;
-                     
-        if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
-          if (!uniqueGroups.has(chat.id)) {
-            uniqueGroups.set(chat.id, {
-              id: chat.id,
-              title: chat.title,
-              type: chat.type
-            });
-          }
-        }
-      }
-      
-      console.log(`Found ${uniqueGroups.size} unique groups`);
-      
-      // Используем сервисную роль для сохранения данных
-      // supabaseService уже определен выше
-      
-      // Проверяем каждую группу на права администратора
-      const addedGroups = [];
-      
-      // Используем Array.from для обхода проблемы с итерацией по Map.entries()
-      for (const [chatId, chatInfo] of Array.from(uniqueGroups.entries())) {
-        console.log(`Checking admin rights for chat ${chatId} (${chatInfo.title})`);
+      for (const group of allGroups) {
+        const chatId = group.tg_chat_id;
+        console.log(`[Sync] Checking admin rights in ${chatId} (${group.title})`);
         
         try {
           // Получаем информацию о чате
@@ -286,26 +199,29 @@ export async function POST(request: Request) {
         
         // Если после миграции всё ещё нет записи, создаём новую
         if (!groupRecord) {
-          const { data: newGroup, error: insertError } = await supabaseService
+        const { error: insertError } = await supabaseService
             .from('telegram_groups')
             .insert({
               tg_chat_id: chatId,
               title: chatDetails.result.title,
               invite_link: chatDetails.result.invite_link || null,
               bot_status: 'connected',
-              // Legacy verification fields removed in migration 080
-              member_count: chatDetails.result.member_count || 0,
-              created_at: new Date().toISOString()
+            // Legacy verification fields removed in migration 080
+            member_count: chatDetails.result.member_count || 0
             })
-            .select()
-            .single();
 
           if (insertError) {
             console.error(`Error inserting canonical group ${chatId}:`, insertError);
             continue;
           }
 
-          groupRecord = newGroup;
+        groupRecord = {
+          tg_chat_id: chatId,
+          title: chatDetails.result.title,
+          invite_link: chatDetails.result.invite_link || null,
+          bot_status: 'connected',
+          member_count: chatDetails.result.member_count || 0
+        };
         }
       } else {
         const updatePatch: Record<string, any> = {
@@ -316,17 +232,13 @@ export async function POST(request: Request) {
           member_count: chatDetails.result.member_count || 0
         };
 
-        const { data: updatedGroup, error: updateError } = await supabaseService
+        const { error: updateError } = await supabaseService
           .from('telegram_groups')
           .update(updatePatch)
-          .eq('id', groupRecord.id)
-          .select()
-          .single();
+          .eq('id', groupRecord.id);
 
         if (updateError) {
           console.error(`Error updating canonical group ${chatId}:`, updateError);
-        } else if (updatedGroup) {
-          groupRecord = updatedGroup;
         }
       }
 
