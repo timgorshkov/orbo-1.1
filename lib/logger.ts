@@ -28,14 +28,35 @@ export const logger = pino({
   // Hook для отправки ошибок в Hawk
   hooks: {
     logMethod(inputArgs, method, level) {
-      // Если уровень error (50) - отправляем в Hawk
+      // Если уровень error (50) или выше - отправляем в Hawk
       if (level >= 50 && typeof window === 'undefined') {
-        const [obj, msg] = inputArgs as [Record<string, unknown>, string];
+        const [obj, msg] = inputArgs as [Record<string, unknown>, string?];
+        
+        // Собираем контекст для Hawk
+        const context = typeof obj === 'object' ? { ...obj } : {};
+        if (msg) context.message = msg;
+        
+        // Определяем Error объект или создаём его
+        let error: Error;
         if (obj?.error instanceof Error) {
-          captureError(obj.error, { message: msg, ...obj });
-        } else if (obj?.stack) {
-          captureError(new Error(msg || String(obj.message)), obj);
+          error = obj.error;
+        } else if (typeof obj?.error === 'string') {
+          error = new Error(obj.error);
+          if (obj.stack && typeof obj.stack === 'string') {
+            error.stack = obj.stack;
+          }
+        } else if (obj?.stack && typeof obj.stack === 'string') {
+          error = new Error(msg || String(obj?.msg) || 'Unknown error');
+          error.stack = obj.stack;
+        } else if (msg) {
+          error = new Error(msg);
+        } else if (typeof obj?.msg === 'string') {
+          error = new Error(obj.msg);
+        } else {
+          error = new Error('Unknown error');
         }
+        
+        captureError(error, context);
       }
       return method.apply(this, inputArgs);
     },
