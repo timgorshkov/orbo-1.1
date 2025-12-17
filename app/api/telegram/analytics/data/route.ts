@@ -77,10 +77,12 @@ type DailyMetrics = {
 
 export async function GET(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/telegram/analytics/data' });
+  let orgId: string | null | undefined;
+  let chatId: string | null | undefined;
   try {
     const { searchParams } = new URL(request.url)
-    const orgId = searchParams.get('orgId')
-    const chatId = searchParams.get('chatId')
+    orgId = searchParams.get('orgId')
+    chatId = searchParams.get('chatId')
 
     if (!orgId || !chatId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
