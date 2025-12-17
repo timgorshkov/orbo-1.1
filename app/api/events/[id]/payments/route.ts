@@ -20,8 +20,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments' });
+  let eventId: string | undefined;
   try {
-    const { id: eventId } = await params
+    const paramsData = await params;
+    eventId = paramsData.id;
     const { searchParams } = new URL(request.url)
     const statusFilter = searchParams.get('status') // optional filter
     
@@ -132,7 +134,7 @@ export async function GET(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      event_id: eventId
+      event_id: eventId || 'unknown'
     }, 'Error in GET /api/events/[id]/payments');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
