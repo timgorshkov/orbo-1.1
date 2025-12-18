@@ -11,7 +11,7 @@
 
 import OpenAI from 'openai';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
-import { createServiceLogger } from './logger';
+import { createServiceLogger } from '@/lib/logger';
 
 // Прокси URL из переменной окружения (обязательно!)
 const PROXY_URL = process.env.OPENAI_PROXY_URL;
