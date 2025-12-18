@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { createClientLogger } from '@/lib/logger'
 
 interface GroupSelectionCardProps {
   chatId: number;
@@ -13,6 +14,7 @@ interface GroupSelectionCardProps {
 export function GroupSelectionCard({ chatId, title, orgId }: GroupSelectionCardProps) {
   const [isAdding, setIsAdding] = useState(false)
   const router = useRouter()
+  const clientLogger = createClientLogger('GroupSelectionCard', { orgId, chatId })
   
   const addGroup = async () => {
     setIsAdding(true)
@@ -30,8 +32,8 @@ export function GroupSelectionCard({ chatId, title, orgId }: GroupSelectionCardP
           router.push(`/app/${orgId}/telegram`)
         }, 1000)
       }
-    } catch (error) {
-      console.error('Error adding group:', error)
+    } catch (error: any) {
+      clientLogger.error({ error: error?.message, title }, 'Error adding group')
     } finally {
       setIsAdding(false)
     }

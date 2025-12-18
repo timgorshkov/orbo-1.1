@@ -6,10 +6,12 @@ import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import TabsLayout from '../tabs-layout'
+import { createServiceLogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
 export default async function TelegramAnalyticsPage({ params }: { params: { org: string } }) {
+  const logger = createServiceLogger('TelegramAnalyticsPage', { orgId: params.org });
   try {
     const { supabase: userSupabase, user } = await requireOrgAccess(params.org)
     
@@ -119,8 +121,12 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
             member_active_count: analyticsPayload?.metrics?.member_active_count ?? 0
           }
         }
-      } catch (analyticsError) {
-        console.error(`Error loading analytics for group ${group.title} (${chatId})`, analyticsError)
+      } catch (analyticsError: any) {
+        logger.warn({ 
+          group_title: group.title, 
+          chat_id: chatId,
+          error: analyticsError?.message 
+        }, 'Error loading analytics for group');
       }
     }
 
@@ -286,8 +292,8 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
         </TabsLayout>
       </div>
     )
-  } catch (error) {
-    console.error('Telegram analytics page error:', error)
+  } catch (error: any) {
+    logger.error({ error: error?.message || String(error) }, 'Telegram analytics page error');
     return notFound()
   }
 }

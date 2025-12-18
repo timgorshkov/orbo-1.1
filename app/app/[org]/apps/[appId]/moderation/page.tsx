@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Check, X, AlertCircle, Inbox } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -29,6 +30,7 @@ export default function ModerationPage() {
   const router = useRouter();
   const orgId = params.org as string;
   const appId = params.appId as string;
+  const clientLogger = createClientLogger('ModerationPage', { orgId, appId });
 
   const [app, setApp] = useState<App | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -65,7 +67,7 @@ export default function ModerationPage() {
       const itemsData = await itemsResponse.json();
       setPendingItems(itemsData.items || []);
     } catch (err: any) {
-      console.error('Error fetching data:', err);
+      clientLogger.error({ error: err.message }, 'Error fetching moderation data');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -90,7 +92,7 @@ export default function ModerationPage() {
       // Remove from pending list
       setPendingItems(prev => prev.filter(item => item.id !== itemId));
     } catch (err: any) {
-      console.error('Error moderating item:', err);
+      clientLogger.error({ itemId, action, error: err.message }, 'Error moderating item');
       alert('Не удалось выполнить действие');
     } finally {
       setProcessingItemId(null);

@@ -5,11 +5,13 @@ import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CheckGroupsForm } from '../components/check-groups-form'
+import { createClientLogger } from '@/lib/logger'
 
 export default function CheckGroupsPage({ params }: { params: { org: string } }) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [userId, setUserId] = useState<string | null>(null);
+  const clientLogger = createClientLogger('CheckGroupsPage', { orgId: params.org });
 
   // Add useEffect to load user info
   useEffect(() => {
@@ -20,8 +22,8 @@ export default function CheckGroupsPage({ params }: { params: { org: string } })
         if (data.user?.id) {
           setUserId(data.user.id);
         }
-      } catch (error) {
-        console.error('Failed to load user info:', error);
+      } catch (error: any) {
+        clientLogger.error({ error: error?.message }, 'Failed to load user info');
       }
     }
     

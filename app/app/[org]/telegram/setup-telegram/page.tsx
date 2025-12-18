@@ -5,11 +5,13 @@ import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { createClientLogger } from '@/lib/logger'
 
 export default function SetupTelegramPage({ params }: { params: { org: string } }) {
   const [telegramId, setTelegramId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
+  const clientLogger = createClientLogger('SetupTelegramPage', { orgId: params.org })
   
   const saveTelegramId = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,8 +27,8 @@ export default function SetupTelegramPage({ params }: { params: { org: string } 
       if (response.ok) {
         router.push(`/app/${params.org}/telegram/check-groups`)
       }
-    } catch (error) {
-      console.error('Error saving Telegram ID:', error)
+    } catch (error: any) {
+      clientLogger.error({ error: error?.message }, 'Error saving Telegram ID')
     } finally {
       setIsSubmitting(false)
     }

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { createClientLogger } from '@/lib/logger'
 
 type AddVerifiedGroupProps = {
   orgId: string;
@@ -15,6 +16,7 @@ export default function AddVerifiedGroup({ orgId, onGroupAdded }: AddVerifiedGro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const clientLogger = createClientLogger('AddVerifiedGroup', { orgId })
 
   const handleAddGroup = async () => {
     if (!chatId) {
@@ -51,7 +53,7 @@ export default function AddVerifiedGroup({ orgId, onGroupAdded }: AddVerifiedGro
         onGroupAdded()
       }
     } catch (e: any) {
-      console.error('Error adding verified group:', e)
+      clientLogger.error({ error: e?.message, chatId }, 'Error adding verified group')
       setError(e.message || 'Failed to add group')
     } finally {
       setLoading(false)

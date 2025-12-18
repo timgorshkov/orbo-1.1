@@ -4,8 +4,10 @@ import { requireOrgAccess } from '@/lib/orgGuard';
 import { MaterialService } from '@/lib/server/materials/service';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { cookies } from 'next/headers';
+import { createServiceLogger } from '@/lib/logger';
 
 export async function fetchMaterialsTree(orgIdentifier: string) {
+  const logger = createServiceLogger('MaterialsData', { orgIdentifier });
   const cookieStore = cookies();
   await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin', 'member']);
 
@@ -14,7 +16,7 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
   // Проверяем, является ли идентификатор UUID или slug
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgIdentifier);
 
-  console.log('fetchMaterialsTree:', { orgIdentifier, isUUID });
+  logger.debug({ isUUID }, 'Fetching materials tree');
 
   const { data: org, error } = await admin
     .from('organizations')
@@ -22,7 +24,9 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
     .eq(isUUID ? 'id' : 'slug', orgIdentifier)
     .single();
 
-  console.log('Organization query result:', { org, error });
+  if (error) {
+    logger.warn({ error: error.message }, 'Organization query failed');
+  }
 
   if (!org) {
     throw new Error(`Organization not found: ${orgIdentifier} (isUUID: ${isUUID}, error: ${error?.message})`);

@@ -5,6 +5,7 @@ import ActivityTimeline from '@/components/analytics/activity-timeline'
 import TopContributors from '@/components/analytics/top-contributors'
 import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
+import { createServiceLogger } from '@/lib/logger'
 
 interface PageProps {
   params: {
@@ -14,6 +15,7 @@ interface PageProps {
 }
 
 export default async function GroupAnalyticsPage({ params }: PageProps) {
+  const logger = createServiceLogger('GroupAnalyticsPage', { orgId: params.org, groupId: params.id });
   try {
     await requireOrgAccess(params.org);
     const supabase = await createClientServer();
@@ -26,7 +28,7 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
       .single();
 
     if (error || !group) {
-      console.error('Error fetching group:', error);
+      logger.warn({ error: error?.message }, 'Group not found');
       return notFound();
     }
 
@@ -39,7 +41,7 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
       .maybeSingle();
 
     if (!mapping) {
-      console.error('Group not assigned to this organization');
+      logger.warn({ tg_chat_id: group.tg_chat_id }, 'Group not assigned to this organization');
       return notFound();
     }
 
@@ -67,8 +69,8 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
         </div>
       </div>
     );
-  } catch (error) {
-    console.error('Group analytics error:', error);
+  } catch (error: any) {
+    logger.error({ error: error?.message || String(error) }, 'Group analytics page error');
     return notFound();
   }
 }

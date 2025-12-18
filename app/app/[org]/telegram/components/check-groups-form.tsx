@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { createClientLogger } from '@/lib/logger'
 
 interface CheckGroupsFormProps {
   orgId: string;
@@ -12,6 +13,7 @@ interface CheckGroupsFormProps {
 export function CheckGroupsForm({ orgId, userId, telegramId }: CheckGroupsFormProps) {
   const [isChecking, setIsChecking] = useState(false)
   const router = useRouter()
+  const clientLogger = createClientLogger('CheckGroupsForm', { orgId, userId })
   
   const checkGroups = async () => {
     setIsChecking(true)
@@ -33,8 +35,8 @@ export function CheckGroupsForm({ orgId, userId, telegramId }: CheckGroupsFormPr
         // После успешной проверки перенаправляем на страницу выбора групп
         router.push(`/app/${orgId}/telegram/select-groups`)
       }
-    } catch (error) {
-      console.error('Error checking groups:', error)
+    } catch (error: any) {
+      clientLogger.error({ error: error?.message, telegramId }, 'Error checking groups')
     } finally {
       setIsChecking(false)
     }

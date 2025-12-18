@@ -19,6 +19,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -51,6 +52,7 @@ export default function AppDetailPage() {
   const router = useRouter();
   const orgId = params.org as string;
   const appId = params.appId as string;
+  const clientLogger = createClientLogger('AppDetailPage', { orgId, appId });
 
   const [app, setApp] = useState<App | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -83,7 +85,7 @@ export default function AppDetailPage() {
         setCollections(collectionsData.collections || []);
       }
     } catch (err: any) {
-      console.error('Error fetching app details:', err);
+      clientLogger.error({ error: err.message }, 'Error fetching app details');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -107,7 +109,7 @@ export default function AppDetailPage() {
 
       router.push(`/app/${orgId}/apps`);
     } catch (err: any) {
-      console.error('Error deleting app:', err);
+      clientLogger.error({ error: err.message }, 'Error deleting app');
       alert(err.message || 'Не удалось удалить приложение. Попробуйте ещё раз.');
     }
   };
@@ -122,8 +124,8 @@ export default function AppDetailPage() {
       await navigator.clipboard.writeText(getPublicUrl());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+    } catch (err: any) {
+      clientLogger.error({ error: err?.message }, 'Failed to copy link');
       alert('Не удалось скопировать ссылку');
     }
   };

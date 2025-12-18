@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import TabsLayout from '../tabs-layout';
+import { createServiceLogger } from '@/lib/logger';
 
 type TelegramGroup = {
   id: number;
@@ -16,6 +17,7 @@ type TelegramGroup = {
 };
 
 export default async function TelegramGroupsListPage({ params }: { params: { org: string } }) {
+  const logger = createServiceLogger('TelegramGroupsListPage', { orgId: params.org });
   try {
     const { supabase } = await requireOrgAccess(params.org);
 
@@ -45,7 +47,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
     }
 
     if (orgGroupsError) {
-      console.error('Error fetching telegram groups:', orgGroupsError);
+      logger.error({ error: orgGroupsError.message }, 'Error fetching telegram groups');
     }
 
     const activeGroups = groups?.filter(g => g.bot_status === 'connected') || [];
@@ -191,8 +193,8 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
         </TabsLayout>
       </div>
     );
-  } catch (error) {
-    console.error('Telegram groups list page error:', error);
+  } catch (error: any) {
+    logger.error({ error: error?.message || String(error) }, 'Telegram groups list page error');
     return notFound();
   }
 }
