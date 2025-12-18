@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 // Note: Removed 'edge' runtime for Docker standalone compatibility
 
-export async function GET() {
+export async function GET(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/health' });
   const startTime = Date.now()
   try {
     // Проверка подключения к Supabase
@@ -27,7 +29,10 @@ export async function GET() {
       response_time_ms: responseTime
     })
   } catch (error) {
-    console.error('Health check failed:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Health check failed');
     
     return NextResponse.json({
       status: 'unhealthy',

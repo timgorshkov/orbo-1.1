@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { MaterialService } from '@/lib/server/materials/service';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest, { params }: { params: { org: string } }) {
+  const logger = createAPILogger(request, { endpoint: '/api/materials/tree' });
   const { searchParams } = new URL(request.url);
   const orgId = searchParams.get('orgId') ?? params.org;
 
@@ -18,12 +20,17 @@ export async function GET(request: NextRequest, { params }: { params: { org: str
     const tree = await MaterialService.getTree(orgId);
     return NextResponse.json({ tree });
   } catch (error: any) {
-    console.error('Materials tree error', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId
+    }, 'Materials tree error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: { org: string } }) {
+  const logger = createAPILogger(request, { endpoint: '/api/materials/tree' });
   const body = await request.json();
   const orgId = body.orgId ?? params.org;
   if (!orgId) {
@@ -43,7 +50,11 @@ export async function POST(request: NextRequest, { params }: { params: { org: st
     });
     return NextResponse.json({ page });
   } catch (error: any) {
-    console.error('Materials create error', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId
+    }, 'Materials create error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
 }

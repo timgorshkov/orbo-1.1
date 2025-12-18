@@ -12,13 +12,16 @@ import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';
 import { formatDigestForTelegram } from '@/lib/templates/weeklyDigest';
 import { sendDigestDM } from '@/lib/services/telegramNotificationService';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { createAPILogger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/digest/test-send' });
+  let orgId: string | undefined;
   try {
     const supabase = await createClientServer();
     const adminSupabase = createAdminServer();
     const body = await request.json();
-    const { orgId } = body;
+    orgId = body.orgId;
 
     if (!orgId) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
@@ -117,7 +120,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[API] Test digest send error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Test digest send error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

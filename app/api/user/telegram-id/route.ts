@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/user/telegram-id' });
   try {
     const { telegramId } = await req.json()
     
@@ -30,9 +32,13 @@ export async function POST(req: NextRequest) {
         updated_at: new Date().toISOString()
       })
     
+    logger.info({ telegram_id: telegramId, user_id: user.id }, 'Telegram ID saved');
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error saving Telegram ID:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Error saving Telegram ID');
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

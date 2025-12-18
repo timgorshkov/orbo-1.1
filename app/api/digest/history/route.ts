@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { createClientServer } from '@/lib/server/supabaseServer';
 import { createClient } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,10 +23,12 @@ const supabaseAdmin = createClient(
 );
 
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/digest/history' });
+  let orgId: string | null = null;
   try {
     const supabase = await createClientServer();
     const searchParams = request.nextUrl.searchParams;
-    const orgId = searchParams.get('orgId');
+    orgId = searchParams.get('orgId');
     const limit = parseInt(searchParams.get('limit') || '10');
 
     if (!orgId) {
@@ -92,7 +95,11 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[API] Digest history error:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Digest history error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

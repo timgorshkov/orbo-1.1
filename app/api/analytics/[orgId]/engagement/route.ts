@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,8 +8,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/analytics/[orgId]/engagement' });
+  let orgId: string | undefined;
   try {
-    const { orgId } = await params;
+    const paramsData = await params;
+    orgId = paramsData.orgId;
 
     // Check authentication
     const supabase = await createClientServer();
@@ -36,13 +40,20 @@ export async function GET(
     });
 
     if (error) {
-      console.error('[Analytics] Error fetching engagement:', error);
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error fetching engagement');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error: any) {
-    console.error('[Analytics] Engagement error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Engagement error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

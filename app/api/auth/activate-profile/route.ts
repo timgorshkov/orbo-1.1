@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/auth/activate-profile' });
   try {
     const body = await request.json()
     const { email, code, action } = body
@@ -21,7 +23,10 @@ export async function POST(request: NextRequest) {
       const { data: existingUsers, error: userCheckError } = await adminSupabase.auth.admin.listUsers()
       
       if (userCheckError) {
-        console.error('Error checking existing users:', userCheckError)
+        logger.error({ 
+          error: userCheckError.message,
+          email
+        }, 'Error checking existing users');
         return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 })
       }
 
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Если нет telegram account, создаём запись в отдельной таблице или используем другой механизм
         // Для простоты, можно сохранить в metadata пользователя через admin API
-        console.warn('No telegram account found for user, using alternative storage')
+        logger.warn({ user_id: user.id }, 'No telegram account found for user, using alternative storage');
       }
 
       // Отправляем email с кодом
@@ -88,15 +93,18 @@ export async function POST(request: NextRequest) {
       
       try {
         await emailService.sendVerificationCode(email, verificationCode)
-        console.log(`[EmailService] Verification code sent to ${email}`)
+        logger.info({ email }, 'Verification code sent');
       } catch (emailError) {
-        console.error('[EmailService] Failed to send verification email:', emailError)
+        logger.error({ 
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+          email
+        }, 'Failed to send verification email');
         // Продолжаем работу даже если email не отправился
       }
 
       // В dev режиме также логируем код
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEV] Verification code for ${email}: ${verificationCode}`)
+        logger.debug({ email, code: verificationCode }, 'DEV: Verification code');
       }
 
       return NextResponse.json({
@@ -137,7 +145,11 @@ export async function POST(request: NextRequest) {
       })
 
       if (updateError) {
-        console.error('Error updating user email:', updateError)
+        logger.error({ 
+          error: updateError.message,
+          user_id: user.id,
+          email: pendingEmail
+        }, 'Error updating user email');
         return NextResponse.json({ error: 'Не удалось обновить email' }, { status: 500 })
       }
 
@@ -199,7 +211,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error: any) {
-    console.error('Error in activate-profile:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in activate-profile');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -208,6 +223,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/auth/activate-profile' });
   try {
     const supabase = await createClientServer()
 
@@ -240,7 +256,10 @@ export async function GET(request: NextRequest) {
       })) || []
     })
   } catch (error: any) {
-    console.error('Error getting activation status:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error getting activation status');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

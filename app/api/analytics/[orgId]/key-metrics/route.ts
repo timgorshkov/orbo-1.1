@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,8 +8,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { orgId: string } }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/analytics/[orgId]/key-metrics' });
+  const orgId = params.orgId;
   try {
-    const { orgId } = params;
     const { searchParams } = new URL(req.url);
     const periodDays = parseInt(searchParams.get('periodDays') || '14');
     const tgChatId = searchParams.get('tgChatId');
@@ -41,14 +43,23 @@ export async function GET(
     });
 
     if (error) {
-      console.error('[Analytics] Error fetching key metrics:', error);
+      logger.error({ 
+        error: error.message,
+        org_id: orgId,
+        period_days: periodDays,
+        tg_chat_id: tgChatId
+      }, 'Error fetching key metrics');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // RPC returns array with single row
     return NextResponse.json({ data: data[0] || null });
   } catch (error: any) {
-    console.error('[Analytics] Key metrics error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId
+    }, 'Key metrics error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

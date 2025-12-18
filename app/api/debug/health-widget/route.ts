@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createAPILogger } from '@/lib/logger';
 
 // Service role client for bypassing RLS
 const supabaseAdmin = createClient(
@@ -19,6 +20,7 @@ const supabaseAdmin = createClient(
  * Returns diagnostic information to help debug why the widget is not working
  */
 export async function GET(req: NextRequest) {
+  const logger = createAPILogger(req, { endpoint: '/api/debug/health-widget' });
   try {
     const diagnostics: any = {
       timestamp: new Date().toISOString(),
@@ -178,7 +180,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(diagnostics, { status: 200 });
 
   } catch (error: any) {
-    console.error('[Debug Health Widget] Error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Debug Health Widget error');
     return NextResponse.json({ 
       error: 'Debug failed',
       message: error.message,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,8 +8,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { orgId: string } }
 ) {
+  const logger = createAPILogger(req, { endpoint: '/api/analytics/[orgId]/contributors' });
+  const orgId = params.orgId;
   try {
-    const { orgId } = params;
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '10');
     const tgChatId = searchParams.get('tgChatId');
@@ -41,13 +43,22 @@ export async function GET(
     });
 
     if (error) {
-      console.error('[Analytics] Error fetching contributors:', error);
+      logger.error({ 
+        error: error.message,
+        org_id: orgId,
+        limit,
+        tg_chat_id: tgChatId
+      }, 'Error fetching contributors');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error: any) {
-    console.error('[Analytics] Contributors error:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId
+    }, 'Contributors error');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

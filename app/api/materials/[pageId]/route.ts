@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MaterialService } from '@/lib/server/materials/service';
 import { requireOrgAccess } from '@/lib/orgGuard';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest, { params }: { params: { pageId: string } }) {
+  const logger = createAPILogger(request, { endpoint: '/api/materials/[pageId]' });
   const orgId = request.nextUrl.searchParams.get('orgId');
   if (!orgId) {
     return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
@@ -23,7 +25,12 @@ export async function GET(request: NextRequest, { params }: { params: { pageId: 
     }
     return NextResponse.json({ page });
   } catch (error: any) {
-    console.error('Materials get error', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      page_id: params.pageId,
+      org_id: orgId
+    }, 'Materials get error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
 }
@@ -46,7 +53,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { pageId
     });
     return NextResponse.json({ page });
   } catch (error: any) {
-    console.error('Materials update error', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      page_id: params.pageId,
+      org_id: orgId
+    }, 'Materials update error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
 }
@@ -62,7 +74,12 @@ export async function DELETE(request: NextRequest, { params }: { params: { pageI
     await MaterialService.deletePage(params.pageId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Materials delete error', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      page_id: params.pageId,
+      org_id: orgId
+    }, 'Materials delete error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
 }

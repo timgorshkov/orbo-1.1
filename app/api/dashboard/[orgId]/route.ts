@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAPILogger } from '@/lib/logger'
 
 // GET /api/dashboard/[orgId] - Get dashboard data
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const logger = createAPILogger(request, { endpoint: '/api/dashboard/[orgId]' });
+  let orgId: string | undefined;
   try {
-    const { orgId } = await params
+    const paramsData = await params;
+    orgId = paramsData.orgId;
     const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
@@ -102,7 +106,11 @@ export async function GET(
     // Reuse orgGroupsForCount data instead of separate query
     const chatIds = orgGroupsForCount?.map(g => String(g.tg_chat_id)) || []
     
-    console.log(`Dashboard: Found ${chatIds.length} groups for org ${orgId}`, chatIds)
+    logger.debug({ 
+      group_count: chatIds.length,
+      org_id: orgId,
+      chat_ids: chatIds
+    }, 'Found groups for org');
 
     // Get activity from group_metrics (aggregated daily metrics per group)
     // Используем ту же логику, что и на странице группы - берём данные из group_metrics
@@ -120,7 +128,11 @@ export async function GET(
     
     if (chatIds.length > 0) {
       const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split('T')[0]
-      console.log(`Dashboard: Fetching group_metrics since ${fourteenDaysAgoStr} for chats:`, chatIds)
+      logger.debug({ 
+        since: fourteenDaysAgoStr,
+        chat_ids: chatIds,
+        org_id: orgId
+      }, 'Fetching group_metrics');
       
       const { data: metricsData, error: metricsError } = await adminSupabase
         .from('group_metrics')
@@ -130,9 +142,16 @@ export async function GET(
         .gte('date', fourteenDaysAgoStr)
         .order('date')
       
-      console.log(`Dashboard: Found ${metricsData?.length || 0} group_metrics entries, error:`, metricsError)
-      if (metricsData && metricsData.length > 0) {
-        console.log(`Dashboard: Sample metrics:`, metricsData.slice(0, 3))
+      if (metricsError) {
+        logger.warn({ 
+          error: metricsError.message,
+          org_id: orgId
+        }, 'Error fetching group_metrics');
+      } else {
+        logger.debug({ 
+          metrics_count: metricsData?.length || 0,
+          org_id: orgId
+        }, 'Found group_metrics entries');
       }
       
       // Агрегируем по дням (суммируем по всем группам)
@@ -143,7 +162,7 @@ export async function GET(
         }
       })
     } else {
-      console.log('Dashboard: No groups found, skipping activity fetch')
+      logger.debug({ org_id: orgId }, 'No groups found, skipping activity fetch');
     }
     
     // Also add WhatsApp activity (tg_chat_id = 0)
@@ -162,7 +181,10 @@ export async function GET(
           activityByDay[dateKey] += 1
         }
       })
-      console.log(`Dashboard: Added ${whatsappActivity.length} WhatsApp messages to activity chart`)
+      logger.debug({ 
+        whatsapp_messages: whatsappActivity.length,
+        org_id: orgId
+      }, 'Added WhatsApp messages to activity chart');
     }
 
     const activityChart = last14Days.map(date => ({
@@ -170,8 +192,11 @@ export async function GET(
       messages: activityByDay[date] || 0
     }))
     
-    console.log(`Dashboard: Activity chart generated:`, activityChart.slice(0, 5), '...')
-    console.log(`Dashboard: Total messages in chart:`, activityChart.reduce((sum, day) => sum + day.messages, 0))
+    const totalMessages = activityChart.reduce((sum, day) => sum + day.messages, 0);
+    logger.debug({ 
+      total_messages: totalMessages,
+      org_id: orgId
+    }, 'Activity chart generated');
 
     // 4. Attention zones (only for non-onboarding users)
     let attentionZones = {
@@ -320,7 +345,11 @@ export async function GET(
       upcomingEvents: upcomingEventsData
     })
   } catch (error: any) {
-    console.error('Error in GET /api/dashboard/[orgId]:', error)
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown'
+    }, 'Error in GET /api/dashboard/[orgId]');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

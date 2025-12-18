@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/auth/telegram-code/status?code=XXX - Check if code has been verified
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/auth/telegram-code/status' });
   try {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
@@ -26,7 +28,10 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (error) {
-      console.error('Error checking code status:', error);
+      logger.error({ 
+        error: error.message,
+        code: code?.substring(0, 4) + '...'
+      }, 'Error checking code status');
       return NextResponse.json(
         { error: 'Failed to check status' },
         { status: 500 }
@@ -34,6 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!authCode) {
+      logger.debug({ code: code?.substring(0, 4) + '...' }, 'Code not found');
       return NextResponse.json(
         { verified: false, message: 'Code not found' },
         { status: 404 }
@@ -43,12 +49,19 @@ export async function GET(request: NextRequest) {
     // Check if code has been used (verified)
     const verified = authCode.is_used && !!authCode.telegram_user_id;
 
+    logger.debug({ 
+      verified,
+      code_id: authCode.id
+    }, 'Code status checked');
     return NextResponse.json({
       verified,
       used_at: authCode.used_at,
     });
   } catch (error: any) {
-    console.error('Error in status check:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in status check');
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

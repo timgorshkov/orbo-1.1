@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic';
  * Returns membership info or empty array if not a member
  */
 export async function GET(request: NextRequest) {
+  const logger = createAPILogger(request, { endpoint: '/api/memberships' });
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('org_id');
@@ -48,7 +50,11 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (membershipError) {
-      console.error('Error checking membership:', membershipError);
+      logger.error({ 
+        error: membershipError.message,
+        org_id: orgId,
+        user_id: userId
+      }, 'Error checking membership');
       return NextResponse.json(
         { error: 'Failed to check membership' },
         { status: 500 }
@@ -58,9 +64,19 @@ export async function GET(request: NextRequest) {
     // Return membership in array format for consistency
     const memberships = membership ? [membership] : [];
 
+    logger.debug({ 
+      org_id: orgId,
+      user_id: userId,
+      has_membership: !!membership
+    }, 'Membership checked');
     return NextResponse.json({ memberships });
   } catch (error: any) {
-    console.error('Error in GET /api/memberships:', error);
+    logger.error({ 
+      error: error.message || String(error),
+      stack: error.stack,
+      org_id: orgId || 'unknown',
+      user_id: userId || 'unknown'
+    }, 'Error in GET /api/memberships');
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
