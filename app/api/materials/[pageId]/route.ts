@@ -36,6 +36,7 @@ export async function GET(request: NextRequest, { params }: { params: { pageId: 
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { pageId: string } }) {
+  const logger = createAPILogger(request, { endpoint: '/api/materials/[pageId]' });
   const body = await request.json();
   const orgId = body.orgId ?? request.nextUrl.searchParams.get('orgId');
   if (!orgId) {
@@ -64,6 +65,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { pageId
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { pageId: string } }) {
+  const logger = createAPILogger(request, { endpoint: '/api/materials/[pageId]' });
   const orgId = request.nextUrl.searchParams.get('orgId');
   if (!orgId) {
     return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
