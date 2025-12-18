@@ -1,4 +1,5 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createServiceLogger } from '@/lib/logger';
 import type {
   ParticipantDetailResult,
   ParticipantGroupLink,
@@ -10,6 +11,7 @@ import type {
 } from '@/lib/types/participant';
 
 export async function getParticipantDetail(orgId: string, participantId: string): Promise<ParticipantDetailResult | null> {
+  const logger = createServiceLogger('getParticipantDetail');
   const supabase = createAdminServer();
 
   const { data: requestedParticipant, error: participantError } = await supabase
@@ -20,7 +22,11 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     .maybeSingle();
 
   if (participantError) {
-    console.error('Error loading participant record:', participantError);
+    logger.error({ 
+      error: participantError.message,
+      org_id: orgId,
+      participant_id: participantId
+    }, 'Error loading participant record');
     throw participantError;
   }
 
@@ -41,7 +47,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       .maybeSingle();
 
     if (canonicalError) {
-      console.error('Error loading canonical participant record:', canonicalError);
+      logger.error({ 
+        error: canonicalError.message,
+        org_id: orgId,
+        participant_id: participantId,
+        canonical_id: canonicalId
+      }, 'Error loading canonical participant record');
       throw canonicalError;
     }
 
@@ -58,7 +69,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     .neq('id', canonicalId);
 
   if (duplicatesError) {
-    console.error('Error loading duplicates:', duplicatesError);
+    logger.error({ 
+      error: duplicatesError.message,
+      org_id: orgId,
+      participant_id: participantId,
+      canonical_id: canonicalId
+    }, 'Error loading duplicates');
     throw duplicatesError;
   }
 
@@ -69,7 +85,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     .order('updated_at', { ascending: false });
 
   if (traitsError) {
-    console.error('Error loading participant traits:', traitsError);
+    logger.error({ 
+      error: traitsError.message,
+      org_id: orgId,
+      participant_id: participantId,
+      canonical_id: canonicalId
+    }, 'Error loading participant traits');
     throw traitsError;
   }
 
@@ -79,7 +100,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     .eq('participant_id', canonicalId);
 
   if (linksError) {
-    console.error('Error loading participant group links:', linksError);
+    logger.error({ 
+      error: linksError.message,
+      org_id: orgId,
+      participant_id: participantId,
+      canonical_id: canonicalId
+    }, 'Error loading participant group links');
     throw linksError;
   }
 
@@ -95,7 +121,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         .in('tg_chat_id', chatIds);
 
       if (groupRecordsError) {
-        console.error('Error loading group details for participant:', groupRecordsError);
+        logger.error({ 
+          error: groupRecordsError.message,
+          org_id: orgId,
+          participant_id: participantId,
+          canonical_id: canonicalId
+        }, 'Error loading group details for participant');
         throw groupRecordsError;
       }
 
@@ -144,7 +175,13 @@ export async function getParticipantDetail(orgId: string, participantId: string)
 
       if (chatsError) {
         if (chatsError.code !== '42703' && chatsError.code !== '42P01') {
-          console.error('Error loading accessible chats for participant:', chatsError);
+          logger.error({ 
+            error: chatsError.message,
+            error_code: chatsError.code,
+            org_id: orgId,
+            participant_id: participantId,
+            tg_user_id: tgUserId
+          }, 'Error loading accessible chats for participant');
           // Не бросаем ошибку, продолжаем с группами из participant_groups
         }
       } else {
@@ -155,7 +192,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         });
       }
     } catch (chatError) {
-      console.error('Unexpected error while loading accessible chats:', chatError);
+      logger.error({ 
+        error: chatError instanceof Error ? chatError.message : String(chatError),
+        org_id: orgId,
+        participant_id: participantId,
+        tg_user_id: tgUserId
+      }, 'Unexpected error while loading accessible chats');
       // Продолжаем с группами из participant_groups
     }
 
@@ -169,7 +211,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     // Если нет групп из org_telegram_groups, но есть группы из participant_groups, используем их
     // Если вообще нет групп, загружаем события для всех групп организации
     if (accessibleChatIds.length === 0) {
-      console.log(`[getParticipantDetail] No accessible chat IDs found, loading all org groups for activity`);
+      logger.debug({ org_id: orgId, participant_id: participantId, tg_user_id: tgUserId }, 'No accessible chat IDs found, loading all org groups for activity');
       try {
         const { data: allOrgChats } = await supabase
           .from('org_telegram_groups')
@@ -182,15 +224,27 @@ export async function getParticipantDetail(orgId: string, participantId: string)
               accessibleChatIds.push(String(chat.tg_chat_id));
             }
           });
-          console.log(`[getParticipantDetail] Fallback: loaded ${accessibleChatIds.length} org groups`);
+          logger.debug({ 
+            org_id: orgId,
+            participant_id: participantId,
+            chat_count: accessibleChatIds.length
+          }, 'Fallback: loaded org groups');
         } else {
-          console.log(`[getParticipantDetail] No org groups found, will load events without chat_id filter`);
+          logger.debug({ org_id: orgId, participant_id: participantId }, 'No org groups found, will load events without chat_id filter');
         }
       } catch (fallbackError) {
-        console.error('Error loading fallback org chats:', fallbackError);
+        logger.error({ 
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          org_id: orgId,
+          participant_id: participantId
+        }, 'Error loading fallback org chats');
       }
     } else {
-      console.log(`[getParticipantDetail] Found ${accessibleChatIds.length} accessible chat IDs`);
+      logger.debug({ 
+        org_id: orgId,
+        participant_id: participantId,
+        chat_count: accessibleChatIds.length
+      }, 'Found accessible chat IDs');
     }
 
     // Загружаем события даже если нет групп - просто без фильтра по chat_id
@@ -199,8 +253,13 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       .map(id => Number(id))
       .filter(id => !Number.isNaN(id));
 
-    console.log(`[getParticipantDetail] Loading activity events for tg_user_id=${tgUserId}, org_id=${orgId}, accessible_chat_ids=${accessibleChatIds.length}, numeric_chat_ids=${numericChatIds.length}`);
-    console.log(`[getParticipantDetail] Chat IDs to filter: ${JSON.stringify(numericChatIds)}`);
+    logger.debug({ 
+      tg_user_id: tgUserId,
+      org_id: orgId,
+      accessible_chat_ids: accessibleChatIds.length,
+      numeric_chat_ids: numericChatIds.length,
+      chat_ids: numericChatIds
+    }, 'Loading activity events');
 
     try {
       // Сначала проверим, есть ли вообще события для этого пользователя и организации (без фильтра по chat_id)
@@ -213,14 +272,24 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         .limit(10);
       
       if (checkError) {
-        console.error(`[getParticipantDetail] Error checking events:`, checkError);
+        logger.error({ 
+          error: checkError.message,
+          org_id: orgId,
+          participant_id: participantId,
+          tg_user_id: tgUserId
+        }, 'Error checking events');
       } else {
         const uniqueChatIds = Array.from(new Set((allEventsCheck || []).map(e => e.tg_chat_id)));
-        console.log(`[getParticipantDetail] Found ${allEventsCheck?.length || 0} total events for user in org, in ${uniqueChatIds.length} different chats: ${JSON.stringify(uniqueChatIds)}`);
-        
-        // Проверим пересечение
         const matchingChatIds = uniqueChatIds.filter(id => numericChatIds.includes(Number(id)));
-        console.log(`[getParticipantDetail] Matching chat IDs: ${JSON.stringify(matchingChatIds)}`);
+        
+        logger.debug({ 
+          event_count: allEventsCheck?.length || 0,
+          unique_chat_count: uniqueChatIds.length,
+          unique_chat_ids: uniqueChatIds,
+          matching_chat_ids: matchingChatIds,
+          org_id: orgId,
+          tg_user_id: tgUserId
+        }, 'Found events for user in org');
         
         // Если событий нет, проверим, есть ли события для этого tg_user_id в других организациях
         if (allEventsCheck?.length === 0) {
@@ -233,9 +302,13 @@ export async function getParticipantDetail(orgId: string, participantId: string)
           
           if (!otherOrgError && otherOrgEvents && otherOrgEvents.length > 0) {
             const otherOrgIds = Array.from(new Set(otherOrgEvents.map(e => e.org_id)));
-            console.log(`[getParticipantDetail] ⚠️ Found ${otherOrgEvents.length} events for tg_user_id=${tgUserId} in OTHER orgs: ${JSON.stringify(otherOrgIds)}`);
+            logger.warn({ 
+              tg_user_id: tgUserId,
+              event_count: otherOrgEvents.length,
+              other_org_ids: otherOrgIds
+            }, 'Found events for tg_user_id in OTHER orgs');
           } else {
-            console.log(`[getParticipantDetail] ⚠️ No events found for tg_user_id=${tgUserId} in ANY organization`);
+            logger.warn({ tg_user_id: tgUserId }, 'No events found for tg_user_id in ANY organization');
           }
           
           // Проверим, есть ли события для этой организации с другими tg_user_id
@@ -248,9 +321,13 @@ export async function getParticipantDetail(orgId: string, participantId: string)
           
           if (!orgEventsError && orgEvents && orgEvents.length > 0) {
             const otherUserIds = Array.from(new Set(orgEvents.map(e => e.tg_user_id)));
-            console.log(`[getParticipantDetail] ⚠️ Found ${orgEvents.length} events for org_id=${orgId} with OTHER tg_user_ids: ${JSON.stringify(otherUserIds)}`);
+            logger.warn({ 
+              org_id: orgId,
+              event_count: orgEvents.length,
+              other_user_ids: otherUserIds
+            }, 'Found events for org_id with OTHER tg_user_ids');
           } else {
-            console.log(`[getParticipantDetail] ⚠️ No events found for org_id=${orgId} with ANY tg_user_id`);
+            logger.warn({ org_id: orgId }, 'No events found for org_id with ANY tg_user_id');
           }
         }
       }
@@ -267,22 +344,27 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       // Это гарантирует, что показываем только события из групп, добавленных в текущую организацию
       if (numericChatIds.length > 0) {
         query = query.in('tg_chat_id', numericChatIds);
-        console.log(`[getParticipantDetail] Filtering by ${numericChatIds.length} chat IDs (ignoring org_id filter): ${JSON.stringify(numericChatIds)}`);
+        logger.debug({ 
+          chat_ids: numericChatIds,
+          chat_count: numericChatIds.length,
+          org_id: orgId,
+          tg_user_id: tgUserId
+        }, 'Filtering by chat IDs (ignoring org_id filter)');
       } else {
-        console.log(`[getParticipantDetail] No valid chat IDs, loading all events without chat filter`);
+        logger.debug({ org_id: orgId, tg_user_id: tgUserId }, 'No valid chat IDs, loading all events without chat filter');
       }
       
       const { data: activityEvents, error: activityEventsError } = await query
         .order('created_at', { ascending: false })
         .limit(200);
 
-      console.log(`[getParticipantDetail] Loaded ${activityEvents?.length || 0} activity events`);
       if (activityEventsError) {
-        console.error(`[getParticipantDetail] Query error:`, activityEventsError);
-      }
-
-      if (activityEventsError) {
-        console.error('Error loading activity events:', activityEventsError);
+        logger.error({ 
+          error: activityEventsError.message,
+          org_id: orgId,
+          participant_id: participantId,
+          tg_user_id: tgUserId
+        }, 'Error loading activity events');
         throw activityEventsError;
       } else if (activityEvents) {
             // Load message texts from participant_messages for message events
@@ -303,14 +385,22 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                 .in('message_id', messageEventIds);
               
               if (textsError) {
-                console.warn('[getParticipantDetail] Error loading message texts:', textsError);
+                logger.warn({ 
+                  error: textsError.message,
+                  org_id: orgId,
+                  participant_id: participantId
+                }, 'Error loading message texts');
               } else if (messageTexts) {
                 messageTexts.forEach((m: any) => {
                   if (m.message_text) {
                     messageTextsMap.set(`${m.tg_chat_id}_${m.message_id}`, m.message_text);
                   }
                 });
-                console.log(`[getParticipantDetail] Loaded ${messageTextsMap.size} message texts in single batch`);
+                logger.debug({ 
+                  message_count: messageTextsMap.size,
+                  org_id: orgId,
+                  participant_id: participantId
+                }, 'Loaded message texts in single batch');
               }
             }
             
@@ -339,7 +429,13 @@ export async function getParticipantDetail(orgId: string, participantId: string)
             });
       }
     } catch (activityError) {
-      console.error('Error loading activity events:', activityError);
+      logger.error({ 
+        error: activityError instanceof Error ? activityError.message : String(activityError),
+        stack: activityError instanceof Error ? activityError.stack : undefined,
+        org_id: orgId,
+        participant_id: participantId,
+        tg_user_id: tgUserId
+      }, 'Error loading activity events');
     }
   }
 
@@ -356,9 +452,19 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       .limit(200);
     
     if (waError) {
-      console.warn('[getParticipantDetail] Error loading WhatsApp events:', waError);
+      logger.warn({ 
+        error: waError.message,
+        org_id: orgId,
+        participant_id: participantId,
+        canonical_id: canonicalId
+      }, 'Error loading WhatsApp events');
     } else if (whatsappEvents && whatsappEvents.length > 0) {
-      console.log(`[getParticipantDetail] Loaded ${whatsappEvents.length} WhatsApp events for participant ${canonicalId}`);
+      logger.debug({ 
+        event_count: whatsappEvents.length,
+        org_id: orgId,
+        participant_id: participantId,
+        canonical_id: canonicalId
+      }, 'Loaded WhatsApp events');
       
       // Add WhatsApp events to eventsData
       const waEventsFormatted = whatsappEvents.map(event => ({
@@ -375,7 +481,11 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       ).slice(0, 200);
     }
   } catch (waError) {
-    console.error('[getParticipantDetail] WhatsApp events error:', waError);
+    logger.error({ 
+      error: waError instanceof Error ? waError.message : String(waError),
+      org_id: orgId,
+      participant_id: participantId
+    }, 'WhatsApp events error');
   }
 
   const { data: externalIdsData, error: externalIdsError } = await supabase
@@ -385,7 +495,12 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     .eq('participant_id', canonicalId);
 
   if (externalIdsError) {
-    console.error('Error loading participant external IDs:', externalIdsError);
+    logger.error({ 
+      error: externalIdsError.message,
+      org_id: orgId,
+      participant_id: participantId,
+      canonical_id: canonicalId
+    }, 'Error loading participant external IDs');
     throw externalIdsError;
   }
 

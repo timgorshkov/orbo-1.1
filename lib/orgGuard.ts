@@ -1,11 +1,12 @@
 import { createClientServer } from './server/supabaseServer'
 import { cookies } from 'next/headers'
 import { syncOrgAdmins } from './server/syncOrgAdmins'
+import { createServiceLogger } from '@/lib/logger'
 
 type OrgRole = 'owner' | 'admin' | 'editor' | 'member' | 'viewer';
 
 export async function requireOrgAccess(orgId: string, cookieStore?: any, allowedRoles?: OrgRole[]) {
-
+  const logger = createServiceLogger('requireOrgAccess');
   // Если cookies переданы, используем их, иначе получаем из headers
   const cookiesObj = cookieStore || cookies();
   
@@ -19,7 +20,10 @@ export async function requireOrgAccess(orgId: string, cookieStore?: any, allowed
   // Sync admin roles from Telegram groups
   // This runs in background and doesn't block access
   syncOrgAdmins(orgId).catch(err => {
-    console.error('Background admin sync failed:', err)
+    logger.error({ 
+      error: err instanceof Error ? err.message : String(err),
+      org_id: orgId
+    }, 'Background admin sync failed');
   })
 
   // Проверяем членство в org через RPC

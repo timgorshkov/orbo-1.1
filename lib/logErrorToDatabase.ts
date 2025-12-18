@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { createServiceLogger } from './logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,11 +82,19 @@ export async function logErrorToDatabase(options: LogErrorOptions): Promise<void
 
     if (error) {
       // If logging to database fails, log to console (fallback)
-      console.error('[logErrorToDatabase] Failed to log error to database:', error);
+      const logger = createServiceLogger('logErrorToDatabase');
+      logger.error({ 
+        error: error.message,
+        error_code: error.code,
+        fingerprint
+      }, 'Failed to log error to database');
     }
   } catch (err) {
     // Silent fail - don't throw errors from error logging
-    console.error('[logErrorToDatabase] Exception while logging error:', err);
+    const logger = createServiceLogger('logErrorToDatabase');
+    logger.error({ 
+      error: err instanceof Error ? err.message : String(err)
+    }, 'Exception while logging error');
   }
 }
 

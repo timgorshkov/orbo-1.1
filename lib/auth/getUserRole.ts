@@ -3,6 +3,7 @@
  */
 
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { createServiceLogger } from '@/lib/logger'
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -28,7 +29,12 @@ export async function getUserRoleInOrg(
   })
 
   if (error) {
-    console.error('Error getting user role:', error)
+    const logger = createServiceLogger('getUserRoleInOrg');
+    logger.error({ 
+      error: error.message,
+      user_id: userId,
+      org_id: orgId
+    }, 'Error getting user role');
     return 'guest'
   }
 
@@ -78,7 +84,11 @@ export async function getUserOrganizations(userId: string) {
     .order('org_name', { ascending: true })
 
   if (error) {
-    console.error('Error getting user organizations:', error)
+    const logger = createServiceLogger('getUserOrganizations');
+    logger.error({ 
+      error: error.message,
+      user_id: userId
+    }, 'Error getting user organizations');
     return []
   }
 

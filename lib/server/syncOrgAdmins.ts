@@ -1,10 +1,12 @@
 import { createAdminServer } from './supabaseServer'
+import { createServiceLogger } from '@/lib/logger'
 
 /**
  * Synchronizes organization admin roles based on Telegram group admin status
  * Should be called when user accesses an organization
  */
 export async function syncOrgAdmins(orgId: string): Promise<void> {
+  const logger = createServiceLogger('syncOrgAdmins');
   try {
     const adminSupabase = createAdminServer()
     
@@ -14,11 +16,18 @@ export async function syncOrgAdmins(orgId: string): Promise<void> {
     })
     
     if (error) {
-      console.error('Error syncing org admins:', error)
+      logger.error({ 
+        error: error.message,
+        org_id: orgId
+      }, 'Error syncing org admins');
       // Don't throw - we don't want to block access if sync fails
     }
   } catch (error) {
-    console.error('Error in syncOrgAdmins:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Error in syncOrgAdmins');
     // Don't throw - we don't want to block access if sync fails
   }
 }
@@ -31,6 +40,7 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
   isAdmin: boolean
   groups: Array<{ id: number; title: string }>
 }> {
+  const logger = createServiceLogger('checkUserAdminStatus');
   try {
     const adminSupabase = createAdminServer()
     
@@ -41,7 +51,11 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
       .eq('org_id', orgId)
     
     if (orgGroupsError) {
-      console.error('Error fetching org groups:', orgGroupsError)
+      logger.error({ 
+        error: orgGroupsError.message,
+        user_id: userId,
+        org_id: orgId
+      }, 'Error fetching org groups');
       return { isAdmin: false, groups: [] }
     }
     
@@ -63,7 +77,11 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
       .in('tg_chat_id', orgChatIds)
     
     if (error) {
-      console.error('Error checking admin status:', error)
+      logger.error({ 
+        error: error.message,
+        user_id: userId,
+        org_id: orgId
+      }, 'Error checking admin status');
       return { isAdmin: false, groups: [] }
     }
     
@@ -77,7 +95,12 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
       groups
     }
   } catch (error) {
-    console.error('Error in checkUserAdminStatus:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      user_id: userId,
+      org_id: orgId
+    }, 'Error in checkUserAdminStatus');
     return { isAdmin: false, groups: [] }
   }
 }

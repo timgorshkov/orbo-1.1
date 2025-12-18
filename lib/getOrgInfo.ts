@@ -1,7 +1,9 @@
 import { createClientServer } from './server/supabaseServer'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { createServiceLogger } from './logger'
 
 export async function getOrgInfo(orgId: string) {
+  const logger = createServiceLogger('getOrgInfo');
   const supabase = await createClientServer()
   
   // Получаем информацию об организации
@@ -12,7 +14,10 @@ export async function getOrgInfo(orgId: string) {
     .single()
   
   if (error) {
-    console.error('Error fetching organization info:', error)
+    logger.error({ 
+      error: error.message,
+      org_id: orgId
+    }, 'Error fetching organization info');
     return { name: 'Организация', plan: 'free' }
   }
   
@@ -20,6 +25,7 @@ export async function getOrgInfo(orgId: string) {
 }
 
 export async function getOrgInfoWithClient(supabase: SupabaseClient, orgId: string) {
+  const logger = createServiceLogger('getOrgInfoWithClient');
   // Получаем информацию об организации с переданным клиентом
   const { data, error } = await supabase
     .from('organizations')
@@ -28,7 +34,10 @@ export async function getOrgInfoWithClient(supabase: SupabaseClient, orgId: stri
     .single()
   
   if (error) {
-    console.error('Error fetching organization info:', error)
+    logger.error({ 
+      error: error.message,
+      org_id: orgId
+    }, 'Error fetching organization info');
     return { name: 'Организация', plan: 'free' }
   }
   

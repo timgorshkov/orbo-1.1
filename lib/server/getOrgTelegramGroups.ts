@@ -1,4 +1,5 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createServiceLogger } from '@/lib/logger';
 
 export interface OrgTelegramGroup {
   id: number;
@@ -17,6 +18,7 @@ export interface OrgTelegramGroup {
 }
 
 export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGroup[]> {
+  const logger = createServiceLogger('getOrgTelegramGroups');
   const supabase = createAdminServer();
 
   const groupsMap = new Map<string, OrgTelegramGroup>();
@@ -52,7 +54,11 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
       }
 
       if (error && error.code !== '22P02') {
-        console.warn('Numeric tg_chat_id lookup failed, falling back to text values:', error);
+        logger.warn({ 
+          error: error.message,
+          error_code: error.code,
+          org_id: orgId
+        }, 'Numeric tg_chat_id lookup failed, falling back to text values');
       }
     }
 
@@ -63,7 +69,11 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
       .in('tg_chat_id', uniqueIds);
 
     if (textError) {
-      console.error('Text tg_chat_id lookup failed:', textError);
+      logger.error({ 
+        error: textError.message,
+        error_code: textError.code,
+        org_id: orgId
+      }, 'Text tg_chat_id lookup failed');
       return [];
     }
 
@@ -138,9 +148,13 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
     }
   } catch (mappingError: any) {
     if (mappingError?.code === '42P01') {
-      console.warn('org_telegram_groups table not found while fetching org group mappings');
+      logger.warn({ org_id: orgId }, 'org_telegram_groups table not found while fetching org group mappings');
     } else {
-      console.error('Error loading org telegram group mappings:', mappingError);
+      logger.error({ 
+        error: mappingError?.message || String(mappingError),
+        error_code: mappingError?.code,
+        org_id: orgId
+      }, 'Error loading org telegram group mappings');
     }
     mappingRows = [];
   }
@@ -264,9 +278,13 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
       });
     } catch (allMappingsError: any) {
       if (allMappingsError?.code === '42P01') {
-        console.warn('org_telegram_groups table not found while enriching mappings');
+        logger.warn({ org_id: orgId }, 'org_telegram_groups table not found while enriching mappings');
       } else {
-        console.error('Error loading mapping metadata:', allMappingsError);
+        logger.error({ 
+          error: allMappingsError?.message || String(allMappingsError),
+          error_code: allMappingsError?.code,
+          org_id: orgId
+        }, 'Error loading mapping metadata');
       }
     }
   }

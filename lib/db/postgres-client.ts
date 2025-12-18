@@ -18,6 +18,7 @@
  */
 
 import type { DbClient, QueryBuilder, DbResult, DbError, SelectOptions, UpsertOptions } from './types';
+import { createServiceLogger } from '../logger';
 
 // Декларация глобальной переменной EdgeRuntime (определена в Vercel Edge Runtime)
 declare const EdgeRuntime: string | undefined;
@@ -59,8 +60,12 @@ async function getPool() {
     });
     
     // Обработка ошибок пула
+    const logger = createServiceLogger('PostgreSQL Pool');
     poolInstance.on('error', (err: Error) => {
-      console.error('[PostgreSQL Pool] Unexpected error:', err);
+      logger.error({ 
+        error: err.message,
+        stack: err.stack
+      }, 'Unexpected pool error');
     });
   }
   
@@ -243,7 +248,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   or(filters: string): QueryBuilder<T> {
     // Упрощённая реализация - парсинг Supabase-стиля фильтров
     // Пример: "status.eq.active,status.eq.pending"
-    console.warn('or() filter requires manual SQL conversion for complex cases');
+    const logger = createServiceLogger('PostgresQueryBuilder');
+    logger.warn({ filters }, 'or() filter requires manual SQL conversion for complex cases');
     this.conditions.push({ sql: `(${filters.replace(/\./g, ' ')})`, values: [] });
     return this;
   }
@@ -420,7 +426,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     // Supabase-стиль: "id, name, organization:organizations(id, name)"
     // Упрощённо возвращаем как есть, сложные joins требуют отдельной обработки
     if (columns.includes('(')) {
-      console.warn('Complex select with joins detected. Consider using raw SQL for complex queries.');
+      const logger = createServiceLogger('PostgresQueryBuilder');
+      logger.warn({ columns }, 'Complex select with joins detected. Consider using raw SQL for complex queries.');
       // Возвращаем базовые колонки без joins
       return columns.split(',').map(c => {
         const base = c.trim().split(':')[0].split('(')[0];

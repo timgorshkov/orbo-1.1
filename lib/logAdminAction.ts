@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createServiceLogger } from './logger';
 
 // Re-export descriptions for backwards compatibility in server-side code
 export { 
@@ -18,7 +19,8 @@ function getSupabaseAdmin(): SupabaseClient | null {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
     if (!url || !key) {
-      console.error('[logAdminAction] Missing Supabase credentials');
+      const logger = createServiceLogger('logAdminAction');
+      logger.error({}, 'Missing Supabase credentials');
       return null;
     }
     
@@ -60,11 +62,12 @@ export interface LogAdminActionOptions {
  * This function records what admins do in the system for audit purposes.
  */
 export async function logAdminAction(options: LogAdminActionOptions): Promise<void> {
+  const logger = createServiceLogger('logAdminAction');
   try {
     const supabaseAdmin = getSupabaseAdmin();
     
     if (!supabaseAdmin) {
-      console.error('[logAdminAction] Supabase admin client not available');
+      logger.error({}, 'Supabase admin client not available');
       return;
     }
     
@@ -99,11 +102,21 @@ export async function logAdminAction(options: LogAdminActionOptions): Promise<vo
 
     if (error) {
       // If logging fails, log to console (fallback)
-      console.error('[logAdminAction] Failed to log admin action:', error);
+      logger.error({ 
+        error: error.message,
+        error_code: error.code,
+        org_id: orgId,
+        user_id: userId,
+        action
+      }, 'Failed to log admin action');
     }
   } catch (err) {
     // Silent fail - don't throw errors from audit logging
-    console.error('[logAdminAction] Exception while logging action:', err);
+    logger.error({ 
+      error: err instanceof Error ? err.message : String(err),
+      org_id: options.orgId,
+      user_id: options.userId
+    }, 'Exception while logging action');
   }
 }
 

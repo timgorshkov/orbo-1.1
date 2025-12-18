@@ -1,8 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServiceLogger } from '@/lib/logger'
 
 export async function middleware(request: NextRequest) {
+  const logger = createServiceLogger('middleware');
   // Create response once - don't recreate it multiple times
   const response = NextResponse.next({
     request: {
@@ -67,7 +69,10 @@ export async function middleware(request: NextRequest) {
       await supabase.auth.getSession()
     } catch (error) {
       // Ignore session refresh errors in middleware - they will be handled by Route Handlers
-      console.warn('[Middleware] Session refresh error (non-critical):', error)
+      logger.warn({ 
+        error: error instanceof Error ? error.message : String(error),
+        pathname
+      }, 'Session refresh error (non-critical)');
     }
     return response
   }

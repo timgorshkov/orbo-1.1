@@ -4,6 +4,7 @@
  */
 
 import { createAdminServer } from './supabaseServer'
+import { createServiceLogger } from '@/lib/logger'
 
 export interface HomePageData {
   organization: {
@@ -74,6 +75,7 @@ export async function getHomePageData(
   orgId: string,
   userId: string
 ): Promise<HomePageData | null> {
+  const logger = createServiceLogger('getHomePageData');
   const supabase = createAdminServer()
 
   try {
@@ -85,7 +87,11 @@ export async function getHomePageData(
       .single()
 
     if (orgError || !org) {
-      console.error('[getHomePageData] Organization not found:', orgError)
+      logger.error({ 
+        error: orgError?.message,
+        org_id: orgId,
+        user_id: userId
+      }, 'Organization not found');
       return null
     }
 
@@ -111,7 +117,10 @@ export async function getHomePageData(
     }
 
     if (!participant) {
-      console.error('[getHomePageData] Participant not found for user:', userId)
+      logger.error({ 
+        org_id: orgId,
+        user_id: userId
+      }, 'Participant not found for user');
       return null
     }
 
@@ -323,7 +332,12 @@ export async function getHomePageData(
     return homePageData
 
   } catch (error) {
-    console.error('[getHomePageData] Error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId,
+      user_id: userId
+    }, 'Error in getHomePageData');
     return null
   }
 }

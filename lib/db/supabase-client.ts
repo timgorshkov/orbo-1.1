@@ -205,7 +205,8 @@ export class SupabaseDbClient implements DbClient {
   async raw<T = any>(sql: string, params?: any[]): Promise<DbResult<T[]>> {
     // Supabase не поддерживает raw SQL напрямую через клиент
     // Это заглушка, которая может использоваться через Edge Functions или pg напрямую
-    console.warn('raw SQL not directly supported in Supabase client, use RPC instead');
+    const logger = createServiceLogger('SupabaseDbClient');
+    logger.warn({ sql: sql.substring(0, 100) }, 'raw SQL not directly supported in Supabase client, use RPC instead');
     return {
       data: null,
       error: {
