@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClient } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -35,22 +36,111 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Call RPC function
-    const { data, error } = await supabase.rpc('get_activity_timeline', {
-      p_org_id: orgId,
-      p_days: days,
-      p_tg_chat_id: tgChatId ? parseInt(tgChatId) : null
+    // Use admin client for queries
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+
+    // Get chat IDs for this org (if no specific chat requested)
+    let chatIds: string[] = [];
+    
+    if (tgChatId) {
+      // Verify this chat belongs to org
+      const { data: mapping } = await adminSupabase
+        .from('org_telegram_groups')
+        .select('tg_chat_id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', tgChatId)
+        .maybeSingle();
+      
+      if (!mapping) {
+        return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+      }
+      chatIds = [tgChatId];
+    } else {
+      // Get all chats for org
+      const { data: orgGroups } = await adminSupabase
+        .from('org_telegram_groups')
+        .select('tg_chat_id')
+        .eq('org_id', orgId);
+      
+      chatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+    }
+
+    if (chatIds.length === 0) {
+      // No groups - return empty timeline
+      const emptyData = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        emptyData.push({
+          date: date.toISOString().split('T')[0],
+          message_count: 0,
+          reaction_count: 0
+        });
+      }
+      return NextResponse.json({ data: emptyData });
+    }
+
+    // Calculate date range
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    // Fetch activity events - NO org_id filter!
+    // This allows seeing historical data from before the group was added to this org
+    const { data: events, error: eventsError } = await adminSupabase
+      .from('activity_events')
+      .select('created_at, event_type, meta')
+      .in('tg_chat_id', chatIds)
+      .gte('created_at', startDate.toISOString())
+      .order('created_at', { ascending: true });
+
+    if (eventsError) {
+      logger.error({ error: eventsError.message }, 'Error fetching activity events');
+      return NextResponse.json({ error: eventsError.message }, { status: 500 });
+    }
+
+    // Aggregate by day
+    const dailyData: Record<string, { message_count: number; reaction_count: number }> = {};
+    
+    // Initialize all days
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().split('T')[0];
+      dailyData[dateKey] = { message_count: 0, reaction_count: 0 };
+    }
+
+    // Count events
+    events?.forEach(event => {
+      const dateKey = event.created_at.split('T')[0];
+      if (dailyData[dateKey]) {
+        if (event.event_type === 'message') {
+          dailyData[dateKey].message_count++;
+        } else if (event.event_type === 'reaction') {
+          dailyData[dateKey].reaction_count++;
+        }
+      }
     });
 
-    if (error) {
-      logger.error({ 
-        error: error.message,
-        org_id: orgId,
-        days,
-        tg_chat_id: tgChatId
-      }, 'Error fetching timeline');
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // Convert to array
+    const data = Object.entries(dailyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({
+        date,
+        message_count: counts.message_count,
+        reaction_count: counts.reaction_count
+      }));
+
+    logger.debug({ 
+      org_id: orgId, 
+      chat_ids: chatIds.length,
+      days,
+      events_count: events?.length || 0
+    }, 'Timeline data fetched');
 
     return NextResponse.json({ data });
   } catch (error: any) {
@@ -65,4 +155,3 @@ export async function GET(
     );
   }
 }
-

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClient } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -35,22 +36,99 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Call RPC function
-    const { data, error } = await supabase.rpc('get_activity_heatmap', {
-      p_org_id: orgId,
-      p_days: days,
-      p_tg_chat_id: tgChatId ? parseInt(tgChatId) : null
+    // Use admin client
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+
+    // Get chat IDs for this org
+    let chatIds: string[] = [];
+    
+    if (tgChatId) {
+      const { data: mapping } = await adminSupabase
+        .from('org_telegram_groups')
+        .select('tg_chat_id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', tgChatId)
+        .maybeSingle();
+      
+      if (!mapping) {
+        return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+      }
+      chatIds = [tgChatId];
+    } else {
+      const { data: orgGroups } = await adminSupabase
+        .from('org_telegram_groups')
+        .select('tg_chat_id')
+        .eq('org_id', orgId);
+      
+      chatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+    }
+
+    if (chatIds.length === 0) {
+      // Return empty heatmap
+      const emptyData: { day_of_week: number; hour_of_day: number; message_count: number }[] = [];
+      for (let day = 0; day < 7; day++) {
+        for (let hour = 0; hour < 24; hour++) {
+          emptyData.push({ day_of_week: day, hour_of_day: hour, message_count: 0 });
+        }
+      }
+      return NextResponse.json({ data: emptyData });
+    }
+
+    // Get activity - NO org_id filter!
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const { data: events, error: eventsError } = await adminSupabase
+      .from('activity_events')
+      .select('created_at')
+      .in('tg_chat_id', chatIds)
+      .eq('event_type', 'message')
+      .gte('created_at', startDate.toISOString());
+
+    if (eventsError) {
+      logger.error({ error: eventsError.message }, 'Error fetching events');
+      return NextResponse.json({ error: eventsError.message }, { status: 500 });
+    }
+
+    // Build heatmap: day_of_week (0=Sun, 6=Sat) x hour_of_day (0-23)
+    const heatmap: Record<string, number> = {};
+    
+    // Initialize all cells
+    for (let day = 0; day < 7; day++) {
+      for (let hour = 0; hour < 24; hour++) {
+        heatmap[`${day}-${hour}`] = 0;
+      }
+    }
+
+    // Count events
+    events?.forEach(event => {
+      const date = new Date(event.created_at);
+      const dayOfWeek = date.getUTCDay(); // 0=Sun
+      const hour = date.getUTCHours();
+      heatmap[`${dayOfWeek}-${hour}`]++;
     });
 
-    if (error) {
-      logger.error({ 
-        error: error.message,
-        org_id: orgId,
-        days,
-        tg_chat_id: tgChatId
-      }, 'Error fetching heatmap');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    // Convert to array format
+    const data: { day_of_week: number; hour_of_day: number; message_count: number }[] = [];
+    for (let day = 0; day < 7; day++) {
+      for (let hour = 0; hour < 24; hour++) {
+        data.push({
+          day_of_week: day,
+          hour_of_day: hour,
+          message_count: heatmap[`${day}-${hour}`]
+        });
+      }
     }
+
+    logger.debug({ 
+      org_id: orgId, 
+      chat_ids: chatIds.length,
+      events_count: events?.length || 0
+    }, 'Heatmap data fetched');
 
     return NextResponse.json({ data });
   } catch (error: any) {
@@ -65,4 +143,3 @@ export async function GET(
     );
   }
 }
-

@@ -16,6 +16,9 @@ const supabaseAdmin = createClient(
  * Should be called every 5 minutes
  * 
  * This replaces the per-message updateGroupMetrics call for better performance
+ * 
+ * ВАЖНО: Метрики считаются по tg_chat_id (без фильтрации по org_id),
+ * чтобы при добавлении группы в новую организацию вся история была видна.
  */
 export async function GET(request: NextRequest) {
   const logger = createCronLogger('update-group-metrics');
@@ -49,22 +52,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, updated: 0 });
     }
     
-    logger.info({ count: mappings.length }, 'Found active group mappings');
+    // Собираем уникальные chat_id и карту org -> chat_ids
+    const uniqueChatIds = new Set<string>();
+    const chatToOrgs = new Map<string, string[]>();
+    
+    mappings.forEach(m => {
+      const chatId = String(m.tg_chat_id);
+      uniqueChatIds.add(chatId);
+      
+      if (!chatToOrgs.has(chatId)) {
+        chatToOrgs.set(chatId, []);
+      }
+      chatToOrgs.get(chatId)!.push(m.org_id);
+    });
+    
+    logger.info({ 
+      unique_chats: uniqueChatIds.size,
+      total_mappings: mappings.length
+    }, 'Found unique chat IDs');
     
     let updated = 0;
     let errors = 0;
     
-    // Process each mapping
-    for (const mapping of mappings) {
+    // Process each unique chat_id
+    for (const chatId of uniqueChatIds) {
       try {
-        const orgId = mapping.org_id;
-        const chatId = mapping.tg_chat_id;
+        // Считаем метрики БЕЗ фильтрации по org_id
+        // Это позволит видеть историю даже после добавления в новую организацию
         
         // Get message count for today
         const { count: messageCount } = await supabaseAdmin
           .from('activity_events')
           .select('*', { count: 'exact', head: true })
-          .eq('org_id', orgId)
           .eq('tg_chat_id', chatId)
           .eq('event_type', 'message')
           .gte('created_at', `${today}T00:00:00Z`)
@@ -74,7 +93,6 @@ export async function GET(request: NextRequest) {
         const { count: replyCount } = await supabaseAdmin
           .from('activity_events')
           .select('*', { count: 'exact', head: true })
-          .eq('org_id', orgId)
           .eq('tg_chat_id', chatId)
           .eq('event_type', 'message')
           .not('reply_to_message_id', 'is', null)
@@ -85,7 +103,6 @@ export async function GET(request: NextRequest) {
         const { data: dauData } = await supabaseAdmin
           .from('activity_events')
           .select('tg_user_id')
-          .eq('org_id', orgId)
           .eq('tg_chat_id', chatId)
           .eq('event_type', 'message')
           .gte('created_at', `${today}T00:00:00Z`)
@@ -97,7 +114,6 @@ export async function GET(request: NextRequest) {
         const { count: joinCount } = await supabaseAdmin
           .from('activity_events')
           .select('*', { count: 'exact', head: true })
-          .eq('org_id', orgId)
           .eq('tg_chat_id', chatId)
           .eq('event_type', 'join')
           .gte('created_at', `${today}T00:00:00Z`)
@@ -106,7 +122,6 @@ export async function GET(request: NextRequest) {
         const { count: leaveCount } = await supabaseAdmin
           .from('activity_events')
           .select('*', { count: 'exact', head: true })
-          .eq('org_id', orgId)
           .eq('tg_chat_id', chatId)
           .eq('event_type', 'leave')
           .gte('created_at', `${today}T00:00:00Z`)
@@ -118,39 +133,44 @@ export async function GET(request: NextRequest) {
         const joins = joinCount || 0;
         const leaves = leaveCount || 0;
         
-        // Upsert metrics
-        const { error: upsertError } = await supabaseAdmin
-          .from('group_metrics')
-          .upsert({
-            org_id: orgId,
-            tg_chat_id: chatId,
-            date: today,
-            dau: dau,
-            message_count: messages,
-            reply_count: replies,
-            reply_ratio: replyRatio,
-            join_count: joins,
-            leave_count: leaves,
-            net_member_change: joins - leaves
-          }, {
-            onConflict: 'org_id,tg_chat_id,date'
-          });
+        // Записываем метрики для КАЖДОЙ организации, к которой привязана группа
+        const orgsForChat = chatToOrgs.get(chatId) || [];
         
-        if (upsertError) {
-          logger.error({ 
-            org_id: orgId, 
-            chat_id: chatId, 
-            error: upsertError.message 
-          }, 'Failed to upsert metrics');
-          errors++;
-        } else {
-          updated++;
+        for (const orgId of orgsForChat) {
+          const { error: upsertError } = await supabaseAdmin
+            .from('group_metrics')
+            .upsert({
+              org_id: orgId,
+              tg_chat_id: chatId,
+              date: today,
+              dau: dau,
+              message_count: messages,
+              reply_count: replies,
+              reply_ratio: replyRatio,
+              join_count: joins,
+              leave_count: leaves,
+              net_member_change: joins - leaves
+            }, {
+              onConflict: 'org_id,tg_chat_id,date'
+            });
+          
+          if (upsertError) {
+            logger.error({ 
+              org_id: orgId, 
+              chat_id: chatId, 
+              error: upsertError.message 
+            }, 'Failed to upsert metrics');
+            errors++;
+          } else {
+            updated++;
+          }
         }
         
       } catch (err) {
         logger.error({ 
+          chat_id: chatId,
           error: err instanceof Error ? err.message : String(err)
-        }, 'Error processing mapping');
+        }, 'Error processing chat');
         errors++;
       }
     }
@@ -159,7 +179,7 @@ export async function GET(request: NextRequest) {
     logger.info({ 
       updated, 
       errors, 
-      total: mappings.length,
+      unique_chats: uniqueChatIds.size,
       duration_ms: duration 
     }, 'Group metrics update completed');
     
@@ -167,7 +187,7 @@ export async function GET(request: NextRequest) {
       ok: true, 
       updated,
       errors,
-      total: mappings.length,
+      unique_chats: uniqueChatIds.size,
       duration_ms: duration
     });
     
@@ -181,4 +201,3 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 }
-

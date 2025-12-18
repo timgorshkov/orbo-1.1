@@ -134,11 +134,12 @@ export async function GET(
         org_id: orgId
       }, 'Fetching group_metrics');
       
+      // NOTE: НЕ фильтруем по org_id - берём все метрики по chat_id
+      // Группа может быть добавлена в несколько организаций, и её история должна быть видна везде
       const { data: metricsData, error: metricsError } = await adminSupabase
         .from('group_metrics')
         .select('date, message_count, tg_chat_id, org_id')
         .in('tg_chat_id', chatIds)
-        .eq('org_id', orgId)  // Фильтруем по организации чтобы избежать дублей
         .gte('date', fourteenDaysAgoStr)
         .order('date')
       
@@ -155,11 +156,30 @@ export async function GET(
       }
       
       // Агрегируем по дням (суммируем по всем группам)
+      // Дедупликация: для каждой группы берём максимальное значение за день
+      // (на случай если метрики записаны для разных org_id)
+      const metricsPerGroupPerDay: Record<string, Record<string, number>> = {}
+      
       metricsData?.forEach(metric => {
+        const chatKey = String(metric.tg_chat_id)
         const dateKey = metric.date
-        if (activityByDay[dateKey] !== undefined) {
-          activityByDay[dateKey] += metric.message_count || 0
+        
+        if (!metricsPerGroupPerDay[chatKey]) {
+          metricsPerGroupPerDay[chatKey] = {}
         }
+        
+        // Берём максимальное значение (на случай дублей из разных org)
+        const currentVal = metricsPerGroupPerDay[chatKey][dateKey] || 0
+        metricsPerGroupPerDay[chatKey][dateKey] = Math.max(currentVal, metric.message_count || 0)
+      })
+      
+      // Теперь суммируем по группам
+      Object.values(metricsPerGroupPerDay).forEach(groupMetrics => {
+        Object.entries(groupMetrics).forEach(([dateKey, count]) => {
+          if (activityByDay[dateKey] !== undefined) {
+            activityByDay[dateKey] += count
+          }
+        })
       })
     } else {
       logger.debug({ org_id: orgId }, 'No groups found, skipping activity fetch');
