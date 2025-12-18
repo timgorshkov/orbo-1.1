@@ -1,6 +1,6 @@
 #!/bin/bash
-# Setup cron job for error-digest on the server
-# Run this script on the server: bash ~/orbo/deploy/scripts/setup-cron.sh
+# Setup cron jobs for Orbo on the server
+# Run this script on the server: bash ~/orbo/scripts/setup-cron.sh
 
 set -e
 
@@ -15,21 +15,40 @@ fi
 
 APP_URL="${NEXT_PUBLIC_APP_URL:-https://my.orbo.ru}"
 
-# Create cron script
+echo "Setting up cron jobs for Orbo..."
+echo "APP_URL: $APP_URL"
+
+# Create cron script for error-digest (hourly)
 cat > ~/orbo/cron-error-digest.sh << EOF
 #!/bin/bash
-curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/error-digest" >> /var/log/orbo-cron.log 2>&1
+curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/error-digest" >> /var/log/orbo-cron.log 2>&1
 EOF
-
 chmod +x ~/orbo/cron-error-digest.sh
 
-# Add to crontab (every hour at minute 0)
-(crontab -l 2>/dev/null | grep -v "cron-error-digest" ; echo "0 * * * * ~/orbo/cron-error-digest.sh") | crontab -
+# Create cron script for group-metrics (every 5 minutes)
+cat > ~/orbo/cron-group-metrics.sh << EOF
+#!/bin/bash
+curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/update-group-metrics" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-group-metrics.sh
 
-echo "✅ Cron job configured!"
+# Remove old cron entries and add new ones
+(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" ; \
+  echo "0 * * * * ~/orbo/cron-error-digest.sh" ; \
+  echo "*/5 * * * * ~/orbo/cron-group-metrics.sh") | crontab -
+
+echo ""
+echo "✅ Cron jobs configured!"
+echo ""
+echo "📊 Group Metrics Update:"
+echo "   Schedule: Every 5 minutes"
+echo "   Command: ~/orbo/cron-group-metrics.sh"
+echo ""
+echo "📧 Error Digest:"
 echo "   Schedule: Every hour at :00"
 echo "   Command: ~/orbo/cron-error-digest.sh"
 echo ""
+echo "📋 Management:"
 echo "   View logs: tail -f /var/log/orbo-cron.log"
 echo "   View crontab: crontab -l"
-
+echo "   Test group-metrics: curl -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/update-group-metrics"

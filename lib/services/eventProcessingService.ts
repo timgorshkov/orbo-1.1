@@ -522,8 +522,7 @@ export class EventProcessingService {
       }, 'Error updating participant_groups for leave event');
     }
     
-    // Обновляем счетчики и статистику
-    await this.updateGroupMetrics(orgId, chatId);
+    // NOTE: updateGroupMetrics moved to cron job for performance
   }
     
   /**
@@ -738,7 +737,8 @@ export class EventProcessingService {
       await this.processUserMessage(message, orgId);
     }
 
-    await this.updateGroupMetrics(orgId, chatId);
+    // NOTE: updateGroupMetrics moved to cron job for performance
+    // Metrics are now updated every 5 minutes instead of per-message
   }
   
   /**
