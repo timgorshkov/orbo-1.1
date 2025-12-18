@@ -9,6 +9,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cookies, headers } from "next/headers";
 import type { DbClient, QueryBuilder, DbResult, DbError, SelectOptions, UpsertOptions } from './types';
+import { createServiceLogger } from '../logger';
 
 /**
  * Адаптер для преобразования Supabase QueryBuilder в наш интерфейс
