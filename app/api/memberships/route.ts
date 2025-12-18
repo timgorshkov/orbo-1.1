@@ -11,10 +11,12 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/memberships' });
+  let orgId: string | null = null;
+  let userId: string | null = null;
   try {
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('org_id');
-    const userId = searchParams.get('user_id');
+    orgId = searchParams.get('org_id');
+    userId = searchParams.get('user_id');
 
     if (!orgId || !userId) {
       return NextResponse.json(

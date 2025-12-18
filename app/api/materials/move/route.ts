@@ -7,17 +7,19 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/materials/move' });
-  const body = await request.json();
-  const orgId = body.orgId;
-
-  if (!orgId) {
-    return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
-  }
-
+  let orgId: string | undefined;
+  let pageId: string | undefined;
   try {
+    const body = await request.json();
+    orgId = body.orgId;
+    pageId = body.pageId;
+
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
+    }
     await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
     const page = await MaterialService.movePage({
-      pageId: body.pageId,
+      pageId: pageId!,
       newParentId: body.parentId ?? null,
       newPosition: body.position ?? 0
     });
@@ -26,8 +28,8 @@ export async function POST(request: NextRequest) {
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      org_id: orgId,
-      page_id: body.pageId
+      org_id: orgId || 'unknown',
+      page_id: pageId || 'unknown'
     }, 'Materials move error');
     return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
   }
