@@ -96,7 +96,6 @@ export default function WhatsAppImportPage() {
           if (match) {
             if (matchedPattern === null) {
               matchedPattern = i
-              const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
               logger.debug({ pattern_index: i + 1 }, 'Matched pattern');
             }
             break
@@ -139,7 +138,6 @@ export default function WhatsAppImportPage() {
         }
       }
       
-      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
       logger.debug({ 
         message_count: messageCount,
         participant_count: participants.size,
@@ -167,7 +165,6 @@ export default function WhatsAppImportPage() {
       })
       
     } catch (err) {
-      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
       logger.error({ 
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined

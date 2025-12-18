@@ -57,13 +57,13 @@ export default async function OrganizationSettingsPage({
     }
 
     // Get organization details
-    const { data: org, error: orgError } = await supabase
+    const { data: organization, error: orgError } = await supabase
       .from('organizations')
       .select('*')
       .eq('id', orgId)
       .single()
 
-    if (orgError || !org) {
+    if (orgError || !organization) {
       return notFound()
     }
 
@@ -116,7 +116,7 @@ export default async function OrganizationSettingsPage({
         tabContent = (
           <div className="p-6">
             <OrganizationSettingsForm
-              organization={org}
+              organization={organization}
               userRole={membership.role as 'owner' | 'admin'}
             />
           </div>
@@ -141,10 +141,10 @@ export default async function OrganizationSettingsPage({
 
       case 'digest': {
         const initialSettings = {
-          enabled: org.digest_enabled ?? true,
-          day: org.digest_day ?? 1,
-          time: org.digest_time ?? '09:00:00',
-          lastSentAt: org.last_digest_sent_at,
+          enabled: organization.digest_enabled ?? true,
+          day: organization.digest_day ?? 1,
+          time: organization.digest_time ?? '09:00:00',
+          lastSentAt: organization.last_digest_sent_at,
         }
 
         tabContent = (
