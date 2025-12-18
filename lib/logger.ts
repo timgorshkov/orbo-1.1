@@ -25,11 +25,11 @@ export const logger = pino({
   // Timestamp
   timestamp: pino.stdTimeFunctions.isoTime,
   
-  // Hook для отправки ошибок в Hawk
+  // Hook для отправки ошибок и предупреждений в Hawk
   hooks: {
     logMethod(inputArgs, method, level) {
-      // Если уровень error (50) или выше - отправляем в Hawk
-      if (level >= 50 && typeof window === 'undefined') {
+      // Если уровень warn (40) или выше - отправляем в Hawk
+      if (level >= 40 && typeof window === 'undefined') {
         const [obj, msg] = inputArgs as [Record<string, unknown>, string?];
         
         // Собираем контекст для Hawk
