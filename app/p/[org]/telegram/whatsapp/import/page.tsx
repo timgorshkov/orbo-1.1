@@ -58,10 +58,10 @@ export default function WhatsAppImportPage() {
     }
     
     // Parse TXT file for preview
+    const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
     try {
       const content = await selectedFile.text()
       const lines = content.split('\n').filter(line => line.trim())
-      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
       
       logger.debug({ 
         file_name: selectedFile.name,
