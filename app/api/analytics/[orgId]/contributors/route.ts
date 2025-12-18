@@ -80,7 +80,7 @@ export async function GET(
       .from('activity_events')
       .select('tg_user_id, event_type, meta')
       .in('tg_chat_id', chatIds)
-      .eq('event_type', 'message')
+      .in('event_type', ['message', 'reaction'])
       .gte('created_at', startDate.toISOString())
       .not('tg_user_id', 'is', null);
 
@@ -90,7 +90,14 @@ export async function GET(
     }
 
     // Aggregate by user
-    const userCounts: Record<number, { message_count: number; username?: string; full_name?: string }> = {};
+    const userCounts: Record<number, { 
+      message_count: number; 
+      reaction_count: number;
+      username?: string; 
+      full_name?: string;
+      tg_first_name?: string;
+      tg_last_name?: string;
+    }> = {};
     
     events?.forEach(event => {
       const userId = event.tg_user_id;
@@ -99,33 +106,51 @@ export async function GET(
       if (!userCounts[userId]) {
         userCounts[userId] = { 
           message_count: 0,
+          reaction_count: 0,
           username: event.meta?.from?.username,
+          tg_first_name: event.meta?.from?.first_name,
+          tg_last_name: event.meta?.from?.last_name,
           full_name: event.meta?.from?.first_name 
             ? `${event.meta.from.first_name} ${event.meta.from.last_name || ''}`.trim()
             : undefined
         };
       }
-      userCounts[userId].message_count++;
+      
+      if (event.event_type === 'message') {
+        userCounts[userId].message_count++;
+      } else if (event.event_type === 'reaction') {
+        userCounts[userId].reaction_count++;
+      }
       
       // Update username/name if available
       if (event.meta?.from?.username && !userCounts[userId].username) {
         userCounts[userId].username = event.meta.from.username;
       }
-      if (event.meta?.from?.first_name && !userCounts[userId].full_name) {
+      if (event.meta?.from?.first_name && !userCounts[userId].tg_first_name) {
+        userCounts[userId].tg_first_name = event.meta.from.first_name;
+        userCounts[userId].tg_last_name = event.meta.from.last_name;
         userCounts[userId].full_name = `${event.meta.from.first_name} ${event.meta.from.last_name || ''}`.trim();
       }
     });
 
     // Sort and limit
     const sorted = Object.entries(userCounts)
-      .map(([tg_user_id, data]) => ({
+      .map(([tg_user_id, data], index) => ({
         tg_user_id: parseInt(tg_user_id),
+        participant_id: null, // Will be enriched if needed
         message_count: data.message_count,
+        reaction_count: data.reaction_count,
+        activity_count: data.message_count + data.reaction_count,
         username: data.username || null,
-        full_name: data.full_name || null
+        full_name: data.full_name || null,
+        tg_first_name: data.tg_first_name || null,
+        tg_last_name: data.tg_last_name || null,
+        rank: 0, // Will be set after sorting
+        rank_change: 0 // No historical comparison in this simplified version
       }))
-      .sort((a, b) => b.message_count - a.message_count)
-      .slice(0, limit);
+      .sort((a, b) => b.activity_count - a.activity_count)
+      .slice(0, limit)
+      .map((item, index) => ({ ...item, rank: index + 1 }));
 
     logger.debug({ 
       org_id: orgId, 

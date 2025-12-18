@@ -5,6 +5,50 @@ import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+async function getMetricsForPeriod(
+  supabase: ReturnType<typeof createClient>,
+  chatIds: string[],
+  startDate: Date,
+  endDate: Date
+) {
+  const { data: events, error } = await supabase
+    .from('activity_events')
+    .select('event_type, tg_user_id, reply_to_message_id')
+    .in('tg_chat_id', chatIds)
+    .gte('created_at', startDate.toISOString())
+    .lte('created_at', endDate.toISOString());
+
+  if (error) throw error;
+
+  let messages = 0;
+  let reactions = 0;
+  let replies = 0;
+  const uniqueUsers = new Set<number>();
+
+  events?.forEach(event => {
+    if (event.event_type === 'message') {
+      messages++;
+      if (event.tg_user_id) uniqueUsers.add(event.tg_user_id);
+      if (event.reply_to_message_id) replies++;
+    } else if (event.event_type === 'reaction') {
+      reactions++;
+    }
+  });
+
+  const participants = uniqueUsers.size;
+  const engagementRate = participants > 0 ? (messages / participants) * 100 : 0;
+  const replyRatio = messages > 0 ? (replies / messages) * 100 : 0;
+
+  return {
+    participants,
+    messages,
+    reactions,
+    replies,
+    engagement_rate: Math.round(engagementRate * 10) / 10,
+    reply_ratio: Math.round(replyRatio * 10) / 10
+  };
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { orgId: string } }
@@ -70,74 +114,59 @@ export async function GET(
     if (chatIds.length === 0) {
       return NextResponse.json({ 
         data: {
-          total_messages: 0,
-          total_reactions: 0,
-          unique_users: 0,
-          avg_messages_per_day: 0,
-          reply_ratio: 0
+          current_participants: 0,
+          current_messages: 0,
+          current_engagement_rate: 0,
+          current_replies: 0,
+          current_reactions: 0,
+          current_reply_ratio: 0,
+          previous_participants: 0,
+          previous_messages: 0,
+          previous_engagement_rate: 0,
+          previous_replies: 0,
+          previous_reactions: 0,
+          previous_reply_ratio: 0
         }
       });
     }
 
-    // Get activity - NO org_id filter!
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - periodDays);
+    // Calculate date ranges
+    const now = new Date();
+    const currentEnd = now;
+    const currentStart = new Date(now);
+    currentStart.setDate(currentStart.getDate() - periodDays);
+    
+    const previousEnd = new Date(currentStart);
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousStart.getDate() - periodDays);
 
-    const { data: events, error: eventsError } = await adminSupabase
-      .from('activity_events')
-      .select('event_type, tg_user_id, reply_to_message_id, created_at')
-      .in('tg_chat_id', chatIds)
-      .gte('created_at', startDate.toISOString());
-
-    if (eventsError) {
-      logger.error({ error: eventsError.message }, 'Error fetching events');
-      return NextResponse.json({ error: eventsError.message }, { status: 500 });
-    }
-
-    // Calculate metrics
-    let totalMessages = 0;
-    let totalReactions = 0;
-    let totalReplies = 0;
-    const uniqueUsers = new Set<number>();
-    const messagesByDay: Record<string, number> = {};
-
-    events?.forEach(event => {
-      if (event.event_type === 'message') {
-        totalMessages++;
-        if (event.tg_user_id) {
-          uniqueUsers.add(event.tg_user_id);
-        }
-        if (event.reply_to_message_id) {
-          totalReplies++;
-        }
-        const dateKey = event.created_at.split('T')[0];
-        messagesByDay[dateKey] = (messagesByDay[dateKey] || 0) + 1;
-      } else if (event.event_type === 'reaction') {
-        totalReactions++;
-      }
-    });
-
-    const daysWithActivity = Object.keys(messagesByDay).length;
-    const avgMessagesPerDay = daysWithActivity > 0 
-      ? Math.round(totalMessages / daysWithActivity * 10) / 10 
-      : 0;
-    const replyRatio = totalMessages > 0 
-      ? Math.round((totalReplies / totalMessages) * 100) 
-      : 0;
+    // Fetch metrics for both periods - NO org_id filter!
+    const [current, previous] = await Promise.all([
+      getMetricsForPeriod(adminSupabase, chatIds, currentStart, currentEnd),
+      getMetricsForPeriod(adminSupabase, chatIds, previousStart, previousEnd)
+    ]);
 
     const data = {
-      total_messages: totalMessages,
-      total_reactions: totalReactions,
-      unique_users: uniqueUsers.size,
-      avg_messages_per_day: avgMessagesPerDay,
-      reply_ratio: replyRatio
+      current_participants: current.participants,
+      current_messages: current.messages,
+      current_engagement_rate: current.engagement_rate,
+      current_replies: current.replies,
+      current_reactions: current.reactions,
+      current_reply_ratio: current.reply_ratio,
+      previous_participants: previous.participants,
+      previous_messages: previous.messages,
+      previous_engagement_rate: previous.engagement_rate,
+      previous_replies: previous.replies,
+      previous_reactions: previous.reactions,
+      previous_reply_ratio: previous.reply_ratio
     };
 
     logger.debug({ 
       org_id: orgId, 
       chat_ids: chatIds.length,
-      events_count: events?.length || 0,
-      metrics: data
+      period_days: periodDays,
+      current_messages: current.messages,
+      previous_messages: previous.messages
     }, 'Key metrics fetched');
 
     return NextResponse.json({ data });
