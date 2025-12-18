@@ -64,8 +64,11 @@ export async function GET(request: NextRequest) {
       chatToOrgs.get(chatId)!.push(m.org_id);
     });
     
+    // Convert Set to Array for iteration
+    const chatIdArray = Array.from(uniqueChatIds);
+    
     logger.info({ 
-      unique_chats: uniqueChatIds.size,
+      unique_chats: chatIdArray.length,
       total_mappings: mappings.length,
       days: daysToBackfill
     }, 'Starting backfill');
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
       const dateStr = date.toISOString().split('T')[0];
       
       // Process each unique chat_id
-      for (const chatId of uniqueChatIds) {
+      for (const chatId of chatIdArray) {
         try {
           // Get metrics for this day WITHOUT org_id filter
           const { count: messageCount } = await supabaseAdmin

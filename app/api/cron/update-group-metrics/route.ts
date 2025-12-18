@@ -66,8 +66,11 @@ export async function GET(request: NextRequest) {
       chatToOrgs.get(chatId)!.push(m.org_id);
     });
     
+    // Convert Set to Array for iteration
+    const chatIdArray = Array.from(uniqueChatIds);
+    
     logger.info({ 
-      unique_chats: uniqueChatIds.size,
+      unique_chats: chatIdArray.length,
       total_mappings: mappings.length
     }, 'Found unique chat IDs');
     
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
     let errors = 0;
     
     // Process each unique chat_id
-    for (const chatId of uniqueChatIds) {
+    for (const chatId of chatIdArray) {
       try {
         // Считаем метрики БЕЗ фильтрации по org_id
         // Это позволит видеть историю даже после добавления в новую организацию
@@ -179,7 +182,7 @@ export async function GET(request: NextRequest) {
     logger.info({ 
       updated, 
       errors, 
-      unique_chats: uniqueChatIds.size,
+      unique_chats: chatIdArray.length,
       duration_ms: duration 
     }, 'Group metrics update completed');
     
@@ -187,7 +190,7 @@ export async function GET(request: NextRequest) {
       ok: true, 
       updated,
       errors,
-      unique_chats: uniqueChatIds.size,
+      unique_chats: chatIdArray.length,
       duration_ms: duration
     });
     
