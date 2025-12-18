@@ -5,6 +5,12 @@ import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+interface ActivityEvent {
+  event_type: string;
+  tg_user_id: number | null;
+  reply_to_message_id: number | null;
+}
+
 async function getMetricsForPeriod(
   supabase: ReturnType<typeof createClient>,
   chatIds: string[],
@@ -25,7 +31,7 @@ async function getMetricsForPeriod(
   let replies = 0;
   const uniqueUsers = new Set<number>();
 
-  events?.forEach(event => {
+  (events as ActivityEvent[] | null)?.forEach(event => {
     if (event.event_type === 'message') {
       messages++;
       if (event.tg_user_id) uniqueUsers.add(event.tg_user_id);
