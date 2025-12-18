@@ -1,5 +1,17 @@
 import pino from 'pino';
-import { captureError } from './hawk';
+
+// Условный импорт Hawk только на сервере
+let captureError: ((error: Error, context?: Record<string, unknown>) => void) | null = null;
+
+if (typeof window === 'undefined') {
+  // Динамический импорт только на сервере
+  try {
+    const hawkModule = require('./hawk');
+    captureError = hawkModule.captureError;
+  } catch (e) {
+    // Hawk недоступен, игнорируем
+  }
+}
 
 // Create base logger instance
 export const logger = pino({
@@ -28,8 +40,8 @@ export const logger = pino({
   // Hook для отправки ошибок и предупреждений в Hawk
   hooks: {
     logMethod(inputArgs, method, level) {
-      // Если уровень warn (40) или выше - отправляем в Hawk
-      if (level >= 40 && typeof window === 'undefined') {
+      // Если уровень warn (40) или выше - отправляем в Hawk (только на сервере)
+      if (level >= 40 && typeof window === 'undefined' && captureError) {
         const [obj, msg] = inputArgs as [Record<string, unknown>, string?];
         
         // Собираем контекст для Hawk
