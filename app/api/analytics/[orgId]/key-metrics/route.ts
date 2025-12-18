@@ -11,8 +11,9 @@ interface ActivityEvent {
   reply_to_message_id: number | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getMetricsForPeriod(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   chatIds: string[],
   startDate: Date,
   endDate: Date
