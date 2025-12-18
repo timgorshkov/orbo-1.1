@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
+import { createClientLogger } from '@/lib/logger'
 
 interface CostSummary {
   total_requests: number;
@@ -50,8 +51,13 @@ export default function AICoststPage() {
       .rpc('get_openai_cost_summary', { p_org_id: null, p_days: daysFilter })
       .single()
     
+    const logger = createClientLogger('AICostsPage');
     if (summaryError) {
-      console.error('Error loading summary:', summaryError)
+      logger.error({
+        error: summaryError.message,
+        error_code: summaryError.code,
+        days_filter: daysFilter
+      }, 'Error loading summary');
     } else {
       setSummary(summaryData as CostSummary)
     }
@@ -64,7 +70,10 @@ export default function AICoststPage() {
       .limit(50)
     
     if (logsError) {
-      console.error('Error loading logs:', logsError)
+      logger.error({
+        error: logsError.message,
+        error_code: logsError.code
+      }, 'Error loading logs');
     } else {
       setRecentLogs(logsData || [])
     }

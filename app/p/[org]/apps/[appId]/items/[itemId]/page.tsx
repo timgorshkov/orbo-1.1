@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Head from 'next/head';
 import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List, Edit } from 'lucide-react';
 import { getAppItemOGImage, getAbsoluteOGImageUrl, extractItemImageUrl } from '@/lib/utils/ogImageFallback';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -48,6 +49,7 @@ export default function ItemDetailPage() {
   const orgId = params.org as string;
   const appId = params.appId as string;
   const itemId = params.itemId as string;
+  const clientLogger = createClientLogger('ItemDetailPage', { orgId, appId, itemId });
 
   const [app, setApp] = useState<App | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -85,7 +87,10 @@ export default function ItemDetailPage() {
           setOrganization(orgData);
         }
       } catch (orgErr) {
-        console.warn('[ItemDetail] Could not fetch organization:', orgErr);
+        clientLogger.warn({
+          error: orgErr instanceof Error ? orgErr.message : String(orgErr),
+          org_id: orgId
+        }, 'Could not fetch organization');
       }
 
       // Fetch collection
@@ -101,20 +106,24 @@ export default function ItemDetailPage() {
       if (!itemResponse.ok) throw new Error('Item not found');
       const itemData = await itemResponse.json();
       
-      console.log('[ItemDetail] Full item data:', itemData.item);
-      console.log('[ItemDetail] Has participant?', !!itemData.item.participant);
-      console.log('[ItemDetail] Participant data:', itemData.item.participant);
-      console.log('[ItemDetail] Creator ID:', itemData.item.creator_id);
-      console.log('[ItemDetail] Org ID:', itemData.item.org_id);
-      
+      clientLogger.debug({
+        has_participant: !!itemData.item.participant,
+        creator_id: itemData.item.creator_id,
+        org_id: itemData.item.org_id
+      }, 'Fetched item data');
+
       setItem(itemData.item);
 
       // Fetch participant (author) if available
       if (itemData.item.participant) {
-        console.log('[ItemDetail] Setting participant:', itemData.item.participant);
+        clientLogger.debug({
+          participant_id: itemData.item.participant.id
+        }, 'Setting participant');
         setParticipant(itemData.item.participant);
       } else {
-        console.warn('[ItemDetail] No participant data in API response');
+        clientLogger.warn({
+          item_id: itemId
+        }, 'No participant data in API response');
       }
 
       // Check if current user is owner or admin
@@ -141,7 +150,10 @@ export default function ItemDetailPage() {
                 }
               }
             } catch (membershipErr) {
-              console.warn('[ItemDetail] Could not check membership:', membershipErr);
+              clientLogger.warn({
+                error: membershipErr instanceof Error ? membershipErr.message : String(membershipErr),
+                org_id: orgId
+              }, 'Could not check membership');
             }
             
             const finalIsOwner = isCreator || isOrgAdmin;
@@ -150,12 +162,23 @@ export default function ItemDetailPage() {
           }
         }
       } catch (err) {
-        console.error('[ItemDetail] Error checking ownership:', err);
+        clientLogger.error({
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          org_id: orgId,
+          item_id: itemId
+        }, 'Error checking ownership');
       } finally {
         setIsCheckingAuth(false);
       }
     } catch (err: any) {
-      console.error('Error fetching item:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId,
+        item_id: itemId
+      }, 'Error fetching item');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -176,7 +199,13 @@ export default function ItemDetailPage() {
 
       router.push(`/p/${orgId}/apps/${appId}`);
     } catch (err: any) {
-      console.error('Error deleting item:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId,
+        item_id: itemId
+      }, 'Error deleting item');
       alert('Не удалось удалить объявление');
     }
   };
@@ -188,7 +217,12 @@ export default function ItemDetailPage() {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy link:', err);
+      clientLogger.error({
+        error: err instanceof Error ? err.message : String(err),
+        org_id: orgId,
+        app_id: appId,
+        item_id: itemId
+      }, 'Failed to copy link');
       alert('Не удалось скопировать ссылку');
     }
   };

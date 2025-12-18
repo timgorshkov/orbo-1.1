@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import ImportHistory from '@/components/telegram/import-history'
+import { createClientLogger } from '@/lib/logger'
 
 type TelegramGroup = {
   id: string
@@ -22,6 +23,7 @@ type TelegramGroup = {
 }
 
 export default function AvailableGroupsPage({ params }: { params: { org: string } }) {
+  const logger = createClientLogger('AvailableGroupsPage', { org: params.org });
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [availableGroups, setAvailableGroups] = useState<TelegramGroup[]>([])
@@ -41,7 +43,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     // ✅ ОПТИМИЗАЦИЯ: Обновляем права админа в ФОНЕ, не блокируя загрузку страницы
     async function updateAdminRightsInBackground() {
       try {
-        console.log('[Background] Updating admin rights...');
+        logger.debug({ org: params.org }, 'Updating admin rights in background');
         const updateRes = await fetch('/api/telegram/groups/update-admin-rights', {
           method: 'POST',
           headers: {
@@ -55,18 +57,27 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         
         if (updateRes.ok) {
           const updateData = await updateRes.json();
-          console.log(`[Background] Updated admin rights for ${updateData.updatedGroups?.length || 0} groups`);
+          logger.debug({ 
+            updated_count: updateData.updatedGroups?.length || 0,
+            org: params.org
+          }, 'Updated admin rights for groups');
           
           // ✅ После обновления прав - перезагружаем список групп, если компонент ещё смонтирован
           if (isMounted) {
-            console.log('[Background] Refreshing available groups after admin rights update...');
+            logger.debug({ org: params.org }, 'Refreshing available groups after admin rights update');
             fetchAvailableGroups();
           }
         } else {
-          console.error(`[Background] Failed to update admin rights: ${updateRes.status}`);
+          logger.error({ 
+            status: updateRes.status,
+            org: params.org
+          }, 'Failed to update admin rights');
         }
       } catch (e) {
-        console.error('[Background] Error updating admin rights:', e);
+        logger.error({ 
+          error: e instanceof Error ? e.message : String(e),
+          org: params.org
+        }, 'Error updating admin rights');
       }
     }
     
@@ -80,7 +91,10 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       
       try {
         const timestamp = new Date().getTime()
-        console.log(`Fetching available groups for org ${params.org}... (attempt ${attempts})`)
+        logger.debug({ 
+          org: params.org,
+          attempt: attempts
+        }, 'Fetching available groups');
         const res = await fetch(`/api/telegram/groups/for-user?orgId=${params.org}&includeExisting=true&skipAutoAssign=true&t=${timestamp}`, {
           // Увеличиваем таймаут для запроса
           signal: AbortSignal.timeout(10000) // 10 секунд таймаут
@@ -90,7 +104,11 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         if (!isMounted) return;
         
         if (!res.ok) {
-          console.error(`API response status: ${res.status} ${res.statusText}`)
+          logger.error({ 
+            status: res.status,
+            status_text: res.statusText,
+            org: params.org
+          }, 'API response error');
           
           // Пытаемся получить текст ошибки из ответа
           let errorText = `Failed to fetch available groups: ${res.status} ${res.statusText}`
@@ -102,9 +120,15 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
             if (errorData.details) {
               errorText += ` (${errorData.details})`
             }
-            console.error('API error details:', errorData)
+            logger.error({ 
+              error_data: errorData,
+              org: params.org
+            }, 'API error details');
           } catch (jsonError) {
-            console.error('Failed to parse error response:', jsonError)
+            logger.error({ 
+              error: jsonError instanceof Error ? jsonError.message : String(jsonError),
+              org: params.org
+            }, 'Failed to parse error response');
           }
           
           throw new Error(errorText)
@@ -115,20 +139,30 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         // Если компонент был размонтирован во время запроса, прерываем обработку
         if (!isMounted) return;
         
-        console.log('API response:', data)
+        logger.debug({ 
+          org: params.org,
+          has_groups: !!data.availableGroups
+        }, 'API response received');
         
         if (data.availableGroups) {
           setAvailableGroups(data.availableGroups)
-          console.log(`Loaded ${data.availableGroups.length} available groups`)
+          logger.debug({ 
+            org: params.org,
+            group_count: data.availableGroups.length
+          }, 'Loaded available groups');
         } else {
-          console.log('No available groups in response')
+          logger.debug({ org: params.org }, 'No available groups in response');
           setAvailableGroups([])
         }
       } catch (e: any) {
         // Если компонент был размонтирован во время запроса, прерываем обработку
         if (!isMounted) return;
         
-        console.error('Error fetching available groups:', e)
+        logger.error({ 
+          error: e.message,
+          stack: e.stack,
+          org: params.org
+        }, 'Error fetching available groups');
         setError(e.message || 'Failed to fetch available groups')
       } finally {
         requestInProgress = false;
@@ -155,7 +189,10 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     setError(null)
     
     try {
-      console.log(`Adding group ${groupId} to org ${params.org}`)
+      logger.info({ 
+        org: params.org,
+        group_id: groupId
+      }, 'Adding group to org');
       const res = await fetch('/api/telegram/groups/add-to-org', {
         method: 'POST',
         headers: {
@@ -168,13 +205,20 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       })
       
       const data = await res.json()
-      console.log('Add group response:', data)
+      logger.debug({ 
+        org: params.org,
+        group_id: groupId,
+        suggest_import: data.suggestImport
+      }, 'Add group response');
       
       if (!res.ok) {
         throw new Error(data.error || 'Failed to add group to organization')
       }
       
-      console.log(`Successfully added group ${groupId}. Refreshing page...`)
+      logger.info({ 
+        org: params.org,
+        group_id: groupId
+      }, 'Successfully added group, refreshing page');
       
       // Обновляем список доступных групп (удаляем добавленную группу)
       setAvailableGroups(availableGroups.filter(group => group.id !== groupId))
@@ -196,7 +240,12 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         }, 500)
       }
     } catch (e: any) {
-      console.error('Error adding group to organization:', e)
+      logger.error({ 
+        error: e.message,
+        stack: e.stack,
+        org: params.org,
+        group_id: groupId
+      }, 'Error adding group to organization');
       setError(e.message || 'Failed to add group to organization')
     } finally {
       setAddingGroup(null)

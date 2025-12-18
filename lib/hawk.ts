@@ -6,6 +6,7 @@
  */
 
 import HawkCatcher from '@hawk.so/nodejs';
+import { createServiceLogger } from './logger';
 
 let isInitialized = false;
 
@@ -14,13 +15,14 @@ let isInitialized = false;
  * Вызывается один раз при старте сервера
  */
 export function initHawk() {
+  const logger = createServiceLogger('Hawk');
   if (isInitialized) return;
   
   const token = process.env.HAWK_TOKEN;
   
   if (!token) {
     if (process.env.NODE_ENV === 'production') {
-      console.warn('[Hawk] HAWK_TOKEN not set - error monitoring disabled');
+      logger.warn({}, 'HAWK_TOKEN not set - error monitoring disabled');
     }
     return;
   }
@@ -47,9 +49,11 @@ export function initHawk() {
     });
     
     isInitialized = true;
-    console.log('[Hawk] Error monitoring initialized');
+    logger.info({}, 'Error monitoring initialized');
   } catch (error) {
-    console.error('[Hawk] Failed to initialize:', error);
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error)
+    }, 'Failed to initialize');
   }
 }
 
@@ -61,8 +65,12 @@ export function captureError(
   context?: Record<string, unknown>,
   user?: { id: string | number; name?: string }
 ) {
+  const logger = createServiceLogger('Hawk');
   if (!isInitialized) {
-    console.error('[Hawk] Not initialized, error not sent:', error.message);
+    logger.error({ 
+      error: error.message,
+      stack: error.stack
+    }, 'Not initialized, error not sent');
     return;
   }
 
@@ -70,7 +78,10 @@ export function captureError(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HawkCatcher.send(error, context as any, user as any);
   } catch (e) {
-    console.error('[Hawk] Failed to send error:', e);
+    logger.error({ 
+      error: e instanceof Error ? e.message : String(e),
+      original_error: error.message
+    }, 'Failed to send error');
   }
 }
 
@@ -81,6 +92,7 @@ export function captureWarning(
   message: string,
   context?: Record<string, unknown>
 ) {
+  const logger = createServiceLogger('Hawk');
   if (!isInitialized) return;
 
   try {
@@ -88,7 +100,10 @@ export function captureWarning(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HawkCatcher.send(warning, { ...context, level: 'warning' } as any);
   } catch (e) {
-    console.error('[Hawk] Failed to send warning:', e);
+    logger.error({ 
+      error: e instanceof Error ? e.message : String(e),
+      warning_message: message
+    }, 'Failed to send warning');
   }
 }
 

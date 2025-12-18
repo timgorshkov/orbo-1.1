@@ -24,12 +24,11 @@ export class ConsoleEmailProvider implements EmailProvider {
 
     // В development выводим содержимое письма
     if (process.env.NODE_ENV === 'development') {
-      console.log('\n📧 ===== EMAIL (Console Provider) =====');
-      console.log(`To: ${params.to}`);
-      console.log(`Subject: ${params.subject}`);
-      console.log(`---`);
-      console.log(params.text || params.html.replace(/<[^>]*>/g, ''));
-      console.log('========================================\n');
+      logger.debug({
+        to: params.to,
+        subject: params.subject,
+        text_preview: (params.text || params.html.replace(/<[^>]*>/g, '')).substring(0, 500)
+      }, '📧 EMAIL (Console Provider)');
     }
 
     return { 

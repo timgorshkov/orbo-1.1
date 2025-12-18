@@ -18,6 +18,7 @@ import type {
   UrlOptions,
   ListOptions 
 } from './types';
+import { createServiceLogger } from '../logger';
 
 // Динамический импорт AWS SDK для избежания ошибок при сборке если не используется
 let S3Client: any;
@@ -253,7 +254,8 @@ export class S3StorageProvider implements StorageProvider {
       
       // Для signed URLs нужен отдельный пакет @aws-sdk/s3-request-presigner
       // Здесь упрощённая реализация - возвращаем публичный URL
-      console.warn('createSignedUrl: using public URL as fallback, install @aws-sdk/s3-request-presigner for proper signed URLs');
+      const logger = createServiceLogger('S3Storage');
+      logger.warn({ bucket, path }, 'createSignedUrl: using public URL as fallback, install @aws-sdk/s3-request-presigner for proper signed URLs');
       
       return {
         data: this.getPublicUrl(bucket, path),

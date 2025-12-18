@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { createClientLogger } from '@/lib/logger'
 
 type TelegramAccount = {
   id: number;
@@ -54,7 +55,12 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
         setTelegramUserId(data.telegramAccount.telegram_user_id.toString())
       }
     } catch (e: any) {
-      console.error('Error fetching telegram account:', e)
+      const logger = createClientLogger('TelegramAccountClient', { org: params.org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org: params.org
+      }, 'Error fetching telegram account');
       setError(e.message || 'Failed to fetch telegram account')
     } finally {
       setLoading(false)
@@ -110,7 +116,13 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
       setSuccess(data.message)
       setTelegramAccount(data.telegramAccount)
     } catch (e: any) {
-      console.error('Error saving telegram account:', e)
+      const logger = createClientLogger('TelegramAccountClient', { org: params.org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org: params.org,
+        telegram_user_id: telegramUserId
+      }, 'Error saving telegram account');
       setError(e.message || 'Failed to save telegram account')
     } finally {
       setSaving(false)
@@ -154,7 +166,12 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
         syncGroups()
       }
     } catch (e: any) {
-      console.error('Error verifying code:', e)
+      const logger = createClientLogger('TelegramAccountClient', { org: params.org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org: params.org
+      }, 'Error verifying code');
       setError(e.message || 'Failed to verify code')
     } finally {
       setVerifying(false)
@@ -192,12 +209,12 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
     setSyncResult(null)
     setError(null)
     
-    // Явно выводим ID организации для отладки
-    console.log(`Syncing groups for organization ID: ${params.org}`)
+    const logger = createClientLogger('TelegramAccountClient', { org: params.org });
+    logger.info({ org: params.org }, 'Syncing groups for organization');
     
     try {
       // Шаг 1: Обновляем права администраторов для всех групп
-      console.log('Step 1: Updating admin rights...')
+      logger.debug({ org: params.org }, 'Step 1: Updating admin rights');
       const adminResponse = await fetch('/api/telegram/groups/update-admins', {
         method: 'POST',
         headers: {
@@ -212,10 +229,13 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
         throw new Error(adminData.error || 'Failed to update admin rights');
       }
       
-      console.log(`Admin rights updated: ${adminData.updated} administrators`);
+      logger.debug({ 
+        org: params.org,
+        updated_count: adminData.updated
+      }, 'Admin rights updated');
       
       // Шаг 2: Синхронизируем группы
-      console.log('Step 2: Syncing groups...')
+      logger.debug({ org: params.org }, 'Step 2: Syncing groups');
       const response = await fetch('/api/telegram/groups/sync', {
         method: 'POST',
         headers: {
@@ -239,7 +259,11 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
         router.push(`/app/${params.org}/telegram`)
       }, 2000)
     } catch (e: any) {
-      console.error('Error syncing groups:', e)
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org: params.org
+      }, 'Error syncing groups');
       setError(e.message || 'Failed to sync groups')
     } finally {
       setSyncing(false)
@@ -438,7 +462,12 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
                           router.push(`/app/${params.org}/telegram`);
                         }, 2000);
                       } catch (e: any) {
-                        console.error('Error updating admin rights:', e);
+                        const logger = createClientLogger('TelegramAccountClient', { org: params.org });
+                        logger.error({
+                          error: e.message,
+                          stack: e.stack,
+                          org: params.org
+                        }, 'Error updating admin rights');
                         setError(e.message || 'Failed to update admin rights');
                       } finally {
                         setSyncing(false);

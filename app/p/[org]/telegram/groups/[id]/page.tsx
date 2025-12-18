@@ -15,6 +15,7 @@ import TopContributors from '@/components/analytics/top-contributors'
 import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
+import { createClientLogger } from '@/lib/logger'
 
 type TelegramGroupSettings = {
   id: number;
@@ -57,6 +58,7 @@ type GroupMetrics = {
 }
 
 export default function TelegramGroupPage({ params }: { params: { org: string, id: string } }) {
+  const logger = createClientLogger('TelegramGroupPage', { org: params.org, group_id: params.id });
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -113,7 +115,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     const fetchGroup = async () => {
       setLoading(true)
       try {
-        console.log('Fetching group with ID:', params.id, 'for org:', params.org);
+        logger.debug({ group_id: params.id, org: params.org }, 'Fetching group');
 
         if (!params.id) {
           setError('Не указан ID группы. Пожалуйста, вернитесь на страницу списка групп и выберите группу.');
@@ -131,7 +133,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         }
 
         const groupData = data.group;
-        console.log('Fetched group data (with mapping support):', groupData);
+        logger.debug({ 
+          group_id: groupData.id,
+          tg_chat_id: groupData.tg_chat_id,
+          title: groupData.title,
+          bot_status: groupData.bot_status
+        }, 'Fetched group data');
 
         setGroup(groupData);
         setTitle(groupData.title || '');
@@ -144,7 +151,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         }
         setError(null);
       } catch (e: any) {
-        console.error('Error:', e);
+        logger.error({
+          error: e.message,
+          stack: e.stack,
+          group_id: params.id,
+          org: params.org
+        }, 'Error fetching group');
         setError('Произошла ошибка при загрузке данных: ' + (e.message || e));
       } finally {
         setLoading(false);
@@ -157,28 +169,40 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
   // Выносим функцию fetchAnalytics за пределы useEffect, чтобы её можно было вызывать из кнопки
   const fetchAnalytics = async () => {
       if (!group) {
-        console.log('No group data available for analytics');
+        logger.debug({}, 'No group data available for analytics');
         return;
       }
       
       setLoadingAnalytics(true)
       setAnalyticsError(null)
       try {
-        console.log('Fetching analytics for group:', group)
+        logger.debug({ 
+          group_id: group.id,
+          tg_chat_id: group.tg_chat_id,
+          org: params.org
+        }, 'Fetching analytics for group');
         
         // Используем более надежный подход с обработкой ошибок для каждого запроса
         // Создаем API запрос для получения данных через сервисную роль на сервере
         const apiUrl = `/api/telegram/analytics/data?orgId=${params.org}&groupId=${group.id}&chatId=${group.tg_chat_id}`;
-        console.log('Fetching analytics from API:', apiUrl);
+        logger.debug({ api_url: apiUrl }, 'Fetching analytics from API');
         
         try {
           const analyticsResponse = await fetch(apiUrl);
           const analyticsData = await analyticsResponse.json();
           
-          console.log('Analytics API response:', analyticsData);
+          logger.debug({ 
+            has_metrics: !!analyticsData.metrics,
+            has_top_users: !!analyticsData.topUsers,
+            has_participants: !!analyticsData.participants
+          }, 'Analytics API response');
           
           if (analyticsData.error) {
-            console.error('Analytics API error:', analyticsData.error);
+            logger.error({
+              error: analyticsData.error,
+              group_id: group.id,
+              org: params.org
+            }, 'Analytics API error');
             setAnalyticsError('Ошибка при загрузке аналитики: ' + analyticsData.error);
             setLoadingAnalytics(false);
             return;
@@ -246,19 +270,24 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           setLoadingAnalytics(false);
           return;
         } catch (apiError: any) {
-          console.error('Error fetching from analytics API:', apiError);
+          logger.warn({
+            error: apiError.message,
+            stack: apiError.stack,
+            group_id: group.id,
+            org: params.org
+          }, 'Error fetching from analytics API, using fallback');
           // Продолжаем с клиентским запросом как запасной вариант
         }
         
         // Запасной вариант - используем клиентский запрос
         const supabase = createClientBrowser();
         
-        console.log('Group data for analytics:', {
+        logger.debug({
           group_id: group.id,
           tg_chat_id: group.tg_chat_id,
           org_id: params.org,
           title: group.title
-        });
+        }, 'Group data for analytics (fallback)');
         
         // Проверим напрямую наличие данных в activity_events
         const { data: activityCheck, error: activityError } = await supabase
@@ -268,11 +297,11 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           .order('created_at', { ascending: false })
           .limit(10);
           
-        console.log('Recent activity events check:', { 
-          count: activityCheck?.length || 0, 
-          events: activityCheck,
-          error: activityError 
-        });
+        logger.debug({ 
+          activity_count: activityCheck?.length || 0,
+          has_error: !!activityError,
+          error_code: activityError?.code
+        }, 'Recent activity events check');
         
         // Сначала получаем базовые метрики
         const { data: timezonedMetrics, error: tzError } = await supabase.rpc(
@@ -285,7 +314,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           }
         )
         
-        console.log('Basic metrics result:', { timezonedMetrics, tzError })
+        logger.debug({ 
+          has_metrics: !!timezonedMetrics,
+          metrics_count: timezonedMetrics?.length || 0,
+          has_error: !!tzError,
+          error_code: tzError?.code
+        }, 'Basic metrics result');
         
         // Пробуем получить расширенные метрики, но не блокируем основной поток
         let silentRate = 0
@@ -301,14 +335,23 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           })
           
           if (silentRateError) {
-            console.error('Error fetching silent_rate:', silentRateError)
+            logger.warn({
+              error: silentRateError.message,
+              error_code: silentRateError.code,
+              group_id: group.id,
+              org: params.org
+            }, 'Error fetching silent_rate');
           }
           
           const silentRateResult = { data: silentRateData || 0 }
           silentRate = silentRateResult.data
-          console.log('Silent rate:', silentRate)
+          logger.debug({ silent_rate: silentRate }, 'Silent rate');
         } catch (e) {
-          console.error('Silent rate error:', e)
+          logger.error({
+            error: e instanceof Error ? e.message : String(e),
+            group_id: group.id,
+            org: params.org
+          }, 'Silent rate error');
         }
         
         try {
@@ -318,14 +361,23 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           })
           
           if (newcomerError) {
-            console.error('Error fetching newcomer_activation:', newcomerError)
+            logger.warn({
+              error: newcomerError.message,
+              error_code: newcomerError.code,
+              group_id: group.id,
+              org: params.org
+            }, 'Error fetching newcomer_activation');
           }
           
           const newcomerResult = { data: newcomerData || 0 }
           newcomerActivation = newcomerResult.data
-          console.log('Newcomer activation:', newcomerActivation)
+          logger.debug({ newcomer_activation: newcomerActivation }, 'Newcomer activation');
         } catch (e) {
-          console.error('Newcomer activation error:', e)
+          logger.error({
+            error: e instanceof Error ? e.message : String(e),
+            group_id: group.id,
+            org: params.org
+          }, 'Newcomer activation error');
         }
         
         try {
@@ -335,14 +387,23 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           })
           
           if (primeTimeError) {
-            console.error('Error fetching prime_time:', primeTimeError)
+            logger.warn({
+              error: primeTimeError.message,
+              error_code: primeTimeError.code,
+              group_id: group.id,
+              org: params.org
+            }, 'Error fetching prime_time');
           }
           
           const primeTimeResult = { data: primeTimeData || [] }
           primeTime = primeTimeResult.data || []
-          console.log('Prime time:', primeTime)
+          logger.debug({ prime_time_count: primeTime.length }, 'Prime time');
         } catch (e) {
-          console.error('Prime time error:', e)
+          logger.error({
+            error: e instanceof Error ? e.message : String(e),
+            group_id: group.id,
+            org: params.org
+          }, 'Prime time error');
         }
         
         try {
@@ -352,14 +413,23 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           })
           
           if (giniError) {
-            console.error('Error fetching activity_gini:', giniError)
+            logger.warn({
+              error: giniError.message,
+              error_code: giniError.code,
+              group_id: group.id,
+              org: params.org
+            }, 'Error fetching activity_gini');
           }
           
           const giniResult = { data: giniData || 0 }
           activityGini = giniResult.data
-          console.log('Activity gini:', activityGini)
+          logger.debug({ activity_gini: activityGini }, 'Activity gini');
         } catch (e) {
-          console.error('Activity gini error:', e)
+          logger.error({
+            error: e instanceof Error ? e.message : String(e),
+            group_id: group.id,
+            org: params.org
+          }, 'Activity gini error');
         }
         
         try {
@@ -369,14 +439,23 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           })
           
           if (riskError) {
-            console.error('Error fetching risk_radar:', riskError)
+            logger.warn({
+              error: riskError.message,
+              error_code: riskError.code,
+              group_id: group.id,
+              org: params.org
+            }, 'Error fetching risk_radar');
           }
           
           const riskResult = { data: riskData || [] }
           riskRadar = riskResult.data || []
-          console.log('Risk radar:', riskRadar)
+          logger.debug({ risk_radar_count: riskRadar.length }, 'Risk radar');
         } catch (e) {
-          console.error('Risk radar error:', e)
+          logger.error({
+            error: e instanceof Error ? e.message : String(e),
+            group_id: group.id,
+            org: params.org
+          }, 'Risk radar error');
         }
         
         let metricsData: any[] = [];
@@ -384,7 +463,10 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         if (!tzError && timezonedMetrics) {
           metricsData = timezonedMetrics;
         } else {
-          console.log('Using fallback metrics query:', tzError)
+          logger.debug({
+            error: tzError?.message,
+            error_code: tzError?.code
+          }, 'Using fallback metrics query');
           
           // Если функция не существует, используем обычный запрос
           const lastWeek = new Date()
@@ -443,7 +525,15 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           risk_radar: riskRadar || []
         };
         
-        console.log('Final metrics to display:', updatedMetrics);
+        logger.debug({
+          message_count: updatedMetrics.message_count,
+          dau_avg: updatedMetrics.dau_avg,
+          silent_rate: updatedMetrics.silent_rate,
+          newcomer_activation: updatedMetrics.newcomer_activation,
+          activity_gini: updatedMetrics.activity_gini,
+          prime_time_count: updatedMetrics.prime_time?.length || 0,
+          risk_radar_count: updatedMetrics.risk_radar?.length || 0
+        }, 'Final metrics to display');
         setGroupMetrics(prev => ({ ...prev, ...updatedMetrics }));
         
         // Если DAU все равно 0, попробуем получить его напрямую из activity_events
@@ -451,7 +541,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           const sevenDaysAgo = new Date()
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
           
-          console.log('DAU is 0, trying direct calculation from activity_events');
+          logger.debug({ group_id: group.id }, 'DAU is 0, trying direct calculation from activity_events');
           
           // Используем более точный запрос для подсчета уникальных пользователей по дням
           const { data: dailyActiveUsers, error: dauError } = await supabase
@@ -463,10 +553,11 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
             .order('created_at', { ascending: false })
             .limit(1000)
             
-          console.log('Direct DAU query result:', { 
-            count: dailyActiveUsers?.length || 0,
-            error: dauError
-          });
+          logger.debug({ 
+            event_count: dailyActiveUsers?.length || 0,
+            has_error: !!dauError,
+            error_code: dauError?.code
+          }, 'Direct DAU query result');
           
           if (dailyActiveUsers && dailyActiveUsers.length > 0) {
             // Группируем по дням и считаем уникальных пользователей
@@ -491,14 +582,14 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
             });
             
             const avgDau = Math.max(1, Math.round(totalActiveUsers / days));
-            console.log('Calculated DAU:', { 
+            logger.debug({ 
               days, 
-              totalActiveUsers, 
-              avgDau,
-              usersByDay: Object.fromEntries(
+              total_active_users: totalActiveUsers, 
+              avg_dau: avgDau,
+              users_by_day: Object.fromEntries(
                 Object.entries(usersByDay).map(([day, users]) => [day, users.size])
               )
-            });
+            }, 'Calculated DAU');
             
             setGroupMetrics(prev => ({
               ...prev,
@@ -521,7 +612,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         // Остальной код будет использовать ответ API, поэтому локальная агрегация не требуется
         
       } catch (e) {
-        console.error('Error fetching analytics:', e)
+        logger.error({
+          error: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+          group_id: group.id,
+          org: params.org
+        }, 'Error fetching analytics');
         setAnalyticsError('Ошибка при загрузке аналитики: ' + (e instanceof Error ? e.message : String(e)))
       } finally {
         setLoadingAnalytics(false)
@@ -558,7 +654,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
 
       setSuccess(true)
     } catch (e: any) {
-      console.error('Error saving group settings:', e)
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        group_id: params.id,
+        org: params.org
+      }, 'Error saving group settings');
       setError(e.message || 'Произошла ошибка при сохранении настроек')
     } finally {
       setSaving(false)
@@ -599,7 +700,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
 
       setSuccess(true)
     } catch (e: any) {
-      console.error('Error refreshing group:', e)
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        group_id: params.id,
+        org: params.org
+      }, 'Error refreshing group');
       setError(e.message || 'Произошла ошибка при обновлении')
     } finally {
       setLoading(false)

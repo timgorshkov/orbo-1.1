@@ -7,6 +7,7 @@ import { requireOrgAccess } from '@/lib/orgGuard';
 import { redirect } from 'next/navigation';
 import DigestSettingsForm from '@/components/settings/digest-settings-form';
 import { createClient } from '@supabase/supabase-js';
+import { createServiceLogger } from '@/lib/logger';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +24,7 @@ export default async function DigestSettingsPage({
 }: {
   params: Promise<{ org: string }>;
 }) {
+  const logger = createServiceLogger('DigestSettingsPage');
   const { org: orgId } = await params
   
   try {
@@ -102,7 +104,11 @@ export default async function DigestSettingsPage({
       </div>
     );
   } catch (error) {
-    console.error('Digest settings page error:', error);
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Digest settings page error');
     redirect(`/p/${orgId}/dashboard`);
   }
 }

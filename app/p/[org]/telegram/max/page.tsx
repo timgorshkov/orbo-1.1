@@ -3,11 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { notFound } from 'next/navigation'
 import TabsLayout from '../tabs-layout'
 import { MessageCircle, Zap, Calendar } from 'lucide-react'
+import { createServiceLogger } from '@/lib/logger'
 
 export default async function MaxPage({ params }: { params: Promise<{ org: string }> }) {
+  const logger = createServiceLogger('MaxPage');
+  let orgId: string | undefined;
   try {
-    const { org: orgId } = await params
-    await requireOrgAccess(orgId)
+    const { org } = await params;
+    orgId = org;
+    await requireOrgAccess(orgId);
     
     return (
       <div className="p-6">
@@ -87,7 +91,11 @@ export default async function MaxPage({ params }: { params: Promise<{ org: strin
       </div>
     )
   } catch (error) {
-    console.error('Max page error:', error)
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Max page error');
     return notFound()
   }
 }

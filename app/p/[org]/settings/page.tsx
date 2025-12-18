@@ -8,6 +8,7 @@ import OrganizationTeam from '@/components/settings/organization-team'
 import DigestSettingsForm from '@/components/settings/digest-settings-form'
 // InvitesManager moved to /p/[org]/members page
 import dynamic from 'next/dynamic'
+import { createServiceLogger } from '@/lib/logger'
 
 // Dynamic import for tags page (it's a client component)
 const TagsManagementContent = dynamic(() => import('@/components/settings/tags-management-content'), {
@@ -32,9 +33,12 @@ export default async function OrganizationSettingsPage({
   params: Promise<{ org: string }>
   searchParams: Promise<{ tab?: string }>
 }) {
+  const logger = createServiceLogger('OrganizationSettingsPage');
+  let orgId: string | undefined;
   try {
-    const { org: orgId } = await params
-    const { tab } = await searchParams
+    const { org } = await params;
+    orgId = org;
+    const { tab } = await searchParams;
     const activeTab: SettingsTab = (tab as SettingsTab) || 'team'
     
     const { supabase, user } = await requireOrgAccess(orgId)
@@ -210,7 +214,11 @@ export default async function OrganizationSettingsPage({
       </div>
     )
   } catch (error) {
-    console.error('Settings page error:', error)
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'Settings page error');
     return notFound()
   }
 }

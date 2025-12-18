@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Save, AlertCircle } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -20,6 +21,7 @@ export default function EditAppPage() {
   const router = useRouter();
   const orgId = params.org as string;
   const appId = params.appId as string;
+  const clientLogger = createClientLogger('EditAppPage', { orgId, appId });
 
   const [app, setApp] = useState<App | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +73,12 @@ export default function EditAppPage() {
 
       router.push(`/p/${orgId}/apps/${appId}`);
     } catch (err: any) {
-      console.error('Error updating app:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId
+      }, 'Error updating app');
       alert('Не удалось сохранить изменения');
     } finally {
       setIsSaving(false);

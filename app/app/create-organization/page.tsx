@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { createClientLogger } from '@/lib/logger'
 
 export default function CreateOrganizationPage() {
   const [name, setName] = useState('')
@@ -37,7 +38,12 @@ export default function CreateOrganizationPage() {
       router.push(`/app/${result.org_id}/dashboard`)
       
     } catch (err: any) {
-      console.error('Error creating organization:', err)
+      const logger = createClientLogger('CreateOrganizationPage');
+      logger.error({
+        error: err.message,
+        stack: err.stack,
+        org_name: name
+      }, 'Error creating organization');
       setError(err.message || 'Произошла неизвестная ошибка')
       setLoading(false)
     }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Plus, Edit2, Trash2, Save, X, Tag } from 'lucide-react'
+import { createClientLogger } from '@/lib/logger'
 
 // Predefined color palette
 const TAG_COLORS = [
@@ -34,6 +35,7 @@ export default function TagsManagementPage() {
   const params = useParams()
   const router = useRouter()
   const orgId = params?.org as string
+  const clientLogger = createClientLogger('TagsManagementPage', { orgId })
 
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,7 +75,11 @@ export default function TagsManagementPage() {
       const data = await response.json()
       setTags(data.tags || [])
     } catch (err) {
-      console.error('Error fetching tags:', err)
+      clientLogger.error({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        org_id: orgId
+      }, 'Error fetching tags');
       setError('Failed to load tags')
     } finally {
       setLoading(false)
@@ -134,7 +140,12 @@ export default function TagsManagementPage() {
       await fetchTags()
       handleCloseModal()
     } catch (err: any) {
-      console.error('Error saving tag:', err)
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        tag_id: editingTag?.tag_id
+      }, 'Error saving tag');
       setFormError(err.message || 'Failed to save tag')
     } finally {
       setSaving(false)
@@ -157,7 +168,12 @@ export default function TagsManagementPage() {
         await fetchTags()
         setDeletingTagId(null)
       } catch (err: any) {
-        console.error('Error deleting tag:', err)
+        clientLogger.error({
+          error: err.message || String(err),
+          stack: err.stack,
+          org_id: orgId,
+          tag_id: tagId
+        }, 'Error deleting tag');
         alert(err.message || 'Failed to delete tag')
       }
     } else {

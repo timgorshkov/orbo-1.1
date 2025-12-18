@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Plus, Loader2, AlertCircle, Settings, AlertTriangle, Trash2 } from 'lucide-react';
 import DynamicItemCard from '@/components/apps/dynamic-item-card';
 import ItemsFilters from '@/components/apps/items-filters';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -45,6 +46,7 @@ export default function PublicItemsFeedPage() {
   const router = useRouter();
   const orgId = params.org as string;
   const appId = params.appId as string;
+  const clientLogger = createClientLogger('PublicItemsFeedPage', { orgId, appId });
 
   const [app, setApp] = useState<App | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -82,12 +84,20 @@ export default function PublicItemsFeedPage() {
               }
             }
           } catch (membershipErr) {
-            console.warn('Could not check membership:', membershipErr);
+            clientLogger.warn({
+              error: membershipErr instanceof Error ? membershipErr.message : String(membershipErr),
+              org_id: orgId
+            }, 'Could not check membership');
           }
         }
       }
     } catch (err) {
-      console.error('Error checking admin status:', err);
+      clientLogger.error({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        org_id: orgId,
+        app_id: appId
+      }, 'Error checking admin status');
     } finally {
       setIsCheckingAuth(false);
     }
@@ -141,7 +151,12 @@ export default function PublicItemsFeedPage() {
       // For admins: show all items (will be checked after auth status is loaded)
       setItems(itemsData.items || []);
     } catch (err: any) {
-      console.error('Error fetching app data:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId
+      }, 'Error fetching app data');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -227,7 +242,12 @@ export default function PublicItemsFeedPage() {
 
       router.push(`/app/${orgId}/apps`);
     } catch (err) {
-      console.error('Error deleting app:', err);
+      clientLogger.error({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        org_id: orgId,
+        app_id: appId
+      }, 'Error deleting app');
       alert('Произошла ошибка при удалении');
     }
   };

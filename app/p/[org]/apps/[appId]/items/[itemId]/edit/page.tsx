@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import DynamicForm from '@/components/apps/dynamic-form';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -36,6 +37,7 @@ export default function EditItemPage() {
   const orgId = params.org as string;
   const appId = params.appId as string;
   const itemId = params.itemId as string;
+  const clientLogger = createClientLogger('EditItemPage', { orgId, appId, itemId });
 
   const [app, setApp] = useState<App | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -89,7 +91,13 @@ export default function EditItemPage() {
       const itemData = await itemResponse.json();
       setItem(itemData.item);
     } catch (err: any) {
-      console.error('Error fetching data:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId,
+        item_id: itemId
+      }, 'Error fetching data');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -113,7 +121,13 @@ export default function EditItemPage() {
       // Redirect back to item detail
       router.push(`/p/${orgId}/apps/${appId}/items/${itemId}`);
     } catch (error: any) {
-      console.error('Error updating item:', error);
+      clientLogger.error({
+        error: error.message || String(error),
+        stack: error.stack,
+        org_id: orgId,
+        app_id: appId,
+        item_id: itemId
+      }, 'Error updating item');
       throw error;
     }
   };

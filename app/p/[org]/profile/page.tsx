@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 import { Crown, Shield, User, Mail, MessageSquare, LogOut, Edit2, Save, X } from 'lucide-react'
+import { createClientLogger } from '@/lib/logger'
 
 type ProfileData = {
   user: {
@@ -157,10 +158,11 @@ export default function ProfilePage() {
       setProfile(data.profile)
       
       // Initialize edit form
-      console.log('[Profile Page] Profile loaded:', {
-        hasParticipant: !!data.profile.participant,
-        participantData: data.profile.participant
-      })
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.debug({
+        has_participant: !!data.profile.participant,
+        participant_id: data.profile.participant?.id
+      }, 'Profile loaded');
       
       if (data.profile.participant) {
         const attrs = data.profile.participant.custom_attributes || {}
@@ -171,17 +173,22 @@ export default function ProfilePage() {
           custom_attributes: attrs
         })
         setCustomAttributesArray(attributesToArray(attrs))
-        console.log('[Profile Page] Edit form initialized:', {
-          full_name: data.profile.participant.full_name || '',
-          bio: data.profile.participant.bio || '',
-          phone: data.profile.participant.phone || '',
-          custom_attributes: attrs
-        })
+        logger.debug({
+          has_full_name: !!data.profile.participant.full_name,
+          has_bio: !!data.profile.participant.bio,
+          has_phone: !!data.profile.participant.phone,
+          custom_attrs_count: Object.keys(attrs).length
+        }, 'Edit form initialized');
       } else {
-        console.warn('[Profile Page] No participant data found in profile')
+        logger.warn({ org }, 'No participant data found in profile');
       }
     } catch (e: any) {
-      console.error('Error fetching profile:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org
+      }, 'Error fetching profile');
       setError(e.message || 'Failed to fetch profile')
     } finally {
       setLoading(false)
@@ -233,7 +240,12 @@ export default function ProfilePage() {
 
       setIsEditing(false)
     } catch (e: any) {
-      console.error('Error saving profile:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org
+      }, 'Error saving profile');
       setError(e.message || 'Failed to save profile')
     } finally {
       setSaving(false)
@@ -250,7 +262,11 @@ export default function ProfilePage() {
         })
         window.location.href = '/signin'
       } catch (error) {
-        console.error('Logout error:', error)
+        const logger = createClientLogger('ProfilePage', { org });
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+          org
+        }, 'Logout error');
         window.location.href = '/signin'
       }
     }
@@ -285,7 +301,13 @@ export default function ProfilePage() {
       setTelegramSuccess('Telegram User ID сохранен! Теперь верифицируйте аккаунт.')
       await fetchProfile() // Reload profile
     } catch (e: any) {
-      console.error('Error linking Telegram:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org,
+        telegram_user_id: telegramUserId
+      }, 'Error linking Telegram');
       setTelegramError(e.message || 'Failed to link Telegram')
     } finally {
       setSavingTelegram(false)
@@ -322,7 +344,12 @@ export default function ProfilePage() {
       setVerificationCode('')
       await fetchProfile() // Reload profile
     } catch (e: any) {
-      console.error('Error verifying Telegram:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org
+      }, 'Error verifying Telegram');
       setTelegramError(e.message || 'Failed to verify Telegram')
     } finally {
       setVerifying(false)
@@ -361,7 +388,13 @@ export default function ProfilePage() {
 
       setEmailSuccess('Код отправлен на указанный email!')
     } catch (e: any) {
-      console.error('Error sending activation code:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org,
+        email: activationEmail
+      }, 'Error sending activation code');
       setEmailError(e.message || 'Failed to send code')
     } finally {
       setSendingCode(false)
@@ -403,7 +436,13 @@ export default function ProfilePage() {
         setActivationCode('')
       }, 1500)
     } catch (e: any) {
-      console.error('Error activating profile:', e)
+      const logger = createClientLogger('ProfilePage', { org });
+      logger.error({
+        error: e.message,
+        stack: e.stack,
+        org,
+        email: activationEmail
+      }, 'Error activating profile');
       setEmailError(e.message || 'Failed to activate profile')
     } finally {
       setActivating(false)
@@ -632,12 +671,13 @@ export default function ProfilePage() {
                         custom_attributes: attrs
                       })
                       setCustomAttributesArray(attributesToArray(attrs))
-                      console.log('[Profile Page] Edit mode activated, form initialized:', {
-                        full_name: profile.participant.full_name || '',
-                        bio: profile.participant.bio || '',
-                        phone: profile.participant.phone || '',
-                        custom_attributes: attrs
-                      })
+                      const logger = createClientLogger('ProfilePage', { org });
+                      logger.debug({
+                        has_full_name: !!profile.participant.full_name,
+                        has_bio: !!profile.participant.bio,
+                        has_phone: !!profile.participant.phone,
+                        custom_attrs_count: Object.keys(attrs).length
+                      }, 'Edit mode activated, form initialized');
                     }
                     setIsEditing(true)
                   }}

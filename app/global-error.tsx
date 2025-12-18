@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createClientLogger } from "@/lib/logger";
 
 export default function GlobalError({
   error,
@@ -11,7 +12,12 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     // Логируем ошибку (Hawk отловит её автоматически на сервере)
-    console.error('[GlobalError]', error);
+    const logger = createClientLogger('GlobalError');
+    logger.error({ 
+      error: error.message,
+      stack: error.stack,
+      digest: error.digest
+    }, 'Global error occurred');
   }, [error]);
 
   return (

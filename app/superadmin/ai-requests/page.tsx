@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, MessageSquare, Check, X, DollarSign } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 interface AIRequest {
   id: string;
@@ -59,7 +60,13 @@ export default function AIRequestsPage() {
         setStats(data.stats || null);
       }
     } catch (error) {
-      console.error('Failed to fetch AI requests:', error);
+      const logger = createClientLogger('AIRequestsPage');
+      logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        request_type: requestType,
+        was_applied: wasApplied
+      }, 'Failed to fetch AI requests');
     } finally {
       setIsLoading(false);
     }

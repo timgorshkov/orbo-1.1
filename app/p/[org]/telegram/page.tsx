@@ -9,6 +9,7 @@ import { DeleteGroupButton } from './delete-group-button'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import TabsLayout from './tabs-layout'
+import { createServiceLogger } from '@/lib/logger'
 
 
 type TelegramGroup = {
@@ -21,6 +22,7 @@ type TelegramGroup = {
 
 
 export default async function TelegramPage({ params }: { params: Promise<{ org: string }> }) {
+  const logger = createServiceLogger('TelegramPage');
   try {
     const { org: orgId } = await params
     const { supabase, role } = await requireOrgAccess(orgId)
@@ -52,7 +54,11 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     }
     
     if (error) {
-      console.error('Error fetching telegram groups:', error)
+      logger.error({ 
+        error: error.message,
+        error_code: error.code,
+        org_id: orgId
+      }, 'Error fetching telegram groups');
     }
     
     // Получаем общее количество участников в организации
@@ -212,7 +218,11 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
       // Don't log expected auth errors
       return notFound()
     }
-    console.error('Telegram page error:', error)
+    logger.error({ 
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: (await params).org
+    }, 'Telegram page error');
     return notFound()
   }
 }

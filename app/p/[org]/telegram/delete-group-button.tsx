@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { deleteGroup } from './actions'
+import { createClientLogger } from '@/lib/logger'
 
 type Props = {
   groupId: number
@@ -30,13 +31,14 @@ export function DeleteGroupButton({ groupId, groupTitle, orgId }: Props) {
 
         const result = await deleteGroup(formData)
 
+        const logger = createClientLogger('DeleteGroupButton', { org_id: orgId, group_id: groupId });
         if (result?.error) {
           setError(result.error)
-          console.error('Delete error:', result.error)
+          logger.error({ error: result.error }, 'Delete error');
           return
         }
 
-        console.log(`Group ${groupId} deleted successfully, refreshing...`)
+        logger.info({ group_id: groupId, org_id: orgId }, 'Group deleted successfully, refreshing');
         // Принудительно обновляем страницу для перезагрузки групп
         router.refresh()
         
@@ -45,8 +47,12 @@ export function DeleteGroupButton({ groupId, groupTitle, orgId }: Props) {
           window.location.href = `/p/${orgId}/telegram?t=${Date.now()}`
         }, 500)
       } catch (err: any) {
+        const logger = createClientLogger('DeleteGroupButton', { org_id: orgId, group_id: groupId });
         setError(err.message || 'Не удалось удалить группу')
-        console.error('Delete exception:', err)
+        logger.error({
+          error: err.message,
+          stack: err.stack
+        }, 'Delete exception');
       }
     })
   }

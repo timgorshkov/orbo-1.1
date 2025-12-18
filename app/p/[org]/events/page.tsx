@@ -2,8 +2,10 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import EventsList from '@/components/events/events-list'
+import { createServiceLogger } from '@/lib/logger'
 
 export default async function EventsPage({ params }: { params: Promise<{ org: string }> }) {
+  const logger = createServiceLogger('EventsPage');
   const { org: orgId } = await params
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
@@ -47,7 +49,11 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
   const { data: events, error } = await eventsQuery
   
   if (error) {
-    console.error('Error fetching events:', error)
+    logger.error({
+      error: error.message,
+      error_code: error.code,
+      org_id: orgId
+    }, 'Error fetching events');
   }
   
   // Calculate stats for each event

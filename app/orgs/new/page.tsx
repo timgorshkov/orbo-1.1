@@ -6,6 +6,7 @@ import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { createClientLogger } from '@/lib/logger'
 
 export default function CreateOrganization() {
   const router = useRouter()
@@ -44,7 +45,11 @@ export default function CreateOrganization() {
 
         setLoading(false)
       } catch (err) {
-        console.error('Error checking organization count:', err)
+        const logger = createClientLogger('CreateOrganization');
+        logger.error({
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined
+        }, 'Error checking organization count');
         setLoading(false)
       }
     }
@@ -87,7 +92,12 @@ export default function CreateOrganization() {
       // Redirect to organization dashboard
       router.push(`/app/${result.org_id}/dashboard`)
     } catch (err) {
-      console.error('Error creating organization:', err)
+      const logger = createClientLogger('CreateOrganization');
+      logger.error({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        org_name: name
+      }, 'Error creating organization');
       setError(err instanceof Error ? err.message : 'Произошла ошибка при создании организации')
       setLoading(false)
     }

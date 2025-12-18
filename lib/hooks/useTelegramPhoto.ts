@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 
+// Note: This is a client-side hook, but we can still use console for client-side logging
+// In production, consider using a client-side logger if needed
+
 /**
  * Хук для автоматической подгрузки фото участника из Telegram
  * Использует фото из Telegram только если у участника нет загруженного вручную фото

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import DynamicForm from '@/components/apps/dynamic-form';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -27,6 +28,7 @@ export default function CreateItemPage() {
   const router = useRouter();
   const orgId = params.org as string;
   const appId = params.appId as string;
+  const clientLogger = createClientLogger('CreateItemPage', { orgId, appId });
 
   const [app, setApp] = useState<App | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -72,7 +74,12 @@ export default function CreateItemPage() {
         setCollection(collectionData.collections[0]); // First collection
       }
     } catch (err: any) {
-      console.error('Error fetching app data:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        app_id: appId
+      }, 'Error fetching app data');
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -106,7 +113,13 @@ export default function CreateItemPage() {
         router.push(`/p/${orgId}/apps/${appId}/items/${result.item.id}`);
       }
     } catch (error: any) {
-      console.error('Error creating item:', error);
+      clientLogger.error({
+        error: error.message || String(error),
+        stack: error.stack,
+        org_id: orgId,
+        app_id: appId,
+        collection_id: collection?.id
+      }, 'Error creating item');
       throw error;
     }
   };

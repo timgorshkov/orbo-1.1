@@ -4,6 +4,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import AuthenticatedHome from '@/components/home/authenticated-home'
 import PublicCommunityHub from '@/components/home/public-community-hub'
+import { createServiceLogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,8 +34,13 @@ export async function generateMetadata({
       .eq('id', orgId)
       .single()
     
+    const logger = createServiceLogger('CommunityHubPage');
     if (error) {
-      console.error('[OG Metadata] Error fetching org:', orgId, error.message)
+      logger.error({
+        error: error.message,
+        error_code: error.code,
+        org_id: orgId
+      }, 'Error fetching org for OG metadata');
     }
     
     if (org) {
@@ -48,10 +54,15 @@ export async function generateMetadata({
         ogImage = org.logo_url
       }
     } else {
-      console.warn('[OG Metadata] Organization not found:', orgId)
+      logger.warn({ org_id: orgId }, 'Organization not found for OG metadata');
     }
   } catch (error) {
-    console.error('[OG Metadata] Exception:', error)
+    const logger = createServiceLogger('CommunityHubPage');
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Exception generating OG metadata');
   }
   
   // Ensure absolute URL for OG image

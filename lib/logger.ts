@@ -129,6 +129,26 @@ export function createCronLogger(
   });
 }
 
+/**
+ * Create a logger for client-side components
+ * Works in browser and uses structured logging
+ * 
+ * @example
+ * const log = createClientLogger('ComponentName');
+ * log.info({ userId: '123' }, 'User action');
+ * log.error({ error }, 'Component error');
+ */
+export function createClientLogger(
+  componentName: string,
+  context?: Record<string, any>
+) {
+  // In browser, pino will use browser mode automatically
+  return logger.child({
+    component: componentName,
+    ...context,
+  });
+}
+
 // Export types for convenience
 export type Logger = ReturnType<typeof logger.child>;
 

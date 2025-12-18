@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { Suspense } from 'react'
 import MembersTabs from '@/components/members/members-tabs'
+import { createServiceLogger } from '@/lib/logger'
 
 export default async function MembersPage({ params, searchParams }: { 
   params: Promise<{ org: string }>
@@ -44,8 +45,13 @@ export default async function MembersPage({ params, searchParams }: {
     .is('merged_into', null) // Исключаем объединенных участников
     .order('full_name', { ascending: true, nullsFirst: false })
 
+  const logger = createServiceLogger('MembersPage');
   if (error) {
-    console.error('Error fetching participants:', error)
+    logger.error({
+      error: error.message,
+      error_code: error.code,
+      org_id: orgId
+    }, 'Error fetching participants');
   }
 
   // Enrich participants with admin information
@@ -160,7 +166,10 @@ export default async function MembersPage({ params, searchParams }: {
     }
   }
 
-  console.log(`[Members Page] Fetched ${participants?.length || 0} participants for org ${orgId}`)
+  logger.debug({
+    participant_count: participants?.length || 0,
+    org_id: orgId
+  }, 'Fetched participants for org');
 
   // Enrich participants with real activity history from messages (Telegram + WhatsApp)
   if (participants && participants.length > 0) {
@@ -245,7 +254,11 @@ export default async function MembersPage({ params, searchParams }: {
       .rpc('get_tag_stats', { p_org_id: orgId })
     
     if (tagsError) {
-      console.error('[Members Page] Error fetching tag stats:', tagsError)
+      logger.error({
+        error: tagsError.message,
+        error_code: tagsError.code,
+        org_id: orgId
+      }, 'Error fetching tag stats');
     } else {
       tagStats = tagsData || []
     }

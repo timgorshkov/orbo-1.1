@@ -11,17 +11,19 @@
 
 import OpenAI from 'openai';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
+import { createServiceLogger } from './logger';
 
 // Прокси URL из переменной окружения (обязательно!)
 const PROXY_URL = process.env.OPENAI_PROXY_URL;
+const logger = createServiceLogger('OpenAI');
 
 if (PROXY_URL) {
   // Устанавливаем глобальный прокси для всех fetch запросов
   const proxyAgent = new ProxyAgent(PROXY_URL);
   setGlobalDispatcher(proxyAgent);
-  console.log('[OpenAI] Proxy configured');
+  logger.info({}, 'Proxy configured');
 } else {
-  console.warn('[OpenAI] No OPENAI_PROXY_URL set - requests may be blocked from Russia');
+  logger.warn({}, 'No OPENAI_PROXY_URL set - requests may be blocked from Russia');
 }
 
 // OpenAI клиент

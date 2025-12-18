@@ -23,6 +23,7 @@ import type {
   OtpOptions,
   OAuthOptions 
 } from './types';
+import { createServiceLogger } from '../logger';
 
 // NextAuth v5 конфигурируется через NextAuth(config) который возвращает { auth, signIn, signOut }
 // Эти функции должны быть переданы извне после настройки NextAuth
@@ -44,10 +45,8 @@ export function registerNextAuthHandlers(h: NextAuthHandlers) {
 
 function checkHandlers(): boolean {
   if (!handlers) {
-    console.warn(
-      '[NextAuth] Handlers not registered. ' +
-      'Call registerNextAuthHandlers() from your NextAuth config.'
-    );
+    const logger = createServiceLogger('NextAuth');
+    logger.warn({}, 'Handlers not registered. Call registerNextAuthHandlers() from your NextAuth config.');
     return false;
   }
   return true;

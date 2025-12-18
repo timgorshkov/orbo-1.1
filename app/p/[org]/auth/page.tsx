@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import MemberAuthClient from './auth-client'
+import { createServiceLogger } from '@/lib/logger'
 
 /**
  * Generate dynamic metadata for auth page based on redirect parameter
@@ -120,7 +121,12 @@ export async function generateMetadata({
       twitter: twitterConfig,
     }
   } catch (error) {
-    console.error('Error generating auth page metadata:', error)
+    const logger = createServiceLogger('MemberAuthPage');
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Error generating auth page metadata');
     return {
       title,
       description,

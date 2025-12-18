@@ -10,8 +10,10 @@ import TopContributors from '@/components/analytics/top-contributors'
 import EngagementPie from '@/components/analytics/engagement-pie'
 import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
+import { createServiceLogger } from '@/lib/logger'
 
 export default async function DashboardPage({ params }: { params: Promise<{ org: string }> }) {
+  const logger = createServiceLogger('DashboardPage');
   const { org: orgId } = await params
   
   const supabase = await createClientServer()
@@ -66,13 +68,22 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
     })
     
     if (!dashboardRes.ok) {
-      console.error('Error fetching dashboard data:', await dashboardRes.text())
+      const errorText = await dashboardRes.text();
+      logger.error({ 
+        org_id: orgId,
+        status: dashboardRes.status,
+        error_text: errorText.substring(0, 200)
+      }, 'Error fetching dashboard data');
       throw new Error('Failed to fetch dashboard data')
     }
 
     dashboardData = await dashboardRes.json()
   } catch (error) {
-    console.error('Dashboard fetch error:', error)
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId
+    }, 'Dashboard fetch error');
     // Fallback data
     dashboardData = {
       isOnboarding: false,

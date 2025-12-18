@@ -3,8 +3,10 @@ import { useState } from 'react'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
+import { createClientLogger } from '@/lib/logger'
 
 export default function AuthCallback() {
+  const logger = createClientLogger('AuthCallback');
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -17,11 +19,11 @@ export default function AuthCallback() {
         const code = urlParams.get('code')
         const hash = window.location.hash
         
-        console.log('Auth callback:', { 
-          hasCode: !!code, 
-          hasHash: !!hash,
+        logger.debug({ 
+          has_code: !!code, 
+          has_hash: !!hash,
           url: window.location.href
-        })
+        }, 'Auth callback started');
         
         // Supabase автоматически обрабатывает code из URL через PKCE
         // Не нужно вручную вызывать exchangeCodeForSession - это сломает PKCE flow
@@ -29,13 +31,15 @@ export default function AuthCallback() {
         const { data, error: sessionError } = await supabase.auth.getSession()
         
         if (sessionError) {
-          console.error('Session error:', sessionError)
+          logger.error({ 
+            error: sessionError.message
+          }, 'Session error');
           setError(sessionError.message)
           return
         }
         
         if (data && data.session) {
-          console.log('Authenticated, checking organizations...')
+          logger.debug({ user_id: data.session.user.id }, 'Authenticated, checking organizations');
           
           // Получаем организации пользователя
           const { data: orgs, error: orgsError } = await supabase
@@ -44,13 +48,19 @@ export default function AuthCallback() {
             .eq('user_id', data.session.user.id)
           
           if (orgsError) {
-            console.error('Error fetching organizations:', orgsError)
+            logger.error({ 
+              error: orgsError.message,
+              user_id: data.session.user.id
+            }, 'Error fetching organizations');
             // Fallback - редиректим на /orgs
             setTimeout(() => router.push('/orgs'), 500)
             return
           }
           
-          console.log(`Found ${orgs?.length || 0} organizations`)
+          logger.debug({ 
+            org_count: orgs?.length || 0,
+            user_id: data.session.user.id
+          }, 'Found organizations');
           
           // Сохраняем информацию о сессии для отладки
           localStorage.setItem('debug_session', JSON.stringify({
@@ -63,23 +73,27 @@ export default function AuthCallback() {
           // Умный редирект
           // ✅ Если организаций нет - редирект на welcome страницу (не на форму создания)
           if (!orgs || orgs.length === 0) {
-            console.log('No organizations, redirecting to welcome...')
+            logger.debug({}, 'No organizations, redirecting to welcome');
             setTimeout(() => router.push('/welcome'), 500)
           } else {
             // Есть организации → список для выбора
-            console.log(`Has ${orgs.length} organizations, redirecting to list...`)
+            logger.debug({ org_count: orgs.length }, 'Has organizations, redirecting to list');
             setTimeout(() => router.push('/orgs'), 500)
           }
         } else {
+          logger.error({}, 'Failed to get user session');
           setError('Не удалось получить сессию пользователя')
         }
       } catch (e: any) {
-        console.error('Auth callback error:', e)
+        logger.error({ 
+          error: e.message,
+          stack: e.stack
+        }, 'Auth callback error');
         setError('Произошла ошибка при обработке аутентификации: ' + (e.message || 'Неизвестная ошибка'))
       }
     }
     handleCallback()
-  }, [router])
+  }, [router, logger])
   return (
     <div className="min-h-screen grid place-items-center">
     {error ? (

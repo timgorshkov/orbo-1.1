@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Upload, FileText, AlertCircle, CheckCircle2, Loader2, ArrowLeft, Archive, Users } from 'lucide-react'
 import Link from 'next/link'
+import { createClientLogger } from '@/lib/logger'
 
 export default function WhatsAppImportPage() {
   const params = useParams()
@@ -47,7 +48,12 @@ export default function WhatsAppImportPage() {
         dateRange: 'Будет определено при импорте',
         isZip: true
       })
-      console.log('[WhatsApp Import] ZIP file selected:', selectedFile.name, selectedFile.size, 'bytes')
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+      logger.debug({ 
+        file_name: selectedFile.name,
+        file_size: selectedFile.size,
+        is_zip: true
+      }, 'ZIP file selected');
       return
     }
     
@@ -55,11 +61,16 @@ export default function WhatsAppImportPage() {
     try {
       const content = await selectedFile.text()
       const lines = content.split('\n').filter(line => line.trim())
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
       
-      console.log('[WhatsApp Import] File loaded:', selectedFile.name)
-      console.log('[WhatsApp Import] Total lines:', lines.length)
-      console.log('[WhatsApp Import] First 5 lines sample:')
-      lines.slice(0, 5).forEach((line, i) => console.log(`  Line ${i + 1}: ${line.substring(0, 100)}...`))
+      logger.debug({ 
+        file_name: selectedFile.name,
+        total_lines: lines.length,
+        first_lines_sample: lines.slice(0, 5).map((line, i) => ({
+          line_number: i + 1,
+          preview: line.substring(0, 100)
+        }))
+      }, 'File loaded');
       
       // Patterns for different WhatsApp formats
       const patterns = [
@@ -85,7 +96,8 @@ export default function WhatsAppImportPage() {
           if (match) {
             if (matchedPattern === null) {
               matchedPattern = i
-              console.log(`[WhatsApp Import] Matched pattern ${i + 1}`)
+              const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+              logger.debug({ pattern_index: i + 1 }, 'Matched pattern');
             }
             break
           }
@@ -127,13 +139,17 @@ export default function WhatsAppImportPage() {
         }
       }
       
-      console.log(`[WhatsApp Import] Parsing result: ${messageCount} messages, ${participants.size} participants`)
-      if (messageCount > 0 && participants.size > 0) {
-        console.log('[WhatsApp Import] Sample participants:', Array.from(participants).slice(0, 5))
-      }
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+      logger.debug({ 
+        message_count: messageCount,
+        participant_count: participants.size,
+        sample_participants: messageCount > 0 && participants.size > 0 
+          ? Array.from(participants).slice(0, 5) 
+          : []
+      }, 'Parsing result');
       
       if (messageCount === 0) {
-        console.error('[WhatsApp Import] No messages parsed. File format not recognized.')
+        logger.error({ file_name: selectedFile.name }, 'No messages parsed. File format not recognized.');
         setError('Не удалось распознать сообщения в файле. Попробуйте загрузить ZIP-архив.')
         setFile(null)
         return
@@ -151,7 +167,11 @@ export default function WhatsAppImportPage() {
       })
       
     } catch (err) {
-      console.error('Error parsing file:', err)
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+      logger.error({ 
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined
+      }, 'Error parsing file');
       setError('Ошибка при чтении файла')
       setFile(null)
     }
@@ -190,7 +210,8 @@ export default function WhatsAppImportPage() {
       const formData = new FormData()
       formData.append('file', file)
       
-      console.log('[WhatsApp Import] Starting upload...')
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+      logger.info({ file_name: file.name, file_size: file.size }, 'Starting upload');
       
       const response = await fetch(`/api/whatsapp/import?orgId=${orgId}`, {
         method: 'POST',
@@ -198,7 +219,11 @@ export default function WhatsAppImportPage() {
       })
       
       const result = await response.json()
-      console.log('[WhatsApp Import] Response:', result)
+      logger.debug({ 
+        success: result.success,
+        message_count: result.messageCount,
+        participant_count: result.participantCount
+      }, 'Import response');
       
       if (!response.ok) {
         throw new Error(result.error || 'Ошибка при импорте')
@@ -211,7 +236,11 @@ export default function WhatsAppImportPage() {
       })
       
     } catch (err: any) {
-      console.error('[WhatsApp Import] Error:', err)
+      const logger = createClientLogger('WhatsAppImport', { org_id: orgId });
+      logger.error({ 
+        error: err.message,
+        stack: err.stack
+      }, 'Import error');
       setError(err.message || 'Произошла ошибка при импорте')
     } finally {
       setIsUploading(false)

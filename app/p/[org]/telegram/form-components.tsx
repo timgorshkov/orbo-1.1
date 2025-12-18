@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
+import { createClientLogger } from '@/lib/logger'
 
 export function CheckStatusForm({ orgId, action }: { orgId: string, action: any }) {
   const [isChecking, setIsChecking] = useState(false)
@@ -22,7 +23,11 @@ export function CheckStatusForm({ orgId, action }: { orgId: string, action: any 
       // Обновляем страницу для отображения изменений
       router.refresh()
     } catch (error) {
-      console.error("Ошибка проверки статуса:", error)
+      const logger = createClientLogger('TelegramFormComponents', { org_id: orgId });
+      logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }, 'Ошибка проверки статуса');
     } finally {
       setIsChecking(false)
     }
@@ -56,7 +61,12 @@ export function AddGroupManuallyForm({ orgId }: { orgId: string }) {
         setChatId('')
       }
     } catch (error) {
-      console.error('Error adding group:', error)
+      const logger = createClientLogger('TelegramFormComponents', { org_id: orgId });
+      logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        chat_id: chatId
+      }, 'Error adding group');
     }
   }
   

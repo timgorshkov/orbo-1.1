@@ -3,11 +3,15 @@ import { notFound } from 'next/navigation'
 import TabsLayout from '../tabs-layout'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import WhatsAppContent from './whatsapp-content'
+import { createServiceLogger } from '@/lib/logger'
 
 export default async function WhatsAppPage({ params }: { params: Promise<{ org: string }> }) {
+  const logger = createServiceLogger('WhatsAppPage');
+  let orgId: string | undefined;
   try {
-    const { org: orgId } = await params
-    await requireOrgAccess(orgId)
+    const { org } = await params;
+    orgId = org;
+    await requireOrgAccess(orgId);
     
     // Load imports on server
     const adminSupabase = createAdminServer()
@@ -19,7 +23,11 @@ export default async function WhatsAppPage({ params }: { params: Promise<{ org: 
       .limit(50)
     
     if (error) {
-      console.error('[WhatsApp Page] Error loading imports:', error)
+      logger.error({
+        error: error.message,
+        error_code: error.code,
+        org_id: orgId
+      }, 'Error loading imports');
     }
     
     // Calculate totals
@@ -43,7 +51,11 @@ export default async function WhatsAppPage({ params }: { params: Promise<{ org: 
       </div>
     )
   } catch (error) {
-    console.error('WhatsApp page error:', error)
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      org_id: orgId || 'unknown'
+    }, 'WhatsApp page error');
     return notFound()
   }
 }

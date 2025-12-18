@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Send, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 type Props = {
   orgId: string
@@ -13,6 +14,7 @@ type Props = {
 
 export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEventId }: Props) {
   const router = useRouter();
+  const clientLogger = createClientLogger('MemberAuthClient', { orgId, eventId: propEventId });
 
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState('');
@@ -58,7 +60,12 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
       startPolling(data.code);
     } catch (err: any) {
       setError('Не удалось сгенерировать код. Попробуйте еще раз.');
-      console.error('Error generating code:', err);
+      clientLogger.error({
+        error: err.message || String(err),
+        stack: err.stack,
+        org_id: orgId,
+        event_id: propEventId
+      }, 'Error generating code');
     } finally {
       setIsGenerating(false);
     }
@@ -80,7 +87,11 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
           }
         }
       } catch (err) {
-        console.error('Error polling status:', err);
+        clientLogger.error({
+          error: err instanceof Error ? err.message : String(err),
+          code: codeToCheck,
+          org_id: orgId
+        }, 'Error polling status');
       }
     }, 2000); // Poll every 2 seconds
 

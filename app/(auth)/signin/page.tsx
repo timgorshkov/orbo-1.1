@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import Link from 'next/link'
+import { createClientLogger } from '@/lib/logger'
 
 export default function SignIn() {
   const [email, setEmail] = useState('')
@@ -31,8 +32,13 @@ export default function SignIn() {
         setMessage('✉️ Мы отправили ссылку для входа на ваш email. Проверьте почту!')
       }
     } catch (error) {
+      const logger = createClientLogger('SignIn');
+      logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        email
+      }, 'Error sending sign-in email');
       setMessage('Произошла ошибка при отправке email')
-      console.error(error)
     } finally {
       setLoading(false)
     }

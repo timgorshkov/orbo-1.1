@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createAPILogger } from '@/lib/logger'
 
 // Admin client для создания сессии
 const supabaseAdmin = createClient(
@@ -23,17 +24,20 @@ const supabaseAdmin = createClient(
 )
 
 export async function GET(request: NextRequest) {
-  console.log('[Telegram Auth] ==================== START ====================')
+  const logger = createAPILogger(request, { endpoint: '/auth/telegram-handler' });
+  logger.info({}, 'Telegram auth handler started');
   
   const searchParams = request.nextUrl.searchParams
   const code = searchParams.get('code')
   const redirectUrl = searchParams.get('redirect') || '/orgs'
   
-  console.log('[Telegram Auth] Code:', code)
-  console.log('[Telegram Auth] Redirect URL:', redirectUrl)
+  logger.debug({ 
+    has_code: !!code,
+    redirect_url: redirectUrl
+  }, 'Telegram auth parameters');
   
   if (!code) {
-    console.error('[Telegram Auth] ❌ Missing code parameter')
+    logger.error({}, 'Missing code parameter');
     return NextResponse.redirect(new URL('/signin?error=missing_code', request.url))
   }
   
@@ -47,12 +51,15 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     
     if (codeError) {
-      console.error('[Telegram Auth] ❌ Error querying code:', codeError)
+      logger.error({ 
+        error: codeError.message,
+        error_code: codeError.code
+      }, 'Error querying code');
       return NextResponse.redirect(new URL('/signin?error=query_error', request.url))
     }
     
     if (!authCodes) {
-      console.error('[Telegram Auth] ❌ Code not found or not verified')
+      logger.error({ code }, 'Code not found or not verified');
       return NextResponse.redirect(new URL('/signin?error=invalid_code', request.url))
     }
     
@@ -63,11 +70,17 @@ export async function GET(request: NextRequest) {
       
       // Разрешаем повторное использование в течение 30 секунд (для предпросмотра Telegram)
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
-        console.error('[Telegram Auth] ❌ Code already used and expired')
+        logger.error({ 
+          code_id: authCodes.id,
+          used_at: usedAt.toISOString()
+        }, 'Code already used and expired');
         return NextResponse.redirect(new URL('/signin?error=code_already_used', request.url))
       }
       
-      console.log('[Telegram Auth] ⚠️ Code already used, redirecting to fallback immediately')
+      logger.warn({ 
+        code_id: authCodes.id,
+        used_at: usedAt?.toISOString()
+      }, 'Code already used, redirecting to fallback immediately');
       
       // Для уже использованного кода сразу редиректим на fallback
       // Не пытаемся создать новую сессию (пароль уже изменился)
@@ -83,18 +96,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(fallbackUrl)
     }
     
-    console.log('[Telegram Auth] ✅ Code found:', authCodes.id)
+    logger.debug({ 
+      code_id: authCodes.id,
+      telegram_user_id: authCodes.telegram_user_id,
+      org_id: authCodes.org_id
+    }, 'Code found');
     
     // 2. Проверяем срок действия
     const expiresAt = new Date(authCodes.expires_at)
     const currentTime = new Date()
     
     if (expiresAt < currentTime) {
-      console.error('[Telegram Auth] ❌ Code expired')
+      logger.error({ 
+        code_id: authCodes.id,
+        expires_at: expiresAt.toISOString()
+      }, 'Code expired');
       return NextResponse.redirect(new URL('/signin?error=expired_code', request.url))
     }
     
-    console.log('[Telegram Auth] ✅ Code is valid')
+    logger.debug({ code_id: authCodes.id }, 'Code is valid');
     
     // 3. Ищем пользователя по telegram_user_id и org_id
     const { data: telegramAccounts, error: accountError } = await supabaseAdmin
@@ -105,23 +125,33 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     
     if (accountError || !telegramAccounts) {
-      console.error('[Telegram Auth] ❌ User not found:', accountError)
+      logger.error({ 
+        error: accountError?.message,
+        telegram_user_id: authCodes.telegram_user_id,
+        org_id: authCodes.org_id
+      }, 'User not found');
       return NextResponse.redirect(new URL('/signin?error=user_not_found', request.url))
     }
     
     const userId = telegramAccounts.user_id
-    console.log('[Telegram Auth] ✅ User found:', userId)
+    logger.debug({ 
+      user_id: userId,
+      telegram_user_id: authCodes.telegram_user_id
+    }, 'User found');
     
     // 4. Получаем email пользователя
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId)
     
     if (userError || !userData?.user) {
-      console.error('[Telegram Auth] ❌ Error fetching user:', userError)
+      logger.error({ 
+        error: userError?.message,
+        user_id: userId
+      }, 'Error fetching user');
       return NextResponse.redirect(new URL('/signin?error=user_error', request.url))
     }
     
     const userEmail = userData.user.email
-    console.log('[Telegram Auth] User email:', userEmail)
+    logger.debug({ user_id: userId, email: userEmail }, 'User email retrieved');
     
     // 5. Устанавливаем временный пароль для этого пользователя
     const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
@@ -131,11 +161,14 @@ export async function GET(request: NextRequest) {
     })
     
     if (updateError) {
-      console.error('[Telegram Auth] ❌ Error setting temp password:', updateError)
+      logger.error({ 
+        error: updateError.message,
+        user_id: userId
+      }, 'Error setting temp password');
       return NextResponse.redirect(new URL('/signin?error=password_error', request.url))
     }
     
-    console.log('[Telegram Auth] ✅ Temp password set')
+    logger.debug({ user_id: userId }, 'Temp password set');
     
     // 6. Входим с email и паролем чтобы получить валидную сессию
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
@@ -144,11 +177,17 @@ export async function GET(request: NextRequest) {
     })
     
     if (sessionError || !sessionData?.session) {
-      console.error('[Telegram Auth] ❌ Error signing in:', sessionError)
+      logger.error({ 
+        error: sessionError?.message,
+        user_id: userId
+      }, 'Error signing in');
       return NextResponse.redirect(new URL('/signin?error=signin_error', request.url))
     }
     
-    console.log('[Telegram Auth] ✅ Session created for user:', sessionData.user.id)
+    logger.info({ 
+      user_id: sessionData.user.id,
+      code_id: authCodes.id
+    }, 'Session created for user');
     
     // 7. Помечаем код как использованный
     await supabaseAdmin
@@ -156,7 +195,7 @@ export async function GET(request: NextRequest) {
       .update({ is_used: true, used_at: new Date().toISOString() })
       .eq('id', authCodes.id)
     
-    console.log('[Telegram Auth] ✅ Code marked as used')
+    logger.debug({ code_id: authCodes.id }, 'Code marked as used');
     
     // 8. Определяем куда редиректить
     let finalRedirectUrl = authCodes.redirect_url || redirectUrl
@@ -166,16 +205,17 @@ export async function GET(request: NextRequest) {
     if (finalRedirectUrl.includes('/p/') && finalRedirectUrl.includes('/events/')) {
       // Заменяем /p/ на /app/ для авторизованных пользователей
       finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
-      console.log('[Telegram Auth] 🔄 Redirecting to protected page for authenticated user')
+      logger.debug({ redirect_url: finalRedirectUrl }, 'Redirecting to protected page for authenticated user');
     }
     
-    console.log('[Telegram Auth] ✅ Preparing session setup page')
-    console.log('[Telegram Auth] ✅ Target redirect:', finalRedirectUrl)
+    logger.info({ 
+      redirect_url: finalRedirectUrl,
+      user_id: sessionData.user.id
+    }, 'Preparing session setup page');
     
     // ✅ ВСЕГДА используем server-side метод для надежности
     // Client-side метод не работает надёжно ни в Telegram WebView, ни в обычных браузерах
-    console.log('[Telegram Auth] 🔄 Using server-side cookies method')
-    console.log('[Telegram Auth] ==================== REDIRECTING TO FALLBACK ====================')
+    logger.debug({}, 'Using server-side cookies method');
     
     // Редиректим на fallback endpoint который установит cookies на сервере
     const fallbackUrl = new URL('/auth/telegram-fallback', request.url)
@@ -185,8 +225,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(fallbackUrl)
     
   } catch (error) {
-    console.error('[Telegram Auth] ❌ Error:', error)
-    console.error('[Telegram Auth] ==================== ERROR ====================')
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'Telegram auth handler error');
     return NextResponse.redirect(new URL('/signin?error=internal_error', request.url))
   }
 }

@@ -4,6 +4,7 @@ import { requireOrgAccess } from '@/lib/orgGuard'
 import EventDetail from '@/components/events/event-detail'
 import { Metadata } from 'next'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
+import { createServiceLogger } from '@/lib/logger'
 
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
@@ -131,7 +132,13 @@ export async function generateMetadata({
       twitter: twitterConfig,
     }
   } catch (error) {
-    console.error('Error generating event metadata:', error)
+    const logger = createServiceLogger('EventDetailPage');
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      event_id: eventId,
+      org_id: orgId
+    }, 'Error generating event metadata');
     return {
       title: 'Событие',
     }
@@ -178,9 +185,14 @@ export default async function EventDetailPage({
     .eq('id', eventId)
     .single()
 
+  const logger = createServiceLogger('EventDetailPage');
   if (error) {
-    console.error('[Event Detail Page] Error fetching event:', error)
-    console.error('[Event Detail Page] Event ID:', eventId, 'Org ID:', orgId)
+    logger.error({
+      error: error.message,
+      error_code: error.code,
+      event_id: eventId,
+      org_id: orgId
+    }, 'Error fetching event');
   }
 
   if (error || !event) {
@@ -321,7 +333,13 @@ export default async function EventDetailPage({
 
   const role = membership?.role || 'guest'
   
-  console.log(`[Event Detail] User ${user.id} viewing event ${eventId} as ${role} (is_public: ${event.is_public})`)
+  logger.debug({
+    user_id: user.id,
+    event_id: eventId,
+    role,
+    is_public: event.is_public,
+    org_id: orgId
+  }, 'User viewing event');
 
   // Check if current user is registered
   // Find participant via user_telegram_accounts
@@ -397,7 +415,11 @@ export default async function EventDetailPage({
         })
     }
     
-    console.log(`Loaded ${telegramGroups.length} connected telegram groups for event sharing`)
+    logger.debug({
+      group_count: telegramGroups.length,
+      event_id: eventId,
+      org_id: orgId
+    }, 'Loaded connected telegram groups for event sharing');
   }
 
   // Only allow edit mode for admins/owners

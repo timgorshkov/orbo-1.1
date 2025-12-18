@@ -26,6 +26,7 @@ import type { EmailProvider, EmailProviderType, SendEmailParams, SendEmailResult
 import { createMailgunProvider } from './mailgunProvider';
 import { createUnisenderGoProvider } from './unisenderGoProvider';
 import { createConsoleProvider } from './consoleProvider';
+import { createServiceLogger } from '@/lib/logger';
 
 // Re-export types
 export type { 
@@ -66,7 +67,8 @@ export function createEmailProvider(): EmailProvider {
     
     default:
       // Fallback на console для неизвестных провайдеров
-      console.warn(`[Email] Unknown provider: ${providerType}, using console`);
+      const logger = createServiceLogger('Email');
+      logger.warn({ provider_type: providerType }, 'Unknown provider, using console');
       return createConsoleProvider();
   }
 }
@@ -99,8 +101,9 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   
   if (!provider.isConfigured()) {
     // В production логируем предупреждение
+    const logger = createServiceLogger('Email');
     if (process.env.NODE_ENV === 'production') {
-      console.warn('[Email] Provider not configured, email not sent');
+      logger.warn({ to: params.to }, 'Provider not configured, email not sent');
     }
     return { success: false, error: 'Email provider not configured' };
   }

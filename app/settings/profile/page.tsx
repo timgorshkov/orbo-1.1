@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { createClientLogger } from '@/lib/logger'
 
 export default function ProfileActivationPage() {
   const [email, setEmail] = useState('')
@@ -35,7 +36,11 @@ export default function ProfileActivationPage() {
         setStep('input')
       }
     } catch (err) {
-      console.error('Error checking activation status:', err)
+      const logger = createClientLogger('ProfileActivationPage');
+      logger.error({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined
+      }, 'Error checking activation status');
       setStep('input') // Fallback
     }
   }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { AppWindow, Plus, CheckCircle2, Loader2 } from 'lucide-react';
+import { createClientLogger } from '@/lib/logger';
 
 interface App {
   id: string;
@@ -21,6 +22,7 @@ export default function AppsPage() {
   const orgId = params?.org as string;
   const searchParams = useSearchParams();
   const createdAppId = searchParams?.get('created');
+  const clientLogger = createClientLogger('AppsPage', { orgId });
   const [showSuccess, setShowSuccess] = useState(false);
   const [apps, setApps] = useState<App[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,24 +60,40 @@ export default function AppsPage() {
         }
       }
     } catch (error) {
-      console.error('[Apps Page] Error checking admin status:', error);
+      clientLogger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        org_id: orgId
+      }, 'Error checking admin status');
     }
   };
 
   const fetchApps = async () => {
     try {
       setIsLoading(true);
-      console.log('[Apps Page] Fetching apps for org:', orgId);
+      clientLogger.debug({
+        org_id: orgId
+      }, 'Fetching apps for org');
       const response = await fetch(`/api/apps?orgId=${orgId}`);
       if (response.ok) {
         const data = await response.json();
-        console.log('[Apps Page] Received apps:', data.apps);
+        clientLogger.debug({
+          app_count: data.apps?.length || 0,
+          org_id: orgId
+        }, 'Received apps');
         setApps(data.apps || []);
       } else {
-        console.error('[Apps Page] Failed to fetch apps, status:', response.status);
+        clientLogger.error({
+          status: response.status,
+          org_id: orgId
+        }, 'Failed to fetch apps');
       }
     } catch (error) {
-      console.error('[Apps Page] Error fetching apps:', error);
+      clientLogger.error({
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        org_id: orgId
+      }, 'Error fetching apps');
     } finally {
       setIsLoading(false);
     }

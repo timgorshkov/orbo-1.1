@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
+import { createClientLogger } from '@/lib/logger'
 
 type TelegramGroupOption = {
   id: number
@@ -61,9 +62,15 @@ export default function SendMessagePage({ params }: { params: { org: string } })
             .order('created_at', { ascending: false })
             .limit(200)
 
+          const logger = createClientLogger('SendMessagePage', { org: params.org });
           if (activityError) {
             if (activityError.code !== '42P01') {
-              console.error('Error inferring topics from activity events:', activityError)
+              logger.error({
+                error: activityError.message,
+                error_code: activityError.code,
+                org: params.org,
+                group_id: selectedGroup
+              }, 'Error inferring topics from activity events');
             }
             return { topics: [] as TelegramTopicOption[], generalEntry: null as TelegramTopicOption | null, onlyGeneral: false }
           }
@@ -97,16 +104,28 @@ export default function SendMessagePage({ params }: { params: { org: string } })
 
           return { topics, generalEntry, onlyGeneral }
         } catch (activityException) {
-          console.error('Unexpected error inferring topics from activity events:', activityException)
+          const logger = createClientLogger('SendMessagePage', { org: params.org });
+          logger.error({
+            error: activityException instanceof Error ? activityException.message : String(activityException),
+            stack: activityException instanceof Error ? activityException.stack : undefined,
+            org: params.org,
+            group_id: selectedGroup
+          }, 'Unexpected error inferring topics from activity events');
           return { topics: [] as TelegramTopicOption[], generalEntry: null as TelegramTopicOption | null, onlyGeneral: false }
         }
       }
 
       const activityFallback = await inferFromActivityEvents()
 
+      const logger = createClientLogger('SendMessagePage', { org: params.org });
       if (error) {
         if (error.code !== 'PGRST205' && error.code !== '42P01' && error.code !== 'PGRST202') {
-          console.error('Error loading telegram topics:', error)
+          logger.error({
+            error: error.message,
+            error_code: error.code,
+            org: params.org,
+            group_id: selectedGroup
+          }, 'Error loading telegram topics');
         }
 
         if (activityFallback.onlyGeneral) {
@@ -170,7 +189,13 @@ export default function SendMessagePage({ params }: { params: { org: string } })
       setTopics(topicOptions)
       setSelectedTopic(topicOptions[0]?.id ?? '')
     } catch (topicsException) {
-      console.error('Unexpected error loading telegram topics:', topicsException)
+      const logger = createClientLogger('SendMessagePage', { org: params.org });
+      logger.error({
+        error: topicsException instanceof Error ? topicsException.message : String(topicsException),
+        stack: topicsException instanceof Error ? topicsException.stack : undefined,
+        org: params.org,
+        group_id: selectedGroup
+      }, 'Unexpected error loading telegram topics');
       setTopics([])
       setSelectedTopic('')
     } finally {
@@ -201,7 +226,12 @@ export default function SendMessagePage({ params }: { params: { org: string } })
           title: group.title ?? null
         }))
       } catch (apiError) {
-        console.error('Error loading telegram groups for messaging:', apiError)
+        const logger = createClientLogger('SendMessagePage', { org: params.org });
+        logger.error({
+          error: apiError instanceof Error ? apiError.message : String(apiError),
+          stack: apiError instanceof Error ? apiError.stack : undefined,
+          org: params.org
+        }, 'Error loading telegram groups for messaging');
         normalized = []
       }
 
