@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('NotificationRulesAPI')
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/notifications/rules?orgId={orgId}
 export async function GET(request: NextRequest) {
@@ -15,29 +16,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId is required' }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
     // Check user access
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const adminSupabase = createAdminServer()
+
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Get notification rules
-    const { data: rules, error } = await supabase
+    const { data: rules, error } = await adminSupabase
       .from('notification_rules')
       .select('*')
       .eq('org_id', orgId)
@@ -71,29 +73,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid rule_type' }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
     // Check user access
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const adminSupabase = createAdminServer()
+
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Create notification rule
-    const { data: rule, error } = await supabase
+    const { data: rule, error } = await adminSupabase
       .from('notification_rules')
       .insert({
         org_id: orgId,

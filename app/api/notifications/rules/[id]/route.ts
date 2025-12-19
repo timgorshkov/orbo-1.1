@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('NotificationRuleAPI')
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/notifications/rules/[id]
 export async function GET(
@@ -13,15 +14,16 @@ export async function GET(
   try {
     const { id } = await params
     
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: rule, error } = await supabase
+    const adminSupabase = createAdminServer()
+
+    const { data: rule, error } = await adminSupabase
       .from('notification_rules')
       .select('*')
       .eq('id', id)
@@ -32,12 +34,12 @@ export async function GET(
     }
 
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', rule.org_id)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -60,16 +62,17 @@ export async function PUT(
     const body = await request.json()
     const { name, description, rule_type, config, use_ai, notify_owner, notify_admins, is_enabled } = body
 
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const adminSupabase = createAdminServer()
+
     // Get existing rule to check access
-    const { data: existingRule } = await supabase
+    const { data: existingRule } = await adminSupabase
       .from('notification_rules')
       .select('org_id')
       .eq('id', id)
@@ -80,12 +83,12 @@ export async function PUT(
     }
 
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingRule.org_id)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -102,7 +105,7 @@ export async function PUT(
     if (notify_admins !== undefined) updateData.notify_admins = notify_admins
     if (is_enabled !== undefined) updateData.is_enabled = is_enabled
 
-    const { data: rule, error } = await supabase
+    const { data: rule, error } = await adminSupabase
       .from('notification_rules')
       .update(updateData)
       .eq('id', id)
@@ -131,16 +134,17 @@ export async function DELETE(
   try {
     const { id } = await params
     
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const adminSupabase = createAdminServer()
+
     // Get existing rule to check access
-    const { data: existingRule } = await supabase
+    const { data: existingRule } = await adminSupabase
       .from('notification_rules')
       .select('org_id')
       .eq('id', id)
@@ -151,19 +155,19 @@ export async function DELETE(
     }
 
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingRule.org_id)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Delete rule
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('notification_rules')
       .delete()
       .eq('id', id)
@@ -181,4 +185,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

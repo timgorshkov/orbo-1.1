@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import { createServiceLogger } from '@/lib/logger'
 
@@ -18,22 +17,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId is required' }, { status: 400 })
     }
 
-    const cookieStore = await cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+    const supabase = await createClientServer()
 
     // Check user access
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const adminSupabase = createAdminServer()
+
     // Check membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     if (!membership) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
