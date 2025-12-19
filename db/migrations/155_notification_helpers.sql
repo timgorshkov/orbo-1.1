@@ -23,7 +23,7 @@ GRANT EXECUTE ON FUNCTION increment_notification_trigger_count(UUID) TO service_
 -- Also grant permissions for check_notification_duplicate function
 GRANT EXECUTE ON FUNCTION check_notification_duplicate(UUID, TEXT, INTEGER) TO service_role;
 
--- Function to get user's telegram ID from auth.users
+-- Function to get user's telegram ID from user_telegram_accounts
 CREATE OR REPLACE FUNCTION get_user_telegram_id(p_user_id UUID)
 RETURNS BIGINT
 LANGUAGE plpgsql
@@ -32,9 +32,27 @@ AS $$
 DECLARE
   v_tg_user_id BIGINT;
 BEGIN
-  SELECT (raw_user_meta_data->>'tg_user_id')::BIGINT INTO v_tg_user_id
-  FROM auth.users
-  WHERE id = p_user_id;
+  -- First try user_telegram_accounts (primary source)
+  SELECT telegram_user_id INTO v_tg_user_id
+  FROM user_telegram_accounts
+  WHERE user_id = p_user_id
+    AND is_verified = true
+  ORDER BY verified_at DESC NULLS LAST
+  LIMIT 1;
+  
+  -- Fallback to auth.users raw_user_meta_data
+  IF v_tg_user_id IS NULL THEN
+    SELECT (raw_user_meta_data->>'tg_user_id')::BIGINT INTO v_tg_user_id
+    FROM auth.users
+    WHERE id = p_user_id;
+  END IF;
+  
+  -- Last resort: check raw_user_meta_data for telegram_user_id
+  IF v_tg_user_id IS NULL THEN
+    SELECT (raw_user_meta_data->>'telegram_user_id')::BIGINT INTO v_tg_user_id
+    FROM auth.users
+    WHERE id = p_user_id;
+  END IF;
   
   RETURN v_tg_user_id;
 END;

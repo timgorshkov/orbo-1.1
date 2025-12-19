@@ -616,9 +616,31 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           let sentCount = 0;
           for (const recipient of recipients) {
+            logger.info({ 
+              rule_id: rule.id, 
+              tg_user_id: recipient.tgUserId,
+              message_preview: message.substring(0, 100)
+            }, '📤 Sending notification to recipient');
+            
             const result = await sendSystemNotification(recipient.tgUserId, message);
+            
+            logger.info({ 
+              rule_id: rule.id, 
+              tg_user_id: recipient.tgUserId,
+              success: result.success,
+              error: result.error
+            }, '📨 Notification send result');
+            
             if (result.success) sentCount++;
           }
+          
+          const finalStatus = sentCount > 0 ? 'sent' : 'failed';
+          logger.info({ 
+            rule_id: rule.id, 
+            sent_count: sentCount,
+            recipients_count: recipients.length,
+            status: finalStatus
+          }, '📊 Notification status before logging');
           
           // Log notification
           await logNotification({
@@ -626,7 +648,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             orgId: rule.org_id,
             ruleType: rule.rule_type,
             triggerContext,
-            status: sentCount > 0 ? 'sent' : 'failed',
+            status: finalStatus,
             dedupHash,
             sentToUserIds: recipients.map(r => String(r.tgUserId)),
             aiCostUsd: analysis.cost_usd,
