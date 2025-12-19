@@ -317,7 +317,7 @@ export default function NotificationRulesContent() {
                         <span>
                           {groupCount === groups.length ? 'Все группы' : `${groupCount} групп`}
                         </span>
-                        {rule.config.check_interval_minutes && (
+                        {typeof rule.config.check_interval_minutes === 'number' && (
                           <span>
                             Интервал: {rule.config.check_interval_minutes} мин
                           </span>
