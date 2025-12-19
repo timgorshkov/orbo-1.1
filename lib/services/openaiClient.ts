@@ -15,20 +15,39 @@ import { createServiceLogger } from '@/lib/logger';
 
 // Прокси URL из переменной окружения (обязательно!)
 const PROXY_URL = process.env.OPENAI_PROXY_URL;
+const API_KEY = process.env.OPENAI_API_KEY;
 const logger = createServiceLogger('OpenAI');
 
+// Log configuration status at startup
+logger.info({
+  has_api_key: !!API_KEY,
+  api_key_prefix: API_KEY ? API_KEY.substring(0, 7) + '...' : 'NOT_SET',
+  has_proxy: !!PROXY_URL,
+  proxy_host: PROXY_URL ? PROXY_URL.replace(/^https?:\/\/[^@]*@/, '').split(':')[0] : 'NOT_SET'
+}, '🔧 [OPENAI_CONFIG] OpenAI client initialization');
+
 if (PROXY_URL) {
-  // Устанавливаем глобальный прокси для всех fetch запросов
-  const proxyAgent = new ProxyAgent(PROXY_URL);
-  setGlobalDispatcher(proxyAgent);
-  logger.info({}, 'Proxy configured');
+  try {
+    // Устанавливаем глобальный прокси для всех fetch запросов
+    const proxyAgent = new ProxyAgent(PROXY_URL);
+    setGlobalDispatcher(proxyAgent);
+    logger.info({ proxy_configured: true }, '✅ [OPENAI_CONFIG] Proxy configured successfully');
+  } catch (proxyError) {
+    logger.error({ 
+      error: proxyError instanceof Error ? proxyError.message : String(proxyError)
+    }, '❌ [OPENAI_CONFIG] Failed to configure proxy');
+  }
 } else {
-  logger.warn({}, 'No OPENAI_PROXY_URL set - requests may be blocked from Russia');
+  logger.warn({}, '⚠️ [OPENAI_CONFIG] No OPENAI_PROXY_URL set - requests may be blocked from Russia');
+}
+
+if (!API_KEY) {
+  logger.error({}, '❌ [OPENAI_CONFIG] OPENAI_API_KEY is not set - AI features will not work');
 }
 
 // OpenAI клиент
 export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: API_KEY,
 });
 
 export default openai;

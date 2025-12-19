@@ -57,18 +57,26 @@ async function logOpenAICall(params: {
       });
     
     if (error) {
-      logger.error({ error: error.message }, 'Failed to log API call');
+      logger.error({ 
+        error: error.message, 
+        error_code: error.code,
+        org_id: params.orgId,
+        request_type: params.requestType 
+      }, '❌ [OPENAI_LOG] Failed to insert API log to database');
     } else {
-      logger.debug({ 
+      logger.info({ 
+        org_id: params.orgId,
         request_type: params.requestType,
         total_tokens: params.totalTokens,
         cost_usd: params.costUsd
-      }, 'Logged API call');
+      }, '✅ [OPENAI_LOG] AI Constructor call logged');
     }
   } catch (logError) {
     logger.error({ 
-      error: logError instanceof Error ? logError.message : String(logError)
-    }, 'Error logging API call');
+      error: logError instanceof Error ? logError.message : String(logError),
+      stack: logError instanceof Error ? logError.stack : undefined,
+      org_id: params.orgId
+    }, '❌ [OPENAI_LOG] Exception while logging API call');
   }
 }
 

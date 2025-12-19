@@ -430,7 +430,7 @@ async function logDigestGeneration(
   durationMs: number
 ): Promise<void> {
   try {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('openai_api_logs')
       .insert({
         org_id: orgId,
@@ -448,9 +448,25 @@ async function logDigestGeneration(
         }
       });
 
-    logger.info({ costUsd, durationMs }, 'Digest generation logged');
-  } catch (error) {
-    logger.error({ error }, 'Failed to log digest generation');
+    if (error) {
+      logger.error({ 
+        error: error.message, 
+        error_code: error.code,
+        org_id: orgId 
+      }, '❌ [OPENAI_LOG] Failed to insert digest log to database');
+    } else {
+      logger.info({ 
+        org_id: orgId, 
+        cost_usd: costUsd, 
+        duration_ms: durationMs 
+      }, '✅ [OPENAI_LOG] Digest generation logged');
+    }
+  } catch (err) {
+    logger.error({ 
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      org_id: orgId 
+    }, '❌ [OPENAI_LOG] Exception while logging digest generation');
   }
 }
 

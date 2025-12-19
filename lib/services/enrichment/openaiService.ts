@@ -65,16 +65,26 @@ async function logOpenAICall(params: {
         org_id: params.orgId,
         user_id: params.userId,
         request_type: params.requestType,
-        error: error.message
-      }, 'Failed to log API call');
+        error: error.message,
+        error_code: error.code,
+        error_details: error.details
+      }, '❌ [OPENAI_LOG] Failed to insert API log to database');
       // Don't throw - logging failure shouldn't break enrichment
+    } else {
+      logger.info({
+        org_id: params.orgId,
+        request_type: params.requestType,
+        total_tokens: params.totalTokens,
+        cost_usd: params.costUsd
+      }, '✅ [OPENAI_LOG] API call logged successfully');
     }
   } catch (logError) {
     logger.error({ 
       org_id: params.orgId,
       user_id: params.userId,
-      error: logError instanceof Error ? logError.message : String(logError)
-    }, 'Error logging API call');
+      error: logError instanceof Error ? logError.message : String(logError),
+      stack: logError instanceof Error ? logError.stack : undefined
+    }, '❌ [OPENAI_LOG] Exception while logging API call');
     // Don't throw - logging failure shouldn't break enrichment
   }
 }
@@ -242,6 +252,13 @@ ${messagesToAnalyze.map((m, i) => {
   try {
     const startTime = Date.now();
     
+    logger.info({
+      participant_id: participantId,
+      participant_name: participantName,
+      messages_count: messages.length,
+      org_id: orgId
+    }, '🚀 [OPENAI_CALL] Starting AI enrichment request');
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini', // Cheaper model, good enough for extraction
       messages: [
@@ -252,6 +269,13 @@ ${messagesToAnalyze.map((m, i) => {
       max_tokens: 1000,
       response_format: { type: 'json_object' }
     });
+    
+    logger.info({
+      participant_id: participantId,
+      response_id: response.id,
+      model: response.model,
+      usage: response.usage
+    }, '✅ [OPENAI_CALL] Received response from OpenAI');
     
     const rawResponse = response.choices[0].message.content || '{}';
     const result = JSON.parse(rawResponse);
@@ -301,13 +325,36 @@ ${messagesToAnalyze.map((m, i) => {
       analysis_date: new Date().toISOString()
     };
   } catch (error) {
+    // Determine error type for better diagnostics
+    let errorType = 'unknown';
+    let errorDetails: any = {};
+    
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('ETIMEDOUT')) {
+        errorType = 'network_error';
+        errorDetails.hint = 'Check if OPENAI_PROXY_URL is set correctly';
+      } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        errorType = 'auth_error';
+        errorDetails.hint = 'Check if OPENAI_API_KEY is valid';
+      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+        errorType = 'rate_limit';
+        errorDetails.hint = 'OpenAI rate limit exceeded, try again later';
+      } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+        errorType = 'blocked';
+        errorDetails.hint = 'Access blocked, check proxy configuration';
+      }
+    }
+    
     logger.error({ 
       participant_id: participantId,
       participant_name: participantName,
       org_id: orgId,
+      error_type: errorType,
       error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    }, 'AI enrichment error');
+      error_name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+      ...errorDetails
+    }, `❌ [OPENAI_CALL] AI enrichment failed: ${errorType}`);
     throw new Error(`AI analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

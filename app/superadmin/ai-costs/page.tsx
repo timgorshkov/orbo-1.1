@@ -32,15 +32,50 @@ interface RecentLog {
   metadata: any;
 }
 
+interface DiagnosticsStatus {
+  status: string;
+  issues: string[];
+  recommendations: string[];
+}
+
+interface OpenAIStatus {
+  config: {
+    openai_api_key: { set: boolean; prefix: string | null };
+    openai_proxy_url: { set: boolean; host: string | null };
+  };
+  logs: {
+    recent: { count: number; lastLog: string | null };
+    last30Days: number;
+  };
+  diagnostics: DiagnosticsStatus;
+}
+
 export default function AICoststPage() {
   const [summary, setSummary] = useState<CostSummary | null>(null)
   const [recentLogs, setRecentLogs] = useState<RecentLog[]>([])
   const [loading, setLoading] = useState(true)
   const [daysFilter, setDaysFilter] = useState(30)
+  const [openaiStatus, setOpenaiStatus] = useState<OpenAIStatus | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
+    loadOpenAIStatus()
   }, [daysFilter])
+
+  async function loadOpenAIStatus() {
+    try {
+      const res = await fetch('/api/superadmin/openai-status')
+      if (res.ok) {
+        const data = await res.json()
+        setOpenaiStatus(data)
+      } else {
+        setStatusError('Failed to load OpenAI status')
+      }
+    } catch (err) {
+      setStatusError('Failed to load OpenAI status')
+    }
+  }
 
   async function loadData() {
     setLoading(true)
@@ -93,6 +128,61 @@ export default function AICoststPage() {
           Мониторинг расходов на OpenAI API по всем организациям
         </p>
       </div>
+
+      {/* OpenAI Status Banner */}
+      {openaiStatus && openaiStatus.diagnostics.status !== 'ok' && (
+        <Card className="mb-6 border-amber-300 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="text-amber-800 flex items-center gap-2">
+              ⚠️ Проблемы с конфигурацией OpenAI
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {openaiStatus.diagnostics.issues.map((issue, idx) => (
+                <div key={idx} className="text-red-700 text-sm">• {issue}</div>
+              ))}
+              {openaiStatus.diagnostics.recommendations.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-amber-200">
+                  <p className="text-sm font-medium text-amber-800 mb-1">Рекомендации:</p>
+                  {openaiStatus.diagnostics.recommendations.map((rec, idx) => (
+                    <div key={idx} className="text-amber-700 text-sm">→ {rec}</div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 pt-3 border-t border-amber-200 text-xs text-gray-600">
+                <p>API Key: {openaiStatus.config.openai_api_key.set ? `✅ ${openaiStatus.config.openai_api_key.prefix}` : '❌ Не установлен'}</p>
+                <p>Proxy: {openaiStatus.config.openai_proxy_url.set ? `✅ ${openaiStatus.config.openai_proxy_url.host}` : '❌ Не установлен'}</p>
+                <p>Логов за 30 дней: {openaiStatus.logs.last30Days}</p>
+                {openaiStatus.logs.recent.lastLog && (
+                  <p>Последний лог: {new Date(openaiStatus.logs.recent.lastLog).toLocaleString('ru-RU')}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Success status */}
+      {openaiStatus && openaiStatus.diagnostics.status === 'ok' && recentLogs.length === 0 && (
+        <Card className="mb-6 border-blue-300 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-blue-800 flex items-center gap-2">
+              ℹ️ Конфигурация в порядке, но логов нет
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-blue-700">
+              OpenAI настроен правильно, но за выбранный период нет записей. 
+              Возможно, никто не использовал AI-функции (обогащение, конструктор, дайджест).
+            </p>
+            <div className="mt-2 text-xs text-gray-600">
+              <p>API Key: ✅ {openaiStatus.config.openai_api_key.prefix}</p>
+              <p>Proxy: {openaiStatus.config.openai_proxy_url.set ? `✅ ${openaiStatus.config.openai_proxy_url.host}` : '⚠️ Не установлен (может блокироваться)'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="mb-6">
