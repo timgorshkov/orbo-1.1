@@ -248,10 +248,11 @@ async function getOrgGroups(orgId: string, specificChatIds?: string[] | null): P
  */
 async function getGroupTitle(chatId: string): Promise<string> {
   try {
+    const chatIdNum = parseInt(chatId, 10);
     const { data } = await supabaseAdmin
       .from('telegram_groups')
       .select('title')
-      .eq('tg_chat_id', chatId)
+      .eq('tg_chat_id', chatIdNum)
       .single();
     return data?.title || `Группа ${chatId}`;
   } catch {
@@ -270,23 +271,96 @@ async function getRecentMessages(
   try {
     const since = new Date(Date.now() - sinceMinutes * 60 * 1000).toISOString();
     
-    const { data } = await supabaseAdmin
-      .from('activity_events')
+    // Convert chatId to number for BIGINT comparison
+    const chatIdNum = parseInt(chatId, 10);
+    
+    logger.info({ 
+      chat_id_str: chatId, 
+      chat_id_num: chatIdNum, 
+      since,
+      sinceMinutes 
+    }, '🔍 Querying messages from participant_messages');
+    
+    // Use participant_messages for full text content (better for AI analysis)
+    const { data, error } = await supabaseAdmin
+      .from('participant_messages')
       .select(`
         id,
         tg_user_id,
         tg_chat_id,
-        event_type,
-        created_at,
-        meta
+        message_text,
+        sent_at,
+        participant_id
       `)
-      .eq('tg_chat_id', chatId)
-      .eq('event_type', 'message')
-      .gte('created_at', since)
-      .order('created_at', { ascending: true })
+      .eq('tg_chat_id', chatIdNum)
+      .gte('sent_at', since)
+      .order('sent_at', { ascending: true })
       .limit(limit);
     
-    if (!data) return [];
+    if (error) {
+      logger.error({ error: error.message, chat_id: chatId }, 'Query error from participant_messages');
+      
+      // Fallback to activity_events if participant_messages fails
+      const { data: activityData, error: activityError } = await supabaseAdmin
+        .from('activity_events')
+        .select(`
+          id,
+          tg_user_id,
+          tg_chat_id,
+          event_type,
+          created_at,
+          meta
+        `)
+        .eq('tg_chat_id', chatIdNum)
+        .eq('event_type', 'message')
+        .gte('created_at', since)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      
+      if (activityError) {
+        logger.error({ error: activityError.message, chat_id: chatId }, 'Fallback query error');
+        return [];
+      }
+      
+      if (!activityData || activityData.length === 0) {
+        logger.info({ chat_id: chatId }, '📭 No messages found in activity_events either');
+        return [];
+      }
+      
+      logger.info({ chat_id: chatId, count: activityData.length }, '📨 Found messages in activity_events (fallback)');
+      
+      // Get participant names
+      const userIds = Array.from(new Set(activityData.map(m => m.tg_user_id)));
+      const { data: participants } = await supabaseAdmin
+        .from('participants')
+        .select('tg_user_id, full_name, username')
+        .in('tg_user_id', userIds);
+      
+      const nameMap = new Map<string, string>();
+      (participants || []).forEach(p => {
+        nameMap.set(String(p.tg_user_id), p.full_name || p.username || 'Участник');
+      });
+      
+      return activityData.map(m => {
+        // Extract text from meta - it's stored in message.text_preview
+        const text = m.meta?.message?.text_preview || m.meta?.text || '';
+        return {
+          id: m.id,
+          text,
+          author_name: nameMap.get(String(m.tg_user_id)) || 'Участник',
+          author_id: String(m.tg_user_id),
+          created_at: m.created_at,
+          tg_chat_id: String(m.tg_chat_id),
+        };
+      });
+    }
+    
+    if (!data || data.length === 0) {
+      logger.info({ chat_id: chatId, since }, '📭 No messages found in participant_messages');
+      return [];
+    }
+    
+    logger.info({ chat_id: chatId, count: data.length }, '📨 Found messages in participant_messages');
     
     // Get participant names
     const userIds = Array.from(new Set(data.map(m => m.tg_user_id)));
@@ -297,15 +371,15 @@ async function getRecentMessages(
     
     const nameMap = new Map<string, string>();
     (participants || []).forEach(p => {
-      nameMap.set(p.tg_user_id, p.full_name || p.username || 'Участник');
+      nameMap.set(String(p.tg_user_id), p.full_name || p.username || 'Участник');
     });
     
     return data.map(m => ({
       id: m.id,
-      text: m.meta?.text || '',
-      author_name: nameMap.get(m.tg_user_id) || 'Участник',
-      author_id: m.tg_user_id,
-      created_at: m.created_at,
+      text: m.message_text || '',
+      author_name: nameMap.get(String(m.tg_user_id)) || 'Участник',
+      author_id: String(m.tg_user_id),
+      created_at: m.sent_at,
       tg_chat_id: String(m.tg_chat_id),
     }));
   } catch (error) {
