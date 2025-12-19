@@ -1,6 +1,22 @@
 import { redirect } from 'next/navigation';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import NotificationsList from '@/components/notifications/notifications-list';
+import type { Metadata } from 'next';
+
+// Disable OG image for notification links in Telegram
+export const metadata: Metadata = {
+  title: 'Уведомления',
+  description: 'Уведомления о событиях в сообществе',
+  openGraph: {
+    title: 'Уведомления · Orbo',
+    description: 'Уведомления о событиях в сообществе',
+    images: [], // No OG image
+  },
+  twitter: {
+    card: 'summary',
+    images: [], // No image
+  },
+};
 
 export default async function NotificationsPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params;

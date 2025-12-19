@@ -458,7 +458,8 @@ function formatNotificationMessage(
   context: Record<string, unknown>,
   groupTitle: string
 ): string {
-  const orgUrl = `https://my.orbo.ru/p/${rule.org_id}`;
+  // Link to notifications section instead of just organization
+  const notificationsUrl = `https://my.orbo.ru/p/${rule.org_id}/notifications`;
   
   switch (rule.rule_type) {
     case 'negative_discussion':
@@ -471,7 +472,7 @@ ${context.summary || 'Обнаружена негативная дискусси
 
 _Правило: ${rule.name}_
 
-[Открыть в Orbo](${orgUrl})`;
+[Открыть уведомления →](${notificationsUrl})`;
 
     case 'unanswered_question':
       return `❓ *Неотвеченный вопрос в «${groupTitle}»*
@@ -483,7 +484,7 @@ _Правило: ${rule.name}_
 
 _Правило: ${rule.name}_
 
-[Открыть в Orbo](${orgUrl})`;
+[Открыть уведомления →](${notificationsUrl})`;
 
     case 'group_inactive':
       return `💤 *Неактивность в группе «${groupTitle}»*
@@ -494,7 +495,7 @@ _Правило: ${rule.name}_
 
 _Правило: ${rule.name}_
 
-[Открыть в Orbo](${orgUrl})`;
+[Открыть уведомления →](${notificationsUrl})`;
 
     default:
       return `🔔 *Уведомление от Orbo*\n\n${JSON.stringify(context)}`;

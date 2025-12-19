@@ -341,29 +341,25 @@ export default function NotificationRulesContent() {
                     </div>
                   </div>
 
-                  <DropdownMenu>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 w-8 p-0 hover:bg-gray-100"
-                        onClick={(e) => e.stopPropagation()}
+                      <button 
+                        type="button"
+                        className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       >
                         <MoreVertical className="h-4 w-4" />
                         <span className="sr-only">Открыть меню</span>
-                      </Button>
+                      </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 z-50">
+                    <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem 
-                        className="cursor-pointer flex items-center"
-                        onClick={() => handleEditRule(rule)}
+                        onSelect={() => handleEditRule(rule)}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
                         Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        className="cursor-pointer flex items-center"
-                        onClick={() => handleToggleRule(rule)}
+                        onSelect={() => handleToggleRule(rule)}
                       >
                         {rule.is_enabled ? (
                           <>
@@ -378,8 +374,8 @@ export default function NotificationRulesContent() {
                         )}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        className="cursor-pointer flex items-center text-red-600 focus:text-red-600"
-                        onClick={() => handleDeleteRule(rule.id)}
+                        className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        onSelect={() => handleDeleteRule(rule.id)}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Удалить
