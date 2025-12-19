@@ -14,6 +14,23 @@ const nextConfig = {
       '/api/**/*': ['./node_modules/@hawk.so/**/*', './node_modules/pino/**/*'],
     },
   },
+  // Allow external images from storage providers
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.selcdn.ru',
+      },
+      {
+        protocol: 'https',
+        hostname: 's3.ru-1.storage.selcloud.ru',
+      },
+    ],
+  },
 }
 
 module.exports = nextConfig

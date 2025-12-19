@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -408,13 +409,16 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         </div>
       )}
 
-      {/* Cover Image */}
+      {/* Cover Image - fixed aspect ratio prevents CLS */}
       {event.cover_image_url && (
-        <div className="mb-6 h-80 w-full overflow-hidden rounded-lg">
-          <img 
+        <div className="mb-6 relative w-full aspect-[16/9] sm:aspect-[2/1] max-h-80 overflow-hidden rounded-lg bg-neutral-100">
+          <Image 
             src={event.cover_image_url} 
             alt={event.title}
-            className="h-full w-full object-cover"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 800px"
+            className="object-cover"
+            priority
           />
         </div>
       )}
