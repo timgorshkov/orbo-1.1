@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Bell, ChevronRight } from 'lucide-react'
 
 interface CriticalEvent {
   id: string
@@ -29,20 +30,29 @@ interface InactiveNewcomer {
   activity_count: number
 }
 
+interface HasMore {
+  churning?: number
+  newcomers?: number
+  events?: number
+}
+
 interface AttentionZonesProps {
   orgId: string
   criticalEvents: CriticalEvent[]
   churningParticipants: ChurningParticipant[]
   inactiveNewcomers: InactiveNewcomer[]
+  hasMore?: HasMore
 }
 
 export default function AttentionZones({
   orgId,
   criticalEvents,
   churningParticipants,
-  inactiveNewcomers
+  inactiveNewcomers,
+  hasMore = {}
 }: AttentionZonesProps) {
   const hasAlerts = criticalEvents.length > 0 || churningParticipants.length > 0 || inactiveNewcomers.length > 0
+  const totalMore = (hasMore.churning || 0) + (hasMore.newcomers || 0) + (hasMore.events || 0)
 
   if (!hasAlerts) {
     return (
@@ -66,9 +76,19 @@ export default function AttentionZones({
   return (
     <Card className="border-amber-200">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <span className="text-2xl">🔥</span>
-          Зоны внимания
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🔥</span>
+            Зоны внимания
+          </div>
+          <Link
+            href={`/p/${orgId}/notifications`}
+            className="text-sm text-blue-600 hover:underline flex items-center gap-1 font-normal"
+          >
+            <Bell className="h-4 w-4" />
+            Все уведомления
+            <ChevronRight className="h-4 w-4" />
+          </Link>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -126,6 +146,14 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
+              {hasMore.churning && hasMore.churning > 0 && (
+                <Link
+                  href={`/p/${orgId}/notifications?type=churning_participant`}
+                  className="block px-2 py-1 text-xs text-amber-600 hover:text-amber-700"
+                >
+                  Ещё {hasMore.churning} участников →
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -156,7 +184,28 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
+              {hasMore.newcomers && hasMore.newcomers > 0 && (
+                <Link
+                  href={`/p/${orgId}/notifications?type=inactive_newcomer`}
+                  className="block px-2 py-1 text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Ещё {hasMore.newcomers} новичков →
+                </Link>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* Summary link */}
+        {totalMore > 0 && (
+          <div className="pt-2 border-t border-amber-200">
+            <Link
+              href={`/p/${orgId}/notifications`}
+              className="text-sm text-gray-600 hover:text-gray-800 flex items-center justify-center gap-1"
+            >
+              Все уведомления ({criticalEvents.length + churningParticipants.length + inactiveNewcomers.length + totalMore})
+              <ChevronRight className="h-4 w-4" />
+            </Link>
           </div>
         )}
       </CardContent>

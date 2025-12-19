@@ -152,6 +152,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
               criticalEvents={dashboardData.attentionZones.criticalEvents}
               churningParticipants={dashboardData.attentionZones.churningParticipants}
               inactiveNewcomers={dashboardData.attentionZones.inactiveNewcomers}
+              hasMore={dashboardData.attentionZones.hasMore}
             />
 
             <UpcomingEvents 

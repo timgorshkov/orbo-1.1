@@ -220,20 +220,25 @@ export async function GET(
 
     // 4. Attention zones (only for non-onboarding users)
     let attentionZones = {
-      criticalEvents: [],
-      churningParticipants: [],
-      inactiveNewcomers: []
+      criticalEvents: [] as any[],
+      churningParticipants: [] as any[],
+      inactiveNewcomers: [] as any[],
+      hasMore: {
+        churning: 0,
+        newcomers: 0,
+        events: 0
+      }
     }
 
     // Day of year for rotation of attention zone items
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
     
     if (!isOnboarding && (groupsCount || 0) > 0) {
-      // 4a-c. Parallel fetch for attention zones
+      // 4a-c. Parallel fetch for attention zones + resolved items
       const threeDaysFromNow = new Date()
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
 
-      const [criticalEventsResult, churningResult, inactiveResult] = await Promise.all([
+      const [criticalEventsResult, churningResult, inactiveResult, resolvedItemsResult] = await Promise.all([
         adminSupabase
           .from('events')
           .select(`
@@ -255,8 +260,24 @@ export async function GET(
         adminSupabase.rpc('get_inactive_newcomers', {
           p_org_id: orgId,
           p_days_since_first: 14
-        })
+        }),
+        // Fetch resolved attention zone items (last 24 hours)
+        adminSupabase
+          .from('attention_zone_items')
+          .select('item_id, item_type')
+          .eq('org_id', orgId)
+          .not('resolved_at', 'is', null)
+          .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       ])
+
+      // Build set of resolved item IDs by type
+      const resolvedIds = new Map<string, Set<string>>()
+      for (const item of resolvedItemsResult.data || []) {
+        if (!resolvedIds.has(item.item_type)) {
+          resolvedIds.set(item.item_type, new Set())
+        }
+        resolvedIds.get(item.item_type)!.add(item.item_id)
+      }
 
       const criticalEvents = (criticalEventsResult.data || [])
         .map(event => {
@@ -276,6 +297,8 @@ export async function GET(
           }
         })
         .filter(e => e.registrationRate < 30 && e.capacity)
+        // Filter out resolved events
+        .filter(e => !resolvedIds.get('critical_event')?.has(e.id))
 
       // Limit critical events to 3 with rotation
       const eventsOffset = dayOfYear % Math.max(1, criticalEvents.length)
@@ -284,10 +307,16 @@ export async function GET(
         : criticalEvents.slice(eventsOffset, eventsOffset + 3).concat(
             criticalEvents.slice(0, Math.max(0, 3 - (criticalEvents.length - eventsOffset)))
           ).slice(0, 3)
-      ) as any
+      )
+      attentionZones.hasMore.events = Math.max(0, criticalEvents.length - 3)
 
-      const churningParticipants = churningResult.data
-      const inactiveNewcomers = inactiveResult.data
+      // Filter churning participants
+      const churningParticipants = (churningResult.data || [])
+        .filter((p: any) => !resolvedIds.get('churning_participant')?.has(p.participant_id))
+      
+      // Filter inactive newcomers
+      const inactiveNewcomers = (inactiveResult.data || [])
+        .filter((p: any) => !resolvedIds.get('inactive_newcomer')?.has(p.participant_id))
 
       // Limit to 3 items with daily rotation for variety
       const churningList = churningParticipants || []
@@ -307,8 +336,10 @@ export async function GET(
         return result
       }
       
-      attentionZones.churningParticipants = getRotatedSlice(churningList, churningOffset, 3) as any
-      attentionZones.inactiveNewcomers = getRotatedSlice(newcomersList, newcomersOffset, 3) as any
+      attentionZones.churningParticipants = getRotatedSlice(churningList, churningOffset, 3)
+      attentionZones.inactiveNewcomers = getRotatedSlice(newcomersList, newcomersOffset, 3)
+      attentionZones.hasMore.churning = Math.max(0, churningList.length - 3)
+      attentionZones.hasMore.newcomers = Math.max(0, newcomersList.length - 3)
     }
 
     // 5. Upcoming events (next 3)

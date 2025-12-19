@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAPILogger } from '@/lib/logger';
+
+/**
+ * POST /api/notifications/[orgId]/resolve
+ * Отметить уведомление как решённое
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
+  const logger = createAPILogger(request, { endpoint: '/api/notifications/[orgId]/resolve' });
+  
+  try {
+    const { orgId } = await params;
+    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
+    
+    // Проверка авторизации
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Проверка доступа к организации (owner/admin)
+    const { data: membership } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .single();
+    
+    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    
+    // Получаем данные из тела запроса
+    const body = await request.json();
+    const { notificationId, sourceType } = body;
+    
+    if (!notificationId || !sourceType) {
+      return NextResponse.json(
+        { error: 'notificationId and sourceType are required' }, 
+        { status: 400 }
+      );
+    }
+    
+    // Получаем имя пользователя для отображения
+    const { data: userData } = await adminSupabase
+      .from('users')
+      .select('full_name, email')
+      .eq('id', user.id)
+      .single();
+    
+    const userName = userData?.full_name || userData?.email || 'Пользователь';
+    
+    // Вызываем соответствующую функцию в зависимости от типа источника
+    let success = false;
+    
+    if (sourceType === 'notification_rule') {
+      // Резолюция notification_log
+      const { data } = await adminSupabase.rpc('resolve_notification', {
+        p_notification_id: notificationId,
+        p_user_id: user.id,
+        p_user_name: userName,
+      });
+      success = data === true;
+    } else if (sourceType === 'attention_zone') {
+      // Резолюция attention_zone_item
+      const { data } = await adminSupabase.rpc('resolve_attention_item', {
+        p_item_id: notificationId,
+        p_user_id: user.id,
+        p_user_name: userName,
+      });
+      success = data === true;
+    } else {
+      return NextResponse.json({ error: 'Invalid sourceType' }, { status: 400 });
+    }
+    
+    if (!success) {
+      logger.warn({ 
+        notification_id: notificationId, 
+        source_type: sourceType 
+      }, 'Notification not found or already resolved');
+      return NextResponse.json({ error: 'Not found or already resolved' }, { status: 404 });
+    }
+    
+    logger.info({ 
+      notification_id: notificationId, 
+      source_type: sourceType,
+      resolved_by: user.id,
+      resolved_by_name: userName 
+    }, '✅ Notification resolved');
+    
+    return NextResponse.json({ 
+      success: true,
+      resolvedBy: userName,
+      resolvedAt: new Date().toISOString(),
+    });
+    
+  } catch (error) {
+    logger.error({ error }, 'Error resolving notification');
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+

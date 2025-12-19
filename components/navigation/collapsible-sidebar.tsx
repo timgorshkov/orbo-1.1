@@ -19,7 +19,8 @@ import {
   AppWindow,
   Home,
   Eye,
-  MessageCircle
+  MessageCircle,
+  Bell
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -99,6 +100,17 @@ export default function CollapsibleSidebar({
       icon: LayoutDashboard,
       href: `/p/${orgId}/dashboard`,
       active: pathname === `/p/${orgId}/dashboard`,
+    })
+  }
+
+  // Уведомления (для админов в режиме админа, после дашборда)
+  if (isAdmin && adminMode) {
+    navItems.push({
+      key: 'notifications',
+      label: 'Уведомления',
+      icon: Bell,
+      href: `/p/${orgId}/notifications`,
+      active: pathname?.startsWith(`/p/${orgId}/notifications`),
     })
   }
 

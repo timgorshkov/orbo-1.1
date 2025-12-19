@@ -17,7 +17,8 @@ import {
   User as UserIcon,
   Home,
   Eye,
-  Grid3x3
+  Grid3x3,
+  Bell
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 import TelegramGroupsNav from '../telegram-groups-nav'
@@ -132,6 +133,17 @@ export default function MobileBottomNav({
 
   // Дополнительные пункты меню для боковой панели
   const menuItems = []
+
+  // ✅ Notifications for admins in admin mode
+  if (permissions.canManageSettings && adminMode) {
+    menuItems.push({
+      key: 'notifications',
+      label: 'Уведомления',
+      icon: Bell,
+      href: `/p/${orgId}/notifications`,
+      active: pathname?.startsWith(`/p/${orgId}/notifications`),
+    })
+  }
 
   // ✅ Apps in dropdown menu for all non-guests
   if (role !== 'guest') {
