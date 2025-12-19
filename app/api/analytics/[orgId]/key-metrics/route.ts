@@ -9,7 +9,6 @@ interface ActivityEvent {
   event_type: string;
   tg_user_id: number | null;
   reply_to_message_id: number | null;
-  participant_id: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,7 +27,7 @@ async function getMetricsForPeriod(
   if (telegramChatIds.length > 0) {
     const { data: telegramEvents, error: telegramError } = await supabase
       .from('activity_events')
-      .select('event_type, tg_user_id, reply_to_message_id, participant_id')
+      .select('event_type, tg_user_id, reply_to_message_id')
       .in('tg_chat_id', telegramChatIds)
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString());
@@ -42,7 +41,7 @@ async function getMetricsForPeriod(
   if (includeWhatsApp) {
     const { data: whatsappEvents, error: whatsappError } = await supabase
       .from('activity_events')
-      .select('event_type, tg_user_id, reply_to_message_id, participant_id')
+      .select('event_type, tg_user_id, reply_to_message_id')
       .eq('org_id', orgId)
       .eq('tg_chat_id', 0)
       .gte('created_at', startDate.toISOString())
@@ -56,19 +55,12 @@ async function getMetricsForPeriod(
   let messages = 0;
   let reactions = 0;
   let replies = 0;
-  const activeUsers = new Set<string>(); // Use string to handle both tg_user_id and participant_id
+  const activeUsers = new Set<number>(); // Track by tg_user_id
 
   allEvents.forEach(event => {
-    // Track unique active users
-    const userKey = event.participant_id 
-      ? `p_${event.participant_id}` 
-      : event.tg_user_id 
-        ? `t_${event.tg_user_id}`
-        : null;
-    
     if (event.event_type === 'message') {
       messages++;
-      if (userKey) activeUsers.add(userKey);
+      if (event.tg_user_id) activeUsers.add(event.tg_user_id);
       if (event.reply_to_message_id) replies++;
     } else if (event.event_type === 'reaction') {
       reactions++;
