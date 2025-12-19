@@ -39,11 +39,19 @@ curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/check-notification-r
 EOF
 chmod +x ~/orbo/cron-notification-rules.sh
 
+# Create cron script for sync-attention-zones (hourly)
+cat > ~/orbo/cron-sync-attention-zones.sh << EOF
+#!/bin/bash
+curl -s -X POST -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/sync-attention-zones" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-sync-attention-zones.sh
+
 # Remove old cron entries and add new ones
-(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" ; \
+(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" ; \
   echo "0 * * * * ~/orbo/cron-error-digest.sh" ; \
   echo "*/5 * * * * ~/orbo/cron-group-metrics.sh" ; \
-  echo "*/15 * * * * ~/orbo/cron-notification-rules.sh") | crontab -
+  echo "*/15 * * * * ~/orbo/cron-notification-rules.sh" ; \
+  echo "0 * * * * ~/orbo/cron-sync-attention-zones.sh") | crontab -
 
 echo ""
 echo "✅ Cron jobs configured!"
@@ -56,6 +64,10 @@ echo "🔔 Notification Rules Check:"
 echo "   Schedule: Every 15 minutes"
 echo "   Command: ~/orbo/cron-notification-rules.sh"
 echo ""
+echo "🎯 Sync Attention Zones:"
+echo "   Schedule: Every hour at :00"
+echo "   Command: ~/orbo/cron-sync-attention-zones.sh"
+echo ""
 echo "📧 Error Digest:"
 echo "   Schedule: Every hour at :00"
 echo "   Command: ~/orbo/cron-error-digest.sh"
@@ -63,4 +75,4 @@ echo ""
 echo "📋 Management:"
 echo "   View logs: tail -f /var/log/orbo-cron.log"
 echo "   View crontab: crontab -l"
-echo "   Test notification-rules: curl -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/check-notification-rules"
+echo "   Test sync-attention-zones: curl -X POST -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/sync-attention-zones"
