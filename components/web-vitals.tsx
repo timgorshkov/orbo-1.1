@@ -14,21 +14,44 @@ import { usePathname } from 'next/navigation';
  * - TTFB (Time to First Byte) - время до первого байта
  * - INP (Interaction to Next Paint) - задержка взаимодействия
  * 
- * Пороговые значения для предупреждений:
- * - LCP > 4s = плохо (цель < 2.5s)
- * - FID > 300ms = плохо (цель < 100ms)
- * - CLS > 0.25 = плохо (цель < 0.1)
- * - TTFB > 1.8s = плохо (цель < 0.8s)
+ * Пороговые значения для предупреждений (повышены для реальных условий):
+ * - LCP > 6s = warn, > 15s = critical (цель < 2.5s)
+ * - FID > 500ms = warn, > 2000ms = critical (цель < 100ms)
+ * - CLS > 0.25 = warn, > 0.5 = critical (цель < 0.1)
+ * - TTFB > 2s = warn, > 8s = critical (цель < 0.8s)
+ * - INP > 1s = warn, > 5s = critical (цель < 200ms)
  */
 
+// Обычные пороги
 const THRESHOLDS = {
-  LCP: { warn: 4000, critical: 10000 },    // ms
-  FID: { warn: 300, critical: 1000 },      // ms
-  CLS: { warn: 0.25, critical: 0.5 },      // score
-  FCP: { warn: 3000, critical: 8000 },     // ms
-  TTFB: { warn: 1800, critical: 5000 },    // ms
-  INP: { warn: 500, critical: 1000 },      // ms
+  LCP: { warn: 6000, critical: 15000 },     // ms - повышены
+  FID: { warn: 500, critical: 2000 },       // ms - повышены
+  CLS: { warn: 0.25, critical: 0.5 },       // score
+  FCP: { warn: 5000, critical: 12000 },     // ms - повышены
+  TTFB: { warn: 2000, critical: 8000 },     // ms - повышены
+  INP: { warn: 1000, critical: 5000 },      // ms - повышены (1s-5s)
 };
+
+// Специальные пороги для тяжёлых страниц (available-groups загружает много данных)
+const HEAVY_PAGE_THRESHOLDS = {
+  LCP: { warn: 10000, critical: 30000 },    // ms
+  FID: { warn: 1000, critical: 5000 },      // ms
+  CLS: { warn: 0.3, critical: 0.6 },        // score
+  FCP: { warn: 10000, critical: 25000 },    // ms
+  TTFB: { warn: 5000, critical: 15000 },    // ms
+  INP: { warn: 2000, critical: 10000 },     // ms
+};
+
+// Паттерны страниц с повышенными порогами (загружают много данных)
+const HEAVY_PAGE_PATTERNS = [
+  '/available-groups',
+  '/telegram/groups/',  // Страницы отдельных групп тоже могут быть тяжёлыми
+  '/members',           // Список участников
+];
+
+function isHeavyPage(pathname: string): boolean {
+  return HEAVY_PAGE_PATTERNS.some(pattern => pathname.includes(pattern));
+}
 
 export function WebVitals() {
   const pathname = usePathname();
@@ -36,8 +59,10 @@ export function WebVitals() {
   useReportWebVitals((metric) => {
     const { name, value, id, rating } = metric;
     
-    // Определяем уровень проблемы
-    const threshold = THRESHOLDS[name as keyof typeof THRESHOLDS];
+    // Выбираем пороги в зависимости от страницы
+    const thresholds = isHeavyPage(pathname) ? HEAVY_PAGE_THRESHOLDS : THRESHOLDS;
+    const threshold = thresholds[name as keyof typeof THRESHOLDS];
+    
     let level: 'info' | 'warn' | 'error' = 'info';
     
     if (threshold) {
@@ -60,6 +85,7 @@ export function WebVitals() {
         level,
         pathname,
         id,
+        isHeavyPage: isHeavyPage(pathname),
         timestamp: new Date().toISOString(),
       });
 
@@ -90,4 +116,3 @@ export function WebVitals() {
 
   return null;
 }
-
