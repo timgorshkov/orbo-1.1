@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
+import { createAPILogger } from '@/lib/logger'
+import { RequestTiming } from '@/lib/utils/timing'
 import crypto from 'crypto'
 
 /**
@@ -12,6 +14,8 @@ import crypto from 'crypto'
  * Возвращает: { code: string, botUsername: string, deepLink: string, qrUrl: string, expiresAt: string }
  */
 export async function POST(req: NextRequest) {
+  const timing = new RequestTiming('TelegramCodeGenerate');
+  const logger = createAPILogger(req, { endpoint: 'telegram-code/generate' });
   const forwardedFor = req.headers.get('x-forwarded-for')
   const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : req.headers.get('x-real-ip')
   
@@ -27,24 +31,26 @@ export async function POST(req: NextRequest) {
     const maxAttempts = 10
 
     // Пытаемся сгенерировать уникальный код
-    while (attempts < maxAttempts) {
-      // Генерируем 3 байта и конвертируем в hex (6 символов)
-      code = crypto.randomBytes(3).toString('hex').toUpperCase()
+    await timing.time('generate_unique_code', async () => {
+      while (attempts < maxAttempts) {
+        // Генерируем 3 байта и конвертируем в hex (6 символов)
+        code = crypto.randomBytes(3).toString('hex').toUpperCase()
 
-      // Проверяем, не занят ли код
-      const { data: existing } = await supabaseAdmin
-        .from('telegram_auth_codes')
-        .select('id')
-        .eq('code', code)
-        .eq('is_used', false)
-        .maybeSingle()
+        // Проверяем, не занят ли код
+        const { data: existing } = await supabaseAdmin
+          .from('telegram_auth_codes')
+          .select('id')
+          .eq('code', code)
+          .eq('is_used', false)
+          .maybeSingle()
 
-      if (!existing) {
-        break // Код уникален
+        if (!existing) {
+          break // Код уникален
+        }
+
+        attempts++
       }
-
-      attempts++
-    }
+    });
 
     if (attempts >= maxAttempts) {
       await logErrorToDatabase({
@@ -69,19 +75,21 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
     // Сохраняем код в базу
-    const { data: authCode, error: insertError } = await supabaseAdmin
-      .from('telegram_auth_codes')
-      .insert({
-        code: code,
-        org_id: orgId || null,
-        event_id: eventId || null,
-        redirect_url: redirectUrl || null,
-        expires_at: expiresAt.toISOString(),
-        ip_address: ipAddress,
-        user_agent: userAgent
-      })
-      .select()
-      .single()
+    const { data: authCode, error: insertError } = await timing.time('insert_code', () =>
+      supabaseAdmin
+        .from('telegram_auth_codes')
+        .insert({
+          code: code,
+          org_id: orgId || null,
+          event_id: eventId || null,
+          redirect_url: redirectUrl || null,
+          expires_at: expiresAt.toISOString(),
+          ip_address: ipAddress,
+          user_agent: userAgent
+        })
+        .select()
+        .single()
+    );
 
     if (insertError || !authCode) {
       await logErrorToDatabase({
@@ -120,6 +128,9 @@ export async function POST(req: NextRequest) {
 
     // QR код - используем QR Server API (бесплатный и надежный)
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(deepLink)}`
+    
+    // Log timing summary (only if > 200ms)
+    timing.logSummary(logger, 200);
 
     return NextResponse.json({
       code: code,

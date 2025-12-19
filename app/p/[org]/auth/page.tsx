@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import MemberAuthClient from './auth-client'
 import { createServiceLogger } from '@/lib/logger'
+import { RequestTiming } from '@/lib/utils/timing'
 
 /**
  * Generate dynamic metadata for auth page based on redirect parameter
@@ -15,6 +16,8 @@ export async function generateMetadata({
   params: Promise<{ org: string }>
   searchParams: Promise<{ redirect?: string }>
 }): Promise<Metadata> {
+  const timing = new RequestTiming('AuthPageMetadata');
+  const logger = createServiceLogger('MemberAuthPage');
   const { org: orgId } = await params
   const { redirect } = await searchParams
   const adminSupabase = createAdminServer()
@@ -27,11 +30,13 @@ export async function generateMetadata({
   
   try {
     // Fetch organization info
-    const { data: org } = await adminSupabase
-      .from('organizations')
-      .select('id, name, logo_url')
-      .eq('id', orgId)
-      .single()
+    const { data: org } = await timing.time('fetch_org', () =>
+      adminSupabase
+        .from('organizations')
+        .select('id, name, logo_url')
+        .eq('id', orgId)
+        .single()
+    );
     
     if (org) {
       siteName = org.name
@@ -46,11 +51,13 @@ export async function generateMetadata({
         const eventId = eventMatch[1]
         
         // Fetch event data
-        const { data: event } = await adminSupabase
-          .from('events')
-          .select('id, title, description, cover_image_url')
-          .eq('id', eventId)
-          .single()
+        const { data: event } = await timing.time('fetch_event_for_og', () =>
+          adminSupabase
+            .from('events')
+            .select('id, title, description, cover_image_url')
+            .eq('id', eventId)
+            .single()
+        );
         
         if (event) {
           // Use event metadata
@@ -114,6 +121,9 @@ export async function generateMetadata({
       twitterConfig.images = [absoluteOgImage]
     }
     
+    // Log timing summary (only if > 300ms)
+    timing.logSummary(logger, 300);
+    
     return {
       title,
       description,
@@ -121,7 +131,6 @@ export async function generateMetadata({
       twitter: twitterConfig,
     }
   } catch (error) {
-    const logger = createServiceLogger('MemberAuthPage');
     logger.error({
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,

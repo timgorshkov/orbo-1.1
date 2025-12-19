@@ -5,6 +5,7 @@ import EventDetail from '@/components/events/event-detail'
 import { Metadata } from 'next'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import { createServiceLogger } from '@/lib/logger'
+import { RequestTiming } from '@/lib/utils/timing'
 
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
@@ -152,40 +153,43 @@ export default async function EventDetailPage({
   params: Promise<{ org: string; id: string }>
   searchParams: Promise<{ edit?: string }>
 }) {
+  const timing = new RequestTiming('EventDetailPage');
   const { org: orgId, id: eventId } = await params
   const { edit } = await searchParams
   
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
+  const logger = createServiceLogger('EventDetailPage');
   
   // Fetch event FIRST to check if it's public (before auth check)
-  const { data: event, error } = await adminSupabase
-    .from('events')
-    .select(`
-      *,
-      event_registrations!event_registrations_event_id_fkey(
-        id,
-        status,
-        registered_at,
-        payment_status,
-        registration_data,
-        participants!inner(
+  const { data: event, error } = await timing.time('fetch_event', () =>
+    adminSupabase
+      .from('events')
+      .select(`
+        *,
+        event_registrations!event_registrations_event_id_fkey(
           id,
-          full_name,
-          username,
-          email,
-          phone,
-          bio,
-          tg_user_id,
-          merged_into
+          status,
+          registered_at,
+          payment_status,
+          registration_data,
+          participants!inner(
+            id,
+            full_name,
+            username,
+            email,
+            phone,
+            bio,
+            tg_user_id,
+            merged_into
+          )
         )
-      )
-    `)
-    .eq('org_id', orgId)
-    .eq('id', eventId)
-    .single()
+      `)
+      .eq('org_id', orgId)
+      .eq('id', eventId)
+      .single()
+  );
 
-  const logger = createServiceLogger('EventDetailPage');
   if (error) {
     logger.error({
       error: error.message,
@@ -210,7 +214,9 @@ export default async function EventDetailPage({
   }
 
   // Check authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await timing.time('check_auth', () =>
+    supabase.auth.getUser()
+  );
   const isAuthenticated = !authError && !!user
   
   // For PUBLIC events: show event details to everyone (auth required only for registration)
@@ -255,15 +261,17 @@ export default async function EventDetailPage({
   let hasOrgAccess = true;
   if (!event.is_public) {
     // Check membership directly instead of using requireOrgAccess (which throws)
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle()
-    
-    // Also check via RPC for more reliable check
-    const { data: rpcCheck } = await supabase.rpc('is_org_member_rpc', { _org: orgId })
+    const [{ data: membership }, { data: rpcCheck }] = await timing.time('check_org_access', () =>
+      Promise.all([
+        supabase
+          .from('memberships')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('org_id', orgId)
+          .maybeSingle(),
+        supabase.rpc('is_org_member_rpc', { _org: orgId })
+      ])
+    );
     
     hasOrgAccess = !!(membership || rpcCheck)
   }
@@ -324,12 +332,14 @@ export default async function EventDetailPage({
     : null
 
   // Check user's role
-  const { data: membership } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
+  const { data: membership } = await timing.time('fetch_membership', () =>
+    supabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle()
+  );
 
   const role = membership?.role || 'guest'
   
@@ -343,33 +353,39 @@ export default async function EventDetailPage({
 
   // Check if current user is registered
   // Find participant via user_telegram_accounts
-  const { data: telegramAccount } = await supabase
-    .from('user_telegram_accounts')
-    .select('telegram_user_id')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
+  const { data: telegramAccount } = await timing.time('fetch_tg_account', () =>
+    supabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle()
+  );
 
   let participant: { id: string } | null = null
   if (telegramAccount?.telegram_user_id) {
-    const { data: foundParticipant } = await adminSupabase
-      .from('participants')
-      .select('id')
-      .eq('org_id', event.org_id)
-      .eq('tg_user_id', telegramAccount.telegram_user_id)
-      .is('merged_into', null)
-      .maybeSingle()
+    const { data: foundParticipant } = await timing.time('find_participant_by_tg', () =>
+      adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
+        .maybeSingle()
+    );
     
     participant = foundParticipant
   } else if (user.email) {
     // Fallback: try finding by email
-    const { data: foundByEmail } = await adminSupabase
-      .from('participants')
-      .select('id')
-      .eq('org_id', event.org_id)
-      .eq('email', user.email)
-      .is('merged_into', null)
-      .maybeSingle()
+    const { data: foundByEmail } = await timing.time('find_participant_by_email', () =>
+      adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('email', user.email)
+        .is('merged_into', null)
+        .maybeSingle()
+    );
     
     participant = foundByEmail
   }
@@ -391,17 +407,19 @@ export default async function EventDetailPage({
   let telegramGroups: any[] = []
   if (role === 'owner' || role === 'admin') {
     // Загружаем группы через org_telegram_groups (new many-to-many schema)
-    const { data: orgGroupsData } = await adminSupabase
-      .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status
-        )
-      `)
-      .eq('org_id', orgId)
+    const { data: orgGroupsData } = await timing.time('fetch_tg_groups', () =>
+      adminSupabase
+        .from('org_telegram_groups')
+        .select(`
+          telegram_groups!inner (
+            id,
+            tg_chat_id,
+            title,
+            bot_status
+          )
+        `)
+        .eq('org_id', orgId)
+    );
     
     if (orgGroupsData) {
       // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
@@ -421,6 +439,9 @@ export default async function EventDetailPage({
       org_id: orgId
     }, 'Loaded connected telegram groups for event sharing');
   }
+  
+  // Log timing summary (only if > 500ms)
+  timing.logSummary(logger, 500);
 
   // Only allow edit mode for admins/owners
   const isAdmin = role === 'owner' || role === 'admin'
