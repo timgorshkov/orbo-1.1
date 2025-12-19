@@ -39,12 +39,16 @@ export async function POST(req: NextRequest) {
       client_timestamp: timestamp,
     };
     
+    // CLS - это score (не время), показываем без "ms"
+    const unit = name === 'CLS' ? '' : 'ms';
+    const valueStr = name === 'CLS' ? value.toFixed(3) : String(Math.round(value));
+    
     if (level === 'error') {
-      logger.error(logData, `Web Vitals CRITICAL: ${name}=${value}ms on ${pathname}`);
+      logger.error(logData, `Web Vitals CRITICAL: ${name}=${valueStr}${unit} on ${pathname}`);
     } else if (level === 'warn') {
-      logger.warn(logData, `Web Vitals SLOW: ${name}=${value}ms on ${pathname}`);
+      logger.warn(logData, `Web Vitals SLOW: ${name}=${valueStr}${unit} on ${pathname}`);
     } else {
-      logger.debug(logData, `Web Vitals: ${name}=${value}ms`);
+      logger.debug(logData, `Web Vitals: ${name}=${valueStr}${unit}`);
     }
     
     return NextResponse.json({ ok: true });

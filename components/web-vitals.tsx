@@ -47,6 +47,8 @@ const HEAVY_PAGE_PATTERNS = [
   '/available-groups',
   '/telegram/groups/',  // Страницы отдельных групп тоже могут быть тяжёлыми
   '/members',           // Список участников
+  '/events/',           // Страницы событий с регистрацией и формами
+  '/dashboard',         // Дашборд с множеством графиков
 ];
 
 function isHeavyPage(pathname: string): boolean {
@@ -78,9 +80,14 @@ export function WebVitals() {
     
     if (shouldLog) {
       // Отправляем на сервер для записи в логи
+      // CLS показываем как есть (это score, не время), остальные округляем
+      const displayValue = name === 'CLS' 
+        ? Math.round(value * 1000) / 1000  // CLS: 3 знака после запятой (например 0.575)
+        : Math.round(value);                // Остальные: целые ms
+      
       const body = JSON.stringify({
         name,
-        value: Math.round(name === 'CLS' ? value * 1000 : value), // CLS в миллисекундах для консистентности
+        value: displayValue,
         rating,
         level,
         pathname,
