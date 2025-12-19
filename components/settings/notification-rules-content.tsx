@@ -27,6 +27,21 @@ import {
 
 const logger = createClientLogger('NotificationRulesContent')
 
+function formatTimeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  
+  if (diffMins < 1) return 'только что'
+  if (diffMins < 60) return `${diffMins} мин назад`
+  if (diffHours < 24) return `${diffHours} ч назад`
+  if (diffDays < 7) return `${diffDays} дн назад`
+  return date.toLocaleDateString('ru')
+}
+
 interface NotificationRuleData {
   id: string
   name: string
@@ -235,7 +250,7 @@ export default function NotificationRulesContent() {
           <div>
             <h4 className="font-medium text-blue-900">Как это работает?</h4>
             <p className="text-sm text-blue-700 mt-1">
-              Правила проверяются автоматически каждые 15 минут. При срабатывании вы получите 
+              Правила проверяются автоматически. При срабатывании вы получите 
               уведомление в Telegram через бота @orbo_assist_bot.
             </p>
             <p className="text-sm text-blue-600 mt-2">
@@ -298,18 +313,28 @@ export default function NotificationRulesContent() {
                       {rule.description && (
                         <p className="text-sm text-gray-600 mt-1">{rule.description}</p>
                       )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
                         <span>
                           {groupCount === groups.length ? 'Все группы' : `${groupCount} групп`}
                         </span>
+                        {rule.config.check_interval_minutes && (
+                          <span>
+                            Интервал: {rule.config.check_interval_minutes} мин
+                          </span>
+                        )}
+                        {rule.last_check_at && (
+                          <span title={new Date(rule.last_check_at).toLocaleString('ru')}>
+                            Проверено: {formatTimeAgo(rule.last_check_at)}
+                          </span>
+                        )}
                         {rule.last_triggered_at && (
                           <span>
-                            Последнее срабатывание: {new Date(rule.last_triggered_at).toLocaleDateString('ru')}
+                            Сработало: {new Date(rule.last_triggered_at).toLocaleDateString('ru')}
                           </span>
                         )}
                         {rule.trigger_count > 0 && (
                           <span>
-                            Срабатываний: {rule.trigger_count}
+                            Всего: {rule.trigger_count} раз
                           </span>
                         )}
                       </div>
@@ -323,11 +348,11 @@ export default function NotificationRulesContent() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEditRule(rule)}>
+                      <DropdownMenuItem onSelect={() => handleEditRule(rule)}>
                         <Pencil className="h-4 w-4 mr-2" />
                         Редактировать
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleToggleRule(rule)}>
+                      <DropdownMenuItem onSelect={() => handleToggleRule(rule)}>
                         {rule.is_enabled ? (
                           <>
                             <Pause className="h-4 w-4 mr-2" />
@@ -341,7 +366,7 @@ export default function NotificationRulesContent() {
                         )}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => handleDeleteRule(rule.id)}
+                        onSelect={() => handleDeleteRule(rule.id)}
                         className="text-red-600"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />

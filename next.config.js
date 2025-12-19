@@ -2,10 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  // Include Hawk.so in standalone build (dynamic import)
-  serverExternalPackages: ['@hawk.so/nodejs'],
-  // Добавьте исключение для директории temp
   experimental: {
+    // Include Hawk.so in standalone build (external package for Node.js)
+    serverComponentsExternalPackages: ['@hawk.so/nodejs'],
+    // Добавьте исключение для директории temp
     outputFileTracingExcludes: {
       '*': ['./temp/**/*'],
     },
