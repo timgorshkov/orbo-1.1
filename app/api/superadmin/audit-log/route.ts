@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     const hours = parseInt(url.searchParams.get('hours') || '24', 10);
     const limit = parseInt(url.searchParams.get('limit') || '100', 10);
     
-    logger.info({ orgId, userId, action, resourceType, hours, limit }, 'Fetching audit logs');
+    logger.debug({ hours, limit }, 'Fetching audit logs');
     
     // Calculate time threshold
     const timeThreshold = new Date();
@@ -163,10 +163,7 @@ export async function GET(req: NextRequest) {
       by_resource: resourceCounts,
     };
     
-    logger.info({ 
-      logsCount: logs?.length || 0, 
-      statistics 
-    }, 'Audit logs fetched successfully');
+    logger.debug({ logsCount: logs?.length || 0 }, 'Audit logs fetched');
     
     return NextResponse.json({
       ok: true,
