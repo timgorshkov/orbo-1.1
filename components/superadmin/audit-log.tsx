@@ -7,12 +7,6 @@ import { Button } from '@/components/ui/button'
 import { 
   RefreshCw,
   ChevronDown,
-  ChevronUp,
-  User,
-  Calendar,
-  Hash,
-  Building2,
-  Clock,
   Activity
 } from 'lucide-react'
 import { getActionDescription, getResourceDescription } from '@/lib/auditActionDescriptions'
@@ -313,140 +307,115 @@ export function AuditLog() {
 
       {/* Audit logs */}
       <Card>
-        <CardHeader>
+        <CardHeader className="py-3">
           <CardTitle className="text-base">
             Журнал действий ({data.logs.length})
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {data.logs.length === 0 ? (
             <div className="text-center py-8">
               <Activity className="h-12 w-12 text-neutral-400 mx-auto mb-3" />
               <p className="text-sm text-neutral-600">
                 Нет действий за выбранный период
               </p>
-              <p className="text-xs text-neutral-400 mt-1">
-                Действия админов будут отображаться здесь
-              </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y">
               {data.logs.map((log) => {
                 const isExpanded = expandedLogs.has(log.id)
+                const userEmail = log.users?.email && log.users.email !== 'Unknown' 
+                  ? log.users.email 
+                  : null
+                const orgName = log.organizations?.name && log.organizations.name !== 'Unknown'
+                  ? log.organizations.name
+                  : null
+                
+                // Фильтруем metadata - убираем tg_chat_id и другие технические поля
+                const filteredMetadata = log.metadata ? Object.fromEntries(
+                  Object.entries(log.metadata).filter(([key]) => 
+                    !['tg_chat_id', 'chat_id'].includes(key)
+                  )
+                ) : null
+                const hasMetadata = filteredMetadata && Object.keys(filteredMetadata).length > 0
                 
                 return (
                   <div
                     key={log.id}
-                    className="border rounded-lg overflow-hidden"
+                    className="hover:bg-neutral-50 transition-colors"
                   >
-                    {/* Header */}
-                    <div className="p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5">
-                          <User className="h-4 w-4 text-blue-600" />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                              {getActionDescription(log.action)}
-                            </Badge>
-                            
-                            <Badge variant="outline" className="text-xs">
-                              {getResourceDescription(log.resource_type)}
-                            </Badge>
-                            
-                            {log.resource_id && (
-                              <Badge variant="outline" className="text-xs font-mono bg-neutral-50">
-                                <Hash className="h-3 w-3 mr-1" />
-                                {log.resource_id.length > 8 ? `${log.resource_id.substring(0, 8)}...` : log.resource_id}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <p className="text-sm mb-1">
-                            <span className="font-medium">{log.users?.email || 'Неизвестный пользователь'}</span>
-                          </p>
-                          
-                          <div className="flex items-center gap-4 text-xs text-neutral-500">
-                            <span className="flex items-center gap-1">
-                              <Building2 className="h-3 w-3" />
-                              {log.organizations?.name || 'Неизвестная орг.'}
-                            </span>
-                            <span className="flex items-center gap-1" title={formatDate(log.created_at)}>
-                              <Clock className="h-3 w-3" />
-                              {getTimeAgo(log.created_at)}
-                            </span>
-                          </div>
-                          
-                          {log.metadata && Object.keys(log.metadata).length > 0 && (
-                            <div className="text-xs text-neutral-600 mt-2 flex flex-wrap gap-2">
-                              {Object.entries(log.metadata).slice(0, 3).map(([key, value]) => (
-                                <span key={key} className="bg-neutral-100 px-2 py-0.5 rounded">
-                                  {key}: {String(value).length > 20 ? `${String(value).substring(0, 20)}...` : String(value)}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        
-                        <Button
-                          onClick={() => toggleExpanded(log.id)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          {isExpanded ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                        </Button>
+                    {/* Compact row */}
+                    <div 
+                      className="px-4 py-2 flex items-center gap-3 cursor-pointer"
+                      onClick={() => toggleExpanded(log.id)}
+                    >
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 whitespace-nowrap">
+                          {getActionDescription(log.action)}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                          {getResourceDescription(log.resource_type)}
+                        </Badge>
                       </div>
+                      
+                      <div className="flex-1 min-w-0 flex items-center gap-3 text-sm">
+                        {userEmail && (
+                          <span className="font-medium text-neutral-900 truncate max-w-[200px]" title={userEmail}>
+                            {userEmail}
+                          </span>
+                        )}
+                        {orgName && (
+                          <span className="text-neutral-500 truncate max-w-[150px]" title={orgName}>
+                            {orgName}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <span className="text-xs text-neutral-400 flex-shrink-0" title={formatDate(log.created_at)}>
+                        {getTimeAgo(log.created_at)}
+                      </span>
+                      
+                      <ChevronDown className={`h-4 w-4 text-neutral-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                     </div>
                     
                     {/* Expanded details */}
                     {isExpanded && (
-                      <div className="px-3 pb-3 space-y-3 border-t pt-3 bg-neutral-50">
+                      <div className="px-4 pb-3 pt-1 bg-neutral-50 border-t text-xs space-y-2">
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-neutral-600">
+                          <span><strong>Время:</strong> {formatDate(log.created_at)}</span>
+                          {userEmail && <span><strong>Email:</strong> {userEmail}</span>}
+                          {orgName && <span><strong>Организация:</strong> {orgName}</span>}
+                          {log.resource_id && <span><strong>Resource ID:</strong> <code className="bg-white px-1 rounded">{log.resource_id}</code></span>}
+                        </div>
+                        
                         {log.request_id && (
-                          <div>
-                            <p className="text-xs font-medium text-neutral-700 mb-1">
-                              ID запроса:
-                            </p>
-                            <p className="text-xs text-neutral-600 font-mono bg-white p-2 rounded border">
-                              {log.request_id}
-                            </p>
+                          <div className="text-neutral-600">
+                            <strong>Request ID:</strong> <code className="bg-white px-1 rounded">{log.request_id}</code>
                           </div>
                         )}
                         
                         {log.ip_address && (
-                          <div>
-                            <p className="text-xs font-medium text-neutral-700 mb-1">
-                              IP адрес:
-                            </p>
-                            <p className="text-xs text-neutral-600 font-mono bg-white p-2 rounded border">
-                              {log.ip_address}
-                            </p>
+                          <div className="text-neutral-600">
+                            <strong>IP:</strong> {log.ip_address}
                           </div>
                         )}
                         
                         {log.changes && (log.changes.before || log.changes.after) && (
                           <div>
-                            <p className="text-xs font-medium text-neutral-700 mb-1">
-                              Изменения:
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
+                            <strong className="text-neutral-700">Изменения:</strong>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
                               {log.changes.before && (
                                 <div>
-                                  <p className="text-xs text-neutral-500 mb-1">До:</p>
-                                  <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
+                                  <span className="text-neutral-500">До:</span>
+                                  <pre className="text-neutral-600 bg-white p-2 rounded overflow-x-auto border mt-1 text-xs">
                                     {JSON.stringify(log.changes.before, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.changes.after && (
                                 <div>
-                                  <p className="text-xs text-neutral-500 mb-1">После:</p>
-                                  <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
+                                  <span className="text-neutral-500">После:</span>
+                                  <pre className="text-neutral-600 bg-white p-2 rounded overflow-x-auto border mt-1 text-xs">
                                     {JSON.stringify(log.changes.after, null, 2)}
                                   </pre>
                                 </div>
@@ -455,21 +424,19 @@ export function AuditLog() {
                           </div>
                         )}
                         
-                        {log.metadata && Object.keys(log.metadata).length > 0 && (
+                        {hasMetadata && (
                           <div>
-                            <p className="text-xs font-medium text-neutral-700 mb-1">
-                              Дополнительная информация:
-                            </p>
-                            <pre className="text-xs text-neutral-600 bg-white p-2 rounded overflow-x-auto border">
-                              {JSON.stringify(log.metadata, null, 2)}
+                            <strong className="text-neutral-700">Метаданные:</strong>
+                            <pre className="text-neutral-600 bg-white p-2 rounded overflow-x-auto border mt-1 text-xs">
+                              {JSON.stringify(filteredMetadata, null, 2)}
                             </pre>
                           </div>
                         )}
                         
-                        <div className="flex gap-4 text-xs text-neutral-500 pt-2 border-t">
-                          <span>ID: {log.id}</span>
-                          <span>User ID: {log.user_id.slice(0, 8)}...</span>
-                          <span>Org ID: {log.org_id.slice(0, 8)}...</span>
+                        <div className="flex gap-4 text-neutral-400 pt-1 border-t border-neutral-200">
+                          <span>Log ID: {log.id}</span>
+                          <span>User: {log.user_id}</span>
+                          <span>Org: {log.org_id}</span>
                         </div>
                       </div>
                     )}

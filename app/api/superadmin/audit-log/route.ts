@@ -117,14 +117,21 @@ export async function GET(req: NextRequest) {
     // Enrich logs with user emails and org names
     if (logs && logs.length > 0) {
       // Get unique user IDs and org IDs
-      const userIds = Array.from(new Set(logs.map(l => l.user_id)));
-      const orgIds = Array.from(new Set(logs.map(l => l.org_id)));
+      const userIds = Array.from(new Set(logs.map(l => l.user_id).filter(Boolean)));
+      const orgIds = Array.from(new Set(logs.map(l => l.org_id).filter(Boolean)));
       
-      // Fetch users from auth.users (requires admin client)
-      const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-      const userMap = new Map(
-        users.users.map(u => [u.id, u.email])
-      );
+      // Fetch users by ID - more reliable than listUsers pagination
+      const userMap = new Map<string, string>();
+      for (const userId of userIds) {
+        try {
+          const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+          if (data?.user?.email) {
+            userMap.set(userId, data.user.email);
+          }
+        } catch {
+          // Skip if user not found
+        }
+      }
       
       // Fetch organizations
       const { data: orgs } = await supabaseAdmin
@@ -137,8 +144,8 @@ export async function GET(req: NextRequest) {
       
       // Enrich logs
       logs.forEach(log => {
-        (log as any).users = { email: userMap.get(log.user_id) || 'Unknown' };
-        (log as any).organizations = { name: orgMap.get(log.org_id) || 'Unknown' };
+        (log as any).users = { email: userMap.get(log.user_id) || null };
+        (log as any).organizations = { name: orgMap.get(log.org_id) || null };
       });
     }
     
