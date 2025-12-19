@@ -220,10 +220,15 @@ export async function POST(request: Request) {
     
     // 🔄 Резолв миграции: если группа была мигрирована, используем новую
     if (group.migrated_to) {
-      logger.info({ 
-        old_chat_id: group.tg_chat_id, 
-        new_chat_id: group.migrated_to 
-      }, 'Group was migrated, using new chat_id');
+      logger.warn({ 
+        old_group_id: groupId,
+        old_chat_id: group.tg_chat_id,
+        old_title: group.title,
+        new_chat_id: group.migrated_to,
+        org_id: orgId,
+        user_id: user.id,
+        event: 'ADD_TO_ORG_MIGRATION_RESOLVED'
+      }, '⚠️ [ADD-TO-ORG] Group was migrated - resolving to new chat_id');
       
       const { data: newGroup, error: newGroupError } = await supabaseService
         .from('telegram_groups')
@@ -232,13 +237,24 @@ export async function POST(request: Request) {
         .single();
       
       if (newGroup && !newGroupError) {
+        logger.info({ 
+          old_group_id: groupId,
+          old_chat_id: group.tg_chat_id,
+          new_group_id: newGroup.id, 
+          new_chat_id: newGroup.tg_chat_id,
+          new_title: newGroup.title,
+          new_bot_status: newGroup.bot_status,
+          event: 'ADD_TO_ORG_MIGRATION_SWITCH_SUCCESS'
+        }, '✅ [ADD-TO-ORG] Switched to migrated group successfully');
         group = newGroup;
-        logger.info({ new_group_id: newGroup.id, new_chat_id: newGroup.tg_chat_id }, 'Switched to migrated group');
       } else {
-        logger.warn({ 
+        logger.error({ 
+          old_group_id: groupId,
+          old_chat_id: group.tg_chat_id,
           migrated_to: group.migrated_to, 
-          error: newGroupError?.message 
-        }, 'Migrated group not found, proceeding with original');
+          error: newGroupError?.message,
+          event: 'ADD_TO_ORG_MIGRATION_TARGET_NOT_FOUND'
+        }, '❌ [ADD-TO-ORG] Migrated group not found - proceeding with original (may cause issues)');
       }
     }
     

@@ -138,7 +138,12 @@ export async function GET(request: NextRequest) {
           
           // Группа была конвертирована в супергруппу - это ожидаемая ситуация
           if (errorMessage.includes('upgraded to a supergroup')) {
-            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Group upgraded to supergroup - attempting auto-migration');
+            logger.warn({ 
+              chat_id: chatId, 
+              group_title: groupTitle,
+              org_id: org.id,
+              event: 'CRON_SUPERGROUP_DETECTED'
+            }, '⚠️ [CRON] Group upgraded to supergroup - attempting auto-migration');
             
             // 🔄 Пытаемся автоматически выполнить миграцию
             try {
@@ -149,13 +154,16 @@ export async function GET(request: NextRequest) {
                 const newChatId = chatInfo.result.migrated_to_chat_id;
                 logger.info({ 
                   old_chat_id: chatId, 
-                  new_chat_id: newChatId 
-                }, 'Found new supergroup chat_id - triggering migration');
+                  new_chat_id: newChatId,
+                  group_title: groupTitle,
+                  org_id: org.id,
+                  event: 'CRON_MIGRATION_NEW_ID_FOUND'
+                }, '🔄 [CRON] Found new supergroup chat_id - triggering migration');
                 
                 // Создаем запись для новой группы, если её нет
                 const { data: existingNew } = await supabaseService
                   .from('telegram_groups')
-                  .select('id')
+                  .select('id, title, bot_status')
                   .eq('tg_chat_id', String(newChatId))
                   .maybeSingle();
                 
@@ -168,6 +176,14 @@ export async function GET(request: NextRequest) {
                     .maybeSingle();
                   
                   if (oldGroup) {
+                    logger.info({
+                      old_chat_id: chatId,
+                      new_chat_id: newChatId,
+                      group_title: oldGroup.title,
+                      member_count: oldGroup.member_count,
+                      event: 'CRON_MIGRATION_CREATING_NEW_GROUP'
+                    }, '🔄 [CRON] Creating new group record from old data');
+                    
                     await supabaseService
                       .from('telegram_groups')
                       .insert({
@@ -179,7 +195,22 @@ export async function GET(request: NextRequest) {
                         migrated_from: chatId,
                         last_sync_at: new Date().toISOString()
                       });
+                  } else {
+                    logger.warn({
+                      old_chat_id: chatId,
+                      new_chat_id: newChatId,
+                      group_title: groupTitle,
+                      event: 'CRON_MIGRATION_OLD_NOT_FOUND'
+                    }, '⚠️ [CRON] Old group data not found - creating minimal record');
                   }
+                } else {
+                  logger.info({
+                    old_chat_id: chatId,
+                    new_chat_id: newChatId,
+                    existing_title: existingNew.title,
+                    existing_bot_status: existingNew.bot_status,
+                    event: 'CRON_MIGRATION_TARGET_EXISTS'
+                  }, '🔄 [CRON] Target group already exists');
                 }
                 
                 // Вызываем функцию миграции
@@ -193,14 +224,21 @@ export async function GET(request: NextRequest) {
                   logger.error({ 
                     old_chat_id: chatId, 
                     new_chat_id: newChatId,
-                    error: migrationError.message 
-                  }, 'Migration RPC error');
+                    group_title: groupTitle,
+                    org_id: org.id,
+                    error: migrationError.message,
+                    error_code: (migrationError as any).code,
+                    event: 'CRON_MIGRATION_RPC_ERROR'
+                  }, '❌ [CRON] Migration RPC error');
                 } else {
                   logger.info({ 
                     old_chat_id: chatId, 
                     new_chat_id: newChatId,
-                    result: migrationResult 
-                  }, 'Migration completed successfully');
+                    group_title: groupTitle,
+                    org_id: org.id,
+                    result: migrationResult,
+                    event: 'CRON_MIGRATION_COMPLETED'
+                  }, '✅ [CRON] Migration completed successfully');
                   
                   // Записываем миграцию в лог
                   await supabaseService
@@ -213,7 +251,14 @@ export async function GET(request: NextRequest) {
                 }
               } else {
                 // Не удалось получить новый chat_id - помечаем для ручной миграции
-                logger.warn({ chat_id: chatId }, 'Could not get new chat_id - marking for migration');
+                logger.warn({ 
+                  chat_id: chatId,
+                  group_title: groupTitle,
+                  org_id: org.id,
+                  chat_info_ok: chatInfo.ok,
+                  event: 'CRON_MIGRATION_NO_NEW_ID'
+                }, '⚠️ [CRON] Could not get new chat_id from Telegram API - marking for migration');
+                
                 await supabaseService
                   .from('telegram_groups')
                   .update({ 
@@ -224,9 +269,12 @@ export async function GET(request: NextRequest) {
               }
             } catch (migrationAttemptError: any) {
               logger.error({ 
-                chat_id: chatId, 
-                error: migrationAttemptError.message 
-              }, 'Auto-migration attempt failed');
+                chat_id: chatId,
+                group_title: groupTitle,
+                org_id: org.id,
+                error: migrationAttemptError.message,
+                event: 'CRON_MIGRATION_EXCEPTION'
+              }, '❌ [CRON] Auto-migration attempt failed');
               
               // Помечаем группу как требующую миграции
               await supabaseService
@@ -239,7 +287,12 @@ export async function GET(request: NextRequest) {
             }
           } else if (errorMessage.includes('bot was kicked') || errorMessage.includes('was kicked from')) {
             // Бот был удалён из группы - это ожидаемая ситуация
-            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Bot was kicked from group - marking as inactive');
+            logger.warn({ 
+              chat_id: chatId, 
+              group_title: groupTitle,
+              org_id: org.id,
+              event: 'CRON_BOT_KICKED'
+            }, '⚠️ [CRON] Bot was kicked from group - marking as inactive');
             
             // Помечаем группу как неактивную
             await supabaseService
@@ -251,7 +304,12 @@ export async function GET(request: NextRequest) {
               .eq('tg_chat_id', chatId);
           } else if (errorMessage.includes('chat not found')) {
             // Группа была удалена или стала недоступна
-            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Chat not found - marking as inactive');
+            logger.warn({ 
+              chat_id: chatId, 
+              group_title: groupTitle,
+              org_id: org.id,
+              event: 'CRON_CHAT_NOT_FOUND'
+            }, '⚠️ [CRON] Chat not found - marking as inactive');
             
             await supabaseService
               .from('telegram_groups')

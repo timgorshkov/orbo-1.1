@@ -276,14 +276,56 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           if (newStatus === 'administrator') botStatus = 'connected';
           else if (newStatus === 'left' || newStatus === 'kicked') botStatus = 'inactive';
           
+          const chatTitle = chatMember.chat?.title || `Chat ${memberChatId}`;
+          
           logger.info({ 
             chat_id: memberChatId,
+            chat_title: chatTitle,
             bot_status: botStatus,
-            new_status: newStatus
+            new_status: newStatus,
+            chat_type: chatMember.chat?.type
           }, 'Bot status changed');
           
+          // Проверяем, существует ли уже группа
+          const { data: existingGroup } = await supabaseServiceRole
+            .from('telegram_groups')
+            .select('id, title, bot_status')
+            .eq('tg_chat_id', String(memberChatId))
+            .maybeSingle();
+          
+          // ⚠️ Проверяем на дубликаты по названию для новых групп
+          if (!existingGroup) {
+            const { data: sameNameGroups } = await supabaseServiceRole
+              .from('telegram_groups')
+              .select('id, tg_chat_id, bot_status, migrated_to')
+              .eq('title', chatTitle)
+              .neq('tg_chat_id', String(memberChatId))
+              .is('migrated_to', null);
+            
+            if (sameNameGroups && sameNameGroups.length > 0) {
+              logger.warn({
+                new_chat_id: memberChatId,
+                new_title: chatTitle,
+                existing_groups: sameNameGroups.map(g => ({
+                  id: g.id,
+                  tg_chat_id: g.tg_chat_id,
+                  bot_status: g.bot_status
+                })),
+                potential_migration: sameNameGroups.some(g => 
+                  String(memberChatId).startsWith('-100') && !String(g.tg_chat_id).startsWith('-100')
+                )
+              }, 'Bot added to group with same title as existing - potential duplicate');
+            }
+          } else if (existingGroup.bot_status !== botStatus) {
+            logger.info({
+              chat_id: memberChatId,
+              chat_title: chatTitle,
+              old_bot_status: existingGroup.bot_status,
+              new_bot_status: botStatus
+            }, 'Bot status transition');
+          }
+          
           // Upsert group so that it appears in available groups even если еще не было сообщений
-          const chatTitle = chatMember.chat?.title || `Chat ${memberChatId}`;
           const { error: upsertError } = await supabaseServiceRole
             .from('telegram_groups')
             .upsert({
@@ -296,7 +338,9 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           if (upsertError) {
             logger.error({ 
               chat_id: memberChatId,
-              error: upsertError.message 
+              chat_title: chatTitle,
+              error: upsertError.message,
+              error_code: (upsertError as any).code
             }, 'Bot status upsert error');
           }
         }
@@ -393,17 +437,38 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     if (body.message?.migrate_to_chat_id) {
       const oldChatId = body.message.chat.id;
       const newChatId = body.message.migrate_to_chat_id;
+      const chatTitle = body.message.chat.title || 'Unknown';
       
       logger.info({ 
         old_chat_id: oldChatId,
-        new_chat_id: newChatId 
-      }, 'Group migrated to supergroup - starting migration');
+        new_chat_id: newChatId,
+        chat_title: chatTitle,
+        event: 'CHAT_MIGRATION_STARTED'
+      }, '🔄 [MIGRATION] Group migrated to supergroup - starting migration');
       
       try {
+        // Проверяем, есть ли org привязки для старой группы
+        const { data: orgBindings } = await supabaseServiceRole
+          .from('org_telegram_groups')
+          .select('org_id')
+          .eq('tg_chat_id', String(oldChatId));
+        
+        const hasOrgBindings = orgBindings && orgBindings.length > 0;
+        
+        if (hasOrgBindings) {
+          logger.info({
+            old_chat_id: oldChatId,
+            new_chat_id: newChatId,
+            chat_title: chatTitle,
+            org_ids: orgBindings.map(b => b.org_id),
+            event: 'CHAT_MIGRATION_HAS_ORG_BINDINGS'
+          }, '🔄 [MIGRATION] Group has organization bindings that will be migrated');
+        }
+        
         // Сначала создаем запись для новой группы, если её нет
         const { data: existingNew } = await supabaseServiceRole
           .from('telegram_groups')
-          .select('id')
+          .select('id, title, bot_status')
           .eq('tg_chat_id', String(newChatId))
           .maybeSingle();
         
@@ -416,6 +481,15 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             .maybeSingle();
           
           if (oldGroup) {
+            logger.info({
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId,
+              chat_title: oldGroup.title,
+              bot_status: oldGroup.bot_status,
+              member_count: oldGroup.member_count,
+              event: 'CHAT_MIGRATION_CREATING_NEW_GROUP'
+            }, '🔄 [MIGRATION] Creating new group record from old data');
+            
             await supabaseServiceRole
               .from('telegram_groups')
               .insert({
@@ -424,9 +498,34 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 bot_status: oldGroup.bot_status,
                 member_count: oldGroup.member_count,
                 invite_link: oldGroup.invite_link,
+                migrated_from: String(oldChatId),
+                last_sync_at: new Date().toISOString()
+              });
+          } else {
+            logger.warn({
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId,
+              event: 'CHAT_MIGRATION_OLD_GROUP_NOT_FOUND'
+            }, '⚠️ [MIGRATION] Old group not found in database - creating minimal record');
+            
+            await supabaseServiceRole
+              .from('telegram_groups')
+              .insert({
+                tg_chat_id: String(newChatId),
+                title: chatTitle,
+                bot_status: 'connected',
+                migrated_from: String(oldChatId),
                 last_sync_at: new Date().toISOString()
               });
           }
+        } else {
+          logger.info({
+            old_chat_id: oldChatId,
+            new_chat_id: newChatId,
+            existing_title: existingNew.title,
+            existing_bot_status: existingNew.bot_status,
+            event: 'CHAT_MIGRATION_TARGET_EXISTS'
+          }, '🔄 [MIGRATION] Target group already exists');
         }
         
         // Вызываем функцию миграции
@@ -440,14 +539,19 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           logger.error({ 
             old_chat_id: oldChatId,
             new_chat_id: newChatId,
-            error: error.message 
-          }, 'Migration RPC error');
+            chat_title: chatTitle,
+            error: error.message,
+            error_code: (error as any).code,
+            event: 'CHAT_MIGRATION_RPC_ERROR'
+          }, '❌ [MIGRATION] Migration RPC error');
         } else {
           logger.info({ 
             old_chat_id: oldChatId,
             new_chat_id: newChatId,
-            result 
-          }, 'Group migration completed successfully');
+            chat_title: chatTitle,
+            result,
+            event: 'CHAT_MIGRATION_COMPLETED'
+          }, '✅ [MIGRATION] Group migration completed successfully');
           
           // Записываем миграцию в лог
           await supabaseServiceRole
@@ -471,21 +575,31 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     if (body.message?.migrate_from_chat_id) {
       const newChatId = body.message.chat.id;
       const oldChatId = body.message.migrate_from_chat_id;
+      const chatTitle = body.message.chat.title || 'Unknown';
       
       logger.info({ 
         old_chat_id: oldChatId,
-        new_chat_id: newChatId 
-      }, 'Received migrate_from_chat_id - ensuring migration is complete');
+        new_chat_id: newChatId,
+        chat_title: chatTitle,
+        event: 'CHAT_MIGRATION_FROM_RECEIVED'
+      }, '🔄 [MIGRATION] Received migrate_from_chat_id - ensuring migration is complete');
       
       // Проверяем, была ли уже выполнена миграция
       const { data: migration } = await supabaseServiceRole
         .from('telegram_chat_migrations')
-        .select('id')
+        .select('id, migrated_at')
         .eq('old_chat_id', oldChatId)
         .eq('new_chat_id', newChatId)
         .maybeSingle();
       
       if (!migration) {
+        logger.info({
+          old_chat_id: oldChatId,
+          new_chat_id: newChatId,
+          chat_title: chatTitle,
+          event: 'CHAT_MIGRATION_DELAYED_START'
+        }, '🔄 [MIGRATION] Migration not found - executing delayed migration');
+        
         // Миграция еще не выполнена - выполняем
         try {
           const { data: result, error } = await supabaseServiceRole
@@ -498,14 +612,19 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             logger.error({ 
               old_chat_id: oldChatId,
               new_chat_id: newChatId,
-              error: error.message 
-            }, 'Delayed migration RPC error');
+              chat_title: chatTitle,
+              error: error.message,
+              error_code: (error as any).code,
+              event: 'CHAT_MIGRATION_DELAYED_ERROR'
+            }, '❌ [MIGRATION] Delayed migration RPC error');
           } else {
             logger.info({ 
               old_chat_id: oldChatId,
               new_chat_id: newChatId,
-              result 
-            }, 'Delayed migration completed');
+              chat_title: chatTitle,
+              result,
+              event: 'CHAT_MIGRATION_DELAYED_COMPLETED'
+            }, '✅ [MIGRATION] Delayed migration completed');
             
             await supabaseServiceRole
               .from('telegram_chat_migrations')
