@@ -75,10 +75,10 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     
     if (codeError || !authCodes) {
-      logger.error({ 
+      logger.info({ 
         error: codeError?.message,
-        code
-      }, 'Code not found');
+        code: code.substring(0, 3) + '***'
+      }, '[Telegram Auth] Code not found');
       return NextResponse.redirect(new URL('/signin?error=invalid_code', baseUrl))
     }
     
@@ -86,27 +86,27 @@ export async function GET(request: NextRequest) {
       const usedAt = authCodes.used_at ? new Date(authCodes.used_at) : null
       const now = new Date()
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
-        logger.error({ 
+        logger.info({ 
           code_id: authCodes.id,
           used_at: usedAt.toISOString()
-        }, 'Code already used and expired');
+        }, '[Telegram Auth] Code expired (used >30s ago)');
         return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
-      logger.warn({ 
+      logger.info({ 
         code_id: authCodes.id,
         used_at: usedAt?.toISOString()
-      }, 'Code already used, will create new session');
+      }, '[Telegram Auth] Code reused within grace period, creating new session');
       // Продолжаем создание новой сессии (не возвращаемся)
       // Потому что после logout старой сессии нет
     }
     
     const expiresAt = new Date(authCodes.expires_at)
     if (expiresAt < new Date()) {
-      logger.error({ 
+      logger.info({ 
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
-      }, 'Code expired');
+      }, '[Telegram Auth] Code TTL expired');
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     

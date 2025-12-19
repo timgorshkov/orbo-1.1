@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     }
     
     if (!authCodes) {
-      logger.error({ code }, 'Code not found or not verified');
+      logger.info({ code: code.substring(0, 3) + '***' }, '[Telegram Auth] Code not found or not verified by bot');
       return NextResponse.redirect(new URL('/signin?error=invalid_code', baseUrl))
     }
     
@@ -96,17 +96,17 @@ export async function GET(request: NextRequest) {
       
       // Разрешаем повторное использование в течение 30 секунд (для предпросмотра Telegram)
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
-        logger.error({ 
+        logger.info({ 
           code_id: authCodes.id,
           used_at: usedAt.toISOString()
-        }, 'Code already used and expired');
+        }, '[Telegram Auth] Code expired (used >30s ago)');
         return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
-      logger.warn({ 
+      logger.info({ 
         code_id: authCodes.id,
         used_at: usedAt?.toISOString()
-      }, 'Code already used, redirecting to fallback immediately');
+      }, '[Telegram Auth] Code reused within grace period, redirecting to fallback');
       
       // Для уже использованного кода сразу редиректим на fallback
       // Не пытаемся создать новую сессию (пароль уже изменился)
@@ -133,10 +133,10 @@ export async function GET(request: NextRequest) {
     const currentTime = new Date()
     
     if (expiresAt < currentTime) {
-      logger.error({ 
+      logger.info({ 
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
-      }, 'Code expired');
+      }, '[Telegram Auth] Code TTL expired');
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
