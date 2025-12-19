@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
       }
     };
     
-    // Get recent logs stats
+    // Get recent logs stats (using service role to bypass RLS)
     const { data: logsStats, error: logsError } = await supabaseAdmin
       .from('openai_api_logs')
       .select('id, created_at, request_type')
@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
     const recentLogs = {
       count: logsStats?.length || 0,
       lastLog: logsStats?.[0]?.created_at || null,
+      lastLogType: logsStats?.[0]?.request_type || null,
       error: logsError?.message || null
     };
     

@@ -97,12 +97,9 @@ export default function AICoststPage() {
       setSummary(summaryData as CostSummary)
     }
     
-    // Fetch recent logs
+    // Fetch recent logs via RPC (bypasses RLS issues)
     const { data: logsData, error: logsError } = await supabase
-      .from('openai_api_logs')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50)
+      .rpc('get_openai_api_logs', { p_org_id: null, p_limit: 50 })
     
     if (logsError) {
       logger.error({
@@ -163,8 +160,8 @@ export default function AICoststPage() {
         </Card>
       )}
 
-      {/* Success status */}
-      {openaiStatus && openaiStatus.diagnostics.status === 'ok' && recentLogs.length === 0 && (
+      {/* Success status - only show if no logs AND no summary data */}
+      {openaiStatus && openaiStatus.diagnostics.status === 'ok' && recentLogs.length === 0 && (!summary || summary.total_requests === 0) && (
         <Card className="mb-6 border-blue-300 bg-blue-50">
           <CardHeader>
             <CardTitle className="text-blue-800 flex items-center gap-2">
