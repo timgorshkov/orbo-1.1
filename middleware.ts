@@ -3,6 +3,21 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
 
+/**
+ * Get the public base URL for redirects
+ */
+function getPublicBaseUrl(request: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+  return new URL(request.url).origin
+}
+
 export async function middleware(request: NextRequest) {
   const logger = createServiceLogger('middleware');
   // Create response once - don't recreate it multiple times
@@ -84,8 +99,9 @@ export async function middleware(request: NextRequest) {
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!session && (pathname.startsWith('/app') || pathname.startsWith('/superadmin'))) {
-    // Перенаправляем на страницу входа
-    const redirectUrl = new URL('/signin', request.url)
+    // Перенаправляем на страницу входа (используем публичный URL для Docker)
+    const baseUrl = getPublicBaseUrl(request)
+    const redirectUrl = new URL('/signin', baseUrl)
     redirectUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(redirectUrl)
   }

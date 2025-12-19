@@ -5,12 +5,29 @@ import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Get the public base URL for redirects
+ */
+function getPublicBaseUrl(request: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+  return new URL(request.url).origin
+}
+
 export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/events/checkin' });
+  const baseUrl = getPublicBaseUrl(req)
+  
   // Получаем токен из строки запроса
   const token = req.nextUrl.searchParams.get('token')
   if (!token) {
-    return NextResponse.redirect(new URL('/?checkin=missing', req.url))
+    return NextResponse.redirect(new URL('/?checkin=missing', baseUrl))
   }
 
   // Для полной безопасности мы можем хэшировать токен и сравнивать с хранящимся хэшем
@@ -30,7 +47,7 @@ export async function GET(req: NextRequest) {
 
     if (error || !data) {
       logger.error({ error: error?.message, token_hash: hash.substring(0, 8) + '...' }, 'Invalid checkin token');
-      return NextResponse.redirect(new URL('/?checkin=invalid', req.url))
+      return NextResponse.redirect(new URL('/?checkin=invalid', baseUrl))
     }
 
     logger.info({ registration_id: data.id, event_id: data.event_id, org_id: data.org_id }, 'Processing checkin');
@@ -40,7 +57,7 @@ export async function GET(req: NextRequest) {
       logger.info({ registration_id: data.id }, 'Checkin already completed');
       // Уже отмечен, но перенаправляем на страницу события с сообщением
       return NextResponse.redirect(
-        new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=already`, req.url)
+        new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=already`, baseUrl)
       )
     }
 
@@ -52,7 +69,7 @@ export async function GET(req: NextRequest) {
 
     if (updateError) {
       logger.error({ error: updateError.message, registration_id: data.id }, 'Error updating checkin status');
-      return NextResponse.redirect(new URL('/?checkin=error', req.url))
+      return NextResponse.redirect(new URL('/?checkin=error', baseUrl))
     }
 
     // Записываем событие активности для чек-ина
@@ -72,7 +89,7 @@ export async function GET(req: NextRequest) {
     
     // Успешный чек-ин, перенаправляем на страницу события
     return NextResponse.redirect(
-      new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=ok`, req.url)
+      new URL(`/p/${data.org_id}/events/${data.event_id}?checkin=ok`, baseUrl)
     )
 
   } catch (e) {
@@ -80,6 +97,6 @@ export async function GET(req: NextRequest) {
       error: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined
     }, 'Checkin error');
-    return NextResponse.redirect(new URL('/?checkin=error', req.url))
+    return NextResponse.redirect(new URL('/?checkin=error', baseUrl))
   }
 }

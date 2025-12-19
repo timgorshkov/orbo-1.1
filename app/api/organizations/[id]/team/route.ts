@@ -156,7 +156,7 @@ export async function POST(
     // Step 1: Update admin rights from Telegram API first
     logger.info({ org_id: orgId }, 'Step 1: Updating admin rights from Telegram');
     try {
-      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/telegram/groups/update-admins`, {
+      const updateResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/telegram/groups/update-admins`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
