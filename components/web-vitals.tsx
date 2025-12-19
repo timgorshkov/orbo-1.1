@@ -36,7 +36,7 @@ const THRESHOLDS = {
 const HEAVY_PAGE_THRESHOLDS = {
   LCP: { warn: 10000, critical: 30000 },    // ms
   FID: { warn: 1000, critical: 5000 },      // ms
-  CLS: { warn: 0.3, critical: 0.6 },        // score
+  CLS: { warn: 0.5, critical: 0.8 },        // score - повышены (сложные страницы с динамическим контентом)
   FCP: { warn: 10000, critical: 25000 },    // ms
   TTFB: { warn: 5000, critical: 15000 },    // ms
   INP: { warn: 2000, critical: 10000 },     // ms
