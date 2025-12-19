@@ -528,11 +528,11 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           
-                          {/* Payment Info for Registered Users */}
+                          {/* Payment Info for Registered Users - min-height prevents CLS */}
                           {(event.requires_payment || event.is_paid) && (
-                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3">
+                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3 min-h-[80px]">
                               {loadingRegistration ? (
-                                <div className="text-sm text-neutral-500">Загрузка информации об оплате...</div>
+                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
                               ) : userRegistration ? (
                                 <>
                                   {/* Payment Status */}
@@ -979,11 +979,11 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           
-                          {/* Payment Info for Registered Users */}
+                          {/* Payment Info for Registered Users - min-height prevents CLS */}
                           {(event.requires_payment || event.is_paid) && (
-                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3">
+                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3 min-h-[80px]">
                               {loadingRegistration ? (
-                                <div className="text-sm text-neutral-500">Загрузка информации об оплате...</div>
+                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
                               ) : userRegistration ? (
                                 <>
                                   {userRegistration.payment_status && (

@@ -448,8 +448,8 @@ export default async function EventDetailPage({
     }, 'Loaded connected telegram groups for event sharing');
   }
   
-  // Log timing summary (only if > 500ms)
-  timing.logSummary(logger, 500);
+  // Log timing summary (only if > 200ms for debugging)
+  timing.logSummary(logger, 200);
 
   // Only allow edit mode for admins/owners
   const isAdmin = role === 'owner' || role === 'admin'
