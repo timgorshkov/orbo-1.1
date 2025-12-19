@@ -17,15 +17,18 @@ export default async function PublicOrgLayout({
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
 
-  // Проверяем авторизацию (но не редиректим - публичные страницы доступны всем)
-  const { data: { user } } = await supabase.auth.getUser()
+  // ⚡ Параллельные запросы: авторизация + организация одновременно
+  const [userResult, orgResult] = await Promise.all([
+    supabase.auth.getUser(),
+    adminSupabase
+      .from('organizations')
+      .select('id, name, logo_url')
+      .eq('id', orgId)
+      .single()
+  ])
 
-  // Получаем информацию об организации
-  const { data: org } = await adminSupabase
-    .from('organizations')
-    .select('id, name, logo_url')
-    .eq('id', orgId)
-    .single()
+  const user = userResult.data?.user
+  const org = orgResult.data
 
   if (!org) {
     // Если организация не найдена, просто рендерим детей без навигации
@@ -36,20 +39,37 @@ export default async function PublicOrgLayout({
   let telegramGroups: any[] = []
   let userProfile: any = null
 
-  // Если пользователь авторизован, определяем его роль
+  // Если пользователь авторизован, загружаем данные параллельно
   if (user) {
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', org.id)
-      .maybeSingle()
+    // ⚡ Параллельные запросы: membership + participant одновременно
+    const [membershipResult, participantResult] = await Promise.all([
+      adminSupabase
+        .from('memberships')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('org_id', org.id)
+        .maybeSingle(),
+      adminSupabase
+        .from('participants')
+        .select('full_name, username, photo_url')
+        .eq('org_id', org.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+    ])
 
-    if (membership) {
-      role = membership.role as UserRole
+    if (membershipResult.data) {
+      role = membershipResult.data.role as UserRole
     }
 
-    // Получаем Telegram-группы для админов
+    if (participantResult.data) {
+      userProfile = {
+        name: participantResult.data.full_name,
+        username: participantResult.data.username,
+        avatarUrl: participantResult.data.photo_url
+      }
+    }
+
+    // Telegram-группы загружаем только для админов (после определения роли)
     if (role === 'owner' || role === 'admin') {
       const { data: orgGroups } = await adminSupabase
         .from('org_telegram_groups')
@@ -67,22 +87,6 @@ export default async function PublicOrgLayout({
         telegramGroups = orgGroups
           .map((og: any) => og.telegram_groups)
           .filter((g: any) => g !== null)
-      }
-    }
-
-    // Получаем профиль участника
-    const { data: participant } = await adminSupabase
-      .from('participants')
-      .select('full_name, username, photo_url')
-      .eq('org_id', org.id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (participant) {
-      userProfile = {
-        name: participant.full_name,
-        username: participant.username,
-        avatarUrl: participant.photo_url
       }
     }
   }

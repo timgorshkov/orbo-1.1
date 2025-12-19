@@ -20,12 +20,20 @@ export default async function OrgLayout({
   logger.debug({ org_id: orgId }, 'OrgLayout start');
   
   const supabase = await createClientServer()
+  const adminSupabase = createAdminServer()
 
-  // Проверяем авторизацию
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser()
+  // ⚡ Параллельные запросы: авторизация + организация одновременно
+  const [userResult, orgResult] = await Promise.all([
+    supabase.auth.getUser(),
+    adminSupabase
+      .from('organizations')
+      .select('id, name, logo_url')
+      .eq('id', orgId)
+      .single()
+  ])
+
+  const { data: { user }, error: userError } = userResult
+  const { data: org, error: orgError } = orgResult
 
   logger.debug({ 
     user_id: user?.id,
@@ -33,32 +41,10 @@ export default async function OrgLayout({
     error: userError?.message
   }, 'User auth check');
 
-  // Debug: проверяем cookies
-  const { cookies: cookieFn } = await import('next/headers')
-  const cookieStore = await cookieFn()
-  const allCookies = cookieStore.getAll()
-  const authCookies = allCookies.filter(c => c.name.includes('auth'))
-  
-  logger.debug({ 
-    cookies_count: allCookies.length,
-    auth_cookies_count: authCookies.length
-  }, 'Cookies check');
-
   if (!user) {
     logger.warn({ org_id: orgId }, 'No user, redirecting to signin');
     redirect('/signin')
   }
-
-  // Используем admin client для проверки организации и membership (обход RLS)
-  const adminSupabase = createAdminServer()
-
-  // Получаем информацию об организации
-  logger.debug({ org_id: orgId }, 'Fetching organization');
-  const { data: org, error: orgError } = await adminSupabase
-    .from('organizations')
-    .select('id, name, logo_url')
-    .eq('id', orgId)
-    .single()
 
   if (orgError || !org) {
     logger.error({ 
@@ -68,14 +54,24 @@ export default async function OrgLayout({
     redirect('/orgs')
   }
 
-  // Проверяем членство пользователя через admin client
-  logger.debug({ user_id: user.id, org_id: org.id }, 'Fetching membership');
-  const { data: membership, error: memberError } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', org.id)
-    .maybeSingle()
+  // ⚡ Параллельные запросы: membership + telegram account одновременно
+  const [membershipResult, telegramAccountResult] = await Promise.all([
+    adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', org.id)
+      .maybeSingle(),
+    adminSupabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id, telegram_username, telegram_first_name')
+      .eq('user_id', user.id)
+      .eq('org_id', org.id)
+      .maybeSingle()
+  ])
+
+  const membership = membershipResult.data
+  const telegramAccount = telegramAccountResult.data
 
   // Если нет membership - нет доступа
   if (!membership) {
@@ -83,17 +79,6 @@ export default async function OrgLayout({
       user_id: user.id,
       org_id: org.id
     }, 'No membership found');
-    
-    const { data: allMemberships } = await adminSupabase
-      .from('memberships')
-      .select('org_id, role')
-      .eq('user_id', user.id)
-    
-    logger.debug({ 
-      user_id: user.id,
-      memberships_count: allMemberships?.length || 0
-    }, 'User memberships check');
-    
     redirect('/orgs')
   }
 
@@ -105,109 +90,78 @@ export default async function OrgLayout({
 
   const role = membership.role as UserRole
 
-  // Получаем Telegram-группы для админов
+  // ⚡ Параллельные запросы: telegram groups (для админов) + participant
   let telegramGroups: any[] = []
-  if (role === 'owner' || role === 'admin') {
-    logger.debug({ org_id: org.id }, 'Fetching telegram groups');
-    
-    // Загружаем группы через org_telegram_groups (новая схема many-to-many)
-    const { data: orgGroups, error: groupsError } = await adminSupabase
-      .from('org_telegram_groups')
-      .select(`
-        telegram_groups (
-          id,
-          tg_chat_id,
-          title,
-          bot_status
-        )
-      `)
-      .eq('org_id', org.id)
-    
-    if (orgGroups && !groupsError) {
-      // Извлекаем telegram_groups из результата JOIN
-      telegramGroups = orgGroups
-        .map(item => item.telegram_groups)
-        .filter(group => group !== null)
-        .sort((a: any, b: any) => {
-          const titleA = a.title || ''
-          const titleB = b.title || ''
-          return titleA.localeCompare(titleB)
-        })
-      
-      logger.debug({ 
-        org_id: org.id,
-        groups_count: telegramGroups.length
-      }, 'Loaded telegram groups');
-    } else {
-      logger.debug({ 
-        org_id: org.id,
-        error: groupsError?.message
-      }, 'No telegram groups found or error occurred');
-    }
-  }
+  let participant: any = null
 
-  // Получаем данные профиля пользователя для отображения в меню
-  logger.debug({ user_id: user.id, org_id: org.id }, 'Fetching user profile data');
-  
-  let userProfile: {
-    id: string
-    email: string | null
-    displayName: string
-    photoUrl: string | null
-    tgUserId: string | null
-    participantId: string | null
-  } | undefined
+  // Собираем все запросы для параллельного выполнения
+  const groupsPromise = (role === 'owner' || role === 'admin')
+    ? adminSupabase
+        .from('org_telegram_groups')
+        .select(`
+          telegram_groups (
+            id,
+            tg_chat_id,
+            title,
+            bot_status
+          )
+        `)
+        .eq('org_id', org.id)
+    : Promise.resolve({ data: null, error: null })
 
-  try {
-    // Получаем Telegram аккаунт пользователя для этой организации
-    const { data: telegramAccount } = await adminSupabase
-      .from('user_telegram_accounts')
-      .select('telegram_user_id, telegram_username, telegram_first_name')
-      .eq('user_id', user.id)
-      .eq('org_id', org.id)
-      .maybeSingle()
-
-    // Получаем профиль участника если есть Telegram
-    let participant = null
-    if (telegramAccount?.telegram_user_id) {
-      const { data: participantData } = await adminSupabase
+  const participantPromise = telegramAccount?.telegram_user_id
+    ? adminSupabase
         .from('participants')
         .select('id, full_name, photo_url, tg_user_id')
         .eq('org_id', org.id)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
         .is('merged_into', null)
         .maybeSingle()
-      
-      participant = participantData
-    }
+    : Promise.resolve({ data: null, error: null })
 
-    const displayName = participant?.full_name ||
-                       telegramAccount?.telegram_first_name ||
-                       user.email?.split('@')[0] ||
-                       'Пользователь'
+  const [groupsResult, participantResult] = await Promise.all([
+    groupsPromise,
+    participantPromise
+  ])
 
-    userProfile = {
-      id: user.id,
-      email: user.email || null,
-      displayName,
-      photoUrl: participant?.photo_url || null,
-      tgUserId: telegramAccount?.telegram_user_id?.toString() || null,
-      participantId: participant?.id || null
-    }
-
+  if (groupsResult.data && !groupsResult.error) {
+    telegramGroups = groupsResult.data
+      .map((item: any) => item.telegram_groups)
+      .filter((group: any) => group !== null)
+      .sort((a: any, b: any) => {
+        const titleA = a.title || ''
+        const titleB = b.title || ''
+        return titleA.localeCompare(titleB)
+      })
+    
     logger.debug({ 
-      user_id: user.id,
-      display_name: displayName,
-      has_photo: !!participant?.photo_url
-    }, 'User profile loaded');
-  } catch (profileError) {
-    logger.error({ 
-      user_id: user.id,
       org_id: org.id,
-      error: profileError instanceof Error ? profileError.message : String(profileError)
-    }, 'Error loading user profile');
-    // Continue without profile - sidebar will show fallback
+      groups_count: telegramGroups.length
+    }, 'Loaded telegram groups');
   }
+
+  participant = participantResult.data
+
+  // Формируем профиль пользователя
+  const displayName = participant?.full_name ||
+                     telegramAccount?.telegram_first_name ||
+                     user.email?.split('@')[0] ||
+                     'Пользователь'
+
+  const userProfile = {
+    id: user.id,
+    email: user.email || null,
+    displayName,
+    photoUrl: participant?.photo_url || null,
+    tgUserId: telegramAccount?.telegram_user_id?.toString() || null,
+    participantId: participant?.id || null
+  }
+
+  logger.debug({ 
+    user_id: user.id,
+    display_name: displayName,
+    has_photo: !!participant?.photo_url
+  }, 'User profile loaded');
 
   logger.debug({ org_id: orgId, user_id: user.id }, 'OrgLayout success');
 
