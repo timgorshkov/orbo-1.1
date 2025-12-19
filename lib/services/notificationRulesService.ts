@@ -184,24 +184,21 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
       }, '👤 Looking for owner membership');
       
       if (membership?.user_id) {
-        // Get user's telegram ID from users table
-        const { data: userData, error: userError } = await supabaseAdmin
-          .from('users')
-          .select('id, email, tg_user_id, full_name')
-          .eq('id', membership.user_id)
-          .single();
+        // Use RPC function to get telegram ID (works with auth.users)
+        const { data: tgUserId, error: rpcError } = await supabaseAdmin
+          .rpc('get_user_telegram_id', { p_user_id: membership.user_id });
         
         logger.info({ 
           rule_id: rule.id,
           user_id: membership.user_id,
-          userData,
-          error: userError?.message 
-        }, '👤 Owner user data');
+          tg_user_id: tgUserId,
+          error: rpcError?.message 
+        }, '👤 Owner telegram ID lookup');
         
-        if (userData?.tg_user_id) {
+        if (tgUserId) {
           recipients.push({
-            tgUserId: userData.tg_user_id,
-            name: userData.full_name || userData.email || 'Owner',
+            tgUserId: tgUserId,
+            name: 'Owner', // Name not available from RPC, but not critical
           });
         } else {
           logger.warn({ 
@@ -228,20 +225,14 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
       
       if (adminMemberships) {
         for (const adminMembership of adminMemberships) {
-          const { data: userData } = await supabaseAdmin
-            .from('users')
-            .select('id, email, tg_user_id, full_name')
-            .eq('id', adminMembership.user_id)
-            .single();
+          const { data: tgUserId, error: rpcError } = await supabaseAdmin
+            .rpc('get_user_telegram_id', { p_user_id: adminMembership.user_id });
           
-          if (userData?.tg_user_id) {
-            // Avoid duplicates
-            if (!recipients.find(r => r.tgUserId === userData.tg_user_id)) {
-              recipients.push({
-                tgUserId: userData.tg_user_id,
-                name: userData.full_name || userData.email || 'Admin',
-              });
-            }
+          if (tgUserId && !recipients.find(r => r.tgUserId === tgUserId)) {
+            recipients.push({
+              tgUserId: tgUserId,
+              name: 'Admin',
+            });
           }
         }
       }

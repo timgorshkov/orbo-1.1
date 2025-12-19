@@ -23,6 +23,26 @@ GRANT EXECUTE ON FUNCTION increment_notification_trigger_count(UUID) TO service_
 -- Also grant permissions for check_notification_duplicate function
 GRANT EXECUTE ON FUNCTION check_notification_duplicate(UUID, TEXT, INTEGER) TO service_role;
 
+-- Function to get user's telegram ID from auth.users
+CREATE OR REPLACE FUNCTION get_user_telegram_id(p_user_id UUID)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_tg_user_id BIGINT;
+BEGIN
+  SELECT (raw_user_meta_data->>'tg_user_id')::BIGINT INTO v_tg_user_id
+  FROM auth.users
+  WHERE id = p_user_id;
+  
+  RETURN v_tg_user_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_user_telegram_id(UUID) TO service_role;
+
 -- Comments
 COMMENT ON FUNCTION increment_notification_trigger_count IS 'Atomically increment notification rule trigger count';
+COMMENT ON FUNCTION get_user_telegram_id IS 'Get telegram user ID from auth.users metadata';
 
