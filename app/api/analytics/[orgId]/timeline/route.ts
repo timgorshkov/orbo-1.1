@@ -44,21 +44,26 @@ export async function GET(
     );
 
     // Get chat IDs for this org (if no specific chat requested)
-    let chatIds: string[] = [];
+    let telegramChatIds: string[] = [];
+    let includeWhatsApp = false;
     
     if (tgChatId) {
-      // Verify this chat belongs to org
-      const { data: mapping } = await adminSupabase
-        .from('org_telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', tgChatId)
-        .maybeSingle();
-      
-      if (!mapping) {
-        return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+      if (tgChatId === '0') {
+        includeWhatsApp = true;
+      } else {
+        // Verify this chat belongs to org
+        const { data: mapping } = await adminSupabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', tgChatId)
+          .maybeSingle();
+        
+        if (!mapping) {
+          return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+        }
+        telegramChatIds = [tgChatId];
       }
-      chatIds = [tgChatId];
     } else {
       // Get all chats for org
       const { data: orgGroups } = await adminSupabase
@@ -66,47 +71,12 @@ export async function GET(
         .select('tg_chat_id')
         .eq('org_id', orgId);
       
-      chatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+      telegramChatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+      includeWhatsApp = true; // Include WhatsApp for org-wide timeline
     }
 
-    if (chatIds.length === 0) {
-      // No groups - return empty timeline
-      const emptyData = [];
-      for (let i = days - 1; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        emptyData.push({
-          date: date.toISOString().split('T')[0],
-          message_count: 0,
-          reaction_count: 0
-        });
-      }
-      return NextResponse.json({ data: emptyData });
-    }
-
-    // Calculate date range
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const startDateStr = startDate.toISOString().split('T')[0];
-
-    // Fetch activity events - NO org_id filter!
-    // This allows seeing historical data from before the group was added to this org
-    const { data: events, error: eventsError } = await adminSupabase
-      .from('activity_events')
-      .select('created_at, event_type, meta')
-      .in('tg_chat_id', chatIds)
-      .gte('created_at', startDate.toISOString())
-      .order('created_at', { ascending: true });
-
-    if (eventsError) {
-      logger.error({ error: eventsError.message }, 'Error fetching activity events');
-      return NextResponse.json({ error: eventsError.message }, { status: 500 });
-    }
-
-    // Aggregate by day
+    // Initialize daily data
     const dailyData: Record<string, { message_count: number; reaction_count: number }> = {};
-    
-    // Initialize all days
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
@@ -114,17 +84,72 @@ export async function GET(
       dailyData[dateKey] = { message_count: 0, reaction_count: 0 };
     }
 
-    // Count events
-    events?.forEach(event => {
-      const dateKey = event.created_at.split('T')[0];
-      if (dailyData[dateKey]) {
-        if (event.event_type === 'message') {
-          dailyData[dateKey].message_count++;
-        } else if (event.event_type === 'reaction') {
-          dailyData[dateKey].reaction_count++;
-        }
+    if (telegramChatIds.length === 0 && !includeWhatsApp) {
+      // No data sources
+      const data = Object.entries(dailyData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, counts]) => ({
+          date,
+          message_count: counts.message_count,
+          reaction_count: counts.reaction_count
+        }));
+      return NextResponse.json({ data });
+    }
+
+    // Calculate date range
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    // Fetch Telegram events - NO org_id filter!
+    if (telegramChatIds.length > 0) {
+      const { data: telegramEvents, error: telegramError } = await adminSupabase
+        .from('activity_events')
+        .select('created_at, event_type')
+        .in('tg_chat_id', telegramChatIds)
+        .gte('created_at', startDate.toISOString())
+        .order('created_at', { ascending: true });
+
+      if (telegramError) {
+        logger.error({ error: telegramError.message }, 'Error fetching telegram events');
+      } else {
+        telegramEvents?.forEach(event => {
+          const dateKey = event.created_at.split('T')[0];
+          if (dailyData[dateKey]) {
+            if (event.event_type === 'message') {
+              dailyData[dateKey].message_count++;
+            } else if (event.event_type === 'reaction') {
+              dailyData[dateKey].reaction_count++;
+            }
+          }
+        });
       }
-    });
+    }
+
+    // Fetch WhatsApp events - WITH org_id filter
+    if (includeWhatsApp) {
+      const { data: whatsappEvents, error: whatsappError } = await adminSupabase
+        .from('activity_events')
+        .select('created_at, event_type')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', 0)
+        .gte('created_at', startDate.toISOString())
+        .order('created_at', { ascending: true });
+
+      if (whatsappError) {
+        logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
+      } else {
+        whatsappEvents?.forEach(event => {
+          const dateKey = event.created_at.split('T')[0];
+          if (dailyData[dateKey]) {
+            if (event.event_type === 'message') {
+              dailyData[dateKey].message_count++;
+            } else if (event.event_type === 'reaction') {
+              dailyData[dateKey].reaction_count++;
+            }
+          }
+        });
+      }
+    }
 
     // Convert to array
     const data = Object.entries(dailyData)
@@ -137,9 +162,10 @@ export async function GET(
 
     logger.debug({ 
       org_id: orgId, 
-      chat_ids: chatIds.length,
+      telegram_chats: telegramChatIds.length,
+      include_whatsapp: includeWhatsApp,
       days,
-      events_count: events?.length || 0
+      total_messages: data.reduce((sum, d) => sum + d.message_count, 0)
     }, 'Timeline data fetched');
 
     return NextResponse.json({ data });

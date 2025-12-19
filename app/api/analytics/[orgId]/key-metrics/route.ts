@@ -9,49 +9,88 @@ interface ActivityEvent {
   event_type: string;
   tg_user_id: number | null;
   reply_to_message_id: number | null;
+  participant_id: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getMetricsForPeriod(
   supabase: any,
-  chatIds: string[],
+  orgId: string,
+  telegramChatIds: string[],
+  includeWhatsApp: boolean,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  totalMembersInOrg: number
 ) {
-  const { data: events, error } = await supabase
-    .from('activity_events')
-    .select('event_type, tg_user_id, reply_to_message_id')
-    .in('tg_chat_id', chatIds)
-    .gte('created_at', startDate.toISOString())
-    .lte('created_at', endDate.toISOString());
-
-  if (error) throw error;
+  let allEvents: ActivityEvent[] = [];
+  
+  // Get Telegram events (without org_id filter for cross-org history)
+  if (telegramChatIds.length > 0) {
+    const { data: telegramEvents, error: telegramError } = await supabase
+      .from('activity_events')
+      .select('event_type, tg_user_id, reply_to_message_id, participant_id')
+      .in('tg_chat_id', telegramChatIds)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+    
+    if (!telegramError && telegramEvents) {
+      allEvents = [...telegramEvents];
+    }
+  }
+  
+  // Get WhatsApp events (with org_id filter)
+  if (includeWhatsApp) {
+    const { data: whatsappEvents, error: whatsappError } = await supabase
+      .from('activity_events')
+      .select('event_type, tg_user_id, reply_to_message_id, participant_id')
+      .eq('org_id', orgId)
+      .eq('tg_chat_id', 0)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+    
+    if (!whatsappError && whatsappEvents) {
+      allEvents = [...allEvents, ...whatsappEvents];
+    }
+  }
 
   let messages = 0;
   let reactions = 0;
   let replies = 0;
-  const uniqueUsers = new Set<number>();
+  const activeUsers = new Set<string>(); // Use string to handle both tg_user_id and participant_id
 
-  (events as ActivityEvent[] | null)?.forEach(event => {
+  allEvents.forEach(event => {
+    // Track unique active users
+    const userKey = event.participant_id 
+      ? `p_${event.participant_id}` 
+      : event.tg_user_id 
+        ? `t_${event.tg_user_id}`
+        : null;
+    
     if (event.event_type === 'message') {
       messages++;
-      if (event.tg_user_id) uniqueUsers.add(event.tg_user_id);
+      if (userKey) activeUsers.add(userKey);
       if (event.reply_to_message_id) replies++;
     } else if (event.event_type === 'reaction') {
       reactions++;
     }
   });
 
-  const participants = uniqueUsers.size;
-  const engagementRate = participants > 0 ? (messages / participants) * 100 : 0;
+  const activeParticipants = activeUsers.size;
+  
+  // Вовлечённость = % активных участников от общего числа участников в организации
+  // Если totalMembersInOrg = 0, используем activeParticipants как базу
+  const engagementBase = totalMembersInOrg > 0 ? totalMembersInOrg : activeParticipants;
+  const engagementRate = engagementBase > 0 ? (activeParticipants / engagementBase) * 100 : 0;
+  
+  // Доля ответов = % сообщений которые являются ответами
   const replyRatio = messages > 0 ? (replies / messages) * 100 : 0;
 
   return {
-    participants,
+    participants: activeParticipants,
     messages,
     reactions,
     replies,
-    engagement_rate: Math.round(engagementRate * 10) / 10,
+    engagement_rate: Math.min(Math.round(engagementRate * 10) / 10, 100), // Cap at 100%
     reply_ratio: Math.round(replyRatio * 10) / 10
   };
 }
@@ -95,30 +134,36 @@ export async function GET(
     );
 
     // Get chat IDs for this org
-    let chatIds: string[] = [];
+    let telegramChatIds: string[] = [];
+    let includeWhatsApp = false;
     
     if (tgChatId) {
-      const { data: mapping } = await adminSupabase
-        .from('org_telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', tgChatId)
-        .maybeSingle();
-      
-      if (!mapping) {
-        return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+      if (tgChatId === '0') {
+        includeWhatsApp = true;
+      } else {
+        const { data: mapping } = await adminSupabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', orgId)
+          .eq('tg_chat_id', tgChatId)
+          .maybeSingle();
+        
+        if (!mapping) {
+          return NextResponse.json({ error: 'Group not found in organization' }, { status: 404 });
+        }
+        telegramChatIds = [tgChatId];
       }
-      chatIds = [tgChatId];
     } else {
       const { data: orgGroups } = await adminSupabase
         .from('org_telegram_groups')
         .select('tg_chat_id')
         .eq('org_id', orgId);
       
-      chatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+      telegramChatIds = orgGroups?.map(g => String(g.tg_chat_id)) || [];
+      includeWhatsApp = true; // Include WhatsApp for org-wide metrics
     }
 
-    if (chatIds.length === 0) {
+    if (telegramChatIds.length === 0 && !includeWhatsApp) {
       return NextResponse.json({ 
         data: {
           current_participants: 0,
@@ -137,6 +182,13 @@ export async function GET(
       });
     }
 
+    // Get total participants count in organization for engagement calculation
+    const { count: totalMembersInOrg } = await adminSupabase
+      .from('participants')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+      .neq('source', 'bot');
+
     // Calculate date ranges
     const now = new Date();
     const currentEnd = now;
@@ -147,10 +199,10 @@ export async function GET(
     const previousStart = new Date(previousEnd);
     previousStart.setDate(previousStart.getDate() - periodDays);
 
-    // Fetch metrics for both periods - NO org_id filter!
+    // Fetch metrics for both periods
     const [current, previous] = await Promise.all([
-      getMetricsForPeriod(adminSupabase, chatIds, currentStart, currentEnd),
-      getMetricsForPeriod(adminSupabase, chatIds, previousStart, previousEnd)
+      getMetricsForPeriod(adminSupabase, orgId, telegramChatIds, includeWhatsApp, currentStart, currentEnd, totalMembersInOrg || 0),
+      getMetricsForPeriod(adminSupabase, orgId, telegramChatIds, includeWhatsApp, previousStart, previousEnd, totalMembersInOrg || 0)
     ]);
 
     const data = {
@@ -170,10 +222,12 @@ export async function GET(
 
     logger.debug({ 
       org_id: orgId, 
-      chat_ids: chatIds.length,
+      telegram_chats: telegramChatIds.length,
+      include_whatsapp: includeWhatsApp,
       period_days: periodDays,
+      total_members: totalMembersInOrg,
       current_messages: current.messages,
-      previous_messages: previous.messages
+      current_engagement: current.engagement_rate
     }, 'Key metrics fetched');
 
     return NextResponse.json({ data });
