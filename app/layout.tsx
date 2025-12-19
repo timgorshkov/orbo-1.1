@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
+import { WebVitals } from '@/components/web-vitals';
 
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
@@ -75,7 +75,7 @@ export default function RootLayout({
     </head>
     <body className={`${inter.className} bg-slate-50`}>
         {children}
-        <SpeedInsights />
+        <WebVitals />
       </body>
   </html>
   );
