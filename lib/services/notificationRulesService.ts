@@ -520,10 +520,18 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           messages_count: messages.length 
         }, '📨 Messages found for analysis');
         
-        if (messages.length < 3) {
-          logger.info({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ Not enough messages (need 3+)');
+        // Minimum 1 message for testing (increase to 3 for production)
+        if (messages.length < 1) {
+          logger.info({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ No messages found');
           continue;
         }
+        
+        logger.info({ 
+          rule_id: rule.id, 
+          chat_id: chatId, 
+          messages_count: messages.length,
+          sample_text: messages[0]?.text?.substring(0, 100) || '(no text)'
+        }, '🚀 Starting AI analysis');
         
         const severityThreshold = (rule.config.severity_threshold as 'low' | 'medium' | 'high') || 'medium';
         const analysis = await analyzeNegativeContent(
