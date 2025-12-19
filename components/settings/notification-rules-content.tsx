@@ -341,18 +341,25 @@ export default function NotificationRulesContent() {
                     </div>
                   </div>
 
-                  <DropdownMenu>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <MoreVertical className="h-4 w-4" />
+                        <span className="sr-only">Открыть меню</span>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => handleEditRule(rule)}>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem 
+                        className="cursor-pointer"
+                        onSelect={() => handleEditRule(rule)}
+                      >
                         <Pencil className="h-4 w-4 mr-2" />
                         Редактировать
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => handleToggleRule(rule)}>
+                      <DropdownMenuItem 
+                        className="cursor-pointer"
+                        onSelect={() => handleToggleRule(rule)}
+                      >
                         {rule.is_enabled ? (
                           <>
                             <Pause className="h-4 w-4 mr-2" />
@@ -366,8 +373,8 @@ export default function NotificationRulesContent() {
                         )}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
+                        className="cursor-pointer text-red-600 focus:text-red-600"
                         onSelect={() => handleDeleteRule(rule.id)}
-                        className="text-red-600"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Удалить

@@ -406,13 +406,21 @@ _Правило: ${rule.name}_
  * Process a single rule
  */
 async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
-  logger.debug({ rule_id: rule.id, rule_type: rule.rule_type }, 'Processing rule');
+  logger.info({ 
+    rule_id: rule.id, 
+    rule_type: rule.rule_type,
+    rule_name: rule.name,
+    use_ai: rule.use_ai,
+    config: rule.config 
+  }, '📋 Processing notification rule');
   
   const groups = await getOrgGroups(rule.org_id, rule.config.groups);
   if (groups.length === 0) {
-    logger.warn({ rule_id: rule.id }, 'No groups to check');
+    logger.warn({ rule_id: rule.id }, '⚠️ No groups to check for rule');
     return { triggered: false };
   }
+  
+  logger.info({ rule_id: rule.id, groups_count: groups.length, groups }, '📱 Groups to check');
   
   let triggered = false;
   let totalAiCost = 0;
@@ -423,28 +431,58 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
     switch (rule.rule_type) {
       case 'negative_discussion': {
         if (!rule.use_ai) {
-          // Skip if AI not enabled for this type
+          logger.info({ rule_id: rule.id, chat_id: chatId }, '⏭️ Skipping negative_discussion - AI not enabled');
           continue;
         }
         
-        const intervalMinutes = rule.config.check_interval_minutes || 60;
+        const intervalMinutes = (rule.config.check_interval_minutes as number) || 60;
         const messages = await getRecentMessages(chatId, intervalMinutes, 50);
         
-        if (messages.length < 3) continue; // Not enough messages
+        logger.info({ 
+          rule_id: rule.id, 
+          chat_id: chatId, 
+          group_title: groupTitle,
+          interval_minutes: intervalMinutes,
+          messages_count: messages.length 
+        }, '📨 Messages found for analysis');
         
+        if (messages.length < 3) {
+          logger.info({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ Not enough messages (need 3+)');
+          continue;
+        }
+        
+        const severityThreshold = (rule.config.severity_threshold as 'low' | 'medium' | 'high') || 'medium';
         const analysis = await analyzeNegativeContent(
           messages,
           rule.org_id,
           rule.id,
-          rule.config.severity_threshold || 'medium'
+          severityThreshold
         );
         
         totalAiCost += analysis.cost_usd;
         
+        logger.info({ 
+          rule_id: rule.id, 
+          chat_id: chatId,
+          has_negative: analysis.has_negative,
+          severity: analysis.severity,
+          summary: analysis.summary,
+          ai_cost: analysis.cost_usd
+        }, '🤖 AI analysis complete');
+        
         // Check if severity meets threshold
-        const severityOrder = { low: 1, medium: 2, high: 3 };
-        const threshold = severityOrder[rule.config.severity_threshold || 'medium'];
+        const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
+        const threshold = severityOrder[severityThreshold];
         const detected = severityOrder[analysis.severity];
+        
+        logger.info({
+          rule_id: rule.id,
+          threshold_level: severityThreshold,
+          threshold_value: threshold,
+          detected_severity: analysis.severity,
+          detected_value: detected,
+          will_trigger: analysis.has_negative && detected >= threshold
+        }, '📊 Threshold check');
         
         if (analysis.has_negative && detected >= threshold) {
           const triggerContext = {
