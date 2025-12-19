@@ -1,0 +1,713 @@
+/**
+ * Notification Rules Service
+ * 
+ * Main business logic for processing notification rules:
+ * - Load active rules
+ * - Fetch messages for analysis
+ * - Run AI analysis (if enabled)
+ * - Check for triggers
+ * - Send notifications
+ * - Handle deduplication
+ */
+
+import { createClient } from '@supabase/supabase-js';
+import { createServiceLogger } from '@/lib/logger';
+import { sendSystemNotification } from './telegramNotificationService';
+import { analyzeNegativeContent, analyzeUnansweredQuestions } from './aiNotificationAnalysis';
+import crypto from 'crypto';
+
+const logger = createServiceLogger('NotificationRules');
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: { persistSession: false }
+  }
+);
+
+interface NotificationRule {
+  id: string;
+  org_id: string;
+  name: string;
+  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive';
+  config: {
+    groups?: string[] | null;
+    severity_threshold?: 'low' | 'medium' | 'high';
+    check_interval_minutes?: number;
+    timeout_hours?: number;
+    work_hours_start?: string;
+    work_hours_end?: string;
+    work_days?: number[];
+    timezone?: string;
+  };
+  use_ai: boolean;
+  notify_owner: boolean;
+  notify_admins: boolean;
+  is_enabled: boolean;
+  last_check_at: string | null;
+}
+
+interface Message {
+  id: string;
+  text: string;
+  author_name: string;
+  author_id: string;
+  created_at: string;
+  tg_chat_id: string;
+  has_reply?: boolean;
+}
+
+interface RuleCheckResult {
+  triggered: boolean;
+  triggerContext?: Record<string, unknown>;
+  aiCostUsd?: number;
+}
+
+/**
+ * Generate deduplication hash from trigger context
+ */
+function generateDedupHash(ruleId: string, context: Record<string, unknown>): string {
+  // Create hash from key identifying info
+  const key = JSON.stringify({
+    rule_id: ruleId,
+    group_id: context.group_id,
+    type: context.type,
+    // For questions, include author
+    author_id: context.question_author_id,
+  });
+  return crypto.createHash('md5').update(key).digest('hex');
+}
+
+/**
+ * Check if notification is duplicate (already sent recently)
+ */
+async function isDuplicate(ruleId: string, dedupHash: string, hoursBack: number = 1): Promise<boolean> {
+  try {
+    const { data } = await supabaseAdmin.rpc('check_notification_duplicate', {
+      p_rule_id: ruleId,
+      p_dedup_hash: dedupHash,
+      p_hours: hoursBack,
+    });
+    return data === true;
+  } catch (error) {
+    logger.error({ error, rule_id: ruleId }, 'Error checking duplicate');
+    return false; // Assume not duplicate on error
+  }
+}
+
+/**
+ * Log notification to database
+ */
+async function logNotification(params: {
+  ruleId: string;
+  orgId: string;
+  ruleType: string;
+  triggerContext: Record<string, unknown>;
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
+  dedupHash: string;
+  sentToUserIds?: string[];
+  aiCostUsd?: number;
+  errorMessage?: string;
+}): Promise<void> {
+  try {
+    await supabaseAdmin.from('notification_logs').insert({
+      rule_id: params.ruleId,
+      org_id: params.orgId,
+      rule_type: params.ruleType,
+      trigger_context: params.triggerContext,
+      notification_status: params.status,
+      dedup_hash: params.dedupHash,
+      sent_to_user_ids: params.sentToUserIds || [],
+      sent_via: params.status === 'sent' ? ['telegram'] : [],
+      ai_cost_usd: params.aiCostUsd || null,
+      error_message: params.errorMessage || null,
+      processed_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error({ error, rule_id: params.ruleId }, 'Error logging notification');
+  }
+}
+
+/**
+ * Update rule's last_check_at and increment trigger_count if triggered
+ */
+async function updateRuleStatus(ruleId: string, triggered: boolean): Promise<void> {
+  try {
+    const updateData: Record<string, unknown> = {
+      last_check_at: new Date().toISOString(),
+    };
+    
+    if (triggered) {
+      updateData.last_triggered_at = new Date().toISOString();
+      // Increment trigger_count
+      await supabaseAdmin.rpc('increment_notification_trigger_count', { p_rule_id: ruleId });
+    }
+    
+    await supabaseAdmin
+      .from('notification_rules')
+      .update(updateData)
+      .eq('id', ruleId);
+  } catch (error) {
+    logger.error({ error, rule_id: ruleId }, 'Error updating rule status');
+  }
+}
+
+interface UserData {
+  email: string | null;
+  tg_user_id: number | null;
+  full_name: string | null;
+}
+
+/**
+ * Get recipients for a rule (owner and/or admins)
+ */
+async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: number; name: string }>> {
+  const recipients: Array<{ tgUserId: number; name: string }> = [];
+  
+  try {
+    // Get owner if notify_owner is true
+    if (rule.notify_owner) {
+      const { data: owner } = await supabaseAdmin
+        .from('memberships')
+        .select(`
+          user_id,
+          users!inner(email, tg_user_id, full_name)
+        `)
+        .eq('org_id', rule.org_id)
+        .eq('role', 'owner')
+        .single();
+      
+      // Supabase returns joined data as object (with !inner)
+      const userData = owner?.users as unknown as UserData | undefined;
+      if (userData?.tg_user_id) {
+        recipients.push({
+          tgUserId: userData.tg_user_id,
+          name: userData.full_name || userData.email || 'Owner',
+        });
+      }
+    }
+    
+    // Get admins if notify_admins is true
+    if (rule.notify_admins) {
+      const { data: admins } = await supabaseAdmin
+        .from('memberships')
+        .select(`
+          user_id,
+          users!inner(email, tg_user_id, full_name)
+        `)
+        .eq('org_id', rule.org_id)
+        .eq('role', 'admin');
+      
+      if (admins) {
+        for (const admin of admins) {
+          const userData = admin.users as unknown as UserData | undefined;
+          if (userData?.tg_user_id) {
+            // Avoid duplicates
+            if (!recipients.find(r => r.tgUserId === userData.tg_user_id)) {
+              recipients.push({
+                tgUserId: userData.tg_user_id,
+                name: userData.full_name || userData.email || 'Admin',
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.error({ error, rule_id: rule.id }, 'Error getting recipients');
+  }
+  
+  return recipients;
+}
+
+/**
+ * Get telegram groups for organization
+ */
+async function getOrgGroups(orgId: string, specificChatIds?: string[] | null): Promise<string[]> {
+  try {
+    if (specificChatIds && specificChatIds.length > 0) {
+      return specificChatIds;
+    }
+    
+    // Get all groups for org
+    const { data } = await supabaseAdmin
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
+      .eq('org_id', orgId);
+    
+    return (data || []).map(g => String(g.tg_chat_id));
+  } catch (error) {
+    logger.error({ error, org_id: orgId }, 'Error getting org groups');
+    return [];
+  }
+}
+
+/**
+ * Get group title by chat_id
+ */
+async function getGroupTitle(chatId: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('telegram_groups')
+      .select('title')
+      .eq('tg_chat_id', chatId)
+      .single();
+    return data?.title || `Группа ${chatId}`;
+  } catch {
+    return `Группа ${chatId}`;
+  }
+}
+
+/**
+ * Get recent messages from a group
+ */
+async function getRecentMessages(
+  chatId: string,
+  sinceMinutes: number = 60,
+  limit: number = 100
+): Promise<Message[]> {
+  try {
+    const since = new Date(Date.now() - sinceMinutes * 60 * 1000).toISOString();
+    
+    const { data } = await supabaseAdmin
+      .from('activity_events')
+      .select(`
+        id,
+        tg_user_id,
+        tg_chat_id,
+        event_type,
+        created_at,
+        meta
+      `)
+      .eq('tg_chat_id', chatId)
+      .eq('event_type', 'message')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    
+    if (!data) return [];
+    
+    // Get participant names
+    const userIds = Array.from(new Set(data.map(m => m.tg_user_id)));
+    const { data: participants } = await supabaseAdmin
+      .from('participants')
+      .select('tg_user_id, full_name, username')
+      .in('tg_user_id', userIds);
+    
+    const nameMap = new Map<string, string>();
+    (participants || []).forEach(p => {
+      nameMap.set(p.tg_user_id, p.full_name || p.username || 'Участник');
+    });
+    
+    return data.map(m => ({
+      id: m.id,
+      text: m.meta?.text || '',
+      author_name: nameMap.get(m.tg_user_id) || 'Участник',
+      author_id: m.tg_user_id,
+      created_at: m.created_at,
+      tg_chat_id: String(m.tg_chat_id),
+    }));
+  } catch (error) {
+    logger.error({ error, chat_id: chatId }, 'Error getting messages');
+    return [];
+  }
+}
+
+/**
+ * Check if currently within work hours
+ */
+function isWithinWorkHours(
+  workStart: string | null,
+  workEnd: string | null,
+  workDays: number[] | null,
+  timezone: string = 'Europe/Moscow'
+): boolean {
+  if (!workStart || !workEnd) return true; // No restrictions
+  
+  try {
+    const now = new Date();
+    // Simple timezone handling
+    const tzOffset = timezone === 'Europe/Moscow' ? 3 : 0;
+    const localHour = (now.getUTCHours() + tzOffset) % 24;
+    const localDay = now.getUTCDay();
+    
+    // Check work day
+    if (workDays && workDays.length > 0 && !workDays.includes(localDay)) {
+      return false;
+    }
+    
+    // Parse work hours
+    const [startH, startM] = workStart.split(':').map(Number);
+    const [endH, endM] = workEnd.split(':').map(Number);
+    
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const currentMinutes = localHour * 60 + now.getUTCMinutes();
+    
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Format notification message for Telegram
+ */
+function formatNotificationMessage(
+  rule: NotificationRule,
+  context: Record<string, unknown>,
+  groupTitle: string
+): string {
+  const orgUrl = `https://my.orbo.ru/p/${rule.org_id}`;
+  
+  switch (rule.rule_type) {
+    case 'negative_discussion':
+      return `🔴 *Негатив в группе «${groupTitle}»*
+
+${context.summary || 'Обнаружена негативная дискуссия'}
+
+*Серьёзность:* ${context.severity === 'high' ? '🔴 Высокая' : context.severity === 'medium' ? '🟡 Средняя' : '🟢 Низкая'}
+*Сообщений проанализировано:* ${context.message_count || 0}
+
+_Правило: ${rule.name}_
+
+[Открыть в Orbo](${orgUrl})`;
+
+    case 'unanswered_question':
+      return `❓ *Неотвеченный вопрос в «${groupTitle}»*
+
+"${(context.question_text as string || '').slice(0, 200)}"
+— _${context.question_author || 'Участник'}_, ${context.time_ago || 'недавно'}
+
+*Без ответа:* ${context.hours_without_answer || '?'} ч.
+
+_Правило: ${rule.name}_
+
+[Открыть в Orbo](${orgUrl})`;
+
+    case 'group_inactive':
+      return `💤 *Неактивность в группе «${groupTitle}»*
+
+В группе нет сообщений уже *${context.inactive_hours || '?'} часов*.
+
+Последнее сообщение: ${context.last_message_at || 'неизвестно'}
+
+_Правило: ${rule.name}_
+
+[Открыть в Orbo](${orgUrl})`;
+
+    default:
+      return `🔔 *Уведомление от Orbo*\n\n${JSON.stringify(context)}`;
+  }
+}
+
+/**
+ * Process a single rule
+ */
+async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
+  logger.debug({ rule_id: rule.id, rule_type: rule.rule_type }, 'Processing rule');
+  
+  const groups = await getOrgGroups(rule.org_id, rule.config.groups);
+  if (groups.length === 0) {
+    logger.warn({ rule_id: rule.id }, 'No groups to check');
+    return { triggered: false };
+  }
+  
+  let triggered = false;
+  let totalAiCost = 0;
+  
+  for (const chatId of groups) {
+    const groupTitle = await getGroupTitle(chatId);
+    
+    switch (rule.rule_type) {
+      case 'negative_discussion': {
+        if (!rule.use_ai) {
+          // Skip if AI not enabled for this type
+          continue;
+        }
+        
+        const intervalMinutes = rule.config.check_interval_minutes || 60;
+        const messages = await getRecentMessages(chatId, intervalMinutes, 50);
+        
+        if (messages.length < 3) continue; // Not enough messages
+        
+        const analysis = await analyzeNegativeContent(
+          messages,
+          rule.org_id,
+          rule.id,
+          rule.config.severity_threshold || 'medium'
+        );
+        
+        totalAiCost += analysis.cost_usd;
+        
+        // Check if severity meets threshold
+        const severityOrder = { low: 1, medium: 2, high: 3 };
+        const threshold = severityOrder[rule.config.severity_threshold || 'medium'];
+        const detected = severityOrder[analysis.severity];
+        
+        if (analysis.has_negative && detected >= threshold) {
+          const triggerContext = {
+            type: 'negative_discussion',
+            group_id: chatId,
+            group_title: groupTitle,
+            severity: analysis.severity,
+            summary: analysis.summary,
+            message_count: messages.length,
+            sample_messages: analysis.sample_messages,
+          };
+          
+          const dedupHash = generateDedupHash(rule.id, triggerContext);
+          
+          // Check for duplicate
+          if (await isDuplicate(rule.id, dedupHash, 1)) {
+            logger.debug({ rule_id: rule.id, chat_id: chatId }, 'Duplicate notification, skipping');
+            continue;
+          }
+          
+          // Send notifications
+          const recipients = await getRecipients(rule);
+          const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+          
+          let sentCount = 0;
+          for (const recipient of recipients) {
+            const result = await sendSystemNotification(recipient.tgUserId, message);
+            if (result.success) sentCount++;
+          }
+          
+          // Log notification
+          await logNotification({
+            ruleId: rule.id,
+            orgId: rule.org_id,
+            ruleType: rule.rule_type,
+            triggerContext,
+            status: sentCount > 0 ? 'sent' : 'failed',
+            dedupHash,
+            sentToUserIds: recipients.map(r => String(r.tgUserId)),
+            aiCostUsd: analysis.cost_usd,
+          });
+          
+          triggered = true;
+          logger.info({ 
+            rule_id: rule.id, 
+            chat_id: chatId, 
+            severity: analysis.severity,
+            recipients: sentCount 
+          }, '🔔 Negative notification sent');
+        }
+        break;
+      }
+      
+      case 'unanswered_question': {
+        // Check work hours
+        if (!isWithinWorkHours(
+          rule.config.work_hours_start || null,
+          rule.config.work_hours_end || null,
+          rule.config.work_days || null,
+          rule.config.timezone || 'Europe/Moscow'
+        )) {
+          continue;
+        }
+        
+        if (!rule.use_ai) continue;
+        
+        const timeoutHours = rule.config.timeout_hours || 2;
+        const messages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 50);
+        
+        if (messages.length < 2) continue;
+        
+        const analysis = await analyzeUnansweredQuestions(
+          messages,
+          rule.org_id,
+          rule.id,
+          timeoutHours
+        );
+        
+        totalAiCost += analysis.cost_usd;
+        
+        // Send notification for each unanswered question
+        for (const question of analysis.questions) {
+          const hoursAgo = Math.floor(
+            (Date.now() - new Date(question.timestamp).getTime()) / (1000 * 60 * 60)
+          );
+          
+          if (hoursAgo < timeoutHours) continue; // Not yet timed out
+          
+          const triggerContext = {
+            type: 'unanswered_question',
+            group_id: chatId,
+            group_title: groupTitle,
+            question_text: question.text,
+            question_author: question.author,
+            question_author_id: question.author_id,
+            question_time: question.timestamp,
+            hours_without_answer: hoursAgo,
+            time_ago: `${hoursAgo} ч. назад`,
+          };
+          
+          const dedupHash = generateDedupHash(rule.id, triggerContext);
+          
+          if (await isDuplicate(rule.id, dedupHash, 4)) {
+            continue;
+          }
+          
+          const recipients = await getRecipients(rule);
+          const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+          
+          let sentCount = 0;
+          for (const recipient of recipients) {
+            const result = await sendSystemNotification(recipient.tgUserId, message);
+            if (result.success) sentCount++;
+          }
+          
+          await logNotification({
+            ruleId: rule.id,
+            orgId: rule.org_id,
+            ruleType: rule.rule_type,
+            triggerContext,
+            status: sentCount > 0 ? 'sent' : 'failed',
+            dedupHash,
+            sentToUserIds: recipients.map(r => String(r.tgUserId)),
+            aiCostUsd: analysis.cost_usd / Math.max(analysis.questions.length, 1),
+          });
+          
+          triggered = true;
+          logger.info({
+            rule_id: rule.id,
+            chat_id: chatId,
+            question_author: question.author,
+            hours: hoursAgo
+          }, '🔔 Unanswered question notification sent');
+        }
+        break;
+      }
+      
+      case 'group_inactive': {
+        const timeoutHours = rule.config.timeout_hours || 24;
+        
+        // Get last message time
+        const { data: lastMessage } = await supabaseAdmin
+          .from('activity_events')
+          .select('created_at')
+          .eq('tg_chat_id', chatId)
+          .eq('event_type', 'message')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (!lastMessage) continue;
+        
+        const lastMessageTime = new Date(lastMessage.created_at);
+        const hoursInactive = (Date.now() - lastMessageTime.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursInactive < timeoutHours) continue;
+        
+        const triggerContext = {
+          type: 'group_inactive',
+          group_id: chatId,
+          group_title: groupTitle,
+          last_message_at: lastMessageTime.toLocaleString('ru'),
+          inactive_hours: Math.floor(hoursInactive),
+        };
+        
+        const dedupHash = generateDedupHash(rule.id, triggerContext);
+        
+        if (await isDuplicate(rule.id, dedupHash, 12)) {
+          continue;
+        }
+        
+        const recipients = await getRecipients(rule);
+        const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+        
+        let sentCount = 0;
+        for (const recipient of recipients) {
+          const result = await sendSystemNotification(recipient.tgUserId, message);
+          if (result.success) sentCount++;
+        }
+        
+        await logNotification({
+          ruleId: rule.id,
+          orgId: rule.org_id,
+          ruleType: rule.rule_type,
+          triggerContext,
+          status: sentCount > 0 ? 'sent' : 'failed',
+          dedupHash,
+          sentToUserIds: recipients.map(r => String(r.tgUserId)),
+        });
+        
+        triggered = true;
+        logger.info({
+          rule_id: rule.id,
+          chat_id: chatId,
+          inactive_hours: Math.floor(hoursInactive)
+        }, '🔔 Inactivity notification sent');
+        break;
+      }
+    }
+  }
+  
+  return { triggered, aiCostUsd: totalAiCost };
+}
+
+/**
+ * Main entry point: Process all active notification rules
+ */
+export async function processAllNotificationRules(): Promise<{
+  processed: number;
+  triggered: number;
+  totalAiCost: number;
+}> {
+  logger.info({}, 'Starting notification rules processing');
+  
+  // Get all enabled rules
+  const { data: rules, error } = await supabaseAdmin
+    .from('notification_rules')
+    .select('*')
+    .eq('is_enabled', true);
+  
+  if (error) {
+    logger.error({ error: error.message }, 'Error fetching rules');
+    return { processed: 0, triggered: 0, totalAiCost: 0 };
+  }
+  
+  if (!rules || rules.length === 0) {
+    logger.info({}, 'No active notification rules');
+    return { processed: 0, triggered: 0, totalAiCost: 0 };
+  }
+  
+  logger.info({ rules_count: rules.length }, 'Processing notification rules');
+  
+  let triggeredCount = 0;
+  let totalAiCost = 0;
+  
+  for (const rule of rules) {
+    try {
+      const result = await processRule(rule as NotificationRule);
+      
+      if (result.triggered) {
+        triggeredCount++;
+      }
+      
+      if (result.aiCostUsd) {
+        totalAiCost += result.aiCostUsd;
+      }
+      
+      await updateRuleStatus(rule.id, result.triggered);
+    } catch (error) {
+      logger.error({ error, rule_id: rule.id }, 'Error processing rule');
+    }
+  }
+  
+  logger.info({
+    processed: rules.length,
+    triggered: triggeredCount,
+    total_ai_cost_usd: totalAiCost
+  }, 'Notification rules processing complete');
+  
+  return {
+    processed: rules.length,
+    triggered: triggeredCount,
+    totalAiCost,
+  };
+}
+
