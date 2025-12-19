@@ -17,7 +17,7 @@ import { usePathname } from 'next/navigation';
  * Пороговые значения для предупреждений (повышены для реальных условий):
  * - LCP > 6s = warn, > 15s = critical (цель < 2.5s)
  * - FID > 500ms = warn, > 2000ms = critical (цель < 100ms)
- * - CLS > 0.25 = warn, > 0.5 = critical (цель < 0.1)
+ * - CLS > 0.3 = warn, > 0.5 = critical (цель < 0.1)
  * - TTFB > 2s = warn, > 8s = critical (цель < 0.8s)
  * - INP > 1s = warn, > 5s = critical (цель < 200ms)
  */
@@ -26,7 +26,7 @@ import { usePathname } from 'next/navigation';
 const THRESHOLDS = {
   LCP: { warn: 6000, critical: 15000 },     // ms - повышены
   FID: { warn: 500, critical: 2000 },       // ms - повышены
-  CLS: { warn: 0.25, critical: 0.5 },       // score
+  CLS: { warn: 0.3, critical: 0.5 },        // score - повышен warn (0.25 слишком строго)
   FCP: { warn: 5000, critical: 12000 },     // ms - повышены
   TTFB: { warn: 2000, critical: 8000 },     // ms - повышены
   INP: { warn: 1000, critical: 5000 },      // ms - повышены (1s-5s)
