@@ -168,40 +168,72 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
   try {
     // Get owner if notify_owner is true
     if (rule.notify_owner) {
-      const { data: owner } = await supabaseAdmin
+      // First get owner's user_id from memberships
+      const { data: membership, error: membershipError } = await supabaseAdmin
         .from('memberships')
-        .select(`
-          user_id,
-          users!inner(email, tg_user_id, full_name)
-        `)
+        .select('user_id')
         .eq('org_id', rule.org_id)
         .eq('role', 'owner')
         .single();
       
-      // Supabase returns joined data as object (with !inner)
-      const userData = owner?.users as unknown as UserData | undefined;
-      if (userData?.tg_user_id) {
-        recipients.push({
-          tgUserId: userData.tg_user_id,
-          name: userData.full_name || userData.email || 'Owner',
-        });
+      logger.info({ 
+        rule_id: rule.id, 
+        org_id: rule.org_id,
+        membership,
+        error: membershipError?.message 
+      }, '👤 Looking for owner membership');
+      
+      if (membership?.user_id) {
+        // Get user's telegram ID from users table
+        const { data: userData, error: userError } = await supabaseAdmin
+          .from('users')
+          .select('id, email, tg_user_id, full_name')
+          .eq('id', membership.user_id)
+          .single();
+        
+        logger.info({ 
+          rule_id: rule.id,
+          user_id: membership.user_id,
+          userData,
+          error: userError?.message 
+        }, '👤 Owner user data');
+        
+        if (userData?.tg_user_id) {
+          recipients.push({
+            tgUserId: userData.tg_user_id,
+            name: userData.full_name || userData.email || 'Owner',
+          });
+        } else {
+          logger.warn({ 
+            rule_id: rule.id, 
+            user_id: membership.user_id 
+          }, '⚠️ Owner has no tg_user_id');
+        }
       }
     }
     
     // Get admins if notify_admins is true
     if (rule.notify_admins) {
-      const { data: admins } = await supabaseAdmin
+      const { data: adminMemberships, error: adminsError } = await supabaseAdmin
         .from('memberships')
-        .select(`
-          user_id,
-          users!inner(email, tg_user_id, full_name)
-        `)
+        .select('user_id')
         .eq('org_id', rule.org_id)
         .eq('role', 'admin');
       
-      if (admins) {
-        for (const admin of admins) {
-          const userData = admin.users as unknown as UserData | undefined;
+      logger.info({ 
+        rule_id: rule.id, 
+        admin_count: adminMemberships?.length || 0,
+        error: adminsError?.message 
+      }, '👥 Looking for admin memberships');
+      
+      if (adminMemberships) {
+        for (const adminMembership of adminMemberships) {
+          const { data: userData } = await supabaseAdmin
+            .from('users')
+            .select('id, email, tg_user_id, full_name')
+            .eq('id', adminMembership.user_id)
+            .single();
+          
           if (userData?.tg_user_id) {
             // Avoid duplicates
             if (!recipients.find(r => r.tgUserId === userData.tg_user_id)) {
@@ -214,6 +246,8 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
         }
       }
     }
+    
+    logger.info({ rule_id: rule.id, recipients_count: recipients.length, recipients }, '📬 Final recipients list');
   } catch (error) {
     logger.error({ error, rule_id: rule.id }, 'Error getting recipients');
   }
