@@ -227,14 +227,12 @@ export async function GET(
       .slice(0, limit)
       .map((item, index) => ({ ...item, rank: index + 1 }));
 
-    logger.debug({ 
-      org_id: orgId, 
-      chat_ids: chatIds.length,
-      contributors_count: sorted.length,
-      include_whatsapp: includeWhatsApp
-    }, 'Contributors data fetched');
-
-    return NextResponse.json({ data: sorted });
+    // Add cache headers - data is user-specific but can be cached briefly
+    return NextResponse.json({ data: sorted }, {
+      headers: {
+        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120'
+      }
+    });
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),

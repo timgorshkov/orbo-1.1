@@ -160,15 +160,12 @@ export async function GET(
         reaction_count: counts.reaction_count
       }));
 
-    logger.debug({ 
-      org_id: orgId, 
-      telegram_chats: telegramChatIds.length,
-      include_whatsapp: includeWhatsApp,
-      days,
-      total_messages: data.reduce((sum, d) => sum + d.message_count, 0)
-    }, 'Timeline data fetched');
-
-    return NextResponse.json({ data });
+    // Add cache headers - data is user-specific but can be cached briefly
+    return NextResponse.json({ data }, {
+      headers: {
+        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120'
+      }
+    });
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),

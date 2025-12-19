@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { cookies } from 'next/headers'
 import WelcomeBlock from '@/components/dashboard/welcome-block'
@@ -11,6 +12,31 @@ import EngagementPie from '@/components/analytics/engagement-pie'
 import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 import { createServiceLogger } from '@/lib/logger'
+import { Skeleton } from '@/components/ui/skeleton'
+
+// Loading skeletons for analytics components
+function ChartSkeleton() {
+  return (
+    <div className="bg-white rounded-lg border p-4 space-y-3">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="h-[200px] w-full" />
+    </div>
+  )
+}
+
+function MetricsSkeleton() {
+  return (
+    <div className="bg-white rounded-lg border p-4 space-y-3">
+      <Skeleton className="h-5 w-24" />
+      <div className="grid grid-cols-2 gap-4">
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+      </div>
+    </div>
+  )
+}
 
 export default async function DashboardPage({ params }: { params: Promise<{ org: string }> }) {
   const logger = createServiceLogger('DashboardPage');
@@ -134,21 +160,31 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
             />
           </div>
 
-          {/* Analytics Section */}
+          {/* Analytics Section - with Suspense for faster LCP */}
           <div className="space-y-6">
             {/* Activity Timeline - Full Width */}
-            <ActivityTimeline orgId={orgId} days={30} />
+            <Suspense fallback={<ChartSkeleton />}>
+              <ActivityTimeline orgId={orgId} days={30} />
+            </Suspense>
 
             {/* Top Contributors and Engagement */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <TopContributors orgId={orgId} limit={10} />
-              <EngagementPie orgId={orgId} />
+              <Suspense fallback={<ChartSkeleton />}>
+                <TopContributors orgId={orgId} limit={10} />
+              </Suspense>
+              <Suspense fallback={<ChartSkeleton />}>
+                <EngagementPie orgId={orgId} />
+              </Suspense>
             </div>
 
             {/* Key Metrics and Activity Heatmap */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <KeyMetrics orgId={orgId} />
-              <ActivityHeatmap orgId={orgId} days={60} />
+              <Suspense fallback={<MetricsSkeleton />}>
+                <KeyMetrics orgId={orgId} />
+              </Suspense>
+              <Suspense fallback={<ChartSkeleton />}>
+                <ActivityHeatmap orgId={orgId} days={60} />
+              </Suspense>
             </div>
           </div>
         </>

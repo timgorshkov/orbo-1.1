@@ -212,17 +212,12 @@ export async function GET(
       previous_reply_ratio: previous.reply_ratio
     };
 
-    logger.debug({ 
-      org_id: orgId, 
-      telegram_chats: telegramChatIds.length,
-      include_whatsapp: includeWhatsApp,
-      period_days: periodDays,
-      total_members: totalMembersInOrg,
-      current_messages: current.messages,
-      current_engagement: current.engagement_rate
-    }, 'Key metrics fetched');
-
-    return NextResponse.json({ data });
+    // Add cache headers - data is user-specific but can be cached briefly
+    return NextResponse.json({ data }, {
+      headers: {
+        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120'
+      }
+    });
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),

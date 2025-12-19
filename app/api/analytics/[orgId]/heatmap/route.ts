@@ -153,14 +153,12 @@ export async function GET(
       }
     }
 
-    logger.debug({ 
-      org_id: orgId, 
-      telegram_chats: telegramChatIds.length,
-      include_whatsapp: includeWhatsApp,
-      total_messages: data.reduce((sum, d) => sum + d.message_count, 0)
-    }, 'Heatmap data fetched');
-
-    return NextResponse.json({ data });
+    // Add cache headers - data is user-specific but can be cached briefly
+    return NextResponse.json({ data }, {
+      headers: {
+        'Cache-Control': 'private, max-age=120, stale-while-revalidate=300'
+      }
+    });
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),

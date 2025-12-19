@@ -47,7 +47,12 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    // Add cache headers - data is user-specific but can be cached briefly
+    return NextResponse.json({ data }, {
+      headers: {
+        'Cache-Control': 'private, max-age=60, stale-while-revalidate=120'
+      }
+    });
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),
