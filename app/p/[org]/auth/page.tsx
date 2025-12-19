@@ -30,13 +30,14 @@ export async function generateMetadata({
   
   try {
     // Fetch organization info
-    const { data: org } = await timing.time('fetch_org', () =>
-      adminSupabase
-        .from('organizations')
-        .select('id, name, logo_url')
-        .eq('id', orgId)
-        .single()
-    );
+    timing.mark('fetch_org_start');
+    const { data: org } = await adminSupabase
+      .from('organizations')
+      .select('id, name, logo_url')
+      .eq('id', orgId)
+      .single();
+    timing.mark('fetch_org_end');
+    timing.measure('fetch_org', 'fetch_org_start', 'fetch_org_end');
     
     if (org) {
       siteName = org.name
@@ -51,13 +52,14 @@ export async function generateMetadata({
         const eventId = eventMatch[1]
         
         // Fetch event data
-        const { data: event } = await timing.time('fetch_event_for_og', () =>
-          adminSupabase
-            .from('events')
-            .select('id, title, description, cover_image_url')
-            .eq('id', eventId)
-            .single()
-        );
+        timing.mark('fetch_event_for_og_start');
+        const { data: event } = await adminSupabase
+          .from('events')
+          .select('id, title, description, cover_image_url')
+          .eq('id', eventId)
+          .single();
+        timing.mark('fetch_event_for_og_end');
+        timing.measure('fetch_event_for_og', 'fetch_event_for_og_start', 'fetch_event_for_og_end');
         
         if (event) {
           // Use event metadata

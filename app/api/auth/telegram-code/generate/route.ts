@@ -31,26 +31,27 @@ export async function POST(req: NextRequest) {
     const maxAttempts = 10
 
     // Пытаемся сгенерировать уникальный код
-    await timing.time('generate_unique_code', async () => {
-      while (attempts < maxAttempts) {
-        // Генерируем 3 байта и конвертируем в hex (6 символов)
-        code = crypto.randomBytes(3).toString('hex').toUpperCase()
+    timing.mark('generate_unique_code_start');
+    while (attempts < maxAttempts) {
+      // Генерируем 3 байта и конвертируем в hex (6 символов)
+      code = crypto.randomBytes(3).toString('hex').toUpperCase()
 
-        // Проверяем, не занят ли код
-        const { data: existing } = await supabaseAdmin
-          .from('telegram_auth_codes')
-          .select('id')
-          .eq('code', code)
-          .eq('is_used', false)
-          .maybeSingle()
+      // Проверяем, не занят ли код
+      const { data: existing } = await supabaseAdmin
+        .from('telegram_auth_codes')
+        .select('id')
+        .eq('code', code)
+        .eq('is_used', false)
+        .maybeSingle()
 
-        if (!existing) {
-          break // Код уникален
-        }
-
-        attempts++
+      if (!existing) {
+        break // Код уникален
       }
-    });
+
+      attempts++
+    }
+    timing.mark('generate_unique_code_end');
+    timing.measure('generate_unique_code', 'generate_unique_code_start', 'generate_unique_code_end');
 
     if (attempts >= maxAttempts) {
       await logErrorToDatabase({
@@ -75,21 +76,22 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
     // Сохраняем код в базу
-    const { data: authCode, error: insertError } = await timing.time('insert_code', () =>
-      supabaseAdmin
-        .from('telegram_auth_codes')
-        .insert({
-          code: code,
-          org_id: orgId || null,
-          event_id: eventId || null,
-          redirect_url: redirectUrl || null,
-          expires_at: expiresAt.toISOString(),
-          ip_address: ipAddress,
-          user_agent: userAgent
-        })
-        .select()
-        .single()
-    );
+    timing.mark('insert_code_start');
+    const { data: authCode, error: insertError } = await supabaseAdmin
+      .from('telegram_auth_codes')
+      .insert({
+        code: code,
+        org_id: orgId || null,
+        event_id: eventId || null,
+        redirect_url: redirectUrl || null,
+        expires_at: expiresAt.toISOString(),
+        ip_address: ipAddress,
+        user_agent: userAgent
+      })
+      .select()
+      .single();
+    timing.mark('insert_code_end');
+    timing.measure('insert_code', 'insert_code_start', 'insert_code_end');
 
     if (insertError || !authCode) {
       await logErrorToDatabase({

@@ -162,33 +162,34 @@ export default async function EventDetailPage({
   const logger = createServiceLogger('EventDetailPage');
   
   // Fetch event FIRST to check if it's public (before auth check)
-  const { data: event, error } = await timing.time('fetch_event', () =>
-    adminSupabase
-      .from('events')
-      .select(`
-        *,
-        event_registrations!event_registrations_event_id_fkey(
+  timing.mark('fetch_event_start');
+  const { data: event, error } = await adminSupabase
+    .from('events')
+    .select(`
+      *,
+      event_registrations!event_registrations_event_id_fkey(
+        id,
+        status,
+        registered_at,
+        payment_status,
+        registration_data,
+        participants!inner(
           id,
-          status,
-          registered_at,
-          payment_status,
-          registration_data,
-          participants!inner(
-            id,
-            full_name,
-            username,
-            email,
-            phone,
-            bio,
-            tg_user_id,
-            merged_into
-          )
+          full_name,
+          username,
+          email,
+          phone,
+          bio,
+          tg_user_id,
+          merged_into
         )
-      `)
-      .eq('org_id', orgId)
-      .eq('id', eventId)
-      .single()
-  );
+      )
+    `)
+    .eq('org_id', orgId)
+    .eq('id', eventId)
+    .single();
+  timing.mark('fetch_event_end');
+  timing.measure('fetch_event', 'fetch_event_start', 'fetch_event_end');
 
   if (error) {
     logger.error({
@@ -214,9 +215,10 @@ export default async function EventDetailPage({
   }
 
   // Check authentication
-  const { data: { user }, error: authError } = await timing.time('check_auth', () =>
-    supabase.auth.getUser()
-  );
+  timing.mark('check_auth_start');
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  timing.mark('check_auth_end');
+  timing.measure('check_auth', 'check_auth_start', 'check_auth_end');
   const isAuthenticated = !authError && !!user
   
   // For PUBLIC events: show event details to everyone (auth required only for registration)
@@ -261,17 +263,18 @@ export default async function EventDetailPage({
   let hasOrgAccess = true;
   if (!event.is_public) {
     // Check membership directly instead of using requireOrgAccess (which throws)
-    const [{ data: membership }, { data: rpcCheck }] = await timing.time('check_org_access', () =>
-      Promise.all([
-        supabase
-          .from('memberships')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('org_id', orgId)
-          .maybeSingle(),
-        supabase.rpc('is_org_member_rpc', { _org: orgId })
-      ])
-    );
+    timing.mark('check_org_access_start');
+    const [{ data: membership }, { data: rpcCheck }] = await Promise.all([
+      supabase
+        .from('memberships')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .maybeSingle(),
+      supabase.rpc('is_org_member_rpc', { _org: orgId })
+    ]);
+    timing.mark('check_org_access_end');
+    timing.measure('check_org_access', 'check_org_access_start', 'check_org_access_end');
     
     hasOrgAccess = !!(membership || rpcCheck)
   }
@@ -332,14 +335,15 @@ export default async function EventDetailPage({
     : null
 
   // Check user's role
-  const { data: membership } = await timing.time('fetch_membership', () =>
-    supabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle()
-  );
+  timing.mark('fetch_membership_start');
+  const { data: membership } = await supabase
+    .from('memberships')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .maybeSingle();
+  timing.mark('fetch_membership_end');
+  timing.measure('fetch_membership', 'fetch_membership_start', 'fetch_membership_end');
 
   const role = membership?.role || 'guest'
   
@@ -353,39 +357,42 @@ export default async function EventDetailPage({
 
   // Check if current user is registered
   // Find participant via user_telegram_accounts
-  const { data: telegramAccount } = await timing.time('fetch_tg_account', () =>
-    supabase
-      .from('user_telegram_accounts')
-      .select('telegram_user_id')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle()
-  );
+  timing.mark('fetch_tg_account_start');
+  const { data: telegramAccount } = await supabase
+    .from('user_telegram_accounts')
+    .select('telegram_user_id')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .maybeSingle();
+  timing.mark('fetch_tg_account_end');
+  timing.measure('fetch_tg_account', 'fetch_tg_account_start', 'fetch_tg_account_end');
 
   let participant: { id: string } | null = null
   if (telegramAccount?.telegram_user_id) {
-    const { data: foundParticipant } = await timing.time('find_participant_by_tg', () =>
-      adminSupabase
-        .from('participants')
-        .select('id')
-        .eq('org_id', event.org_id)
-        .eq('tg_user_id', telegramAccount.telegram_user_id)
-        .is('merged_into', null)
-        .maybeSingle()
-    );
+    timing.mark('find_participant_start');
+    const { data: foundParticipant } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', event.org_id)
+      .eq('tg_user_id', telegramAccount.telegram_user_id)
+      .is('merged_into', null)
+      .maybeSingle();
+    timing.mark('find_participant_end');
+    timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
     
     participant = foundParticipant
   } else if (user.email) {
     // Fallback: try finding by email
-    const { data: foundByEmail } = await timing.time('find_participant_by_email', () =>
-      adminSupabase
-        .from('participants')
-        .select('id')
-        .eq('org_id', event.org_id)
-        .eq('email', user.email)
-        .is('merged_into', null)
-        .maybeSingle()
-    );
+    timing.mark('find_participant_start');
+    const { data: foundByEmail } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', event.org_id)
+      .eq('email', user.email)
+      .is('merged_into', null)
+      .maybeSingle();
+    timing.mark('find_participant_end');
+    timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
     
     participant = foundByEmail
   }
@@ -407,19 +414,20 @@ export default async function EventDetailPage({
   let telegramGroups: any[] = []
   if (role === 'owner' || role === 'admin') {
     // Загружаем группы через org_telegram_groups (new many-to-many schema)
-    const { data: orgGroupsData } = await timing.time('fetch_tg_groups', () =>
-      adminSupabase
-        .from('org_telegram_groups')
-        .select(`
-          telegram_groups!inner (
-            id,
-            tg_chat_id,
-            title,
-            bot_status
-          )
-        `)
-        .eq('org_id', orgId)
-    );
+    timing.mark('fetch_tg_groups_start');
+    const { data: orgGroupsData } = await adminSupabase
+      .from('org_telegram_groups')
+      .select(`
+        telegram_groups!inner (
+          id,
+          tg_chat_id,
+          title,
+          bot_status
+        )
+      `)
+      .eq('org_id', orgId);
+    timing.mark('fetch_tg_groups_end');
+    timing.measure('fetch_tg_groups', 'fetch_tg_groups_start', 'fetch_tg_groups_end');
     
     if (orgGroupsData) {
       // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
