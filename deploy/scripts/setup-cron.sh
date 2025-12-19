@@ -32,10 +32,18 @@ curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/update-group-metrics
 EOF
 chmod +x ~/orbo/cron-group-metrics.sh
 
+# Create cron script for notification-rules (every 15 minutes)
+cat > ~/orbo/cron-notification-rules.sh << EOF
+#!/bin/bash
+curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/check-notification-rules" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-notification-rules.sh
+
 # Remove old cron entries and add new ones
-(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" ; \
+(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" ; \
   echo "0 * * * * ~/orbo/cron-error-digest.sh" ; \
-  echo "*/5 * * * * ~/orbo/cron-group-metrics.sh") | crontab -
+  echo "*/5 * * * * ~/orbo/cron-group-metrics.sh" ; \
+  echo "*/15 * * * * ~/orbo/cron-notification-rules.sh") | crontab -
 
 echo ""
 echo "✅ Cron jobs configured!"
@@ -44,6 +52,10 @@ echo "📊 Group Metrics Update:"
 echo "   Schedule: Every 5 minutes"
 echo "   Command: ~/orbo/cron-group-metrics.sh"
 echo ""
+echo "🔔 Notification Rules Check:"
+echo "   Schedule: Every 15 minutes"
+echo "   Command: ~/orbo/cron-notification-rules.sh"
+echo ""
 echo "📧 Error Digest:"
 echo "   Schedule: Every hour at :00"
 echo "   Command: ~/orbo/cron-error-digest.sh"
@@ -51,4 +63,4 @@ echo ""
 echo "📋 Management:"
 echo "   View logs: tail -f /var/log/orbo-cron.log"
 echo "   View crontab: crontab -l"
-echo "   Test group-metrics: curl -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/update-group-metrics"
+echo "   Test notification-rules: curl -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/check-notification-rules"
