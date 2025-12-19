@@ -142,53 +142,55 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
             </div>
           ) : (
             <>
-              {/* Auto-generated Code Section */}
-              {generatedCode ? (
-                <div>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 text-center mb-6">
-                    <p className="text-sm text-blue-900 dark:text-blue-100 mb-3">
-                      Ваш код для авторизации:
-                    </p>
-                    <div className="text-5xl font-bold text-blue-600 dark:text-blue-400 tracking-widest mb-4">
-                      {generatedCode}
+              {/* Auto-generated Code Section - fixed min-height prevents CLS */}
+              <div className="min-h-[320px]">
+                {generatedCode ? (
+                  <div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 text-center mb-6">
+                      <p className="text-sm text-blue-900 dark:text-blue-100 mb-3">
+                        Ваш код для авторизации:
+                      </p>
+                      <div className="text-5xl font-bold text-blue-600 dark:text-blue-400 tracking-widest mb-4">
+                        {generatedCode}
+                      </div>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        Код действителен 10 минут
+                      </p>
                     </div>
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
-                      Код действителен 10 минут
+
+                    <button
+                      onClick={openTelegramBot}
+                      className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+                    >
+                      <Send className="w-5 h-5" />
+                      Открыть @{botUsername}
+                    </button>
+
+                    <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 font-medium">
+                        Инструкция:
+                      </p>
+                      <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-2 list-decimal list-inside">
+                        <li>Нажмите кнопку выше, чтобы открыть бота</li>
+                        <li>
+                          Отправьте команду:{' '}
+                          <code className="bg-white dark:bg-gray-900 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 font-mono text-xs">
+                            /start {generatedCode}
+                          </code>
+                        </li>
+                        <li>Вы будете автоматически авторизованы</li>
+                      </ol>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+                    <p className="text-gray-600 dark:text-gray-400 font-medium">
+                      Генерация кода...
                     </p>
                   </div>
-
-                  <button
-                    onClick={openTelegramBot}
-                    className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
-                  >
-                    <Send className="w-5 h-5" />
-                    Открыть @{botUsername}
-                  </button>
-
-                  <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 font-medium">
-                      Инструкция:
-                    </p>
-                    <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-2 list-decimal list-inside">
-                      <li>Нажмите кнопку выше, чтобы открыть бота</li>
-                      <li>
-                        Отправьте команду:{' '}
-                        <code className="bg-white dark:bg-gray-900 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 font-mono text-xs">
-                          /start {generatedCode}
-                        </code>
-                      </li>
-                      <li>Вы будете автоматически авторизованы</li>
-                    </ol>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-                  <p className="text-gray-600 dark:text-gray-400 font-medium">
-                    Генерация кода...
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Error Message */}
               {error && (
