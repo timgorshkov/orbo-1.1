@@ -23,6 +23,28 @@ const supabaseAdmin = createClient(
   }
 )
 
+/**
+ * Get the public base URL for redirects
+ * Uses NEXT_PUBLIC_APP_URL in production, or X-Forwarded headers, or request.url as fallback
+ */
+function getPublicBaseUrl(request: NextRequest): string {
+  // First try NEXT_PUBLIC_APP_URL (most reliable in Docker)
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  
+  // Then try X-Forwarded headers (set by Nginx)
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+  
+  // Fallback to request.url origin
+  return new URL(request.url).origin
+}
+
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/auth/telegram-handler' });
   logger.info({}, 'Telegram auth handler started');
@@ -31,14 +53,18 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const redirectUrl = searchParams.get('redirect') || '/orgs'
   
+  // Get public base URL for redirects (handles Docker environment)
+  const baseUrl = getPublicBaseUrl(request)
+  
   logger.debug({ 
     has_code: !!code,
-    redirect_url: redirectUrl
+    redirect_url: redirectUrl,
+    base_url: baseUrl
   }, 'Telegram auth parameters');
   
   if (!code) {
     logger.error({}, 'Missing code parameter');
-    return NextResponse.redirect(new URL('/signin?error=missing_code', request.url))
+    return NextResponse.redirect(new URL('/signin?error=missing_code', baseUrl))
   }
   
   try {
@@ -55,12 +81,12 @@ export async function GET(request: NextRequest) {
         error: codeError.message,
         error_code: codeError.code
       }, 'Error querying code');
-      return NextResponse.redirect(new URL('/signin?error=query_error', request.url))
+      return NextResponse.redirect(new URL('/signin?error=query_error', baseUrl))
     }
     
     if (!authCodes) {
       logger.error({ code }, 'Code not found or not verified');
-      return NextResponse.redirect(new URL('/signin?error=invalid_code', request.url))
+      return NextResponse.redirect(new URL('/signin?error=invalid_code', baseUrl))
     }
     
     // Проверяем, не использован ли код уже (с grace period для Telegram preview)
@@ -74,7 +100,7 @@ export async function GET(request: NextRequest) {
           code_id: authCodes.id,
           used_at: usedAt.toISOString()
         }, 'Code already used and expired');
-        return NextResponse.redirect(new URL('/signin?error=code_already_used', request.url))
+        return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
       logger.warn({ 
@@ -89,7 +115,7 @@ export async function GET(request: NextRequest) {
         finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
       }
       
-      const fallbackUrl = new URL('/auth/telegram-fallback', request.url)
+      const fallbackUrl = new URL('/auth/telegram-fallback', baseUrl)
       fallbackUrl.searchParams.set('code', code)
       fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
       
@@ -111,7 +137,7 @@ export async function GET(request: NextRequest) {
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
       }, 'Code expired');
-      return NextResponse.redirect(new URL('/signin?error=expired_code', request.url))
+      return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
     logger.debug({ code_id: authCodes.id }, 'Code is valid');
@@ -130,7 +156,7 @@ export async function GET(request: NextRequest) {
         telegram_user_id: authCodes.telegram_user_id,
         org_id: authCodes.org_id
       }, 'User not found');
-      return NextResponse.redirect(new URL('/signin?error=user_not_found', request.url))
+      return NextResponse.redirect(new URL('/signin?error=user_not_found', baseUrl))
     }
     
     const userId = telegramAccounts.user_id
@@ -147,7 +173,7 @@ export async function GET(request: NextRequest) {
         error: userError?.message,
         user_id: userId
       }, 'Error fetching user');
-      return NextResponse.redirect(new URL('/signin?error=user_error', request.url))
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
     const userEmail = userData.user.email
@@ -165,7 +191,7 @@ export async function GET(request: NextRequest) {
         error: updateError.message,
         user_id: userId
       }, 'Error setting temp password');
-      return NextResponse.redirect(new URL('/signin?error=password_error', request.url))
+      return NextResponse.redirect(new URL('/signin?error=password_error', baseUrl))
     }
     
     logger.debug({ user_id: userId }, 'Temp password set');
@@ -181,7 +207,7 @@ export async function GET(request: NextRequest) {
         error: sessionError?.message,
         user_id: userId
       }, 'Error signing in');
-      return NextResponse.redirect(new URL('/signin?error=signin_error', request.url))
+      return NextResponse.redirect(new URL('/signin?error=signin_error', baseUrl))
     }
     
     logger.info({ 
@@ -218,7 +244,7 @@ export async function GET(request: NextRequest) {
     logger.debug({}, 'Using server-side cookies method');
     
     // Редиректим на fallback endpoint который установит cookies на сервере
-    const fallbackUrl = new URL('/auth/telegram-fallback', request.url)
+    const fallbackUrl = new URL('/auth/telegram-fallback', baseUrl)
     fallbackUrl.searchParams.set('code', code)
     fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
     
@@ -229,6 +255,6 @@ export async function GET(request: NextRequest) {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
     }, 'Telegram auth handler error');
-    return NextResponse.redirect(new URL('/signin?error=internal_error', request.url))
+    return NextResponse.redirect(new URL('/signin?error=internal_error', baseUrl))
   }
 }
