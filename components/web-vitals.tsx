@@ -53,6 +53,7 @@ const HEAVY_PAGE_PATTERNS = [
   '/auth',              // Страница авторизации с динамическим кодом
   '/apps',              // Раздел приложений (вторичный функционал)
   '/profile',           // Профиль участника (вторичный функционал)
+  '/superadmin',        // Суперадминка (внутренний инструмент)
 ];
 
 function isHeavyPage(pathname: string): boolean {

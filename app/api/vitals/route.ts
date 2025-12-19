@@ -43,7 +43,13 @@ export async function POST(req: NextRequest) {
     const unit = name === 'CLS' ? '' : 'ms';
     const valueStr = name === 'CLS' ? value.toFixed(3) : String(Math.round(value));
     
-    if (level === 'error') {
+    // Superadmin pages: log to Dozzle only (info level), don't send to Hawk
+    const isSuperadmin = pathname.startsWith('/superadmin');
+    
+    if (isSuperadmin) {
+      // Info level won't trigger Hawk, but visible in Dozzle
+      logger.info(logData, `Web Vitals [superadmin]: ${name}=${valueStr}${unit} on ${pathname}`);
+    } else if (level === 'error') {
       logger.error(logData, `Web Vitals CRITICAL: ${name}=${valueStr}${unit} on ${pathname}`);
     } else if (level === 'warn') {
       logger.warn(logData, `Web Vitals SLOW: ${name}=${valueStr}${unit} on ${pathname}`);
