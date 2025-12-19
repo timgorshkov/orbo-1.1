@@ -16,6 +16,12 @@ const TagsManagementContent = dynamic(() => import('@/components/settings/tags-m
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
+// Dynamic import for notifications page (it's a client component)
+const NotificationRulesContent = dynamic(() => import('@/components/settings/notification-rules-content'), {
+  ssr: false,
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -134,6 +140,18 @@ export default async function OrganizationSettingsPage({
               </p>
             </div>
             <TagsManagementContent />
+          </div>
+        )
+        break
+      }
+
+      case 'notifications': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Уведомления</h2>
+            </div>
+            <NotificationRulesContent />
           </div>
         )
         break
