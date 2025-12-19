@@ -3,26 +3,34 @@
  * https://hawk.so - российская альтернатива Sentry
  * 
  * Автоматически отлавливает ошибки и отправляет на hawk.so
+ * 
+ * NOTE: НЕ импортируем logger.ts здесь, чтобы избежать циклического импорта!
+ * logger.ts импортирует captureError из этого файла.
  */
 
 import HawkCatcher from '@hawk.so/nodejs';
-import { createServiceLogger } from './logger';
 
 let isInitialized = false;
+
+// Простой логгер без циклического импорта
+const hawkLog = {
+  info: (msg: string) => console.log(`[Hawk] ${msg}`),
+  warn: (msg: string) => console.warn(`[Hawk] ${msg}`),
+  error: (msg: string, err?: unknown) => console.error(`[Hawk] ${msg}`, err || ''),
+};
 
 /**
  * Инициализация Hawk
  * Вызывается один раз при старте сервера
  */
 export function initHawk() {
-  const logger = createServiceLogger('Hawk');
   if (isInitialized) return;
   
   const token = process.env.HAWK_TOKEN;
   
   if (!token) {
     if (process.env.NODE_ENV === 'production') {
-      logger.warn({}, 'HAWK_TOKEN not set - error monitoring disabled');
+      hawkLog.warn('HAWK_TOKEN not set - error monitoring disabled');
     }
     return;
   }
@@ -49,11 +57,9 @@ export function initHawk() {
     });
     
     isInitialized = true;
-    logger.info({}, 'Error monitoring initialized');
+    hawkLog.info('Error monitoring initialized');
   } catch (error) {
-    logger.error({ 
-      error: error instanceof Error ? error.message : String(error)
-    }, 'Failed to initialize');
+    hawkLog.error('Failed to initialize', error);
   }
 }
 
@@ -65,12 +71,8 @@ export function captureError(
   context?: Record<string, unknown>,
   user?: { id: string | number; name?: string }
 ) {
-  const logger = createServiceLogger('Hawk');
   if (!isInitialized) {
-    logger.error({ 
-      error: error.message,
-      stack: error.stack
-    }, 'Not initialized, error not sent');
+    // Не логируем здесь, чтобы избежать спама - просто тихо игнорируем
     return;
   }
 
@@ -78,10 +80,7 @@ export function captureError(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HawkCatcher.send(error, context as any, user as any);
   } catch (e) {
-    logger.error({ 
-      error: e instanceof Error ? e.message : String(e),
-      original_error: error.message
-    }, 'Failed to send error');
+    hawkLog.error('Failed to send error', e);
   }
 }
 
@@ -92,7 +91,6 @@ export function captureWarning(
   message: string,
   context?: Record<string, unknown>
 ) {
-  const logger = createServiceLogger('Hawk');
   if (!isInitialized) return;
 
   try {
@@ -100,10 +98,7 @@ export function captureWarning(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     HawkCatcher.send(warning, { ...context, level: 'warning' } as any);
   } catch (e) {
-    logger.error({ 
-      error: e instanceof Error ? e.message : String(e),
-      warning_message: message
-    }, 'Failed to send warning');
+    hawkLog.error('Failed to send warning', e);
   }
 }
 
