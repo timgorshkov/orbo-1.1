@@ -322,3 +322,36 @@ describe('Group Migration', () => {
 - `lib/services/telegramService.ts` - Telegram API wrapper
 - `docs/TELEGRAM_CHAT_MIGRATION_GUIDE.md` - существующая документация
 
+---
+
+## ✅ РЕАЛИЗАЦИЯ ЗАВЕРШЕНА (2025-12-19)
+
+### Созданные/изменённые файлы:
+
+#### Миграция БД
+- `db/migrations/151_fix_telegram_groups_duplicates.sql`
+  - Функция `merge_duplicate_telegram_groups()` для очистки дубликатов
+  - Уникальный индекс `idx_telegram_groups_tg_chat_id_unique`
+  - Колонки `migrated_to` / `migrated_from`
+  - Обновлённая функция `migrate_telegram_chat_id()`
+  - Хелпер `resolve_telegram_chat_id()`
+
+#### Webhook
+- `app/api/telegram/webhook/route.ts`
+  - Обработка `migrate_to_chat_id` и `migrate_from_chat_id`
+  - Upsert с `onConflict: 'tg_chat_id'`
+
+#### API Endpoints
+- `app/api/telegram/groups/add-to-org/route.ts` — резолв миграции
+- `app/api/telegram/groups/for-user/route.ts` — фильтрация мигрированных групп
+- `app/api/telegram/groups/sync/route.ts` — upsert с обработкой конфликтов
+- `app/api/telegram/groups/migrate-chat/route.ts` — upsert для записи миграций
+
+#### Cron Job
+- `app/api/cron/sync-admin-rights/route.ts`
+  - Автоматическая миграция при ошибке "upgraded to supergroup"
+  - Получение `migrated_to_chat_id` через `getChat` API
+
+### Следующий шаг:
+Применить миграцию `151_fix_telegram_groups_duplicates.sql` через Supabase Dashboard → SQL Editor.
+

@@ -233,34 +233,60 @@ export async function POST(request: Request) {
           }
         }
         
-        // Если после миграции всё ещё нет записи, создаём новую
+        // Если после миграции всё ещё нет записи, создаём новую с использованием upsert
         if (!groupRecord) {
-        const { error: insertError } = await supabaseService
+          // 🔄 Используем upsert с onConflict для обработки уникального индекса
+          const { data: upsertedGroup, error: upsertError } = await supabaseService
             .from('telegram_groups')
-            .insert({
+            .upsert({
               tg_chat_id: chatId,
               title: chatDetails.result.title,
               invite_link: chatDetails.result.invite_link || null,
               bot_status: 'connected',
-            // Legacy verification fields removed in migration 080
-            member_count: chatDetails.result.member_count || 0
+              // Legacy verification fields removed in migration 080
+              member_count: chatDetails.result.member_count || 0,
+              last_sync_at: new Date().toISOString()
+            }, { 
+              onConflict: 'tg_chat_id',
+              ignoreDuplicates: false 
             })
+            .select()
+            .single();
 
-          if (insertError) {
-            logger.error({ 
-              chat_id: chatId,
-              error: insertError.message
-            }, 'Error inserting canonical group');
-            continue;
+          if (upsertError) {
+            // Если upsert не сработал, пробуем select
+            if (upsertError.code === '23505') {
+              const { data: existingAfterConflict } = await supabaseService
+                .from('telegram_groups')
+                .select('*')
+                .eq('tg_chat_id', chatId)
+                .single();
+              
+              if (existingAfterConflict) {
+                groupRecord = existingAfterConflict;
+              } else {
+                logger.error({ 
+                  chat_id: chatId,
+                  error: upsertError.message
+                }, 'Error upserting group (conflict but not found)');
+                continue;
+              }
+            } else {
+              logger.error({ 
+                chat_id: chatId,
+                error: upsertError.message
+              }, 'Error upserting canonical group');
+              continue;
+            }
+          } else {
+            groupRecord = upsertedGroup || {
+              tg_chat_id: chatId,
+              title: chatDetails.result.title,
+              invite_link: chatDetails.result.invite_link || null,
+              bot_status: 'connected',
+              member_count: chatDetails.result.member_count || 0
+            };
           }
-
-        groupRecord = {
-          tg_chat_id: chatId,
-          title: chatDetails.result.title,
-          invite_link: chatDetails.result.invite_link || null,
-          bot_status: 'connected',
-          member_count: chatDetails.result.member_count || 0
-        };
         }
       } else {
         const updatePatch: Record<string, any> = {

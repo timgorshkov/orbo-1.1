@@ -129,9 +129,23 @@ export async function GET(request: Request) {
         }
         
         // Собираем chat_id только из admin rights (где пользователь реально админ)
-        const allChatIds = new Set((adminRights || []).map(right => String(right.tg_chat_id)));
+        const rawChatIds = (adminRights || []).map(right => String(right.tg_chat_id));
         
-        logger.debug({ chat_ids: Array.from(allChatIds), chat_ids_count: allChatIds.size }, 'Chat IDs to fetch');
+        // 🔄 Резолвим миграции: проверяем, не были ли некоторые группы мигрированы
+        const allChatIds = new Set<string>();
+        for (const chatId of rawChatIds) {
+          // Проверяем, была ли группа мигрирована
+          const { data: resolved } = await supabaseService
+            .rpc('resolve_telegram_chat_id', { p_chat_id: chatId });
+          
+          allChatIds.add(resolved || chatId);
+        }
+        
+        logger.debug({ 
+          raw_chat_ids: rawChatIds, 
+          resolved_chat_ids: Array.from(allChatIds), 
+          chat_ids_count: allChatIds.size 
+        }, 'Chat IDs to fetch (after migration resolution)');
         
         // Получаем группы и их связи с организациями
         const chatIdValues = Array.from(allChatIds);
@@ -146,10 +160,12 @@ export async function GET(request: Request) {
 
           try {
             // Select only existing columns (verification_status and other legacy fields removed in migration 080)
+            // Also include migrated_to/migrated_from for migration tracking
             const { data, error } = await supabaseService
               .from('telegram_groups')
-              .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, new_members_count')
-              .in('tg_chat_id', ids);
+              .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, new_members_count, migrated_to, migrated_from')
+              .in('tg_chat_id', ids)
+              .is('migrated_to', null); // 🔄 Исключаем мигрированные группы (показываем только актуальные)
 
             if (error) {
               return { data: [] as any[], error };

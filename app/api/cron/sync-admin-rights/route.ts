@@ -138,16 +138,105 @@ export async function GET(request: NextRequest) {
           
           // Группа была конвертирована в супергруппу - это ожидаемая ситуация
           if (errorMessage.includes('upgraded to a supergroup')) {
-            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Group upgraded to supergroup - marking for migration');
+            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Group upgraded to supergroup - attempting auto-migration');
             
-            // Помечаем группу как требующую миграции
-            await supabaseService
-              .from('telegram_groups')
-              .update({ 
-                bot_status: 'migration_needed',
-                updated_at: new Date().toISOString()
-              })
-              .eq('tg_chat_id', chatId);
+            // 🔄 Пытаемся автоматически выполнить миграцию
+            try {
+              // Telegram API getChat возвращает migrated_to_chat_id для конвертированных групп
+              const chatInfo = await telegramService.getChat(Number(chatId));
+              
+              if (chatInfo.ok && chatInfo.result?.migrated_to_chat_id) {
+                const newChatId = chatInfo.result.migrated_to_chat_id;
+                logger.info({ 
+                  old_chat_id: chatId, 
+                  new_chat_id: newChatId 
+                }, 'Found new supergroup chat_id - triggering migration');
+                
+                // Создаем запись для новой группы, если её нет
+                const { data: existingNew } = await supabaseService
+                  .from('telegram_groups')
+                  .select('id')
+                  .eq('tg_chat_id', String(newChatId))
+                  .maybeSingle();
+                
+                if (!existingNew) {
+                  // Получаем данные старой группы
+                  const { data: oldGroup } = await supabaseService
+                    .from('telegram_groups')
+                    .select('title, member_count, invite_link')
+                    .eq('tg_chat_id', chatId)
+                    .maybeSingle();
+                  
+                  if (oldGroup) {
+                    await supabaseService
+                      .from('telegram_groups')
+                      .insert({
+                        tg_chat_id: String(newChatId),
+                        title: oldGroup.title,
+                        bot_status: 'connected',
+                        member_count: oldGroup.member_count,
+                        invite_link: oldGroup.invite_link,
+                        migrated_from: chatId,
+                        last_sync_at: new Date().toISOString()
+                      });
+                  }
+                }
+                
+                // Вызываем функцию миграции
+                const { data: migrationResult, error: migrationError } = await supabaseService
+                  .rpc('migrate_telegram_chat_id', {
+                    old_chat_id: Number(chatId),
+                    new_chat_id: newChatId
+                  });
+                
+                if (migrationError) {
+                  logger.error({ 
+                    old_chat_id: chatId, 
+                    new_chat_id: newChatId,
+                    error: migrationError.message 
+                  }, 'Migration RPC error');
+                } else {
+                  logger.info({ 
+                    old_chat_id: chatId, 
+                    new_chat_id: newChatId,
+                    result: migrationResult 
+                  }, 'Migration completed successfully');
+                  
+                  // Записываем миграцию в лог
+                  await supabaseService
+                    .from('telegram_chat_migrations')
+                    .upsert({
+                      old_chat_id: Number(chatId),
+                      new_chat_id: newChatId,
+                      migration_result: migrationResult
+                    }, { onConflict: 'old_chat_id,new_chat_id' });
+                }
+              } else {
+                // Не удалось получить новый chat_id - помечаем для ручной миграции
+                logger.warn({ chat_id: chatId }, 'Could not get new chat_id - marking for migration');
+                await supabaseService
+                  .from('telegram_groups')
+                  .update({ 
+                    bot_status: 'migration_needed',
+                    last_sync_at: new Date().toISOString()
+                  })
+                  .eq('tg_chat_id', chatId);
+              }
+            } catch (migrationAttemptError: any) {
+              logger.error({ 
+                chat_id: chatId, 
+                error: migrationAttemptError.message 
+              }, 'Auto-migration attempt failed');
+              
+              // Помечаем группу как требующую миграции
+              await supabaseService
+                .from('telegram_groups')
+                .update({ 
+                  bot_status: 'migration_needed',
+                  last_sync_at: new Date().toISOString()
+                })
+                .eq('tg_chat_id', chatId);
+            }
           } else if (errorMessage.includes('bot was kicked') || errorMessage.includes('was kicked from')) {
             // Бот был удалён из группы - это ожидаемая ситуация
             logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Bot was kicked from group - marking as inactive');
@@ -157,7 +246,18 @@ export async function GET(request: NextRequest) {
               .from('telegram_groups')
               .update({ 
                 bot_status: 'inactive',
-                updated_at: new Date().toISOString()
+                last_sync_at: new Date().toISOString()
+              })
+              .eq('tg_chat_id', chatId);
+          } else if (errorMessage.includes('chat not found')) {
+            // Группа была удалена или стала недоступна
+            logger.warn({ chat_id: chatId, group_title: groupTitle }, 'Chat not found - marking as inactive');
+            
+            await supabaseService
+              .from('telegram_groups')
+              .update({ 
+                bot_status: 'inactive',
+                last_sync_at: new Date().toISOString()
               })
               .eq('tg_chat_id', chatId);
           } else {

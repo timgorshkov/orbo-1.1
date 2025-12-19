@@ -194,7 +194,7 @@ export async function POST(request: Request) {
     }
     
     // Проверяем, что группа существует и не привязана к другой организации
-    const { data: group, error: groupError } = await supabaseService
+    let { data: group, error: groupError } = await supabaseService
       .from('telegram_groups')
       .select('*')
       .eq('id', groupId)
@@ -216,6 +216,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ 
         error: 'Group not found' 
       }, { status: 404 });
+    }
+    
+    // 🔄 Резолв миграции: если группа была мигрирована, используем новую
+    if (group.migrated_to) {
+      logger.info({ 
+        old_chat_id: group.tg_chat_id, 
+        new_chat_id: group.migrated_to 
+      }, 'Group was migrated, using new chat_id');
+      
+      const { data: newGroup, error: newGroupError } = await supabaseService
+        .from('telegram_groups')
+        .select('*')
+        .eq('tg_chat_id', group.migrated_to)
+        .single();
+      
+      if (newGroup && !newGroupError) {
+        group = newGroup;
+        logger.info({ new_group_id: newGroup.id, new_chat_id: newGroup.tg_chat_id }, 'Switched to migrated group');
+      } else {
+        logger.warn({ 
+          migrated_to: group.migrated_to, 
+          error: newGroupError?.message 
+        }, 'Migrated group not found, proceeding with original');
+      }
     }
     
     // Приводим tg_chat_id к строке для совместимости с БД

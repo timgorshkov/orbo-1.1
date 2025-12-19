@@ -42,14 +42,14 @@ export async function POST(req: NextRequest) {
       )
     }
     
-    // Сохраняем результат миграции
+    // Сохраняем результат миграции (upsert для избежания дубликатов)
     await supabase
       .from('telegram_chat_migrations')
-      .insert({
+      .upsert({
         old_chat_id: oldChatId,
         new_chat_id: newChatId,
         migration_result: result
-      })
+      }, { onConflict: 'old_chat_id,new_chat_id' })
     
     logger.info({ old_chat_id: oldChatId, new_chat_id: newChatId, result }, '[Chat Migration] Success');
     

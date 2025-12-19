@@ -188,14 +188,37 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             })
             .eq('id', existingGroup[0].id);
         } else {
+          // ⚠️ Проверяем, есть ли группы с таким же названием (потенциальный дубликат)
+          const { data: sameNameGroups } = await supabaseServiceRole
+            .from('telegram_groups')
+            .select('id, tg_chat_id, title, migrated_to')
+            .eq('title', title)
+            .neq('tg_chat_id', String(chatId))
+            .is('migrated_to', null);
+          
+          if (sameNameGroups && sameNameGroups.length > 0) {
+            logger.warn({
+              new_chat_id: chatId,
+              new_title: title,
+              existing_groups: sameNameGroups.map(g => ({
+                id: g.id,
+                tg_chat_id: g.tg_chat_id
+              })),
+              potential_migration: sameNameGroups.some(g => 
+                String(chatId).startsWith('-100') && !String(g.tg_chat_id).startsWith('-100')
+              )
+            }, 'New group has same title as existing group(s) - potential duplicate or unhandled migration');
+          }
+          
+          // 🔄 Используем upsert с onConflict для обработки уникального индекса
           const { error: insertError } = await supabaseServiceRole
             .from('telegram_groups')
-            .insert({
+            .upsert({
               tg_chat_id: String(chatId),
               title: title,
               bot_status: 'pending',
               last_sync_at: new Date().toISOString()
-            });
+            }, { onConflict: 'tg_chat_id' });
           
           if (insertError) {
             logger.error({ 
@@ -365,7 +388,143 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     }
     
     // ========================================
-    // STEP 2.7: Обработка реакций (message_reaction)
+    // STEP 2.7: Обработка миграции группы в supergroup (migrate_to_chat_id)
+    // ========================================
+    if (body.message?.migrate_to_chat_id) {
+      const oldChatId = body.message.chat.id;
+      const newChatId = body.message.migrate_to_chat_id;
+      
+      logger.info({ 
+        old_chat_id: oldChatId,
+        new_chat_id: newChatId 
+      }, 'Group migrated to supergroup - starting migration');
+      
+      try {
+        // Сначала создаем запись для новой группы, если её нет
+        const { data: existingNew } = await supabaseServiceRole
+          .from('telegram_groups')
+          .select('id')
+          .eq('tg_chat_id', String(newChatId))
+          .maybeSingle();
+        
+        if (!existingNew) {
+          // Получаем данные старой группы
+          const { data: oldGroup } = await supabaseServiceRole
+            .from('telegram_groups')
+            .select('title, bot_status, member_count, invite_link')
+            .eq('tg_chat_id', String(oldChatId))
+            .maybeSingle();
+          
+          if (oldGroup) {
+            await supabaseServiceRole
+              .from('telegram_groups')
+              .insert({
+                tg_chat_id: String(newChatId),
+                title: oldGroup.title,
+                bot_status: oldGroup.bot_status,
+                member_count: oldGroup.member_count,
+                invite_link: oldGroup.invite_link,
+                last_sync_at: new Date().toISOString()
+              });
+          }
+        }
+        
+        // Вызываем функцию миграции
+        const { data: result, error } = await supabaseServiceRole
+          .rpc('migrate_telegram_chat_id', {
+            old_chat_id: oldChatId,
+            new_chat_id: newChatId
+          });
+        
+        if (error) {
+          logger.error({ 
+            old_chat_id: oldChatId,
+            new_chat_id: newChatId,
+            error: error.message 
+          }, 'Migration RPC error');
+        } else {
+          logger.info({ 
+            old_chat_id: oldChatId,
+            new_chat_id: newChatId,
+            result 
+          }, 'Group migration completed successfully');
+          
+          // Записываем миграцию в лог
+          await supabaseServiceRole
+            .from('telegram_chat_migrations')
+            .upsert({
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId,
+              migration_result: result
+            }, { onConflict: 'old_chat_id,new_chat_id' });
+        }
+      } catch (migrationError) {
+        logger.error({ 
+          old_chat_id: oldChatId,
+          new_chat_id: newChatId,
+          error: migrationError instanceof Error ? migrationError.message : String(migrationError)
+        }, 'Migration exception');
+      }
+    }
+    
+    // Также обрабатываем migrate_from_chat_id (когда новая группа получает сообщение)
+    if (body.message?.migrate_from_chat_id) {
+      const newChatId = body.message.chat.id;
+      const oldChatId = body.message.migrate_from_chat_id;
+      
+      logger.info({ 
+        old_chat_id: oldChatId,
+        new_chat_id: newChatId 
+      }, 'Received migrate_from_chat_id - ensuring migration is complete');
+      
+      // Проверяем, была ли уже выполнена миграция
+      const { data: migration } = await supabaseServiceRole
+        .from('telegram_chat_migrations')
+        .select('id')
+        .eq('old_chat_id', oldChatId)
+        .eq('new_chat_id', newChatId)
+        .maybeSingle();
+      
+      if (!migration) {
+        // Миграция еще не выполнена - выполняем
+        try {
+          const { data: result, error } = await supabaseServiceRole
+            .rpc('migrate_telegram_chat_id', {
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId
+            });
+          
+          if (error) {
+            logger.error({ 
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId,
+              error: error.message 
+            }, 'Delayed migration RPC error');
+          } else {
+            logger.info({ 
+              old_chat_id: oldChatId,
+              new_chat_id: newChatId,
+              result 
+            }, 'Delayed migration completed');
+            
+            await supabaseServiceRole
+              .from('telegram_chat_migrations')
+              .upsert({
+                old_chat_id: oldChatId,
+                new_chat_id: newChatId,
+                migration_result: result
+              }, { onConflict: 'old_chat_id,new_chat_id' });
+          }
+        } catch (err) {
+          logger.error({ 
+            error: err instanceof Error ? err.message : String(err)
+          }, 'Delayed migration exception');
+        }
+      }
+    }
+    
+    // ========================================
+    // STEP 2.8: Обработка реакций (message_reaction)
     // ========================================
     if (body.message_reaction) {
       const reaction = body.message_reaction;
