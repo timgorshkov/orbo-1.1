@@ -46,12 +46,14 @@ interface NotificationRuleData {
   id: string
   name: string
   description: string | null
-  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive'
+  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer'
   config: Record<string, unknown>
   use_ai: boolean
   notify_owner: boolean
   notify_admins: boolean
   is_enabled: boolean
+  is_system?: boolean
+  send_telegram?: boolean
   last_check_at: string | null
   last_triggered_at: string | null
   trigger_count: number
@@ -65,7 +67,7 @@ interface TelegramGroup {
   bot_status: string | null
 }
 
-const RULE_TYPE_INFO = {
+const RULE_TYPE_INFO: Record<string, { label: string; icon: any; color: string; bg: string }> = {
   negative_discussion: {
     label: 'Негатив в чате',
     icon: AlertTriangle,
@@ -80,6 +82,18 @@ const RULE_TYPE_INFO = {
   },
   group_inactive: {
     label: 'Неактивность группы',
+    icon: Users,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+  },
+  churning_participant: {
+    label: 'Участник на грани оттока',
+    icon: Users,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+  },
+  inactive_newcomer: {
+    label: 'Новичок без активности',
     icon: Users,
     color: 'text-blue-600',
     bg: 'bg-blue-50',
@@ -262,27 +276,22 @@ export default function NotificationRulesContent() {
         </div>
       </div>
 
-      {/* Rules List */}
-      {rules.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">Нет правил уведомлений</h3>
-          <p className="text-gray-500 mt-1">
-            Создайте первое правило, чтобы получать уведомления о важных событиях
-          </p>
-          <Button onClick={() => setShowForm(true)} className="mt-4">
-            <Plus className="h-4 w-4 mr-2" />
-            Создать правило
-          </Button>
-        </div>
-      ) : (
+      {/* System Rules Section */}
+      {rules.filter(r => r.is_system).length > 0 && (
         <div className="space-y-4">
-          {rules.map(rule => {
-            const typeInfo = RULE_TYPE_INFO[rule.rule_type]
+          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Системные уведомления
+            <span className="text-xs text-gray-400 font-normal">(только в ЛК)</span>
+          </h3>
+          {rules.filter(r => r.is_system).map(rule => {
+            const typeInfo = RULE_TYPE_INFO[rule.rule_type] || { 
+              label: rule.rule_type, 
+              icon: Bell, 
+              color: 'text-gray-600', 
+              bg: 'bg-gray-50' 
+            }
             const Icon = typeInfo.icon
-            const groupCount = rule.config.groups 
-              ? (rule.config.groups as string[]).length 
-              : groups.length
 
             return (
               <div 
@@ -299,95 +308,179 @@ export default function NotificationRulesContent() {
                         <h4 className="font-medium">{rule.name}</h4>
                         {!rule.is_enabled && (
                           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                            Приостановлено
+                            Отключено
                           </span>
                         )}
-                        {rule.use_ai && (
-                          <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                            <Sparkles className="h-3 w-3" />
-                            AI
-                          </span>
-                        )}
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">
+                          Системное
+                        </span>
                       </div>
                       <p className="text-sm text-gray-500 mt-0.5">{typeInfo.label}</p>
                       {rule.description && (
                         <p className="text-sm text-gray-600 mt-1">{rule.description}</p>
                       )}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-                        <span>
-                          {groupCount === groups.length ? 'Все группы' : `${groupCount} групп`}
-                        </span>
-                        {typeof rule.config.check_interval_minutes === 'number' && (
-                          <span>
-                            Интервал: {rule.config.check_interval_minutes} мин
-                          </span>
-                        )}
-                        {rule.last_check_at && (
-                          <span title={new Date(rule.last_check_at).toLocaleString('ru')}>
-                            Проверено: {formatTimeAgo(rule.last_check_at)}
-                          </span>
-                        )}
-                        {rule.last_triggered_at && (
-                          <span>
-                            Сработало: {new Date(rule.last_triggered_at).toLocaleDateString('ru')}
-                          </span>
-                        )}
-                        {rule.trigger_count > 0 && (
-                          <span>
-                            Всего: {rule.trigger_count} раз
-                          </span>
-                        )}
-                      </div>
                     </div>
                   </div>
 
-                  <DropdownMenu modal={false}>
-                    <DropdownMenuTrigger asChild>
-                      <button 
-                        type="button"
-                        className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                        <span className="sr-only">Открыть меню</span>
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem 
-                        onSelect={() => handleEditRule(rule)}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Редактировать
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onSelect={() => handleToggleRule(rule)}
-                      >
-                        {rule.is_enabled ? (
-                          <>
-                            <Pause className="h-4 w-4 mr-2" />
-                            Приостановить
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Включить
-                          </>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                        onSelect={() => handleDeleteRule(rule.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Удалить
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleRule(rule)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      rule.is_enabled 
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {rule.is_enabled ? 'Включено' : 'Включить'}
+                  </button>
                 </div>
               </div>
             )
           })}
         </div>
       )}
+
+      {/* Custom Rules Section */}
+      <div className="space-y-4">
+        {rules.filter(r => !r.is_system).length > 0 && (
+          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            Пользовательские правила
+            <span className="text-xs text-gray-400 font-normal">(с AI-анализом и Telegram)</span>
+          </h3>
+        )}
+        
+        {rules.filter(r => !r.is_system).length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 rounded-lg">
+            <Sparkles className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-base font-medium text-gray-900">Нет пользовательских правил</h3>
+            <p className="text-gray-500 mt-1 text-sm">
+              Создайте правило с AI-анализом для получения уведомлений в Telegram
+            </p>
+            <Button onClick={() => setShowForm(true)} className="mt-4" size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Создать правило
+            </Button>
+          </div>
+        ) : (
+          <>
+            {rules.filter(r => !r.is_system).map(rule => {
+              const typeInfo = RULE_TYPE_INFO[rule.rule_type] || { 
+                label: rule.rule_type, 
+                icon: Bell, 
+                color: 'text-gray-600', 
+                bg: 'bg-gray-50' 
+              }
+              const Icon = typeInfo.icon
+              const groupCount = rule.config.groups 
+                ? (rule.config.groups as string[]).length 
+                : groups.length
+
+              return (
+                <div 
+                  key={rule.id}
+                  className={`border rounded-lg p-4 ${rule.is_enabled ? 'bg-white' : 'bg-gray-50 opacity-75'}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg ${typeInfo.bg}`}>
+                        <Icon className={`h-5 w-5 ${typeInfo.color}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{rule.name}</h4>
+                          {!rule.is_enabled && (
+                            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                              Приостановлено
+                            </span>
+                          )}
+                          {rule.use_ai && (
+                            <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                              <Sparkles className="h-3 w-3" />
+                              AI
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-0.5">{typeInfo.label}</p>
+                        {rule.description && (
+                          <p className="text-sm text-gray-600 mt-1">{rule.description}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
+                          <span>
+                            {groupCount === groups.length ? 'Все группы' : `${groupCount} групп`}
+                          </span>
+                          {typeof rule.config.check_interval_minutes === 'number' && (
+                            <span>
+                              Интервал: {rule.config.check_interval_minutes} мин
+                            </span>
+                          )}
+                          {rule.last_check_at && (
+                            <span title={new Date(rule.last_check_at).toLocaleString('ru')}>
+                              Проверено: {formatTimeAgo(rule.last_check_at)}
+                            </span>
+                          )}
+                          {rule.last_triggered_at && (
+                            <span>
+                              Сработало: {new Date(rule.last_triggered_at).toLocaleDateString('ru')}
+                            </span>
+                          )}
+                          {rule.trigger_count > 0 && (
+                            <span>
+                              Всего: {rule.trigger_count} раз
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <button 
+                          type="button"
+                          className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                          <span className="sr-only">Открыть меню</span>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem 
+                          onSelect={() => handleEditRule(rule)}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Редактировать
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onSelect={() => handleToggleRule(rule)}
+                        >
+                          {rule.is_enabled ? (
+                            <>
+                              <Pause className="h-4 w-4 mr-2" />
+                              Приостановить
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4 mr-2" />
+                              Включить
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                          onSelect={() => handleDeleteRule(rule.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Удалить
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
     </div>
   )
 }
