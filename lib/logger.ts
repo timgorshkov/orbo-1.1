@@ -8,8 +8,11 @@ if (typeof window === 'undefined') {
   try {
     const hawkModule = require('./hawk');
     captureError = hawkModule.captureError;
+    if (captureError) {
+      console.log('[Logger] Hawk error capturing enabled');
+    }
   } catch (e) {
-    // Hawk недоступен, игнорируем
+    console.warn('[Logger] Hawk module not available:', e instanceof Error ? e.message : String(e));
   }
 }
 
