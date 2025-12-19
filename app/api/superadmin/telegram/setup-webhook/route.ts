@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get bot type from request
-    const { botType } = await req.json();
+    const { botType, dropPendingUpdates = false } = await req.json();
     
     if (!botType || !['main', 'notifications'].includes(botType)) {
       return NextResponse.json({ error: 'Invalid botType. Must be "main" or "notifications"' }, { status: 400 });
@@ -70,9 +70,14 @@ export async function POST(req: NextRequest) {
       allowed_updates: botType === 'main'
         ? ['message', 'chat_member', 'my_chat_member', 'message_reaction']
         : ['message'],
-      drop_pending_updates: false,
+      drop_pending_updates: dropPendingUpdates,
       max_connections: 40
     });
+    
+    logger.info({ 
+      bot_type: botType, 
+      drop_pending: dropPendingUpdates 
+    }, 'Webhook configuration request');
 
     if (!result.ok) {
       logger.error({ 

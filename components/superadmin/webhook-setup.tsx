@@ -5,6 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
+function getTimeAgo(unixTimestamp: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - unixTimestamp;
+  
+  if (diff < 60) return 'только что';
+  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)} дн назад`;
+  return `${Math.floor(diff / 604800)} нед назад`;
+}
+
 interface WebhookInfo {
   url: string;
   hasCustomCertificate: boolean;
@@ -42,7 +53,7 @@ export function WebhookSetup() {
     }
   };
 
-  const setupWebhook = async (botType: 'main' | 'notifications') => {
+  const setupWebhook = async (botType: 'main' | 'notifications', dropPending: boolean = false) => {
     try {
       setLoading(true);
       setSetupBotType(botType);
@@ -51,7 +62,7 @@ export function WebhookSetup() {
       const response = await fetch('/api/superadmin/telegram/setup-webhook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botType })
+        body: JSON.stringify({ botType, dropPendingUpdates: dropPending })
       });
       
       const data = await response.json();
@@ -63,7 +74,10 @@ export function WebhookSetup() {
       // Refresh webhook info
       await fetchWebhookInfo();
       
-      alert(`✅ Webhook successfully configured for ${botType} bot!`);
+      const message = dropPending 
+        ? `✅ Webhook сброшен и перенастроен для ${botType} bot!`
+        : `✅ Webhook successfully configured for ${botType} bot!`;
+      alert(message);
     } catch (err: any) {
       setError(err.message || 'Error setting up webhook');
       alert(`❌ Error: ${err.message}`);
@@ -123,8 +137,20 @@ export function WebhookSetup() {
             )}
 
             {hasError && (
-              <div className="text-sm text-red-600">
-                <span className="font-medium">Last Error:</span> {info.lastErrorMessage}
+              <div className="text-sm bg-red-50 p-2 rounded border border-red-200">
+                <div className="font-medium text-red-700">Last Error:</div>
+                <div className="text-red-600">{info.lastErrorMessage}</div>
+                {info.lastErrorDate && (
+                  <div className="text-xs text-red-500 mt-1">
+                    Время: {new Date(info.lastErrorDate * 1000).toLocaleString('ru-RU')}
+                    {' '}
+                    ({getTimeAgo(info.lastErrorDate)})
+                  </div>
+                )}
+                <div className="text-xs text-gray-500 mt-2 italic">
+                  💡 Это последняя ошибка от Telegram. Если сообщения обрабатываются корректно, 
+                  ошибка могла произойти во время деплоя и не влияет на работу.
+                </div>
               </div>
             )}
 
@@ -157,13 +183,26 @@ export function WebhookSetup() {
           <div className="border rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg">Main Bot</h3>
-              <Button
-                onClick={() => setupWebhook('main')}
-                disabled={loading}
-                size="sm"
-              >
-                {loading && setupBotType === 'main' ? 'Настройка...' : 'Setup Webhook'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setupWebhook('main')}
+                  disabled={loading}
+                  size="sm"
+                >
+                  {loading && setupBotType === 'main' ? 'Настройка...' : 'Setup'}
+                </Button>
+                {(webhookInfo?.main?.lastErrorMessage || (webhookInfo?.main?.pendingUpdateCount || 0) > 0) && (
+                  <Button
+                    onClick={() => setupWebhook('main', true)}
+                    disabled={loading}
+                    size="sm"
+                    variant="outline"
+                    title="Сбросить ошибку и очередь"
+                  >
+                    🔄 Reset
+                  </Button>
+                )}
+              </div>
             </div>
             
             {renderWebhookInfo('main', webhookInfo?.main)}
@@ -173,13 +212,26 @@ export function WebhookSetup() {
           <div className="border rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg">Notifications Bot</h3>
-              <Button
-                onClick={() => setupWebhook('notifications')}
-                disabled={loading}
-                size="sm"
-              >
-                {loading && setupBotType === 'notifications' ? 'Настройка...' : 'Setup Webhook'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setupWebhook('notifications')}
+                  disabled={loading}
+                  size="sm"
+                >
+                  {loading && setupBotType === 'notifications' ? 'Настройка...' : 'Setup'}
+                </Button>
+                {(webhookInfo?.notifications?.lastErrorMessage || (webhookInfo?.notifications?.pendingUpdateCount || 0) > 0) && (
+                  <Button
+                    onClick={() => setupWebhook('notifications', true)}
+                    disabled={loading}
+                    size="sm"
+                    variant="outline"
+                    title="Сбросить ошибку и очередь"
+                  >
+                    🔄 Reset
+                  </Button>
+                )}
+              </div>
             </div>
             
             {renderWebhookInfo('notifications', webhookInfo?.notifications)}
