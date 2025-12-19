@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     
     if (codeError || !authCodes) {
-      logger.info({ 
+      logger.warn({ 
         error: codeError?.message,
         code: code.substring(0, 3) + '***'
       }, '[Telegram Auth] Code not found');
@@ -86,13 +86,14 @@ export async function GET(request: NextRequest) {
       const usedAt = authCodes.used_at ? new Date(authCodes.used_at) : null
       const now = new Date()
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
-        logger.info({ 
+        logger.warn({ 
           code_id: authCodes.id,
           used_at: usedAt.toISOString()
         }, '[Telegram Auth] Code expired (used >30s ago)');
         return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
+      // Grace period reuse is normal behavior (Telegram preview), keep as info
       logger.info({ 
         code_id: authCodes.id,
         used_at: usedAt?.toISOString()
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
     
     const expiresAt = new Date(authCodes.expires_at)
     if (expiresAt < new Date()) {
-      logger.info({ 
+      logger.warn({ 
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
       }, '[Telegram Auth] Code TTL expired');

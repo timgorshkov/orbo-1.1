@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     }
     
     if (!authCodes) {
-      logger.info({ code: code.substring(0, 3) + '***' }, '[Telegram Auth] Code not found or not verified by bot');
+      logger.warn({ code: code.substring(0, 3) + '***' }, '[Telegram Auth] Code not found or not verified by bot');
       return NextResponse.redirect(new URL('/signin?error=invalid_code', baseUrl))
     }
     
@@ -96,13 +96,14 @@ export async function GET(request: NextRequest) {
       
       // Разрешаем повторное использование в течение 30 секунд (для предпросмотра Telegram)
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
-        logger.info({ 
+        logger.warn({ 
           code_id: authCodes.id,
           used_at: usedAt.toISOString()
         }, '[Telegram Auth] Code expired (used >30s ago)');
         return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
+      // Grace period reuse is normal behavior (Telegram preview), keep as info
       logger.info({ 
         code_id: authCodes.id,
         used_at: usedAt?.toISOString()
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
     const currentTime = new Date()
     
     if (expiresAt < currentTime) {
-      logger.info({ 
+      logger.warn({ 
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
       }, '[Telegram Auth] Code TTL expired');
