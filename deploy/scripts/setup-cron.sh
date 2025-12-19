@@ -46,12 +46,28 @@ curl -s -X POST -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/sync-attenti
 EOF
 chmod +x ~/orbo/cron-sync-attention-zones.sh
 
-# Remove old cron entries and add new ones
-(crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" ; \
-  echo "0 * * * * ~/orbo/cron-error-digest.sh" ; \
-  echo "*/5 * * * * ~/orbo/cron-group-metrics.sh" ; \
-  echo "*/15 * * * * ~/orbo/cron-notification-rules.sh" ; \
-  echo "0 * * * * ~/orbo/cron-sync-attention-zones.sh") | crontab -
+# Create crontab file (more reliable than pipe)
+CRONTAB_FILE=~/orbo/orbo-crontab
+
+# Get existing crontab entries (excluding our jobs)
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" > "$CRONTAB_FILE" || true
+
+# Add our cron jobs
+cat >> "$CRONTAB_FILE" << CRON
+# Orbo cron jobs - DO NOT EDIT MANUALLY
+0 * * * * ~/orbo/cron-error-digest.sh
+*/5 * * * * ~/orbo/cron-group-metrics.sh
+*/15 * * * * ~/orbo/cron-notification-rules.sh
+0 * * * * ~/orbo/cron-sync-attention-zones.sh
+CRON
+
+# Install crontab from file
+crontab "$CRONTAB_FILE"
+
+# Verify installation
+echo ""
+echo "📋 Installed crontab:"
+crontab -l
 
 echo ""
 echo "✅ Cron jobs configured!"
