@@ -9,6 +9,7 @@
  */
 
 import HawkCatcher from '@hawk.so/nodejs';
+import { Buffer } from 'buffer';
 
 let isInitialized = false;
 
@@ -18,6 +19,40 @@ const hawkLog = {
   warn: (msg: string) => console.warn(`[Hawk] ${msg}`),
   error: (msg: string, err?: unknown) => console.error(`[Hawk] ${msg}`, err || ''),
 };
+
+/**
+ * Валидация токена Hawk
+ * Токен должен быть Base64-закодированным JSON с полем integrationId
+ */
+function validateHawkToken(token: string): { valid: boolean; error?: string; integrationId?: string } {
+  try {
+    // Убираем возможные пробелы и переносы строк
+    const cleanToken = token.trim();
+    
+    // Проверяем что токен похож на Base64
+    if (!/^[A-Za-z0-9+/=]+$/.test(cleanToken)) {
+      return { valid: false, error: 'Token contains invalid characters (not Base64)' };
+    }
+    
+    // Декодируем Base64
+    const decoded = Buffer.from(cleanToken, 'base64').toString('utf-8');
+    
+    // Парсим JSON
+    const parsed = JSON.parse(decoded);
+    
+    // Проверяем наличие integrationId
+    if (!parsed.integrationId || parsed.integrationId === '') {
+      return { valid: false, error: 'Token JSON does not contain integrationId field' };
+    }
+    
+    return { valid: true, integrationId: parsed.integrationId };
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      return { valid: false, error: 'Token is not valid Base64-encoded JSON' };
+    }
+    return { valid: false, error: e instanceof Error ? e.message : 'Unknown validation error' };
+  }
+}
 
 /**
  * Инициализация Hawk
@@ -37,9 +72,16 @@ export function initHawk() {
     return;
   }
 
+  // Предварительная валидация токена
+  const validation = validateHawkToken(token);
+  if (!validation.valid) {
+    hawkLog.error(`Invalid HAWK_TOKEN: ${validation.error}. Token length: ${token.length}, prefix: ${token.substring(0, 10)}...`);
+    return;
+  }
+
   try {
     HawkCatcher.init({
-      token,
+      token: token.trim(), // Убедимся что нет лишних пробелов
       release: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       context: {
         environment: process.env.NODE_ENV,
@@ -59,7 +101,7 @@ export function initHawk() {
     });
     
     isInitialized = true;
-    hawkLog.info('Error monitoring initialized');
+    hawkLog.info(`Error monitoring initialized (integration: ${validation.integrationId})`);
   } catch (error) {
     hawkLog.error('Failed to initialize', error);
   }
