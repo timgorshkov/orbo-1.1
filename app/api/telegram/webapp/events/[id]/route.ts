@@ -46,6 +46,7 @@ export async function GET(
         event_type,
         location_info,
         map_link,
+        online_link,
         event_date,
         end_date,
         start_time,
@@ -60,7 +61,7 @@ export async function GET(
         capacity_count_by_paid,
         status,
         org_id,
-        organizations!inner(name)
+        organizations!inner(name, slug)
       `)
       .eq('id', eventId)
       .single();
@@ -89,8 +90,9 @@ export async function GET(
       .eq('event_id', eventId)
       .order('field_order', { ascending: true });
     
-    // Check if user is already registered
+    // Check if user is already registered and get payment status
     let isRegistered = false;
+    let paymentStatus: string | null = null;
     if (telegramUser) {
       // Find participant by telegram_user_id
       const { data: participant } = await adminSupabase
@@ -104,17 +106,19 @@ export async function GET(
       if (participant) {
         const { data: registration } = await adminSupabase
           .from('event_registrations')
-          .select('id, status')
+          .select('id, status, payment_status')
           .eq('event_id', eventId)
           .eq('participant_id', participant.id)
           .eq('status', 'registered')
           .maybeSingle();
         
         isRegistered = !!registration;
+        paymentStatus = registration?.payment_status || null;
       }
     }
     
     // Format response
+    const orgData = event.organizations as any;
     const response = {
       event: {
         id: event.id,
@@ -124,6 +128,7 @@ export async function GET(
         event_type: event.event_type,
         location_info: event.location_info,
         map_link: event.map_link,
+        online_link: event.online_link,
         event_date: event.event_date,
         end_date: event.end_date,
         start_time: event.start_time,
@@ -137,11 +142,14 @@ export async function GET(
         capacity: event.capacity,
         registered_count: regCount || 0,
         status: event.status,
-        org_name: (event.organizations as any)?.name,
+        org_id: event.org_id,
+        org_name: orgData?.name,
+        org_slug: orgData?.slug,
       },
       fields: fields || [],
       isRegistered,
       isValidated,
+      paymentStatus,
     };
     
     return NextResponse.json(response);

@@ -84,6 +84,7 @@ interface Event {
   event_type: 'online' | 'offline';
   location_info: string | null;
   map_link?: string | null;
+  online_link?: string | null;
   event_date: string;
   end_date?: string | null;
   start_time: string;
@@ -97,7 +98,9 @@ interface Event {
   capacity?: number | null;
   registered_count?: number;
   status: string;
+  org_id?: string;
   org_name?: string;
+  org_slug?: string;
 }
 
 interface RegistrationField {
@@ -122,6 +125,7 @@ export default function TelegramEventPage() {
   const [fields, setFields] = useState<RegistrationField[]>([]);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isRegistered, setIsRegistered] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [telegramUser, setTelegramUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
@@ -171,6 +175,7 @@ export default function TelegramEventPage() {
         setEvent(data.event);
         setFields(data.fields || []);
         setIsRegistered(data.isRegistered || false);
+        setPaymentStatus(data.paymentStatus || null);
         
         // Pre-fill form with Telegram user data
         if (telegramUser) {
@@ -301,6 +306,13 @@ export default function TelegramEventPage() {
 
   // Render success
   if (viewState === 'success') {
+    const isPaid = paymentStatus === 'paid';
+    const eventsCalendarUrl = event?.org_slug 
+      ? `https://my.orbo.ru/c/${event.org_slug}/events`
+      : event?.org_id 
+        ? `https://my.orbo.ru/c/${event.org_id}/events`
+        : null;
+    
     return (
       <div className="min-h-screen flex flex-col bg-white">
         {/* Header with checkmark */}
@@ -311,7 +323,7 @@ export default function TelegramEventPage() {
         </div>
         
         {/* Event details */}
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-6 overflow-y-auto">
           <div className="space-y-4">
             <div className="flex items-center gap-3 text-gray-700">
               <Calendar className="w-5 h-5 text-gray-400" />
@@ -323,35 +335,112 @@ export default function TelegramEventPage() {
               <span>{formatTime(event?.start_time || '')} — {formatTime(event?.end_time || '')}</span>
             </div>
             
-            {event?.location_info && (
-              <div className="flex items-center gap-3 text-gray-700">
-                <MapPin className="w-5 h-5 text-gray-400" />
-                <span>{event.location_info}</span>
-              </div>
+            {/* Location/Online link - show if paid or free event */}
+            {(!event?.requires_payment || isPaid) && (
+              <>
+                {event?.event_type === 'online' && event?.online_link && (
+                  <div className="flex items-start gap-3 text-gray-700">
+                    <ExternalLink className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-medium">Ссылка на трансляцию:</span>
+                      <a 
+                        href={event.online_link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="block text-blue-500 mt-1"
+                      >
+                        Перейти к трансляции →
+                      </a>
+                    </div>
+                  </div>
+                )}
+                
+                {event?.event_type === 'offline' && event?.location_info && (
+                  <div className="flex items-start gap-3 text-gray-700">
+                    <MapPin className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span>{event.location_info}</span>
+                      {event.map_link && (
+                        <a 
+                          href={event.map_link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="block text-blue-500 mt-1"
+                        >
+                          Открыть на карте →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
           
-          {/* Payment info for paid events */}
-          {event?.requires_payment && event?.payment_link && (
-            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-              <p className="text-sm text-amber-800 mb-3">
-                Не забудьте оплатить участие:
-              </p>
-              <a
-                href={event.payment_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg font-medium"
-              >
-                Перейти к оплате
-                <ExternalLink className="w-4 h-4" />
-              </a>
+          {/* Payment section for paid events */}
+          {event?.requires_payment && (
+            <div className="mt-6">
+              {isPaid ? (
+                // Payment confirmed
+                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-green-700 font-medium">
+                    <CheckCircle2 className="w-5 h-5" />
+                    Оплата подтверждена
+                  </div>
+                </div>
+              ) : (
+                // Payment pending
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-amber-700 font-medium mb-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Ожидает оплаты
+                  </div>
+                  
+                  {event.default_price && (
+                    <p className="text-lg font-semibold text-gray-900 mb-3">
+                      К оплате: {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
+                    </p>
+                  )}
+                  
+                  {event.payment_instructions && (
+                    <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">
+                      {event.payment_instructions}
+                    </p>
+                  )}
+                  
+                  {event.payment_link && (
+                    <>
+                      <a
+                        href={event.payment_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-3 bg-amber-500 text-white rounded-xl font-semibold"
+                      >
+                        💳 Перейти к оплате
+                      </a>
+                      <p className="text-xs text-gray-500 text-center mt-3">
+                        Если вы уже оплатили, дождитесь учёта оплаты организатором
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
         
-        {/* Close button */}
+        {/* Footer with links */}
         <div className="flex-shrink-0 p-4 border-t border-gray-100">
+          {eventsCalendarUrl && (
+            <a
+              href={eventsCalendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-2 text-center text-blue-500 text-sm mb-2"
+            >
+              📅 Календарь событий
+            </a>
+          )}
           <button
             onClick={() => {
               window.Telegram?.WebApp?.close();
