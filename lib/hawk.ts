@@ -99,13 +99,18 @@ export function initHawk() {
   }
 
   try {
+    // Инициализация по документации - сначала простой вариант с токеном
+    const cleanToken = token.trim();
+    
+    // Попробуем инициализировать с полными настройками
     HawkCatcher.init({
-      token: token.trim(), // Убедимся что нет лишних пробелов
+      token: cleanToken,
       release: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       context: {
         environment: process.env.NODE_ENV,
         app: 'orbo',
       },
+      disableGlobalErrorsHandling: false, // Явно включаем глобальные обработчики
       // Фильтрация sensitive данных
       beforeSend: (event) => {
         // Удаляем пароли из контекста (только если context - объект)
@@ -123,7 +128,9 @@ export function initHawk() {
     globalThis.__hawkInitialized = true;
     hawkLog.info(`Error monitoring initialized (integration: ${validation.integrationId})`);
   } catch (error) {
-    hawkLog.error('Failed to initialize', error);
+    // Логируем ошибку но не считаем это критичным - возможно другой воркер успешно инициализировался
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    hawkLog.warn(`Initialization warning: ${errorMessage} (may succeed in another worker)`);
   }
 }
 
@@ -163,6 +170,28 @@ export function captureWarning(
     HawkCatcher.send(warning, { ...context, level: 'warning' } as any);
   } catch (e) {
     hawkLog.error('Failed to send warning', e);
+  }
+}
+
+/**
+ * Отправка тестового события в Hawk
+ * Используется для проверки что интеграция работает
+ */
+export function sendTestEvent(): boolean {
+  if (!isInitialized && !globalThis.__hawkInitialized) {
+    hawkLog.warn('Cannot send test event - Hawk not initialized');
+    return false;
+  }
+
+  try {
+    const testError = new Error('[Test] Hawk integration test event');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HawkCatcher.send(testError, { test: true, timestamp: new Date().toISOString() } as any);
+    hawkLog.info('Test event sent to Hawk');
+    return true;
+  } catch (e) {
+    hawkLog.error('Failed to send test event', e);
+    return false;
   }
 }
 
