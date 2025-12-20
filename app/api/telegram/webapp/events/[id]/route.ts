@@ -61,7 +61,7 @@ export async function GET(
         capacity_count_by_paid,
         status,
         org_id,
-        organizations!inner(name, slug)
+        organizations(name, slug)
       `)
       .eq('id', eventId)
       .single();
