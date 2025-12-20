@@ -27,9 +27,11 @@ export function initHawk() {
   if (isInitialized) return;
   
   const token = process.env.HAWK_TOKEN;
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
   
   if (!token) {
-    if (process.env.NODE_ENV === 'production') {
+    // Don't warn during build phase - HAWK_TOKEN is not available at build time
+    if (process.env.NODE_ENV === 'production' && !isBuildPhase) {
       hawkLog.warn('HAWK_TOKEN not set - error monitoring disabled');
     }
     return;
