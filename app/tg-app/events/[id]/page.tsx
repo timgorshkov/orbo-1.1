@@ -84,7 +84,6 @@ interface Event {
   event_type: 'online' | 'offline';
   location_info: string | null;
   map_link?: string | null;
-  online_link?: string | null;
   event_date: string;
   end_date?: string | null;
   start_time: string;
@@ -336,15 +335,15 @@ export default function TelegramEventPage() {
             </div>
             
             {/* Location/Online link - show if paid or free event */}
-            {(!event?.requires_payment || isPaid) && (
+            {(!event?.requires_payment || isPaid) && event?.location_info && (
               <>
-                {event?.event_type === 'online' && event?.online_link && (
+                {event?.event_type === 'online' ? (
                   <div className="flex items-start gap-3 text-gray-700">
                     <ExternalLink className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
                     <div>
                       <span className="font-medium">Ссылка на трансляцию:</span>
                       <a 
-                        href={event.online_link} 
+                        href={event.location_info.startsWith('http') ? event.location_info : `https://${event.location_info}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="block text-blue-500 mt-1"
@@ -353,9 +352,7 @@ export default function TelegramEventPage() {
                       </a>
                     </div>
                   </div>
-                )}
-                
-                {event?.event_type === 'offline' && event?.location_info && (
+                ) : (
                   <div className="flex items-start gap-3 text-gray-700">
                     <MapPin className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
                     <div>
