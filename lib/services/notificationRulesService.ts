@@ -176,35 +176,25 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
         .eq('role', 'owner')
         .single();
       
-      logger.info({ 
+      // Debug level for routine lookups
+      logger.debug({ 
         rule_id: rule.id, 
         org_id: rule.org_id,
-        membership,
         error: membershipError?.message 
-      }, '👤 Looking for owner membership');
+      }, 'Looking for owner membership');
       
       if (membership?.user_id) {
         // Use RPC function to get telegram ID (works with auth.users)
         const { data: tgUserId, error: rpcError } = await supabaseAdmin
           .rpc('get_user_telegram_id', { p_user_id: membership.user_id });
         
-        logger.info({ 
-          rule_id: rule.id,
-          user_id: membership.user_id,
-          tg_user_id: tgUserId,
-          error: rpcError?.message 
-        }, '👤 Owner telegram ID lookup');
-        
         if (tgUserId) {
           recipients.push({
             tgUserId: tgUserId,
-            name: 'Owner', // Name not available from RPC, but not critical
+            name: 'Owner',
           });
-        } else {
-          logger.warn({ 
-            rule_id: rule.id, 
-            user_id: membership.user_id 
-          }, '⚠️ Owner has no tg_user_id');
+        } else if (!rpcError) {
+          logger.debug({ rule_id: rule.id, user_id: membership.user_id }, 'Owner has no tg_user_id');
         }
       }
     }
@@ -217,15 +207,9 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
         .eq('org_id', rule.org_id)
         .eq('role', 'admin');
       
-      logger.info({ 
-        rule_id: rule.id, 
-        admin_count: adminMemberships?.length || 0,
-        error: adminsError?.message 
-      }, '👥 Looking for admin memberships');
-      
       if (adminMemberships) {
         for (const adminMembership of adminMemberships) {
-          const { data: tgUserId, error: rpcError } = await supabaseAdmin
+          const { data: tgUserId } = await supabaseAdmin
             .rpc('get_user_telegram_id', { p_user_id: adminMembership.user_id });
           
           if (tgUserId && !recipients.find(r => r.tgUserId === tgUserId)) {
@@ -238,7 +222,7 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
       }
     }
     
-    logger.info({ rule_id: rule.id, recipients_count: recipients.length, recipients }, '📬 Final recipients list');
+    logger.debug({ rule_id: rule.id, recipients_count: recipients.length }, 'Recipients found');
   } catch (error) {
     logger.error({ error, rule_id: rule.id }, 'Error getting recipients');
   }
@@ -299,12 +283,7 @@ async function getRecentMessages(
     // Convert chatId to number for BIGINT comparison
     const chatIdNum = parseInt(chatId, 10);
     
-    logger.info({ 
-      chat_id_str: chatId, 
-      chat_id_num: chatIdNum, 
-      since,
-      sinceMinutes 
-    }, '🔍 Querying messages from participant_messages');
+    logger.debug({ chat_id: chatId, since_minutes: sinceMinutes }, 'Querying messages');
     
     // Use participant_messages for full text content (better for AI analysis)
     const { data, error } = await supabaseAdmin
@@ -348,11 +327,11 @@ async function getRecentMessages(
       }
       
       if (!activityData || activityData.length === 0) {
-        logger.info({ chat_id: chatId }, '📭 No messages found in activity_events either');
+        logger.debug({ chat_id: chatId }, 'No messages found');
         return [];
       }
       
-      logger.info({ chat_id: chatId, count: activityData.length }, '📨 Found messages in activity_events (fallback)');
+      logger.debug({ chat_id: chatId, count: activityData.length }, 'Messages from activity_events');
       
       // Get participant names
       const userIds = Array.from(new Set(activityData.map(m => m.tg_user_id)));
@@ -381,11 +360,11 @@ async function getRecentMessages(
     }
     
     if (!data || data.length === 0) {
-      logger.info({ chat_id: chatId, since }, '📭 No messages found in participant_messages');
+      logger.debug({ chat_id: chatId }, 'No messages found');
       return [];
     }
     
-    logger.info({ chat_id: chatId, count: data.length }, '📨 Found messages in participant_messages');
+    logger.debug({ chat_id: chatId, count: data.length }, 'Messages found');
     
     // Get participant names
     const userIds = Array.from(new Set(data.map(m => m.tg_user_id)));
@@ -502,21 +481,20 @@ _${rule.name}_`;
  * Process a single rule
  */
 async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
-  logger.info({ 
+  // Debug level for routine rule processing
+  logger.debug({ 
     rule_id: rule.id, 
     rule_type: rule.rule_type,
-    rule_name: rule.name,
-    use_ai: rule.use_ai,
-    config: rule.config 
-  }, '📋 Processing notification rule');
+    rule_name: rule.name 
+  }, 'Processing rule');
   
   const groups = await getOrgGroups(rule.org_id, rule.config.groups);
   if (groups.length === 0) {
-    logger.warn({ rule_id: rule.id }, '⚠️ No groups to check for rule');
+    logger.debug({ rule_id: rule.id }, 'No groups to check');
     return { triggered: false };
   }
   
-  logger.info({ rule_id: rule.id, groups_count: groups.length, groups }, '📱 Groups to check');
+  logger.debug({ rule_id: rule.id, groups_count: groups.length }, 'Groups to check');
   
   let triggered = false;
   let totalAiCost = 0;
@@ -527,8 +505,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
     switch (rule.rule_type) {
       case 'negative_discussion': {
         if (!rule.use_ai) {
-          logger.info({ rule_id: rule.id, chat_id: chatId }, '⏭️ Skipping negative_discussion - AI not enabled');
-          continue;
+          continue; // Skip if AI not enabled
         }
         
         const intervalMinutes = (rule.config.check_interval_minutes as number) || 60;
@@ -613,31 +590,11 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           let sentCount = 0;
           for (const recipient of recipients) {
-            logger.info({ 
-              rule_id: rule.id, 
-              tg_user_id: recipient.tgUserId,
-              message_preview: message.substring(0, 100)
-            }, '📤 Sending notification to recipient');
-            
             const result = await sendSystemNotification(recipient.tgUserId, message);
-            
-            logger.info({ 
-              rule_id: rule.id, 
-              tg_user_id: recipient.tgUserId,
-              success: result.success,
-              error: result.error
-            }, '📨 Notification send result');
-            
             if (result.success) sentCount++;
           }
           
           const finalStatus = sentCount > 0 ? 'sent' : 'failed';
-          logger.info({ 
-            rule_id: rule.id, 
-            sent_count: sentCount,
-            recipients_count: recipients.length,
-            status: finalStatus
-          }, '📊 Notification status before logging');
           
           // Log notification
           await logNotification({
@@ -652,12 +609,13 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           });
           
           triggered = true;
+          // Only log when notification is actually triggered
           logger.info({ 
-            rule_id: rule.id, 
-            chat_id: chatId, 
+            rule_name: rule.name,
+            chat: groupTitle, 
             severity: analysis.severity,
-            recipients: sentCount 
-          }, '🔔 Negative notification sent');
+            sent: sentCount 
+          }, '🔔 Negative discussion detected');
         }
         break;
       }
@@ -737,11 +695,11 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           triggered = true;
           logger.info({
-            rule_id: rule.id,
-            chat_id: chatId,
-            question_author: question.author,
+            rule_name: rule.name,
+            chat: groupTitle,
+            author: question.author,
             hours: hoursAgo
-          }, '🔔 Unanswered question notification sent');
+          }, '❓ Unanswered question detected');
         }
         break;
       }
@@ -801,10 +759,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         
         triggered = true;
         logger.info({
-          rule_id: rule.id,
-          chat_id: chatId,
+          rule_name: rule.name,
+          chat: groupTitle,
           inactive_hours: Math.floor(hoursInactive)
-        }, '🔔 Inactivity notification sent');
+        }, '💤 Group inactivity detected');
         break;
       }
     }
