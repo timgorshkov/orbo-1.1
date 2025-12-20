@@ -431,26 +431,15 @@ export default function NotificationRuleForm({
         )}
       </div>
 
-      {/* AI Settings */}
+      {/* AI Info (for types that require AI) */}
       {selectedTypeInfo?.requiresAI && (
         <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
           <div className="flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-purple-600 mt-0.5" />
             <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium text-purple-900">AI-анализ</h4>
-                <Switch
-                  checked={useAI}
-                  onCheckedChange={setUseAI}
-                />
-              </div>
+              <h4 className="font-medium text-purple-900">AI-анализ включён</h4>
               <p className="text-sm text-purple-700 mt-1">
-                Использовать AI для более точного определения негатива и вопросов.
-                {useAI && (
-                  <span className="block mt-1 text-purple-600">
-                    💡 Расходы будут отображаться в разделе "AI Расходы" суперадминки
-                  </span>
-                )}
+                Для определения негатива и вопросов используется AI-анализ сообщений.
               </p>
             </div>
           </div>

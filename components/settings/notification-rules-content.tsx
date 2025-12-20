@@ -267,11 +267,6 @@ export default function NotificationRulesContent() {
               Правила проверяются автоматически. При срабатывании вы получите 
               уведомление в Telegram через бота @orbo_assist_bot.
             </p>
-            <p className="text-sm text-blue-600 mt-2">
-              <Sparkles className="h-4 w-4 inline mr-1" />
-              Правила с AI-анализом более точно определяют негатив и вопросы, 
-              но потребляют токены OpenAI.
-            </p>
           </div>
         </div>
       </div>
