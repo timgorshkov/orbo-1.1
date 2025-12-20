@@ -350,16 +350,15 @@ export default function TelegramEventPage() {
           )}
         </div>
         
-        {/* All events link */}
+        {/* Close button */}
         <div className="flex-shrink-0 p-4 border-t border-gray-100">
           <button
             onClick={() => {
-              // TODO: Navigate to events list
               window.Telegram?.WebApp?.close();
             }}
-            className="w-full py-3 text-center text-blue-600 font-medium"
+            className="w-full py-3 text-center text-gray-500 font-medium"
           >
-            Все мероприятия →
+            Закрыть
           </button>
         </div>
       </div>
