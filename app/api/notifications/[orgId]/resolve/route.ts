@@ -47,13 +47,28 @@ export async function POST(
     }
     
     // Получаем имя пользователя для отображения
-    const { data: userData } = await adminSupabase
-      .from('users')
-      .select('full_name, email')
-      .eq('id', user.id)
-      .single();
+    let userName: string = 'Пользователь';
     
-    const userName = userData?.full_name || userData?.email || 'Пользователь';
+    // 1. Пробуем из user_metadata (заполняется при регистрации)
+    if (user.user_metadata?.full_name) {
+      userName = user.user_metadata.full_name;
+    } else if (user.user_metadata?.name) {
+      userName = user.user_metadata.name;
+    } else {
+      // 2. Пробуем через RPC функцию
+      try {
+        const { data: displayName } = await adminSupabase
+          .rpc('get_user_display_name', { p_user_id: user.id });
+        if (displayName) {
+          userName = displayName;
+        }
+      } catch {
+        // RPC не существует - используем email
+        if (user.email) {
+          userName = user.email.split('@')[0];
+        }
+      }
+    }
     
     // Вызываем соответствующую функцию в зависимости от типа источника
     let success = false;
