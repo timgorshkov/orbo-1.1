@@ -31,7 +31,9 @@ export default function EventShareOptions({
   // Generate links
   const webLink = `${typeof window !== 'undefined' ? window.location.origin : 'https://my.orbo.ru'}/e/${eventId}`;
   const telegramBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot';
-  const telegramLink = `https://t.me/${telegramBotUsername}?startapp=e-${eventId}`;
+  const telegramAppShortName = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_APP_SHORT_NAME || 'events';
+  // Format: https://t.me/botusername/appshortname?startapp=param
+  const telegramLink = `https://t.me/${telegramBotUsername}/${telegramAppShortName}?startapp=e-${eventId}`;
   
   const copyToClipboard = async (text: string, type: 'web' | 'telegram') => {
     try {
