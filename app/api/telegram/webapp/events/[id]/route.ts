@@ -66,7 +66,7 @@ export async function GET(
       .single();
     
     if (eventError || !event) {
-      logger.warn({ event_id: eventId }, 'Event not found');
+      logger.warn({ event_id: eventId, error: eventError?.message, code: eventError?.code }, 'Event not found');
       return NextResponse.json({ error: 'Событие не найдено' }, { status: 404 });
     }
     
