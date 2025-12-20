@@ -146,7 +146,7 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
-              {hasMore.churning && hasMore.churning > 0 && (
+              {(hasMore.churning ?? 0) > 0 && (
                 <Link
                   href={`/p/${orgId}/notifications?type=churning_participant`}
                   className="block px-2 py-1 text-xs text-amber-600 hover:text-amber-700"
@@ -184,7 +184,7 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
-              {hasMore.newcomers && hasMore.newcomers > 0 && (
+              {(hasMore.newcomers ?? 0) > 0 && (
                 <Link
                   href={`/p/${orgId}/notifications?type=inactive_newcomer`}
                   className="block px-2 py-1 text-xs text-blue-600 hover:text-blue-700"
