@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { sendTestEvent } from '@/lib/hawk';
-import { createClient } from '@/lib/supabase/server';
+import { createClientServer } from '@/lib/server/supabaseServer';
 
 const logger = createAPILogger({ headers: { get: () => null } }, { endpoint: 'hawk-test' });
 
 export async function POST(request: NextRequest) {
   try {
     // Проверка авторизации суперадмина
-    const supabase = await createClient();
+    const supabase = await createClientServer();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
