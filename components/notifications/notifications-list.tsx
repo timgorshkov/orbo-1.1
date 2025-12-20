@@ -171,7 +171,7 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
                   : 'Фильтр'}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="bg-white border shadow-md z-50">
               {NOTIFICATION_TYPES.map(type => (
                 <DropdownMenuItem
                   key={type.value}
@@ -205,7 +205,7 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
           </Button>
           
           {/* Settings link */}
-          <Link href={`/p/${orgId}/settings/notifications`}>
+          <Link href={`/p/${orgId}/settings?tab=notifications`}>
             <Button variant="outline" size="sm">
               <Settings className="h-4 w-4 mr-2" />
               Настройки
