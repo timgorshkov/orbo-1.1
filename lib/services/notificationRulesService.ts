@@ -456,46 +456,42 @@ function isWithinWorkHours(
 function formatNotificationMessage(
   rule: NotificationRule,
   context: Record<string, unknown>,
-  groupTitle: string
+  groupTitle: string,
+  groupChatId?: string
 ): string {
-  // Link to notifications section instead of just organization
-  const notificationsUrl = `https://my.orbo.ru/p/${rule.org_id}/notifications`;
+  // Формируем ссылку на группу (если есть invite link в будущем)
+  // Пока просто показываем название группы как текст
+  const groupDisplay = groupTitle || 'группа';
   
   switch (rule.rule_type) {
     case 'negative_discussion':
-      return `🔴 *Негатив в группе «${groupTitle}»*
+      return `🔴 *Негатив в группе «${groupDisplay}»*
 
 ${context.summary || 'Обнаружена негативная дискуссия'}
 
 *Серьёзность:* ${context.severity === 'high' ? '🔴 Высокая' : context.severity === 'medium' ? '🟡 Средняя' : '🟢 Низкая'}
-*Сообщений проанализировано:* ${context.message_count || 0}
+*Сообщений:* ${context.message_count || 0}
 
-_Правило: ${rule.name}_
-
-[Открыть уведомления →](${notificationsUrl})`;
+_${rule.name}_`;
 
     case 'unanswered_question':
-      return `❓ *Неотвеченный вопрос в «${groupTitle}»*
+      return `❓ *Неотвеченный вопрос в «${groupDisplay}»*
 
 "${(context.question_text as string || '').slice(0, 200)}"
 — _${context.question_author || 'Участник'}_, ${context.time_ago || 'недавно'}
 
 *Без ответа:* ${context.hours_without_answer || '?'} ч.
 
-_Правило: ${rule.name}_
-
-[Открыть уведомления →](${notificationsUrl})`;
+_${rule.name}_`;
 
     case 'group_inactive':
-      return `💤 *Неактивность в группе «${groupTitle}»*
+      return `💤 *Неактивность в «${groupDisplay}»*
 
 В группе нет сообщений уже *${context.inactive_hours || '?'} часов*.
 
 Последнее сообщение: ${context.last_message_at || 'неизвестно'}
 
-_Правило: ${rule.name}_
-
-[Открыть уведомления →](${notificationsUrl})`;
+_${rule.name}_`;
 
     default:
       return `🔔 *Уведомление от Orbo*\n\n${JSON.stringify(context)}`;
@@ -613,7 +609,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           // Send notifications
           const recipients = await getRecipients(rule);
-          const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+          const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
           
           let sentCount = 0;
           for (const recipient of recipients) {
@@ -720,7 +716,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           }
           
           const recipients = await getRecipients(rule);
-          const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+          const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
           
           let sentCount = 0;
           for (const recipient of recipients) {
@@ -785,7 +781,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         }
         
         const recipients = await getRecipients(rule);
-        const message = formatNotificationMessage(rule, triggerContext, groupTitle);
+        const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
         
         let sentCount = 0;
         for (const recipient of recipients) {

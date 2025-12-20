@@ -32,9 +32,21 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
 const filteredSuggestions = useMemo(() => {
     if (!search.trim()) return suggestions;
     const term = search.trim().toLowerCase();
+    
+    // Функция для нормализации имени (убираем "WhatsApp " префикс)
+    const normalizeName = (name: string | undefined | null): string => {
+      if (!name) return '';
+      // Убираем "WhatsApp " в начале имени для корректного поиска
+      return name.replace(/^WhatsApp\s+/i, '').toLowerCase();
+    };
+    
     return suggestions.filter(dup => {
+      const normalizedFullName = normalizeName(dup.full_name);
+      const normalizedTerm = term.replace(/^whatsapp\s+/i, ''); // Также нормализуем поисковый запрос
+      
       return (
-        dup.full_name?.toLowerCase().includes(term) ||
+        normalizedFullName.includes(normalizedTerm) ||
+        dup.full_name?.toLowerCase().includes(term) || // Оставляем и оригинальный поиск
         dup.username?.toLowerCase().includes(term) ||
         dup.email?.toLowerCase().includes(term) ||
         dup.phone?.toLowerCase().includes(term)
