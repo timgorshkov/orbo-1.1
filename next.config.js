@@ -2,6 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // Expose server-side env vars to the client (for Telegram bot username)
+  env: {
+    NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME: process.env.TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot',
+  },
   experimental: {
     // Include Hawk.so in standalone build (external package for Node.js)
     serverComponentsExternalPackages: ['@hawk.so/nodejs'],

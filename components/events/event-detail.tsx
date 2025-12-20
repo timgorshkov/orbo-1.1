@@ -15,6 +15,7 @@ import EventRegistrationForm from './event-registration-form'
 import EventParticipantsList from './event-participants-list'
 import AddParticipantDialog from './add-participant-dialog'
 import EditParticipantDialog from './edit-participant-dialog'
+import EventShareOptions from './event-share-options'
 
 type Event = {
   id: string
@@ -380,15 +381,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         {showAdminFeatures && (
           <div className="flex gap-2">
             {event.status === 'published' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowNotifyDialog(true)}
-                className="sm:px-4"
-              >
-                <Share2 className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Поделиться</span>
-              </Button>
+              <EventShareOptions 
+                eventId={event.id} 
+                eventTitle={event.title}
+                orgId={orgId}
+                isPublic={event.is_public}
+              />
             )}
             <Button
               variant="outline"

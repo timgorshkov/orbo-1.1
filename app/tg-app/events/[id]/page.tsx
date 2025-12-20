@@ -1,0 +1,668 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import Script from 'next/script';
+import Image from 'next/image';
+import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle } from 'lucide-react';
+
+// Types for Telegram WebApp
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp: {
+        initData: string;
+        initDataUnsafe: {
+          user?: {
+            id: number;
+            first_name: string;
+            last_name?: string;
+            username?: string;
+            language_code?: string;
+            is_premium?: boolean;
+          };
+          start_param?: string;
+        };
+        ready: () => void;
+        expand: () => void;
+        close: () => void;
+        MainButton: {
+          text: string;
+          color: string;
+          textColor: string;
+          isVisible: boolean;
+          isActive: boolean;
+          isProgressVisible: boolean;
+          show: () => void;
+          hide: () => void;
+          enable: () => void;
+          disable: () => void;
+          showProgress: (leaveActive?: boolean) => void;
+          hideProgress: () => void;
+          onClick: (callback: () => void) => void;
+          offClick: (callback: () => void) => void;
+          setText: (text: string) => void;
+          setParams: (params: { text?: string; color?: string; text_color?: string; is_active?: boolean; is_visible?: boolean }) => void;
+        };
+        BackButton: {
+          isVisible: boolean;
+          show: () => void;
+          hide: () => void;
+          onClick: (callback: () => void) => void;
+        };
+        themeParams: {
+          bg_color?: string;
+          text_color?: string;
+          hint_color?: string;
+          link_color?: string;
+          button_color?: string;
+          button_text_color?: string;
+          secondary_bg_color?: string;
+        };
+        colorScheme: 'light' | 'dark';
+        setHeaderColor: (color: string) => void;
+        setBackgroundColor: (color: string) => void;
+        enableClosingConfirmation: () => void;
+        disableClosingConfirmation: () => void;
+        showAlert: (message: string, callback?: () => void) => void;
+        showConfirm: (message: string, callback?: (confirmed: boolean) => void) => void;
+        HapticFeedback: {
+          impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
+          notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
+          selectionChanged: () => void;
+        };
+      };
+    };
+  }
+}
+
+interface Event {
+  id: string;
+  title: string;
+  description: string | null;
+  cover_image_url: string | null;
+  event_type: 'online' | 'offline';
+  location_info: string | null;
+  map_link?: string | null;
+  event_date: string;
+  end_date?: string | null;
+  start_time: string;
+  end_time: string;
+  is_paid: boolean;
+  requires_payment?: boolean;
+  default_price?: number | null;
+  currency?: string;
+  payment_link?: string | null;
+  payment_instructions?: string | null;
+  capacity?: number | null;
+  registered_count?: number;
+  status: string;
+  org_name?: string;
+}
+
+interface RegistrationField {
+  id: string;
+  field_key: string;
+  field_label: string;
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'checkbox';
+  required: boolean;
+  field_order: number;
+  options?: { options?: string[] } | null;
+}
+
+type ViewState = 'loading' | 'event' | 'form' | 'payment' | 'success' | 'error';
+
+export default function TelegramEventPage() {
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const eventId = params.id as string;
+  
+  const [viewState, setViewState] = useState<ViewState>('loading');
+  const [event, setEvent] = useState<Event | null>(null);
+  const [fields, setFields] = useState<RegistrationField[]>([]);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [telegramUser, setTelegramUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
+  const [webAppReady, setWebAppReady] = useState(false);
+
+  // Initialize Telegram WebApp
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      
+      // Set theme
+      if (tg.themeParams.bg_color) {
+        document.body.style.backgroundColor = tg.themeParams.bg_color;
+      }
+      
+      // Get user data
+      if (tg.initDataUnsafe.user) {
+        setTelegramUser(tg.initDataUnsafe.user);
+      }
+      
+      setWebAppReady(true);
+    }
+  }, []);
+
+  // Load event data
+  useEffect(() => {
+    if (!eventId) return;
+    
+    const loadEvent = async () => {
+      try {
+        const initData = window.Telegram?.WebApp?.initData || '';
+        
+        const response = await fetch(`/api/telegram/webapp/events/${eventId}`, {
+          headers: {
+            'X-Telegram-Init-Data': initData,
+          },
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to load event');
+        }
+        
+        setEvent(data.event);
+        setFields(data.fields || []);
+        setIsRegistered(data.isRegistered || false);
+        
+        // Pre-fill form with Telegram user data
+        if (telegramUser) {
+          const prefill: Record<string, string> = {};
+          const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ');
+          
+          data.fields?.forEach((field: RegistrationField) => {
+            if (field.field_key === 'full_name' || field.field_key === 'name') {
+              prefill[field.field_key] = fullName;
+            }
+          });
+          
+          setFormData(prefill);
+        }
+        
+        setViewState(data.isRegistered ? 'success' : 'event');
+      } catch (err: any) {
+        setError(err.message);
+        setViewState('error');
+      }
+    };
+    
+    loadEvent();
+  }, [eventId, telegramUser]);
+
+  // Format date
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('ru-RU', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'long',
+    });
+  };
+
+  const formatTime = (timeStr: string) => {
+    return timeStr?.substring(0, 5) || '';
+  };
+
+  // Handle registration
+  const handleRegister = useCallback(async () => {
+    if (!event) return;
+    
+    setIsSubmitting(true);
+    setError(null);
+    
+    try {
+      const initData = window.Telegram?.WebApp?.initData || '';
+      
+      const response = await fetch(`/api/telegram/webapp/events/${eventId}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Telegram-Init-Data': initData,
+        },
+        body: JSON.stringify({
+          registration_data: formData,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+      
+      // Success!
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+      setIsRegistered(true);
+      
+      // If paid event, show payment step
+      if (event.requires_payment && event.payment_link) {
+        setViewState('payment');
+      } else {
+        setViewState('success');
+      }
+    } catch (err: any) {
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('error');
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [event, eventId, formData]);
+
+  // Validate required fields
+  const validateForm = (): boolean => {
+    const missingFields = fields
+      .filter(f => f.required && !formData[f.field_key])
+      .map(f => f.field_label);
+    
+    if (missingFields.length > 0) {
+      setError(`Заполните: ${missingFields.join(', ')}`);
+      return false;
+    }
+    return true;
+  };
+
+  // Handle form submit
+  const handleFormSubmit = () => {
+    if (!validateForm()) return;
+    handleRegister();
+  };
+
+  // Currency symbol
+  const getCurrencySymbol = (currency: string) => {
+    const symbols: Record<string, string> = { RUB: '₽', USD: '$', EUR: '€', KZT: '₸' };
+    return symbols[currency] || currency;
+  };
+
+  // Render loading
+  if (viewState === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  // Render error
+  if (viewState === 'error') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
+        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+        <h1 className="text-xl font-semibold text-gray-900 mb-2">Ошибка</h1>
+        <p className="text-gray-600 text-center">{error || 'Не удалось загрузить событие'}</p>
+      </div>
+    );
+  }
+
+  // Render success
+  if (viewState === 'success') {
+    return (
+      <div className="min-h-screen flex flex-col bg-white">
+        {/* Header with checkmark */}
+        <div className="flex-shrink-0 bg-green-500 text-white p-8 text-center">
+          <CheckCircle2 className="w-20 h-20 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Вы зарегистрированы!</h1>
+          <p className="opacity-90">{event?.title}</p>
+        </div>
+        
+        {/* Event details */}
+        <div className="flex-1 p-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 text-gray-700">
+              <Calendar className="w-5 h-5 text-gray-400" />
+              <span>{event?.event_date && formatDate(event.event_date)}</span>
+            </div>
+            
+            <div className="flex items-center gap-3 text-gray-700">
+              <Clock className="w-5 h-5 text-gray-400" />
+              <span>{formatTime(event?.start_time || '')} — {formatTime(event?.end_time || '')}</span>
+            </div>
+            
+            {event?.location_info && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <MapPin className="w-5 h-5 text-gray-400" />
+                <span>{event.location_info}</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Payment info for paid events */}
+          {event?.requires_payment && event?.payment_link && (
+            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-sm text-amber-800 mb-3">
+                Не забудьте оплатить участие:
+              </p>
+              <a
+                href={event.payment_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg font-medium"
+              >
+                Перейти к оплате
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
+          )}
+        </div>
+        
+        {/* All events link */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-100">
+          <button
+            onClick={() => {
+              // TODO: Navigate to events list
+              window.Telegram?.WebApp?.close();
+            }}
+            className="w-full py-3 text-center text-blue-600 font-medium"
+          >
+            Все мероприятия →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render payment step
+  if (viewState === 'payment') {
+    return (
+      <div className="min-h-screen flex flex-col bg-white">
+        <div className="flex-shrink-0 p-6 border-b border-gray-100">
+          <h1 className="text-xl font-semibold text-gray-900">Оплата</h1>
+          <p className="text-gray-600 mt-1">{event?.title}</p>
+        </div>
+        
+        <div className="flex-1 p-6">
+          {/* Price */}
+          {event?.default_price && (
+            <div className="text-center mb-6">
+              <p className="text-3xl font-bold text-gray-900">
+                {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
+              </p>
+            </div>
+          )}
+          
+          {/* Payment link */}
+          {event?.payment_link && (
+            <a
+              href={event.payment_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-4 bg-green-500 text-white rounded-xl font-semibold text-lg"
+            >
+              💳 Перейти к оплате
+            </a>
+          )}
+          
+          {/* Payment instructions */}
+          {event?.payment_instructions && (
+            <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                {event.payment_instructions}
+              </p>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex-shrink-0 p-4 border-t border-gray-100">
+          <button
+            onClick={() => setViewState('success')}
+            className="w-full py-3 text-gray-600 font-medium"
+          >
+            Оплачу позже
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render form
+  if (viewState === 'form') {
+    return (
+      <div className="min-h-screen flex flex-col bg-white">
+        {/* Header */}
+        <div className="flex-shrink-0 p-4 border-b border-gray-100">
+          <button
+            onClick={() => setViewState('event')}
+            className="text-blue-600 font-medium mb-2"
+          >
+            ← Назад
+          </button>
+          <h1 className="text-xl font-semibold text-gray-900">Регистрация</h1>
+        </div>
+        
+        {/* Form */}
+        <div className="flex-1 p-4 overflow-y-auto">
+          <div className="space-y-4">
+            {fields.map(field => (
+              <div key={field.id}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {field.field_label}
+                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                
+                {field.field_type === 'textarea' ? (
+                  <textarea
+                    value={formData[field.field_key] || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    rows={3}
+                    placeholder={field.field_label}
+                  />
+                ) : field.field_type === 'select' ? (
+                  <select
+                    value={formData[field.field_key] || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Выберите...</option>
+                    {field.options?.options?.map((opt, i) => (
+                      <option key={i} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={field.field_type === 'email' ? 'email' : field.field_type === 'phone' ? 'tel' : 'text'}
+                    value={formData[field.field_key] || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, [field.field_key]: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder={field.field_label}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+              {error}
+            </div>
+          )}
+        </div>
+        
+        {/* Submit button */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-100 bg-white">
+          <button
+            onClick={handleFormSubmit}
+            disabled={isSubmitting}
+            className="w-full py-4 bg-blue-500 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Регистрация...
+              </>
+            ) : (
+              'Зарегистрироваться'
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render event details (main view)
+  return (
+    <>
+      {/* Telegram WebApp Script */}
+      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      
+      <div className="min-h-screen flex flex-col bg-white">
+        {/* Cover image */}
+        {event?.cover_image_url && (
+          <div className="relative w-full aspect-[16/9] flex-shrink-0">
+            <Image
+              src={event.cover_image_url}
+              alt={event.title}
+              fill
+              className="object-cover"
+              priority
+            />
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            
+            {/* Event type badge */}
+            <div className="absolute top-4 left-4">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                event.event_type === 'online' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-orange-500 text-white'
+              }`}>
+                {event.event_type === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}
+              </span>
+            </div>
+            
+            {/* Title on image */}
+            <div className="absolute bottom-4 left-4 right-4">
+              <h1 className="text-2xl font-bold text-white drop-shadow-lg">
+                {event.title}
+              </h1>
+            </div>
+          </div>
+        )}
+        
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* If no cover, show title here */}
+          {!event?.cover_image_url && (
+            <div className="p-4 pb-0">
+              <h1 className="text-2xl font-bold text-gray-900">{event?.title}</h1>
+            </div>
+          )}
+          
+          {/* Quick info */}
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-3 text-gray-700">
+              <Calendar className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <span className="font-medium">{event?.event_date && formatDate(event.event_date)}</span>
+            </div>
+            
+            <div className="flex items-center gap-3 text-gray-700">
+              <Clock className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <span>{formatTime(event?.start_time || '')} — {formatTime(event?.end_time || '')}</span>
+            </div>
+            
+            {event?.location_info && (
+              <div className="flex items-start gap-3 text-gray-700">
+                <MapPin className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span>{event.location_info}</span>
+                  {event.map_link && (
+                    <a 
+                      href={event.map_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 text-blue-500 text-sm"
+                    >
+                      На карте →
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {event?.capacity && (
+              <div className="flex items-center gap-3 text-gray-700">
+                <Users className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                <span>
+                  {event.registered_count || 0} / {event.capacity} мест
+                </span>
+              </div>
+            )}
+            
+            {/* Price */}
+            {event?.requires_payment && event?.default_price && (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg font-medium">
+                💰 {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
+              </div>
+            )}
+          </div>
+          
+          {/* Description */}
+          {event?.description && (
+            <div className="px-4 pb-4">
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {event.description}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Fixed CTA button */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-100 bg-white safe-area-bottom">
+          {isRegistered ? (
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-2 text-green-600 font-medium mb-2">
+                <CheckCircle2 className="w-5 h-5" />
+                Вы зарегистрированы
+              </div>
+              {event?.requires_payment && event?.payment_link && (
+                <a
+                  href={event.payment_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 text-sm"
+                >
+                  Перейти к оплате →
+                </a>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                if (fields.length > 0) {
+                  setViewState('form');
+                } else {
+                  handleRegister();
+                }
+              }}
+              disabled={isSubmitting || event?.status !== 'published'}
+              className="w-full py-4 bg-blue-500 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Регистрация...
+                </>
+              ) : event?.requires_payment ? (
+                `Зарегистрироваться • ${event.default_price?.toLocaleString('ru-RU')} ${getCurrencySymbol(event.currency || 'RUB')}`
+              ) : (
+                'Зарегистрироваться'
+              )}
+            </button>
+          )}
+          
+          {error && (
+            <p className="mt-2 text-center text-sm text-red-500">{error}</p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
