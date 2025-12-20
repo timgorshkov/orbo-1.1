@@ -571,13 +571,6 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           continue;
         }
         
-        logger.info({ 
-          rule_id: rule.id, 
-          chat_id: chatId, 
-          messages_count: messages.length,
-          sample_text: messages[0]?.text?.substring(0, 100) || '(no text)'
-        }, '🚀 Starting AI analysis');
-        
         const severityThreshold = (rule.config.severity_threshold as 'low' | 'medium' | 'high') || 'medium';
         const analysis = await analyzeNegativeContent(
           messages,
@@ -588,28 +581,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         
         totalAiCost += analysis.cost_usd;
         
-        logger.info({ 
-          rule_id: rule.id, 
-          chat_id: chatId,
-          has_negative: analysis.has_negative,
-          severity: analysis.severity,
-          summary: analysis.summary,
-          ai_cost: analysis.cost_usd
-        }, '🤖 AI analysis complete');
-        
         // Check if severity meets threshold
         const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
         const threshold = severityOrder[severityThreshold];
         const detected = severityOrder[analysis.severity];
-        
-        logger.info({
-          rule_id: rule.id,
-          threshold_level: severityThreshold,
-          threshold_value: threshold,
-          detected_severity: analysis.severity,
-          detected_value: detected,
-          will_trigger: analysis.has_negative && detected >= threshold
-        }, '📊 Threshold check');
         
         if (analysis.has_negative && detected >= threshold) {
           // Get last message ID for direct Telegram link
@@ -837,8 +812,6 @@ export async function processAllNotificationRules(): Promise<{
   triggered: number;
   totalAiCost: number;
 }> {
-  logger.info({}, 'Starting notification rules processing');
-  
   // Get all enabled rules
   const { data: rules, error } = await supabaseAdmin
     .from('notification_rules')
@@ -851,11 +824,8 @@ export async function processAllNotificationRules(): Promise<{
   }
   
   if (!rules || rules.length === 0) {
-    logger.info({}, 'No active notification rules');
     return { processed: 0, triggered: 0, totalAiCost: 0 };
   }
-  
-  logger.info({ rules_count: rules.length }, 'Processing notification rules');
   
   let triggeredCount = 0;
   let totalAiCost = 0;

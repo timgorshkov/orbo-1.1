@@ -199,13 +199,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       .map((i: number) => messages[i]?.text.slice(0, 100))
       .filter(Boolean);
 
-    logger.info({
+    logger.debug({
       rule_id: ruleId,
       has_negative: result.has_negative,
       severity: result.severity,
-      tokens: totalTokens,
-      cost_usd: costUsd
-    }, 'Negativity analysis complete');
+      tokens: totalTokens
+    }, 'AI analysis done');
 
     return {
       has_negative: result.has_negative,
@@ -326,12 +325,11 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       })
       .filter(Boolean);
 
-    logger.info({
+    logger.debug({
       rule_id: ruleId,
       unanswered_count: questions.length,
-      tokens: totalTokens,
-      cost_usd: costUsd
-    }, 'Question analysis complete');
+      tokens: totalTokens
+    }, 'Question analysis done');
 
     return {
       questions,
