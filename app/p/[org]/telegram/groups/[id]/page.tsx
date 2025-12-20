@@ -61,11 +61,8 @@ export default function TelegramGroupPage({ params }: { params: { org: string, i
   const logger = createClientLogger('TelegramGroupPage', { org: params.org, group_id: params.id });
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [group, setGroup] = useState<any | null>(null)
   const [title, setTitle] = useState('')
-  const [welcomeMessage, setWelcomeMessage] = useState('')
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -142,8 +139,6 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
 
         setGroup(groupData);
         setTitle(groupData.title || '');
-        setWelcomeMessage(groupData.welcome_message || '');
-        setNotificationsEnabled(!!groupData.notification_enabled);
         if (groupData.status === 'archived') {
           setAnalyticsError('Группа находилась в архивации. После восстановления необходимо вернуть права администратора боту.');
         } else {
@@ -632,40 +627,6 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     }
   }, [group, params.org]);
 
-  const handleSave = async () => {
-    setSaving(true)
-    setError(null)
-    setSuccess(false)
-
-    try {
-      const supabase = createClientBrowser()
-      const { error } = await supabase
-        .from('telegram_groups')
-        .update({
-          title,
-          welcome_message: welcomeMessage || null,
-          notification_enabled: notificationsEnabled
-        })
-        .eq('id', params.id)
-
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      setSuccess(true)
-    } catch (e: any) {
-      logger.error({
-        error: e.message,
-        stack: e.stack,
-        group_id: params.id,
-        org: params.org
-      }, 'Error saving group settings');
-      setError(e.message || 'Произошла ошибка при сохранении настроек')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const refreshGroupInfo = async () => {
     setLoading(true)
     try {
@@ -857,7 +818,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               </TabsContent>
 
               <TabsContent value="settings">
-                <Card className="mb-6">
+                <Card>
                   <CardHeader>
                     <CardTitle>Основная информация</CardTitle>
                   </CardHeader>
@@ -878,9 +839,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       </label>
                       <Input
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
-                        placeholder="Название группы"
+                        disabled
+                        className="bg-gray-50"
                       />
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Название синхронизируется автоматически из Telegram
+                      </p>
                     </div>
 
                     <div>
@@ -904,50 +868,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       )}
                     </div>
 
-                    <Button onClick={refreshGroupInfo} disabled={loading}>
-                      Обновить информацию о группе
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="mb-6">
-                  <CardHeader>
-                    <CardTitle>Настройки уведомлений</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="notifications"
-                        checked={notificationsEnabled}
-                        onChange={e => setNotificationsEnabled(e.target.checked)}
-                        className="mr-2"
-                      />
-                      <label htmlFor="notifications">Включить уведомления о событиях</label>
-                    </div>
-                    <p className="text-xs text-neutral-500">
-                      При включении этой опции, бот будет отправлять уведомления о новых событиях в группу
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Приветственное сообщение</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <label className="text-sm text-neutral-600 block mb-2">
-                        Сообщение для новых участников
-                      </label>
-                      <textarea
-                        className="w-full p-2 border rounded-lg min-h-[100px]"
-                        value={welcomeMessage}
-                        onChange={e => setWelcomeMessage(e.target.value)}
-                        placeholder="Добро пожаловать в нашу группу! Здесь вы можете..."
-                      />
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Поддерживается HTML-форматирование: &lt;b&gt;жирный&lt;/b&gt;, &lt;i&gt;курсив&lt;/i&gt;
+                    <div className="flex flex-col gap-2">
+                      <Button onClick={refreshGroupInfo} disabled={loading}>
+                        Обновить информацию о группе
+                      </Button>
+                      <p className="text-xs text-neutral-500">
+                        Запросить актуальную информацию о группе из Telegram (название, количество участников)
                       </p>
                     </div>
 
@@ -957,15 +883,10 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
 
                     {success && (
                       <div className="text-green-500 text-sm">
-                        Настройки успешно сохранены
+                        Информация о группе успешно обновлена
                       </div>
                     )}
 
-                    <div className="flex justify-end">
-                      <Button onClick={handleSave} disabled={saving}>
-                        {saving ? 'Сохранение...' : 'Сохранить настройки'}
-                      </Button>
-                    </div>
                     {group?.id !== undefined && (
                       <div className="pt-4 border-t border-neutral-200 flex justify-end">
                         <RemoveGroupButton
