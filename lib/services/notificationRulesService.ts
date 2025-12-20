@@ -82,17 +82,29 @@ function generateDedupHash(ruleId: string, context: Record<string, unknown>): st
 /**
  * Check if notification is duplicate (already sent recently)
  */
-async function isDuplicate(ruleId: string, dedupHash: string, hoursBack: number = 1): Promise<boolean> {
+async function isDuplicate(ruleId: string, dedupHash: string, hoursBack: number = 6): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin.rpc('check_notification_duplicate', {
+    const { data, error } = await supabaseAdmin.rpc('check_notification_duplicate', {
       p_rule_id: ruleId,
       p_dedup_hash: dedupHash,
       p_hours: hoursBack,
     });
-    return data === true;
+    
+    if (error) {
+      logger.error({ error: error.message, rule_id: ruleId, dedup_hash: dedupHash }, 'RPC error checking duplicate');
+      // On error, assume IS duplicate to prevent spam
+      return true;
+    }
+    
+    const isDup = data === true;
+    if (isDup) {
+      logger.debug({ rule_id: ruleId, hours_back: hoursBack }, 'Duplicate found, skipping');
+    }
+    return isDup;
   } catch (error) {
     logger.error({ error, rule_id: ruleId }, 'Error checking duplicate');
-    return false; // Assume not duplicate on error
+    // On error, assume IS duplicate to prevent spam
+    return true;
   }
 }
 
@@ -109,9 +121,9 @@ async function logNotification(params: {
   sentToUserIds?: string[];
   aiCostUsd?: number;
   errorMessage?: string;
-}): Promise<void> {
+}): Promise<{ success: boolean }> {
   try {
-    await supabaseAdmin.from('notification_logs').insert({
+    const { error } = await supabaseAdmin.from('notification_logs').insert({
       rule_id: params.ruleId,
       org_id: params.orgId,
       rule_type: params.ruleType,
@@ -124,8 +136,25 @@ async function logNotification(params: {
       error_message: params.errorMessage || null,
       processed_at: new Date().toISOString(),
     });
+    
+    if (error) {
+      logger.error({ 
+        error: error.message, 
+        rule_id: params.ruleId,
+        status: params.status,
+        dedup_hash: params.dedupHash
+      }, '❌ Failed to save notification to database');
+      return { success: false };
+    }
+    
+    logger.debug({ 
+      rule_id: params.ruleId, 
+      status: params.status 
+    }, 'Notification logged to database');
+    return { success: true };
   } catch (error) {
     logger.error({ error, rule_id: params.ruleId }, 'Error logging notification');
+    return { success: false };
   }
 }
 
@@ -509,15 +538,26 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         }
         
         const intervalMinutes = (rule.config.check_interval_minutes as number) || 60;
-        const messages = await getRecentMessages(chatId, intervalMinutes, 50);
         
-        logger.info({ 
+        // Calculate time since last trigger to avoid re-analyzing same messages
+        let effectiveIntervalMinutes = intervalMinutes;
+        if (rule.last_check_at) {
+          const lastCheck = new Date(rule.last_check_at);
+          const minutesSinceLastCheck = Math.floor((Date.now() - lastCheck.getTime()) / (1000 * 60));
+          // Only look at messages since last check (with small buffer)
+          effectiveIntervalMinutes = Math.min(intervalMinutes, minutesSinceLastCheck + 5);
+        }
+        
+        const messages = await getRecentMessages(chatId, effectiveIntervalMinutes, 50);
+        
+        logger.debug({ 
           rule_id: rule.id, 
           chat_id: chatId, 
           group_title: groupTitle,
-          interval_minutes: intervalMinutes,
+          interval_minutes: effectiveIntervalMinutes,
+          original_interval: intervalMinutes,
           messages_count: messages.length 
-        }, '📨 Messages found for analysis');
+        }, 'Messages found for analysis');
         
         // Minimum 1 message for testing (increase to 3 for production)
         if (messages.length < 1) {
@@ -578,9 +618,9 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           const dedupHash = generateDedupHash(rule.id, triggerContext);
           
-          // Check for duplicate
-          if (await isDuplicate(rule.id, dedupHash, 1)) {
-            logger.debug({ rule_id: rule.id, chat_id: chatId }, 'Duplicate notification, skipping');
+          // Check for duplicate (6 hour window to prevent spam)
+          if (await isDuplicate(rule.id, dedupHash, 6)) {
+            logger.debug({ rule_id: rule.id, chat_id: chatId, hash: dedupHash }, 'Duplicate notification, skipping');
             continue;
           }
           
@@ -597,7 +637,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           const finalStatus = sentCount > 0 ? 'sent' : 'failed';
           
           // Log notification
-          await logNotification({
+          const logResult = await logNotification({
             ruleId: rule.id,
             orgId: rule.org_id,
             ruleType: rule.rule_type,
@@ -614,8 +654,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             rule_name: rule.name,
             chat: groupTitle, 
             severity: analysis.severity,
-            sent: sentCount 
-          }, '🔔 Negative discussion detected');
+            telegram_sent: sentCount,
+            saved_to_db: logResult.success,
+            dedup_hash: dedupHash
+          }, '🔔 Negative discussion notification');
         }
         break;
       }
@@ -669,7 +711,8 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           const dedupHash = generateDedupHash(rule.id, triggerContext);
           
-          if (await isDuplicate(rule.id, dedupHash, 4)) {
+          // Check for duplicate (6 hour window)
+          if (await isDuplicate(rule.id, dedupHash, 6)) {
             continue;
           }
           
@@ -682,7 +725,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             if (result.success) sentCount++;
           }
           
-          await logNotification({
+          const logResult = await logNotification({
             ruleId: rule.id,
             orgId: rule.org_id,
             ruleType: rule.rule_type,
@@ -698,8 +741,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             rule_name: rule.name,
             chat: groupTitle,
             author: question.author,
-            hours: hoursAgo
-          }, '❓ Unanswered question detected');
+            hours: hoursAgo,
+            telegram_sent: sentCount,
+            saved_to_db: logResult.success
+          }, '❓ Unanswered question notification');
         }
         break;
       }
@@ -747,7 +792,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           if (result.success) sentCount++;
         }
         
-        await logNotification({
+        const logResult = await logNotification({
           ruleId: rule.id,
           orgId: rule.org_id,
           ruleType: rule.rule_type,
@@ -761,8 +806,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         logger.info({
           rule_name: rule.name,
           chat: groupTitle,
-          inactive_hours: Math.floor(hoursInactive)
-        }, '💤 Group inactivity detected');
+          inactive_hours: Math.floor(hoursInactive),
+          telegram_sent: sentCount,
+          saved_to_db: logResult.success
+        }, '💤 Group inactivity notification');
         break;
       }
     }
