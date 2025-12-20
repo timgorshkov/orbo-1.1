@@ -306,7 +306,7 @@ export default function TelegramEventPage() {
   if (viewState === 'success') {
     const isPaid = paymentStatus === 'paid';
     const eventsCalendarUrl = event?.org_id 
-      ? `https://my.orbo.ru/c/${event.org_id}/events`
+      ? `https://my.orbo.ru/p/${event.org_id}/events`
       : null;
     
     return (

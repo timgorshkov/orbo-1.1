@@ -51,14 +51,14 @@ export default function EventShareOptions({
   };
   
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <Share2 className="h-4 w-4" />
           Поделиться
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-72 z-50">
         <DropdownMenuLabel className="font-normal text-xs text-gray-500">
           Поделиться ссылкой на событие
         </DropdownMenuLabel>
