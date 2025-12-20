@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
+import { auth } from '@/auth'
 
 /**
  * Get the public base URL for redirects
@@ -61,6 +62,7 @@ export async function middleware(request: NextRequest) {
   
   // Исключаем публичные пути и API маршруты из проверки аутентификации
   if (
+    pathname.startsWith('/api/auth') || // NextAuth routes
     pathname.startsWith('/api/') ||
     pathname.startsWith('/healthz') ||
     pathname.startsWith('/signin') || 
@@ -92,13 +94,20 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // ⭐ Single session check for protected routes
+  // ⭐ Проверка авторизации через оба провайдера
+  // 1. Supabase session (email OTP, Telegram)
   const {
-    data: { session },
+    data: { session: supabaseSession },
   } = await supabase.auth.getSession()
 
+  // 2. NextAuth session (Google, Yandex OAuth)
+  const nextAuthSession = await auth()
+
+  // Пользователь авторизован если есть хотя бы одна активная сессия
+  const isAuthenticated = !!supabaseSession || !!nextAuthSession
+
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
-  if (!session && (pathname.startsWith('/app') || pathname.startsWith('/superadmin'))) {
+  if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
     // Перенаправляем на страницу входа (используем публичный URL для Docker)
     const baseUrl = getPublicBaseUrl(request)
     const redirectUrl = new URL('/signin', baseUrl)

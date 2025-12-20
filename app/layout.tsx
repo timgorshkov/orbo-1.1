@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { WebVitals } from '@/components/web-vitals';
+import { SessionProvider } from '@/components/providers/session-provider';
 
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
@@ -74,7 +75,9 @@ export default function RootLayout({
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     </head>
     <body className={`${inter.className} bg-slate-50`}>
-        {children}
+        <SessionProvider>
+          {children}
+        </SessionProvider>
         <WebVitals />
       </body>
   </html>

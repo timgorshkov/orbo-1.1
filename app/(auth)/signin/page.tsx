@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { signIn } from 'next-auth/react'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -45,33 +46,20 @@ export default function SignIn() {
     }
   }
 
+  /**
+   * OAuth через NextAuth.js (независимо от Supabase)
+   * Поддерживает Google и Yandex
+   */
   async function signInWithOAuth(provider: 'google' | 'yandex') {
     setOauthLoading(provider)
     setMessage(null)
     
     try {
-      const supabase = createClientBrowser()
-      
-      // Yandex не поддерживается Supabase нативно - будет реализовано через custom OIDC
-      if (provider === 'yandex') {
-        setMessage('Авторизация через Яндекс скоро будет доступна')
-        setOauthLoading(null)
-        return
-      }
-      
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        }
+      // NextAuth.js signIn - редиректит на провайдера
+      await signIn(provider, {
+        callbackUrl: '/orgs', // После успешного входа
       })
-      
-      if (error) {
-        logger.error({ error: error.message, provider }, 'OAuth error');
-        setMessage(`Ошибка: ${error.message}`)
-        setOauthLoading(null)
-      }
-      // При успехе произойдёт редирект на Google
+      // Редирект произойдёт автоматически
     } catch (error) {
       logger.error({
         error: error instanceof Error ? error.message : String(error),
@@ -243,11 +231,11 @@ export default function SignIn() {
               
               {message && (
                 <div className={`p-3 rounded-lg text-sm ${
-                  message.includes('Ошибка') || message.includes('скоро')
-                    ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                  message.includes('Ошибка')
+                    ? 'bg-red-50 text-red-600 border border-red-200' 
                     : message.includes('✉️')
                     ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-red-50 text-red-600 border border-red-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
                   {message}
                 </div>
