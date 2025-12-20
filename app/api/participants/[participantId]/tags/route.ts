@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
-import pino from 'pino';
+import { createServiceLogger } from '@/lib/logger';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = createServiceLogger('ParticipantTags');
 
 export const dynamic = 'force-dynamic';
 
