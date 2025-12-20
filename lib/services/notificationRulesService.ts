@@ -516,12 +516,21 @@ _${rule.name}_`;
  * Process a single rule
  */
 async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
-  // Debug level for routine rule processing
-  logger.debug({ 
-    rule_id: rule.id, 
-    rule_type: rule.rule_type,
-    rule_name: rule.name 
-  }, 'Processing rule');
+  // Check if enough time has passed since last check (respect check_interval_minutes)
+  const intervalMinutes = (rule.config.check_interval_minutes as number) || 60;
+  if (rule.last_check_at) {
+    const lastCheck = new Date(rule.last_check_at);
+    const minutesSinceLastCheck = Math.floor((Date.now() - lastCheck.getTime()) / (1000 * 60));
+    
+    if (minutesSinceLastCheck < intervalMinutes) {
+      logger.debug({ 
+        rule_id: rule.id, 
+        minutes_since_last: minutesSinceLastCheck,
+        interval_minutes: intervalMinutes 
+      }, '⏭️ Skipping rule - not enough time since last check');
+      return { triggered: false };
+    }
+  }
   
   const groups = await getOrgGroups(rule.org_id, rule.config.groups);
   if (groups.length === 0) {
