@@ -10,18 +10,27 @@ export default async function MembersPage({ params, searchParams }: {
 }) {
   const { org: orgId } = await params
   const { tab = 'list' } = await searchParams
+  const logger = createServiceLogger('MembersPage');
   
   const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
 
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
+  // ⚡ Параллельные запросы: auth + membership
+  const [userResult, membershipResult] = await Promise.all([
+    supabase.auth.getUser(),
+    adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', orgId)
+      .maybeSingle()
+  ])
 
+  const user = userResult.data?.user
   if (!user) {
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Get user role
+  // Now get membership for this specific user
   const { data: membership } = await adminSupabase
     .from('memberships')
     .select('role')
@@ -36,247 +45,109 @@ export default async function MembersPage({ params, searchParams }: {
   const role = membership.role
   const isAdmin = role === 'owner' || role === 'admin'
 
-  // Fetch participants (excluding 'excluded' status and merged participants)
-  const { data: participants, error} = await adminSupabase
-    .from('participants')
-    .select('*')
-    .eq('org_id', orgId)
-    .neq('participant_status', 'excluded')
-    .is('merged_into', null) // Исключаем объединенных участников
-    .order('full_name', { ascending: true, nullsFirst: false })
+  // ⚡ Try optimized RPC function first, fallback to legacy if not exists
+  let participants: any[] = []
+  let tagStats: any[] = []
+  let invites: any[] = []
 
-  const logger = createServiceLogger('MembersPage');
-  if (error) {
-    logger.error({
-      error: error.message,
-      error_code: error.code,
-      org_id: orgId
-    }, 'Error fetching participants');
-  }
+  try {
+    // ⚡ Оптимизированный запрос: ONE query для участников со всеми данными
+    const { data: enrichedParticipants, error: rpcError } = await adminSupabase
+      .rpc('get_enriched_participants', { 
+        p_org_id: orgId, 
+        p_include_tags: isAdmin 
+      })
 
-  // Enrich participants with admin information
-  if (participants && participants.length > 0) {
-    // Get memberships for admin/owner status
-    const { data: memberships } = await adminSupabase
-      .from('memberships')
-      .select('user_id, role')
-      .eq('org_id', orgId)
-      .in('role', ['owner', 'admin'])
-
-    const roleMap = new Map(memberships?.map(m => [m.user_id, m.role]) || [])
-
-    // Get telegram admin statuses
-    const { data: telegramGroups } = await adminSupabase
-      .from('org_telegram_groups')
-      .select('tg_chat_id')
-      .eq('org_id', orgId)
-
-    const chatIds = telegramGroups?.map(g => g.tg_chat_id) || []
-    
-    let adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
-    if (chatIds.length > 0) {
-      const { data: telegramAdmins } = await adminSupabase
-        .from('telegram_group_admins')
-        .select('tg_user_id, is_owner, is_admin, custom_title')
-        .in('tg_chat_id', chatIds)
-        .gt('expires_at', new Date().toISOString())
-
-      if (telegramAdmins) {
-        for (const admin of telegramAdmins) {
-          const existing = adminMap.get(admin.tg_user_id)
-          adminMap.set(admin.tg_user_id, {
-            isOwner: (existing?.isOwner || admin.is_owner) || false,
-            isAdmin: (existing?.isAdmin || admin.is_admin) || false,
-            customTitle: admin.custom_title || existing?.customTitle || null
-          })
-        }
-      }
+    if (rpcError) {
+      // RPC function doesn't exist yet - use fallback
+      logger.warn({ error: rpcError.message }, 'RPC not available, using fallback');
+      throw new Error('RPC not available')
     }
 
-    // Enrich each participant
-    for (const participant of participants) {
-      participant.is_org_owner = false // Владелец организации (фиолетовая корона)
-      participant.is_group_creator = false // Создатель группы в Telegram (синий бейдж)
-      participant.is_admin = false // Администратор
-      
-      // Check if user is owner/admin via memberships
-      const participantUserId = participant.user_id
-      if (participantUserId) {
-        const userRole = roleMap.get(participantUserId)
-        if (userRole === 'owner') {
-          participant.is_org_owner = true
-        } else if (userRole === 'admin') {
-          participant.is_admin = true
-        }
-      }
+    // Map RPC result to expected format
+    participants = (enrichedParticipants || []).map((p: any) => ({
+      ...p,
+      is_org_owner: p.is_org_owner,
+      is_group_creator: p.is_group_creator,
+      is_admin: p.is_org_admin || p.is_group_admin,
+      is_owner: p.is_org_owner, // backwards compat
+      tags: p.tags || [],
+      real_join_date: p.first_message_at || p.created_at,
+      real_last_activity: p.last_message_at || p.last_activity_at,
+      first_message_at: p.first_message_at
+    }))
 
-      // Check if user is telegram admin or group creator
-      const tgUserId = participant.tg_user_id ? parseInt(participant.tg_user_id) : null
-      if (tgUserId && adminMap.has(tgUserId)) {
-        const adminInfo = adminMap.get(tgUserId)!
-        if (adminInfo.isOwner) {
-          participant.is_group_creator = true
-        }
-        if (adminInfo.isAdmin) {
-          participant.is_admin = true
-        }
-        participant.custom_title = participant.custom_title || adminInfo.customTitle
-      }
-      
-      // Для обратной совместимости
-      participant.is_owner = participant.is_org_owner
+    logger.info({ 
+      participant_count: participants.length,
+      org_id: orgId,
+      method: 'optimized_rpc'
+    }, 'Fetched participants via RPC');
+
+  } catch (rpcError) {
+    // ⚠️ Fallback: legacy sequential queries
+    logger.info({ org_id: orgId }, 'Using legacy participant loading');
+    
+    const { data: legacyParticipants, error } = await adminSupabase
+      .from('participants')
+      .select('*')
+      .eq('org_id', orgId)
+      .neq('participant_status', 'excluded')
+      .is('merged_into', null)
+      .order('full_name', { ascending: true, nullsFirst: false })
+
+    if (error) {
+      logger.error({ error: error.message, org_id: orgId }, 'Error fetching participants');
     }
-  }
 
-  // Fetch tags for all participants (admin only)
-  if (isAdmin && participants && participants.length > 0) {
-    const participantIds = participants.map(p => p.id)
-    
-    // Get all tag assignments for these participants
-    const { data: tagAssignments } = await adminSupabase
-      .from('participant_tag_assignments')
-      .select(`
-        participant_id,
-        tag:participant_tags(
-          id,
-          name,
-          color
-        )
-      `)
-      .in('participant_id', participantIds)
-    
-    if (tagAssignments) {
-      // Group tags by participant_id
-      const tagsByParticipant = new Map<string, any[]>()
-      
-      for (const assignment of tagAssignments) {
-        if (!assignment.tag) continue
-        
-        const participantId = assignment.participant_id
-        if (!tagsByParticipant.has(participantId)) {
-          tagsByParticipant.set(participantId, [])
-        }
-        tagsByParticipant.get(participantId)!.push(assignment.tag)
-      }
-      
-      // Attach tags to each participant
+    participants = legacyParticipants || []
+
+    // Legacy enrichment (simplified - full version was too slow)
+    if (participants.length > 0) {
+      // Get memberships for admin/owner status
+      const { data: memberships } = await adminSupabase
+        .from('memberships')
+        .select('user_id, role')
+        .eq('org_id', orgId)
+        .in('role', ['owner', 'admin'])
+
+      const roleMap = new Map(memberships?.map(m => [m.user_id, m.role]) || [])
+
       for (const participant of participants) {
-        participant.tags = tagsByParticipant.get(participant.id) || []
-      }
-    }
-  }
-
-  logger.debug({
-    participant_count: participants?.length || 0,
-    org_id: orgId
-  }, 'Fetched participants for org');
-
-  // Enrich participants with real activity history from messages (Telegram + WhatsApp)
-  if (participants && participants.length > 0) {
-    const participantIds = participants.map(p => p.id)
-    const statsMap = new Map<string, { first: Date; last: Date }>()
-    
-    // 1. Get Telegram messages from participant_messages
-    const { data: telegramStats } = await adminSupabase
-      .from('participant_messages')
-      .select('participant_id, sent_at')
-      .in('participant_id', participantIds)
-      .order('sent_at', { ascending: true })
-    
-    if (telegramStats) {
-      for (const stat of telegramStats) {
-        const participantId = stat.participant_id
-        const sentAt = new Date(stat.sent_at)
-        
-        if (!statsMap.has(participantId)) {
-          statsMap.set(participantId, { first: sentAt, last: sentAt })
-        } else {
-          const current = statsMap.get(participantId)!
-          if (sentAt < current.first) current.first = sentAt
-          if (sentAt > current.last) current.last = sentAt
-        }
-      }
-    }
-    
-    // 2. Get WhatsApp messages from activity_events (tg_chat_id = 0)
-    const { data: whatsappStats } = await adminSupabase
-      .from('activity_events')
-      .select('meta, created_at')
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', 0)
-      .eq('event_type', 'message')
-    
-    if (whatsappStats) {
-      for (const stat of whatsappStats) {
-        const participantId = stat.meta?.participant_id
-        if (!participantId || !participantIds.includes(participantId)) continue
-        
-        const sentAt = new Date(stat.created_at)
-        
-        if (!statsMap.has(participantId)) {
-          statsMap.set(participantId, { first: sentAt, last: sentAt })
-        } else {
-          const current = statsMap.get(participantId)!
-          if (sentAt < current.first) current.first = sentAt
-          if (sentAt > current.last) current.last = sentAt
-        }
-      }
-    }
-    
-    // Attach real activity dates to participants
-    for (const participant of participants) {
-      const stats = statsMap.get(participant.id)
-      if (stats) {
-        // Use earliest date: either first message or created_at
-        const createdAt = participant.created_at ? new Date(participant.created_at) : null
-        participant.first_message_at = stats.first.toISOString()
-        participant.real_join_date = !createdAt || stats.first < createdAt 
-          ? stats.first.toISOString() 
-          : participant.created_at
-        
-        // Use latest activity: either last message or last_activity_at
-        const lastActivity = participant.last_activity_at ? new Date(participant.last_activity_at) : null
-        participant.real_last_activity = !lastActivity || stats.last > lastActivity
-          ? stats.last.toISOString()
-          : participant.last_activity_at
-      } else {
-        // No messages - use original dates
+        participant.is_org_owner = false
+        participant.is_group_creator = false
+        participant.is_admin = false
+        participant.tags = []
         participant.real_join_date = participant.created_at
         participant.real_last_activity = participant.last_activity_at
+        
+        if (participant.user_id) {
+          const userRole = roleMap.get(participant.user_id)
+          if (userRole === 'owner') participant.is_org_owner = true
+          else if (userRole === 'admin') participant.is_admin = true
+        }
+        participant.is_owner = participant.is_org_owner
       }
     }
   }
 
-  // Fetch tag statistics (admin only)
-  let tagStats: any[] = []
+  // ⚡ Параллельные запросы для дополнительных данных (только для админов)
   if (isAdmin) {
-    const { data: tagsData, error: tagsError } = await adminSupabase
-      .rpc('get_tag_stats', { p_org_id: orgId })
-    
-    if (tagsError) {
-      logger.error({
-        error: tagsError.message,
-        error_code: tagsError.code,
-        org_id: orgId
-      }, 'Error fetching tag stats');
-    } else {
-      tagStats = tagsData || []
-    }
-  }
+    const [tagStatsResult, invitesResult] = await Promise.all([
+      adminSupabase.rpc('get_tag_stats', { p_org_id: orgId }),
+      adminSupabase
+        .from('organization_invites')
+        .select(`*, organization_invite_uses(count)`)
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: false })
+    ])
 
-  // Fetch invites if admin
-  let invites: any[] = []
-  if (isAdmin) {
-    const { data: invitesData } = await adminSupabase
-      .from('organization_invites')
-      .select(`
-        *,
-        organization_invite_uses(count)
-      `)
-      .eq('org_id', orgId)
-      .order('created_at', { ascending: false })
-    
-    invites = invitesData || []
+    if (tagStatsResult.error) {
+      logger.error({ error: tagStatsResult.error.message }, 'Error fetching tag stats');
+    } else {
+      tagStats = tagStatsResult.data || []
+    }
+
+    invites = invitesResult.data || []
   }
 
   return (
