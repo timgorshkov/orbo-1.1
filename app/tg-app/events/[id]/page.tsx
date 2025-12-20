@@ -99,7 +99,6 @@ interface Event {
   status: string;
   org_id?: string;
   org_name?: string;
-  org_slug?: string;
 }
 
 interface RegistrationField {
@@ -306,11 +305,9 @@ export default function TelegramEventPage() {
   // Render success
   if (viewState === 'success') {
     const isPaid = paymentStatus === 'paid';
-    const eventsCalendarUrl = event?.org_slug 
-      ? `https://my.orbo.ru/c/${event.org_slug}/events`
-      : event?.org_id 
-        ? `https://my.orbo.ru/c/${event.org_id}/events`
-        : null;
+    const eventsCalendarUrl = event?.org_id 
+      ? `https://my.orbo.ru/c/${event.org_id}/events`
+      : null;
     
     return (
       <div className="min-h-screen flex flex-col bg-white">
