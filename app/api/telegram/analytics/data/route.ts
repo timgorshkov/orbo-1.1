@@ -338,64 +338,76 @@ export async function GET(request: Request) {
 
     const participantList = Array.from(participantsMap.values()).filter(record => !BOT_USER_IDS.has(record.tg_user_id))
 
-    // Дополнительное обогащение данными из participants
-    const missingForEnrichment = participantList
-      .filter(record => !record.username || !record.full_name || record.activity_score == null || record.risk_score == null)
-      .map(record => record.tg_user_id)
+    // Получаем все tg_user_id для последующих запросов
+    const allTgUserIds = participantList.map(p => p.tg_user_id)
+    
+    // Выполняем запросы параллельно: обогащение данных, админы, и id/photo
+    const [participantsEnrichmentResult, adminDataResult] = await Promise.all([
+      // Единый запрос для обогащения участников (включая id, photo_url, username, full_name, scores)
+      allTgUserIds.length > 0 
+        ? supabase
+            .from('participants')
+            .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
+            .eq('org_id', orgId)
+            .in('tg_user_id', allTgUserIds)
+        : Promise.resolve({ data: null, error: null }),
+      
+      // Запрос информации об админах
+      supabase
+        .from('telegram_group_admins')
+        .select('tg_user_id, is_owner, is_admin, custom_title')
+        .eq('tg_chat_id', parseInt(chatId))
+        .gt('expires_at', new Date().toISOString())
+    ])
 
-    if (missingForEnrichment.length > 0) {
-      try {
-        const { data: participantRows, error: participantError } = await supabase
-          .from('participants')
-          .select('tg_user_id, username, full_name, last_activity_at, activity_score, risk_score')
-          .eq('org_id', orgId)
-          .in('tg_user_id', Array.from(new Set(missingForEnrichment)))
+    // Обработка результатов обогащения участников
+    const participantIdMap = new Map<number, { id: string; photo_url: string | null }>()
+    
+    if (participantsEnrichmentResult.error) {
+      logger.error({ error: participantsEnrichmentResult.error.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
+    } else if (participantsEnrichmentResult.data) {
+      participantsEnrichmentResult.data.forEach(row => {
+        if (!row?.tg_user_id) return
 
-        if (participantError) {
-          logger.error({ error: participantError.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
-        } else if (participantRows) {
-          participantRows.forEach(row => {
-            if (!row?.tg_user_id) {
-              return
-            }
+        // Сохраняем id и photo_url для последующего использования
+        participantIdMap.set(row.tg_user_id, { id: row.id, photo_url: row.photo_url })
 
-            const record = participantsMap.get(row.tg_user_id)
-            if (!record) {
-              return
-            }
+        const record = participantsMap.get(row.tg_user_id)
+        if (!record) return
 
-            if (row.username && !record.username) {
-              record.username = row.username
-              const normalized = normalizeUsername(row.username)
-              if (normalized) {
-                usernameToUserId.set(normalized, record.tg_user_id)
-              }
-            }
-
-            if (row.full_name && !record.full_name) {
-              record.full_name = row.full_name
-            }
-
-            record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
-            if (row.activity_score != null) {
-              record.activity_score = row.activity_score
-            }
-            if (row.risk_score != null) {
-              record.risk_score = row.risk_score
-            }
-          })
+        if (row.username && !record.username) {
+          record.username = row.username
+          const normalized = normalizeUsername(row.username)
+          if (normalized) {
+            usernameToUserId.set(normalized, record.tg_user_id)
+          }
         }
-      } catch (participantEnrichmentException) {
-        logger.error({ 
-          error: participantEnrichmentException instanceof Error ? participantEnrichmentException.message : String(participantEnrichmentException),
-          stack: participantEnrichmentException instanceof Error ? participantEnrichmentException.stack : undefined
-        }, 'Unexpected error enriching participants for analytics');
-      }
+
+        if (row.full_name && !record.full_name) {
+          record.full_name = row.full_name
+        }
+
+        record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
+        if (row.activity_score != null) {
+          record.activity_score = row.activity_score
+        }
+        if (row.risk_score != null) {
+          record.risk_score = row.risk_score
+        }
+      })
     }
 
-    // REMOVED: Enrichment from telegram_identities
-    // Migration 42 removed telegram_identities table
-    // All participant data is now in participants table
+    // Обработка результатов запроса админов
+    const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
+    if (adminDataResult.data) {
+      for (const admin of adminDataResult.data) {
+        adminMap.set(admin.tg_user_id, {
+          isOwner: admin.is_owner || false,
+          isAdmin: admin.is_admin || false,
+          customTitle: admin.custom_title || null
+        })
+      }
+    }
 
     const membersTotal = participantList.length
 
@@ -492,40 +504,6 @@ export async function GET(request: Request) {
       }))
 
     const newcomerActivation = membersTotal > 0 ? Math.round((membersActive / membersTotal) * 100) : 0
-
-    // Fetch admin information for participants
-    const { data: adminData } = await supabase
-      .from('telegram_group_admins')
-      .select('tg_user_id, is_owner, is_admin, custom_title')
-      .eq('tg_chat_id', parseInt(chatId))
-      .gt('expires_at', new Date().toISOString())
-
-    const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
-    if (adminData) {
-      for (const admin of adminData) {
-        adminMap.set(admin.tg_user_id, {
-          isOwner: admin.is_owner || false,
-          isAdmin: admin.is_admin || false,
-          customTitle: admin.custom_title || null
-        })
-      }
-    }
-
-    // Create a map of tg_user_id to participant_id and photo_url for quick lookup
-    const participantIdMap = new Map<number, { id: string; photo_url: string | null }>()
-    const { data: participantIdsData } = await supabase
-      .from('participants')
-      .select('id, tg_user_id, photo_url')
-      .eq('org_id', orgId)
-      .in('tg_user_id', participantList.map(p => p.tg_user_id))
-    
-    if (participantIdsData) {
-      participantIdsData.forEach(p => {
-        if (p.tg_user_id) {
-          participantIdMap.set(p.tg_user_id, { id: p.id, photo_url: p.photo_url })
-        }
-      })
-    }
 
     const participantsResponse = participantList
       .slice()
