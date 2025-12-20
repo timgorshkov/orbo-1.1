@@ -44,14 +44,33 @@ export default function TelegramEventsListPage() {
   useEffect(() => {
     const initWebApp = () => {
       if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
         setWebAppReady(true);
         
         // Set theme
-        const bg = window.Telegram.WebApp.themeParams.bg_color || '#ffffff';
-        window.Telegram.WebApp.setHeaderColor(bg);
-        window.Telegram.WebApp.setBackgroundColor(bg);
+        const bg = tg.themeParams.bg_color || '#ffffff';
+        tg.setHeaderColor(bg);
+        tg.setBackgroundColor(bg);
+        
+        // Store initData for use across navigation
+        if (tg.initData && tg.initData.length > 0) {
+          try {
+            sessionStorage.setItem('tg_init_data', tg.initData);
+          } catch (e) {
+            // Ignore storage errors
+          }
+        }
+        
+        // Store user info
+        if (tg.initDataUnsafe?.user) {
+          try {
+            sessionStorage.setItem('tg_user', JSON.stringify(tg.initDataUnsafe.user));
+          } catch (e) {
+            // Ignore
+          }
+        }
       }
     };
 

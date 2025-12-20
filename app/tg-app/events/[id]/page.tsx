@@ -129,6 +129,28 @@ export default function TelegramEventPage() {
   const [telegramUser, setTelegramUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
   const [webAppReady, setWebAppReady] = useState(false);
 
+  // Helper to get initData (from WebApp or sessionStorage)
+  const getInitData = (): string => {
+    // First try to get from WebApp
+    const webAppInitData = window.Telegram?.WebApp?.initData;
+    if (webAppInitData && webAppInitData.length > 0) {
+      // Store for future use within session
+      try {
+        sessionStorage.setItem('tg_init_data', webAppInitData);
+      } catch (e) {
+        // Ignore storage errors
+      }
+      return webAppInitData;
+    }
+    
+    // Fallback to stored initData
+    try {
+      return sessionStorage.getItem('tg_init_data') || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
   // Initialize Telegram WebApp
   useEffect(() => {
     const initWebApp = () => {
@@ -142,9 +164,34 @@ export default function TelegramEventPage() {
           document.body.style.backgroundColor = tg.themeParams.bg_color;
         }
         
+        // Store initData if available
+        if (tg.initData && tg.initData.length > 0) {
+          try {
+            sessionStorage.setItem('tg_init_data', tg.initData);
+          } catch (e) {
+            // Ignore storage errors
+          }
+        }
+        
         // Get user data
         if (tg.initDataUnsafe.user) {
           setTelegramUser(tg.initDataUnsafe.user);
+          // Also store user info
+          try {
+            sessionStorage.setItem('tg_user', JSON.stringify(tg.initDataUnsafe.user));
+          } catch (e) {
+            // Ignore
+          }
+        } else {
+          // Try to restore user from storage
+          try {
+            const storedUser = sessionStorage.getItem('tg_user');
+            if (storedUser) {
+              setTelegramUser(JSON.parse(storedUser));
+            }
+          } catch (e) {
+            // Ignore
+          }
         }
         
         setWebAppReady(true);
@@ -163,6 +210,15 @@ export default function TelegramEventPage() {
           clearInterval(interval);
           if (attempts >= 20) {
             // Fallback: still allow viewing even without WebApp
+            // Try to restore user from storage
+            try {
+              const storedUser = sessionStorage.getItem('tg_user');
+              if (storedUser) {
+                setTelegramUser(JSON.parse(storedUser));
+              }
+            } catch (e) {
+              // Ignore
+            }
             setWebAppReady(true);
           }
         }
@@ -178,7 +234,7 @@ export default function TelegramEventPage() {
     
     const loadEvent = async () => {
       try {
-        const initData = window.Telegram?.WebApp?.initData || '';
+        const initData = getInitData();
         
         const response = await fetch(`/api/telegram/webapp/events/${eventId}`, {
           headers: {
@@ -198,7 +254,20 @@ export default function TelegramEventPage() {
         setPaymentStatus(data.paymentStatus || null);
         
         // Pre-fill form with Telegram user data
-        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        let tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        
+        // Try to get from storage if not available
+        if (!tgUser) {
+          try {
+            const storedUser = sessionStorage.getItem('tg_user');
+            if (storedUser) {
+              tgUser = JSON.parse(storedUser);
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+        
         if (tgUser) {
           setTelegramUser(tgUser);
           const prefill: Record<string, string> = {};
@@ -244,7 +313,7 @@ export default function TelegramEventPage() {
     setError(null);
     
     try {
-      const initData = window.Telegram?.WebApp?.initData || '';
+      const initData = getInitData();
       
       const response = await fetch(`/api/telegram/webapp/events/${eventId}/register`, {
         method: 'POST',

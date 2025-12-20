@@ -31,6 +31,22 @@ export default function TelegramAppHome() {
         tg.ready();
         tg.expand();
         startParam = tg.initDataUnsafe?.start_param || null;
+        
+        // Store initData and user for use across navigation
+        if (tg.initData && tg.initData.length > 0) {
+          try {
+            sessionStorage.setItem('tg_init_data', tg.initData);
+          } catch (e) {
+            // Ignore storage errors
+          }
+        }
+        if (tg.initDataUnsafe?.user) {
+          try {
+            sessionStorage.setItem('tg_user', JSON.stringify(tg.initDataUnsafe.user));
+          } catch (e) {
+            // Ignore
+          }
+        }
       }
       
       // If no start_param from Telegram, check URL params (for testing or fallback)
