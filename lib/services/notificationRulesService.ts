@@ -567,7 +567,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         
         // Minimum 1 message for testing (increase to 3 for production)
         if (messages.length < 1) {
-          logger.info({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ No messages found');
+          logger.debug({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ No messages found');
           continue;
         }
         
