@@ -26,16 +26,23 @@ interface WebhookInfo {
   allowedUpdates?: string[];
 }
 
+interface EventBotInfo extends WebhookInfo {
+  configured: boolean;
+  botUsername?: string;
+  message?: string;
+}
+
 interface WebhookData {
   main: WebhookInfo;
   notifications: WebhookInfo;
+  event?: EventBotInfo;
 }
 
 export function WebhookSetup() {
   const [loading, setLoading] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState<WebhookData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [setupBotType, setSetupBotType] = useState<'main' | 'notifications' | null>(null);
+  const [setupBotType, setSetupBotType] = useState<'main' | 'notifications' | 'event' | null>(null);
 
   const fetchWebhookInfo = async () => {
     try {
@@ -53,7 +60,7 @@ export function WebhookSetup() {
     }
   };
 
-  const setupWebhook = async (botType: 'main' | 'notifications', dropPending: boolean = false) => {
+  const setupWebhook = async (botType: 'main' | 'notifications' | 'event', dropPending: boolean = false) => {
     try {
       setLoading(true);
       setSetupBotType(botType);
@@ -93,7 +100,7 @@ export function WebhookSetup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const renderWebhookInfo = (botType: 'main' | 'notifications', info?: WebhookInfo) => {
+  const renderWebhookInfo = (botType: 'main' | 'notifications' | 'event', info?: WebhookInfo) => {
     if (!info) {
       return <p className="text-sm text-gray-500">Загрузка...</p>;
     }
@@ -178,7 +185,7 @@ export function WebhookSetup() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Main Bot */}
           <div className="border rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
@@ -235,6 +242,66 @@ export function WebhookSetup() {
             </div>
             
             {renderWebhookInfo('notifications', webhookInfo?.notifications)}
+          </div>
+
+          {/* Event Bot */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Event Bot</h3>
+              <div className="flex gap-2">
+                {webhookInfo?.event?.configured !== false && (
+                  <>
+                    <Button
+                      onClick={() => setupWebhook('event')}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading && setupBotType === 'event' ? 'Настройка...' : 'Setup'}
+                    </Button>
+                    {(webhookInfo?.event?.lastErrorMessage || (webhookInfo?.event?.pendingUpdateCount || 0) > 0) && (
+                      <Button
+                        onClick={() => setupWebhook('event', true)}
+                        disabled={loading}
+                        size="sm"
+                        variant="outline"
+                        title="Сбросить ошибку и очередь"
+                      >
+                        🔄 Reset
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {webhookInfo?.event?.configured === false ? (
+              <div className="text-sm text-gray-500">
+                <Badge variant="secondary">⚙️ Не настроен</Badge>
+                <p className="mt-2 text-xs">{webhookInfo.event.message}</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Добавьте TELEGRAM_EVENT_BOT_TOKEN в .env
+                </p>
+              </div>
+            ) : webhookInfo?.event ? (
+              <div className="space-y-2">
+                {webhookInfo.event.botUsername && (
+                  <div className="text-sm">
+                    <span className="font-medium">Бот:</span>{' '}
+                    <a 
+                      href={`https://t.me/${webhookInfo.event.botUsername}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      @{webhookInfo.event.botUsername}
+                    </a>
+                  </div>
+                )}
+                {renderWebhookInfo('event', webhookInfo.event)}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Загрузка...</p>
+            )}
           </div>
         </div>
 

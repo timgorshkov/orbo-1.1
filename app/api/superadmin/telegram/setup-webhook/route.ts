@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
+import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -41,11 +42,62 @@ export async function POST(req: NextRequest) {
     // Get bot type from request
     const { botType, dropPendingUpdates = false } = await req.json();
     
-    if (!botType || !['main', 'notifications'].includes(botType)) {
-      return NextResponse.json({ error: 'Invalid botType. Must be "main" or "notifications"' }, { status: 400 });
+    if (!botType || !['main', 'notifications', 'event'].includes(botType)) {
+      return NextResponse.json({ error: 'Invalid botType. Must be "main", "notifications", or "event"' }, { status: 400 });
     }
 
-    // Setup webhook
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+    
+    // Handle Event Bot separately (uses different token)
+    if (botType === 'event') {
+      const eventBotToken = getEventBotToken();
+      if (!eventBotToken) {
+        return NextResponse.json({ error: 'TELEGRAM_EVENT_BOT_TOKEN not configured' }, { status: 500 });
+      }
+      
+      const webhookUrl = `${baseUrl}/api/telegram/event-bot/webhook`;
+      
+      logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting event bot webhook');
+      
+      const response = await fetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: webhookUrl,
+          allowed_updates: ['message'],
+          drop_pending_updates: dropPendingUpdates,
+          max_connections: 40,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.ok) {
+        logger.error({ error: result.description }, 'Failed to set event bot webhook');
+        return NextResponse.json({ error: result.description || 'Failed to set webhook' }, { status: 500 });
+      }
+      
+      // Get webhook info
+      const infoResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
+      const infoResult = await infoResponse.json();
+      const webhookInfo = infoResult.result || {};
+      
+      return NextResponse.json({
+        success: true,
+        botType,
+        webhook: {
+          url: webhookInfo.url || '',
+          hasCustomCertificate: webhookInfo.has_custom_certificate || false,
+          pendingUpdateCount: webhookInfo.pending_update_count || 0,
+          lastErrorDate: webhookInfo.last_error_date,
+          lastErrorMessage: webhookInfo.last_error_message,
+          maxConnections: webhookInfo.max_connections || 40,
+          allowedUpdates: webhookInfo.allowed_updates || []
+        }
+      });
+    }
+
+    // Setup webhook for main/notifications bots
     const webhookSecret = botType === 'notifications'
       ? (process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET)
       : process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -54,7 +106,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const webhookUrl = botType === 'main'
       ? `${baseUrl}/api/telegram/webhook`
       : `${baseUrl}/api/telegram/notifications/webhook`;
@@ -153,9 +204,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: Superadmin access required' }, { status: 403 });
     }
 
-    // Get webhook info for both bots
+    // Get webhook info for all bots
     const mainService = new TelegramService('main');
     const notificationsService = new TelegramService('notifications');
+    
+    // Get event bot info (if configured)
+    const eventBotToken = getEventBotToken();
+    let eventBotInfo: any = null;
+    
+    if (eventBotToken) {
+      try {
+        const eventResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
+        const eventResult = await eventResponse.json();
+        eventBotInfo = eventResult.result || {};
+        
+        // Also get bot info for username
+        const meResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getMe`);
+        const meResult = await meResponse.json();
+        if (meResult.result) {
+          eventBotInfo.botUsername = meResult.result.username;
+        }
+      } catch (e) {
+        logger.warn({ error: (e as Error).message }, 'Failed to get event bot info');
+      }
+    }
 
     const [mainResponse, notificationsResponse] = await Promise.all([
       mainService.getWebhookInfo(),
@@ -184,6 +256,20 @@ export async function GET(req: NextRequest) {
         lastErrorMessage: notificationsInfo.last_error_message,
         maxConnections: notificationsInfo.max_connections || 40,
         allowedUpdates: notificationsInfo.allowed_updates || []
+      },
+      event: eventBotToken ? {
+        configured: true,
+        botUsername: eventBotInfo?.botUsername || 'orbo_event_bot',
+        url: eventBotInfo?.url || '',
+        hasCustomCertificate: eventBotInfo?.has_custom_certificate || false,
+        pendingUpdateCount: eventBotInfo?.pending_update_count || 0,
+        lastErrorDate: eventBotInfo?.last_error_date,
+        lastErrorMessage: eventBotInfo?.last_error_message,
+        maxConnections: eventBotInfo?.max_connections || 40,
+        allowedUpdates: eventBotInfo?.allowed_updates || []
+      } : {
+        configured: false,
+        message: 'TELEGRAM_EVENT_BOT_TOKEN not set'
       }
     });
   } catch (error: any) {
