@@ -190,7 +190,8 @@ export async function enrichParticipant(
       );
       
       if (messagesWithContext.length === 0) {
-        logger.warn({ participant_id: participantId }, 'No messages with text found for participant');
+        // This is expected for participants who only send media (stickers, images, voice, etc.)
+        logger.debug({ participant_id: participantId }, 'No messages with text found for participant (media-only user)');
       }
       
       // Prepare reacted messages as interest signals
@@ -209,7 +210,8 @@ export async function enrichParticipant(
       result.ai_analysis = aiAnalysis;
       result.cost_usd = aiAnalysis.cost_usd;
     } else if (options.useAI && participantMessages.length === 0) {
-      logger.warn({ participant_id: participantId }, 'AI analysis requested but no participant messages found');
+      // New participant or silent member - not an error
+      logger.debug({ participant_id: participantId }, 'AI analysis requested but no participant messages found');
     }
     
     // 7. Behavioral Role Classification (rule-based)
