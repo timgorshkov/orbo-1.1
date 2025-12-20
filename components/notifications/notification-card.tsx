@@ -171,13 +171,24 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
               </p>
             )}
             
-            {/* Link to participant/group */}
-            <Link 
-              href={notification.link_url}
-              className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-            >
-              Открыть профиль →
-            </Link>
+            {/* Link to participant/group/message */}
+            {notification.link_url.startsWith('https://t.me') ? (
+              <a 
+                href={notification.link_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+              >
+                Открыть в Telegram →
+              </a>
+            ) : (
+              <Link 
+                href={notification.link_url}
+                className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+              >
+                {notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Открыть →'}
+              </Link>
+            )}
             
             {/* Resolved info */}
             {isResolved && (

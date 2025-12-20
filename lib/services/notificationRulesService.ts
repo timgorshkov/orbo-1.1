@@ -55,6 +55,7 @@ interface Message {
   author_id: string;
   created_at: string;
   tg_chat_id: string;
+  tg_message_id?: number; // Telegram message ID for direct link
   has_reply?: boolean;
 }
 
@@ -321,6 +322,7 @@ async function getRecentMessages(
         id,
         tg_user_id,
         tg_chat_id,
+        message_id,
         message_text,
         sent_at,
         participant_id
@@ -377,6 +379,8 @@ async function getRecentMessages(
       return activityData.map(m => {
         // Extract text from meta - it's stored in message.text_preview
         const text = m.meta?.message?.text_preview || m.meta?.text || '';
+        // Extract message_id from meta
+        const messageId = m.meta?.message?.message_id || m.meta?.message_id;
         return {
           id: m.id,
           text,
@@ -384,6 +388,7 @@ async function getRecentMessages(
           author_id: String(m.tg_user_id),
           created_at: m.created_at,
           tg_chat_id: String(m.tg_chat_id),
+          tg_message_id: messageId ? Number(messageId) : undefined,
         };
       });
     }
@@ -414,6 +419,7 @@ async function getRecentMessages(
       author_id: String(m.tg_user_id),
       created_at: m.sent_at,
       tg_chat_id: String(m.tg_chat_id),
+      tg_message_id: m.message_id ? Number(m.message_id) : undefined,
     }));
   } catch (error) {
     logger.error({ error, chat_id: chatId }, 'Error getting messages');
@@ -606,6 +612,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         }, '📊 Threshold check');
         
         if (analysis.has_negative && detected >= threshold) {
+          // Get last message ID for direct Telegram link
+          const lastMessage = messages[messages.length - 1];
+          const lastMessageId = lastMessage?.tg_message_id;
+          
           const triggerContext = {
             type: 'negative_discussion',
             group_id: chatId,
@@ -614,6 +624,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             summary: analysis.summary,
             message_count: messages.length,
             sample_messages: analysis.sample_messages,
+            last_message_id: lastMessageId, // For direct Telegram link
           };
           
           const dedupHash = generateDedupHash(rule.id, triggerContext);
