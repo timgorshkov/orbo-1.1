@@ -23,24 +23,21 @@ export default function TelegramAppHome() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tg = (window as any).Telegram?.WebApp;
       
-      if (!tg) {
-        // Not in Telegram - check URL params
-        const urlParams = new URLSearchParams(window.location.search);
-        const startParam = urlParams.get('tgWebAppStartParam') || urlParams.get('startapp');
-        
-        if (startParam) {
-          processStartParam(startParam);
-        } else {
-          setStatus('no-event');
-        }
-        return;
+      // Try to get start_param from Telegram WebApp first
+      let startParam: string | null = null;
+      
+      if (tg) {
+        // Initialize Telegram WebApp
+        tg.ready();
+        tg.expand();
+        startParam = tg.initDataUnsafe?.start_param || null;
       }
-
-      // Initialize Telegram WebApp
-      tg.ready();
-      tg.expand();
-
-      const startParam = tg.initDataUnsafe?.start_param;
+      
+      // If no start_param from Telegram, check URL params (for testing or fallback)
+      if (!startParam) {
+        const urlParams = new URLSearchParams(window.location.search);
+        startParam = urlParams.get('tgWebAppStartParam') || urlParams.get('startapp') || null;
+      }
       
       if (startParam) {
         processStartParam(startParam);
