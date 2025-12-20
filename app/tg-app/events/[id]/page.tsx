@@ -305,8 +305,9 @@ export default function TelegramEventPage() {
   // Render success
   if (viewState === 'success') {
     const isPaid = paymentStatus === 'paid';
+    // Use MiniApp internal URL for seamless experience
     const eventsCalendarUrl = event?.org_id 
-      ? `https://my.orbo.ru/p/${event.org_id}/events`
+      ? `/tg-app/orgs/${event.org_id}/events`
       : null;
     
     return (
@@ -426,14 +427,15 @@ export default function TelegramEventPage() {
         {/* Footer with links */}
         <div className="flex-shrink-0 p-4 border-t border-gray-100">
           {eventsCalendarUrl && (
-            <a
-              href={eventsCalendarUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => {
+                window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+                window.location.href = eventsCalendarUrl;
+              }}
               className="block w-full py-2 text-center text-blue-500 text-sm mb-2"
             >
-              📅 Календарь событий
-            </a>
+              📅 Все события
+            </button>
           )}
           <button
             onClick={() => {
