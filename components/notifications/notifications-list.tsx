@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Filter, RefreshCw, Loader2, Bell, CheckCircle2 } from 'lucide-react';
+import { Filter, RefreshCw, Loader2, Bell, CheckCircle2, Settings } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -161,20 +162,20 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
         
         <div className="flex items-center gap-2">
           {/* Filter by type */}
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
+              <button className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3">
                 <Filter className="h-4 w-4 mr-2" />
                 {filterType 
                   ? NOTIFICATION_TYPES.find(t => t.value === filterType)?.label 
                   : 'Фильтр'}
-              </Button>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {NOTIFICATION_TYPES.map(type => (
                 <DropdownMenuItem
                   key={type.value}
-                  onClick={() => setFilterType(type.value)}
+                  onSelect={() => setFilterType(type.value)}
                   className={filterType === type.value ? 'bg-gray-100' : ''}
                 >
                   {type.label}
@@ -202,6 +203,14 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
+          
+          {/* Settings link */}
+          <Link href={`/p/${orgId}/settings/notifications`}>
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              Настройки
+            </Button>
+          </Link>
         </div>
       </div>
       
