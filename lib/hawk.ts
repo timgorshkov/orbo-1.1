@@ -11,7 +11,17 @@
 import HawkCatcher from '@hawk.so/nodejs';
 import { Buffer } from 'buffer';
 
-let isInitialized = false;
+// Используем globalThis для предотвращения повторной инициализации
+// между разными процессами/воркерами Next.js
+declare global {
+  // eslint-disable-next-line no-var
+  var __hawkInitialized: boolean | undefined;
+  // eslint-disable-next-line no-var  
+  var __hawkInitAttempted: boolean | undefined;
+}
+
+// Проверяем глобальное состояние
+let isInitialized = globalThis.__hawkInitialized ?? false;
 
 // Простой логгер без циклического импорта
 const hawkLog = {
@@ -59,7 +69,16 @@ function validateHawkToken(token: string): { valid: boolean; error?: string; int
  * Вызывается один раз при старте сервера
  */
 export function initHawk() {
-  if (isInitialized) return;
+  // Проверяем и локальное, и глобальное состояние
+  if (isInitialized || globalThis.__hawkInitialized) {
+    return;
+  }
+  
+  // Предотвращаем повторные попытки инициализации при ошибках
+  if (globalThis.__hawkInitAttempted) {
+    return;
+  }
+  globalThis.__hawkInitAttempted = true;
   
   const token = process.env.HAWK_TOKEN;
   const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
@@ -101,6 +120,7 @@ export function initHawk() {
     });
     
     isInitialized = true;
+    globalThis.__hawkInitialized = true;
     hawkLog.info(`Error monitoring initialized (integration: ${validation.integrationId})`);
   } catch (error) {
     hawkLog.error('Failed to initialize', error);
@@ -115,7 +135,7 @@ export function captureError(
   context?: Record<string, unknown>,
   user?: { id: string | number; name?: string }
 ) {
-  if (!isInitialized) {
+  if (!isInitialized && !globalThis.__hawkInitialized) {
     // Не логируем здесь, чтобы избежать спама - просто тихо игнорируем
     return;
   }
@@ -135,7 +155,7 @@ export function captureWarning(
   message: string,
   context?: Record<string, unknown>
 ) {
-  if (!isInitialized) return;
+  if (!isInitialized && !globalThis.__hawkInitialized) return;
 
   try {
     const warning = new Error(`[Warning] ${message}`);
