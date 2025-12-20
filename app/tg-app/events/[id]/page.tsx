@@ -131,28 +131,50 @@ export default function TelegramEventPage() {
 
   // Initialize Telegram WebApp
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      
-      // Set theme
-      if (tg.themeParams.bg_color) {
-        document.body.style.backgroundColor = tg.themeParams.bg_color;
+    const initWebApp = () => {
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Set theme
+        if (tg.themeParams.bg_color) {
+          document.body.style.backgroundColor = tg.themeParams.bg_color;
+        }
+        
+        // Get user data
+        if (tg.initDataUnsafe.user) {
+          setTelegramUser(tg.initDataUnsafe.user);
+        }
+        
+        setWebAppReady(true);
+        return true;
       }
+      return false;
+    };
+    
+    // Try immediately
+    if (!initWebApp()) {
+      // If not ready, wait and retry a few times
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (initWebApp() || attempts >= 20) {
+          clearInterval(interval);
+          if (attempts >= 20) {
+            // Fallback: still allow viewing even without WebApp
+            setWebAppReady(true);
+          }
+        }
+      }, 100);
       
-      // Get user data
-      if (tg.initDataUnsafe.user) {
-        setTelegramUser(tg.initDataUnsafe.user);
-      }
-      
-      setWebAppReady(true);
+      return () => clearInterval(interval);
     }
   }, []);
 
-  // Load event data
+  // Load event data - wait for WebApp to be ready
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !webAppReady) return;
     
     const loadEvent = async () => {
       try {
@@ -176,9 +198,11 @@ export default function TelegramEventPage() {
         setPaymentStatus(data.paymentStatus || null);
         
         // Pre-fill form with Telegram user data
-        if (telegramUser) {
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        if (tgUser) {
+          setTelegramUser(tgUser);
           const prefill: Record<string, string> = {};
-          const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ');
+          const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
           
           data.fields?.forEach((field: RegistrationField) => {
             if (field.field_key === 'full_name' || field.field_key === 'name') {
@@ -197,7 +221,7 @@ export default function TelegramEventPage() {
     };
     
     loadEvent();
-  }, [eventId, telegramUser]);
+  }, [eventId, webAppReady]);
 
   // Format date
   const formatDate = (dateStr: string) => {

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
-import Image from 'next/image';
 import { Calendar, MapPin, Users, Clock, Loader2, ChevronRight, Video } from 'lucide-react';
 
 interface Event {
@@ -161,13 +160,13 @@ export default function TelegramEventsListPage() {
         {/* Header */}
         <div className="bg-white border-b border-gray-100 px-4 py-4">
           <div className="flex items-center gap-3">
-            {organization?.logo_url ? (
-              <Image
+            {organization?.logo_url && organization.logo_url.length > 0 ? (
+              <img
                 src={organization.logo_url}
                 alt={organization.name}
                 width={40}
                 height={40}
-                className="rounded-full object-cover"
+                className="w-10 h-10 rounded-full object-cover"
               />
             ) : (
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -200,11 +199,9 @@ export default function TelegramEventsListPage() {
                     {/* Event image or date badge */}
                     {event.cover_image_url ? (
                       <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
-                        <Image
+                        <img
                           src={event.cover_image_url}
                           alt={event.title}
-                          width={64}
-                          height={64}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -231,28 +228,30 @@ export default function TelegramEventsListPage() {
                         <span>{formatTime(event.start_time)}</span>
                       </div>
                       
-                      <div className="flex items-center gap-3 text-xs text-gray-400">
-                        {event.event_type === 'online' ? (
-                          <span className="flex items-center gap-1">
-                            <Video className="w-3 h-3" />
-                            Онлайн
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 truncate max-w-[150px]">
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            {event.location_info || 'Офлайн'}
-                          </span>
-                        )}
-                        
-                        {event.registered_count !== undefined && event.registered_count > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {event.registered_count}
-                          </span>
-                        )}
+                      <div className="flex items-center justify-between text-xs text-gray-400">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {event.event_type === 'online' ? (
+                            <span className="flex items-center gap-1 flex-shrink-0">
+                              <Video className="w-3 h-3" />
+                              Онлайн
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 min-w-0">
+                              <MapPin className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate max-w-[100px]">{event.location_info || 'Офлайн'}</span>
+                            </span>
+                          )}
+                          
+                          {event.registered_count !== undefined && event.registered_count > 0 && (
+                            <span className="flex items-center gap-1 flex-shrink-0">
+                              <Users className="w-3 h-3" />
+                              {event.registered_count}
+                            </span>
+                          )}
+                        </div>
                         
                         {event.requires_payment && event.default_price && (
-                          <span className="text-green-600 font-medium">
+                          <span className="text-green-600 font-medium flex-shrink-0 ml-2 whitespace-nowrap">
                             {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
                           </span>
                         )}
