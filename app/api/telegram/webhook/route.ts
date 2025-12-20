@@ -66,45 +66,19 @@ export async function POST(req: NextRequest) {
       chat_id: body?.message?.chat?.id
     }, 'Webhook body parsed');
     
-    let timeoutId: NodeJS.Timeout | null = null
-    let didTimeout = false
+    // ⚡ НЕМЕДЛЕННЫЙ ОТВЕТ: Telegram требует ответ в течение 60 секунд
+    // Обрабатываем в фоне без блокировки ответа
     
-    const processingPromise = processWebhookInBackground(body, logger).then((result) => {
-      // Processing completed - cancel timeout
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-      return result
-    })
+    // Запускаем обработку в фоне (не ждём!)
+    processWebhookInBackground(body, logger).catch((error) => {
+      logger.error({
+        update_id: body?.update_id,
+        chat_id: body?.message?.chat?.id || body?.my_chat_member?.chat?.id,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'Background webhook processing failed');
+    });
     
-    const timeoutPromise = new Promise((resolve) => {
-      timeoutId = setTimeout(async () => {
-        didTimeout = true
-        logger.warn({ 
-          update_id: body?.update_id,
-          chat_id: body?.message?.chat?.id || body?.my_chat_member?.chat?.id,
-          timeout_ms: 10000
-        }, 'Webhook processing timeout - returning 200 OK anyway');
-        // Log timeout as warning
-        await logErrorToDatabase({
-          level: 'warn',
-          message: 'Webhook processing timeout - returning 200 OK anyway',
-          errorCode: 'WEBHOOK_TIMEOUT',
-          context: {
-            endpoint: '/api/telegram/webhook',
-            updateId: body?.update_id,
-            chatId: body?.message?.chat?.id || body?.my_chat_member?.chat?.id,
-            timeoutMs: 10000
-          }
-        })
-        resolve('timeout')
-      }, 10000) // 10 секунд
-    })
-    
-    // Ждем либо завершения обработки, либо timeout
-    await Promise.race([processingPromise, timeoutPromise])
-    
+    // Сразу возвращаем успешный ответ
     return NextResponse.json({ ok: true })
   } catch (error) {
     logger.error({ 
