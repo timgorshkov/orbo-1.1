@@ -8,6 +8,14 @@ import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { updateParticipantActivity, incrementGroupMessageCount } from '@/lib/services/participantStatsService'
 import { createAPILogger, createServiceLogger } from '@/lib/logger'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
+import { 
+  processMessage as processMessageOptimized,
+  isWebhookProcessed,
+  recordWebhookProcessed 
+} from '@/lib/services/webhookProcessingService'
+
+// Feature flag for optimized processing (set to true to enable)
+const USE_OPTIMIZED_PROCESSING = process.env.USE_OPTIMIZED_WEBHOOK === 'true';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,13 +128,21 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     // STEP 0: IDEMPOTENCY CHECK
     // ========================================
     if (updateId) {
-      const { data: exists } = await supabaseServiceRole
-        .from('telegram_webhook_idempotency')
-        .select('update_id')
-        .eq('update_id', updateId)
-        .single();
+      // Use optimized RPC check if available, fallback to direct query
+      let isDuplicate = false;
       
-      if (exists) {
+      if (USE_OPTIMIZED_PROCESSING) {
+        isDuplicate = await isWebhookProcessed(updateId);
+      } else {
+        const { data: exists } = await supabaseServiceRole
+          .from('telegram_webhook_idempotency')
+          .select('update_id')
+          .eq('update_id', updateId)
+          .single();
+        isDuplicate = !!exists;
+      }
+      
+      if (isDuplicate) {
         logger.debug({ update_id: updateId }, 'Duplicate update - skipping');
         return; // Already processed
       }
@@ -223,14 +239,34 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       
       if (orgMapping && orgMapping.length > 0) {
         orgId = orgMapping[0].org_id;
-        const eventProcessingService = createEventProcessingService();
-        eventProcessingService.setSupabaseClient(supabaseServiceRole);
-        await eventProcessingService.processUpdate(body);
         
-        // Update participant activity stats (lightweight, no enrichment)
-        if (body.message?.from?.id && orgId) {
-          updateParticipantActivity(body.message.from.id, orgId).catch(() => {});
-          incrementGroupMessageCount(msgChatId).catch(() => {});
+        // Use optimized processing if enabled
+        if (USE_OPTIMIZED_PROCESSING && body.message?.from?.id) {
+          // ⚡ Optimized path: 1 RPC call instead of 8-12 queries
+          const result = await processMessageOptimized(orgId, body.message, updateId);
+          
+          if (!result.success) {
+            logger.warn({ 
+              error: result.error,
+              tg_user_id: body.message.from.id 
+            }, 'Optimized processing failed, falling back');
+            
+            // Fallback to legacy processing
+            const eventProcessingService = createEventProcessingService();
+            eventProcessingService.setSupabaseClient(supabaseServiceRole);
+            await eventProcessingService.processUpdate(body);
+          }
+        } else {
+          // Legacy path: multiple DB queries
+          const eventProcessingService = createEventProcessingService();
+          eventProcessingService.setSupabaseClient(supabaseServiceRole);
+          await eventProcessingService.processUpdate(body);
+          
+          // Update participant activity stats (lightweight, no enrichment)
+          if (body.message?.from?.id && orgId) {
+            updateParticipantActivity(body.message.from.id, orgId).catch(() => {});
+            incrementGroupMessageCount(msgChatId).catch(() => {});
+          }
         }
       }
     }
@@ -694,14 +730,18 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     
     // Record idempotency
     if (updateId && chatId) {
-      await supabaseServiceRole
-        .from('telegram_webhook_idempotency')
-        .insert({
-          update_id: updateId,
-          tg_chat_id: chatId,
-          event_type: eventType,
-          org_id: orgId
-        });
+      if (USE_OPTIMIZED_PROCESSING) {
+        await recordWebhookProcessed(updateId, chatId, eventType, orgId);
+      } else {
+        await supabaseServiceRole
+          .from('telegram_webhook_idempotency')
+          .insert({
+            update_id: updateId,
+            tg_chat_id: chatId,
+            event_type: eventType,
+            org_id: orgId
+          });
+      }
       
       // Log health success (silent)
       await supabaseServiceRole
