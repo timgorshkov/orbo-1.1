@@ -18,7 +18,7 @@ export default async function InvitesPage({
   } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect(`/login?redirect=/p/${orgId}/settings/invites`)
+    redirect(`/signin?redirect=/p/${orgId}/settings/invites`)
   }
 
   // Определяем роль

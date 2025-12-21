@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
-import { auth } from '@/auth'
+// НЕ импортируем auth() - вызов вызывает UntrustedHost ошибку в Docker
+// Проверяем NextAuth сессию через наличие session cookie
 
 /**
  * Get the public base URL for redirects
@@ -99,66 +100,18 @@ export async function middleware(request: NextRequest) {
     data: { session: supabaseSession },
   } = await supabase.auth.getSession()
 
-  // Получаем все cookies для отладки
-  const allCookies = request.cookies.getAll().map(c => c.name)
-  
-  // Проверяем NextAuth сессию - ищем любые auth-related cookies
+  // Проверяем NextAuth сессию через наличие session cookie
+  // НЕ вызываем auth() - это вызывает UntrustedHost ошибку
   const authCookieNames = [
     'authjs.session-token',
     '__Secure-authjs.session-token',
     'next-auth.session-token',
     '__Secure-next-auth.session-token',
   ]
-  
-  // Также проверяем cookies с callback-url (они появляются после OAuth redirect)
-  const hasCallbackCookie = allCookies.some(name => name.includes('callback-url'))
-  const hasSessionCookie = authCookieNames.some(name => request.cookies.has(name))
-  
-  // Проверяем NextAuth сессию через auth() функцию
-  let hasNextAuthSession = false
-  let authError: string | null = null
-  
-  try {
-    const nextAuthSession = await auth()
-    hasNextAuthSession = !!nextAuthSession?.user
-    
-    if (hasSessionCookie && !hasNextAuthSession) {
-      logger.warn({
-        pathname,
-        hasSessionCookie,
-        hasNextAuthSession,
-        cookies: allCookies,
-      }, 'Session cookie exists but auth() returned no session');
-    }
-  } catch (error) {
-    authError = error instanceof Error ? error.message : String(error)
-    // Fallback: если есть session cookie, считаем что сессия есть
-    hasNextAuthSession = hasSessionCookie
-    logger.warn({ 
-      error: authError,
-      hasNextAuthSession,
-      hasSessionCookie,
-      hasCallbackCookie,
-      cookies: allCookies,
-      pathname,
-    }, 'NextAuth auth() failed, using cookie fallback');
-  }
+  const hasNextAuthSession = authCookieNames.some(name => request.cookies.has(name))
 
   // Пользователь авторизован если есть хотя бы одна активная сессия
   const isAuthenticated = !!supabaseSession || hasNextAuthSession
-  
-  // Логируем состояние для защищённых маршрутов
-  if (pathname.startsWith('/orgs') || pathname.startsWith('/app') || pathname.startsWith('/superadmin')) {
-    logger.info({
-      pathname,
-      isAuthenticated,
-      hasSupabaseSession: !!supabaseSession,
-      hasNextAuthSession,
-      hasSessionCookie,
-      cookies: allCookies,
-      authError,
-    }, 'Protected route auth check');
-  }
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {

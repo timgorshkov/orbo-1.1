@@ -218,7 +218,7 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Администратор?{' '}
             <Link
-              href="/login"
+              href="/signin"
               className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
             >
               Войти через email →

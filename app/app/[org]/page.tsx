@@ -13,7 +13,7 @@ export default async function OrgIndexPage({ params }: { params: Promise<{ org: 
   } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect(`/login?redirect=/app/${orgId}`)
+    redirect(`/signin?redirect=/app/${orgId}`)
   }
 
   // Определяем роль пользователя
