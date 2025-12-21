@@ -131,23 +131,28 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
       }
     );
 
-    const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+    // Используем getUser() вместо getSession() для безопасной верификации
+    // getUser() проверяет токен на сервере Supabase Auth
+    const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
     
-    if (supabaseSession?.user) {
+    if (supabaseUser && !userError) {
+      // Получаем session только для access_token (если нужен)
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      
       return {
         user: {
-          id: supabaseSession.user.id,
-          email: supabaseSession.user.email,
-          name: supabaseSession.user.user_metadata?.full_name || supabaseSession.user.email?.split('@')[0],
-          image: supabaseSession.user.user_metadata?.avatar_url,
+          id: supabaseUser.id,
+          email: supabaseUser.email,
+          name: supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0],
+          image: supabaseUser.user_metadata?.avatar_url,
           provider: 'supabase',
-          raw: { supabase: supabaseSession.user },
+          raw: { supabase: supabaseUser },
         },
         provider: 'supabase',
-        expires: supabaseSession.expires_at 
+        expires: supabaseSession?.expires_at 
           ? new Date(supabaseSession.expires_at * 1000).toISOString()
           : undefined,
-        accessToken: supabaseSession.access_token,
+        accessToken: supabaseSession?.access_token,
       };
     }
 
