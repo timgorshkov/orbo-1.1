@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 
 export const dynamic = 'force-dynamic';
@@ -14,17 +15,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid Telegram ID' }, { status: 400 })
     }
     
-    const supabase = await createClientServer()
+    // Получаем текущего пользователя via unified auth
+    const user = await getUnifiedUser()
     
-    // Получаем текущего пользователя
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
+    const adminSupabase = createAdminServer()
+    
     // Обновляем профиль пользователя
-    await supabase
+    await adminSupabase
       .from('profiles')
       .upsert({
         id: user.id,

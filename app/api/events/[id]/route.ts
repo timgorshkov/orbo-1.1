@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -14,12 +14,10 @@ export async function GET(
   try {
     const paramsData = await params;
     eventId = paramsData.id;
-    const supabase = await createClientServer()
-
     const adminSupabase = createAdminServer()
     
     // Fetch event with registrations
-    const { data: event, error } = await supabase
+    const { data: event, error } = await adminSupabase
       .from('events')
       .select(`
         *,
@@ -49,13 +47,13 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Check if current user is admin
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check if current user is admin via unified auth
+    const user = await getUnifiedUser()
     let isAdmin = false
     let paidCount = null
 
     if (user) {
-      const { data: membership } = await supabase
+      const { data: membership } = await adminSupabase
         .from('memberships')
         .select('role')
         .eq('user_id', user.id)
@@ -173,16 +171,16 @@ export async function PUT(
       telegramGroupLink
     } = body
 
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check if user has admin rights
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check if user has admin rights via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event to check org_id and current cover_image_url
-    const { data: existingEvent, error: fetchError } = await supabase
+    const { data: existingEvent, error: fetchError } = await adminSupabase
       .from('events')
       .select('org_id, cover_image_url')
       .eq('id', eventId)
@@ -193,7 +191,7 @@ export async function PUT(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -367,16 +365,16 @@ export async function DELETE(
   try {
     const paramsData = await params;
     eventId = paramsData.id;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check if user has admin rights
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check if user has admin rights via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event to check org_id
-    const { data: existingEvent, error: fetchError } = await supabase
+    const { data: existingEvent, error: fetchError } = await adminSupabase
       .from('events')
       .select('org_id')
       .eq('id', eventId)
@@ -387,7 +385,7 @@ export async function DELETE(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
