@@ -140,31 +140,19 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
           }
         }
         
-        // Метод 2: Ищем в auth.users через RPC или listUsers
+        // Метод 2: Используем RPC функцию get_user_id_by_email (самый надежный способ)
         if (!supabaseUserId) {
-          // Используем listUsers с фильтрацией
-          const { data: authUsers, error: listError } = await adminSupabase.auth.admin.listUsers({
-            page: 1,
-            perPage: 1000, // Разумный лимит
-          });
-          
-          if (listError) {
-            logger.warn({
-              error: listError.message,
-              email: userEmail,
-            }, 'Error listing users');
-          } else if (authUsers?.users) {
-            logger.debug({
-              total_users: authUsers.users.length,
-              email: userEmail,
-            }, 'Searching for user in list');
+          try {
+            const { data: foundUserId, error: rpcError } = await adminSupabase
+              .rpc('get_user_id_by_email', { p_email: userEmail });
             
-            const existingAuthUser = authUsers.users.find(
-              (u: { email?: string }) => u.email?.toLowerCase() === userEmail
-            );
-            
-            if (existingAuthUser) {
-              supabaseUserId = existingAuthUser.id;
+            if (rpcError) {
+              logger.warn({
+                error: rpcError.message,
+                email: userEmail,
+              }, 'RPC get_user_id_by_email failed');
+            } else if (foundUserId) {
+              supabaseUserId = foundUserId;
               logger.info({
                 email: userEmail,
                 supabase_user_id: supabaseUserId,
@@ -173,9 +161,13 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
             } else {
               logger.warn({
                 email: userEmail,
-                searched_count: authUsers.users.length,
               }, 'No existing Supabase user found for NextAuth email');
             }
+          } catch (queryError) {
+            logger.error({
+              error: queryError instanceof Error ? queryError.message : String(queryError),
+              email: userEmail,
+            }, 'Error calling get_user_id_by_email RPC');
           }
         }
         
