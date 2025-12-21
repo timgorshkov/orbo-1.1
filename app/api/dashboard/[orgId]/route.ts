@@ -41,7 +41,7 @@ export async function GET(
       eventsCountResult,
       totalParticipantsResult
     ] = await Promise.all([
-      supabase
+      adminSupabase
         .from('user_telegram_accounts')
         .select('is_verified')
         .eq('user_id', user.id)
