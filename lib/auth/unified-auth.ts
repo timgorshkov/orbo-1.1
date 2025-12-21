@@ -111,30 +111,81 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
       // Ищем существующего Supabase пользователя по email
       // чтобы использовать его ID для запросов к базе
       let userId = nextAuthSession.user.id || '';
+      let supabaseUserId: string | null = null;
       
       try {
         const adminSupabase = getAdminSupabase();
+        const userEmail = nextAuthSession.user.email.toLowerCase();
         
-        // Сначала пробуем найти в auth.users
-        const { data: authUsers } = await adminSupabase.auth.admin.listUsers();
-        const existingAuthUser = authUsers?.users?.find(
-          (u: { email?: string }) => u.email?.toLowerCase() === nextAuthSession.user?.email?.toLowerCase()
-        );
+        logger.debug({
+          email: userEmail,
+          nextauth_user_id: nextAuthSession.user.id,
+        }, 'Looking up Supabase user for NextAuth email');
         
-        if (existingAuthUser) {
-          userId = existingAuthUser.id;
-          logger.debug({
-            email: nextAuthSession.user.email,
-            supabase_user_id: userId,
-          }, 'Found existing Supabase user for NextAuth email');
-        } else {
-          logger.debug({
-            email: nextAuthSession.user.email,
-          }, 'No existing Supabase user found for NextAuth email');
+        // Метод 1: Проверяем, существует ли NextAuth ID в Supabase
+        // (на случай если пользователь уже создан)
+        if (nextAuthSession.user.id) {
+          try {
+            const { data: userData, error: userError } = await adminSupabase.auth.admin.getUserById(nextAuthSession.user.id);
+            if (!userError && userData?.user) {
+              // Если ID уже существует в Supabase - используем его
+              supabaseUserId = userData.user.id;
+              logger.debug({
+                email: userEmail,
+                supabase_user_id: supabaseUserId,
+              }, 'Found Supabase user by NextAuth ID');
+            }
+          } catch (e) {
+            // Игнорируем - пробуем следующий метод
+          }
+        }
+        
+        // Метод 2: Ищем в auth.users через RPC или listUsers
+        if (!supabaseUserId) {
+          // Используем listUsers с фильтрацией
+          const { data: authUsers, error: listError } = await adminSupabase.auth.admin.listUsers({
+            page: 1,
+            perPage: 1000, // Разумный лимит
+          });
+          
+          if (listError) {
+            logger.warn({
+              error: listError.message,
+              email: userEmail,
+            }, 'Error listing users');
+          } else if (authUsers?.users) {
+            logger.debug({
+              total_users: authUsers.users.length,
+              email: userEmail,
+            }, 'Searching for user in list');
+            
+            const existingAuthUser = authUsers.users.find(
+              (u: { email?: string }) => u.email?.toLowerCase() === userEmail
+            );
+            
+            if (existingAuthUser) {
+              supabaseUserId = existingAuthUser.id;
+              logger.info({
+                email: userEmail,
+                supabase_user_id: supabaseUserId,
+                nextauth_user_id: nextAuthSession.user.id,
+              }, 'Found existing Supabase user for NextAuth email');
+            } else {
+              logger.warn({
+                email: userEmail,
+                searched_count: authUsers.users.length,
+              }, 'No existing Supabase user found for NextAuth email');
+            }
+          }
+        }
+        
+        if (supabaseUserId) {
+          userId = supabaseUserId;
         }
       } catch (error) {
-        logger.warn({
+        logger.error({
           error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
           email: nextAuthSession.user.email,
         }, 'Error looking up Supabase user for NextAuth session');
       }
