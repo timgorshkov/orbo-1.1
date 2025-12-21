@@ -99,27 +99,66 @@ export async function middleware(request: NextRequest) {
     data: { session: supabaseSession },
   } = await supabase.auth.getSession()
 
+  // Получаем все cookies для отладки
+  const allCookies = request.cookies.getAll().map(c => c.name)
+  
+  // Проверяем NextAuth сессию - ищем любые auth-related cookies
+  const authCookieNames = [
+    'authjs.session-token',
+    '__Secure-authjs.session-token',
+    'next-auth.session-token',
+    '__Secure-next-auth.session-token',
+  ]
+  
+  // Также проверяем cookies с callback-url (они появляются после OAuth redirect)
+  const hasCallbackCookie = allCookies.some(name => name.includes('callback-url'))
+  const hasSessionCookie = authCookieNames.some(name => request.cookies.has(name))
+  
   // Проверяем NextAuth сессию через auth() функцию
-  // trustHost: true в auth.ts позволяет использовать auth() в middleware
   let hasNextAuthSession = false
+  let authError: string | null = null
+  
   try {
     const nextAuthSession = await auth()
     hasNextAuthSession = !!nextAuthSession?.user
+    
+    if (hasSessionCookie && !hasNextAuthSession) {
+      logger.warn({
+        pathname,
+        hasSessionCookie,
+        hasNextAuthSession,
+        cookies: allCookies,
+      }, 'Session cookie exists but auth() returned no session');
+    }
   } catch (error) {
-    // Fallback: проверяем наличие session cookie напрямую
-    hasNextAuthSession = request.cookies.has('authjs.session-token') || 
-                          request.cookies.has('__Secure-authjs.session-token') ||
-                          request.cookies.has('next-auth.session-token') ||
-                          request.cookies.has('__Secure-next-auth.session-token')
-    logger.debug({ 
-      error: error instanceof Error ? error.message : String(error),
+    authError = error instanceof Error ? error.message : String(error)
+    // Fallback: если есть session cookie, считаем что сессия есть
+    hasNextAuthSession = hasSessionCookie
+    logger.warn({ 
+      error: authError,
       hasNextAuthSession,
-      cookies: Array.from(request.cookies.getAll()).map(c => c.name)
-    }, 'NextAuth session check fallback');
+      hasSessionCookie,
+      hasCallbackCookie,
+      cookies: allCookies,
+      pathname,
+    }, 'NextAuth auth() failed, using cookie fallback');
   }
 
   // Пользователь авторизован если есть хотя бы одна активная сессия
   const isAuthenticated = !!supabaseSession || hasNextAuthSession
+  
+  // Логируем состояние для защищённых маршрутов
+  if (pathname.startsWith('/orgs') || pathname.startsWith('/app') || pathname.startsWith('/superadmin')) {
+    logger.info({
+      pathname,
+      isAuthenticated,
+      hasSupabaseSession: !!supabaseSession,
+      hasNextAuthSession,
+      hasSessionCookie,
+      cookies: allCookies,
+      authError,
+    }, 'Protected route auth check');
+  }
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
