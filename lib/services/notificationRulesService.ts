@@ -124,21 +124,36 @@ async function logNotification(params: {
   errorMessage?: string;
 }): Promise<{ success: boolean }> {
   try {
-    const { error } = await supabaseAdmin.from('notification_logs').insert({
-      rule_id: params.ruleId,
-      org_id: params.orgId,
-      rule_type: params.ruleType,
-      trigger_context: params.triggerContext,
-      notification_status: params.status,
-      dedup_hash: params.dedupHash,
-      sent_to_user_ids: params.sentToUserIds || [],
-      sent_via: params.status === 'sent' ? ['telegram'] : [],
-      ai_cost_usd: params.aiCostUsd || null,
-      error_message: params.errorMessage || null,
-      processed_at: new Date().toISOString(),
-    });
+    // Use upsert with ON CONFLICT DO NOTHING to prevent duplicates
+    const { error } = await supabaseAdmin.from('notification_logs').upsert(
+      {
+        rule_id: params.ruleId,
+        org_id: params.orgId,
+        rule_type: params.ruleType,
+        trigger_context: params.triggerContext,
+        notification_status: params.status,
+        dedup_hash: params.dedupHash,
+        sent_to_user_ids: params.sentToUserIds || [],
+        sent_via: params.status === 'sent' ? ['telegram'] : [],
+        ai_cost_usd: params.aiCostUsd || null,
+        error_message: params.errorMessage || null,
+        processed_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'rule_id,dedup_hash',
+        ignoreDuplicates: true,
+      }
+    );
     
     if (error) {
+      // Ignore unique constraint violations (race condition duplicates)
+      if (error.code === '23505') {
+        logger.debug({ 
+          rule_id: params.ruleId, 
+          dedup_hash: params.dedupHash 
+        }, 'Duplicate notification prevented by constraint');
+        return { success: true };
+      }
       logger.error({ 
         error: error.message, 
         rule_id: params.ruleId,
@@ -465,6 +480,28 @@ function isWithinWorkHours(
 }
 
 /**
+ * Generate Telegram message link
+ * Format: https://t.me/c/{chat_id_without_-100}/{message_id}
+ */
+function getTelegramMessageLink(chatId: string, messageId?: number): string | null {
+  if (!messageId) return null;
+  
+  try {
+    // Convert chat ID: remove -100 prefix for private link format
+    let cleanChatId = chatId;
+    if (chatId.startsWith('-100')) {
+      cleanChatId = chatId.slice(4); // Remove -100
+    } else if (chatId.startsWith('-')) {
+      cleanChatId = chatId.slice(1); // Remove just -
+    }
+    
+    return `https://t.me/c/${cleanChatId}/${messageId}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Format notification message for Telegram
  */
 function formatNotificationMessage(
@@ -477,6 +514,13 @@ function formatNotificationMessage(
   // Пока просто показываем название группы как текст
   const groupDisplay = groupTitle || 'группа';
   
+  // Generate link to message if available
+  const messageLink = groupChatId && context.last_message_id 
+    ? getTelegramMessageLink(groupChatId, context.last_message_id as number)
+    : null;
+  
+  const linkText = messageLink ? `\n\n[Открыть в Telegram →](${messageLink})` : '';
+  
   switch (rule.rule_type) {
     case 'negative_discussion':
       return `🔴 *Негатив в группе «${groupDisplay}»*
@@ -484,7 +528,7 @@ function formatNotificationMessage(
 ${context.summary || 'Обнаружена негативная дискуссия'}
 
 *Серьёзность:* ${context.severity === 'high' ? '🔴 Высокая' : context.severity === 'medium' ? '🟡 Средняя' : '🟢 Низкая'}
-*Сообщений:* ${context.message_count || 0}
+*Сообщений:* ${context.message_count || 0}${linkText}
 
 _${rule.name}_`;
 
@@ -494,7 +538,7 @@ _${rule.name}_`;
 "${(context.question_text as string || '').slice(0, 200)}"
 — _${context.question_author || 'Участник'}_, ${context.time_ago || 'недавно'}
 
-*Без ответа:* ${context.hours_without_answer || '?'} ч.
+*Без ответа:* ${context.hours_without_answer || '?'} ч.${linkText}
 
 _${rule.name}_`;
 
