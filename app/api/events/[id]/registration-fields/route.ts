@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET /api/events/[id]/registration-fields - Get registration fields for an event
 export async function GET(
@@ -10,7 +11,7 @@ export async function GET(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
+    const supabase = createAdminServer()
 
     // Get event to check if it's published (for public access)
     const { data: event } = await supabase
@@ -24,7 +25,7 @@ export async function GET(
     }
 
     // Check access: either event is published OR user is admin
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUnifiedUser()
     let canAccess = event.status === 'published'
 
     if (!canAccess && user) {
@@ -89,17 +90,16 @@ export async function POST(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
     const supabaseAdmin = createAdminServer()
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event and check admin rights
-    const { data: event, error: eventError } = await supabase
+    const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
       .select('org_id')
       .eq('id', eventId)
@@ -110,7 +110,7 @@ export async function POST(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -202,17 +202,16 @@ export async function PUT(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/registration-fields' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
     const supabaseAdmin = createAdminServer()
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event and check admin rights
-    const { data: event, error: eventError } = await supabase
+    const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
       .select('org_id')
       .eq('id', eventId)
@@ -223,7 +222,7 @@ export async function PUT(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -318,17 +317,16 @@ export async function DELETE(
         { status: 400 }
       )
     }
-    const supabase = await createClientServer()
     const supabaseAdmin = createAdminServer()
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event and check admin rights
-    const { data: event, error: eventError } = await supabase
+    const { data: event, error: eventError } = await supabaseAdmin
       .from('events')
       .select('org_id')
       .eq('id', eventId)
@@ -339,7 +337,7 @@ export async function DELETE(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
