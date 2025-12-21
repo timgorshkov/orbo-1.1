@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,16 +15,17 @@ export async function GET(
     const paramsData = await params;
     orgId = paramsData.orgId;
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Check org membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -35,7 +37,7 @@ export async function GET(
     }
 
     // Call RPC function
-    const { data, error } = await supabase.rpc('get_engagement_breakdown', {
+    const { data, error } = await adminSupabase.rpc('get_engagement_breakdown', {
       p_org_id: orgId
     });
 

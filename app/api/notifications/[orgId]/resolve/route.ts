@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
  * POST /api/notifications/[orgId]/resolve
@@ -14,17 +15,16 @@ export async function POST(
   
   try {
     const { orgId } = await params;
-    const supabase = await createClientServer();
     const adminSupabase = createAdminServer();
     
-    // Проверка авторизации
-    const { data: { user } } = await supabase.auth.getUser();
+    // Проверка авторизации via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
     // Проверка доступа к организации (owner/admin)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)

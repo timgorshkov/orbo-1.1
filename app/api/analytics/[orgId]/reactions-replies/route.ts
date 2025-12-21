@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,16 +16,17 @@ export async function GET(
     const periodDays = parseInt(searchParams.get('periodDays') || '14');
     const tgChatId = searchParams.get('tgChatId');
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Check org membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -36,7 +38,7 @@ export async function GET(
     }
 
     // Call RPC function
-    const { data, error } = await supabase.rpc('get_reactions_replies_stats', {
+    const { data, error } = await adminSupabase.rpc('get_reactions_replies_stats', {
       p_org_id: orgId,
       p_period_days: periodDays,
       p_tg_chat_id: tgChatId ? parseInt(tgChatId) : null

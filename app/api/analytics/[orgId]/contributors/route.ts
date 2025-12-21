@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +16,17 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '10');
     const tgChatId = searchParams.get('tgChatId');
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Check org membership
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -36,12 +37,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Use admin client
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } }
-    );
+    // Use admin client (already created above)
 
     // Get chat IDs for this org (including WhatsApp with tg_chat_id = 0)
     let chatIds: string[] = [];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET /api/dashboard/[orgId] - Get dashboard data
 export async function GET(
@@ -12,17 +13,16 @@ export async function GET(
   try {
     const paramsData = await params;
     orgId = paramsData.orgId;
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check user has access to this organization
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
