@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 /**
  * PATCH /api/events/[id]/payments/[registrationId]
@@ -42,12 +43,11 @@ export async function PATCH(
       payment_notes
     } = body
 
-    const supabase = await createClientServer()
     const supabaseAdmin = createAdminServer()
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
