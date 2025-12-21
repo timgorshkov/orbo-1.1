@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +24,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
 
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check auth via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -43,10 +44,10 @@ export async function GET(request: NextRequest) {
     const authUser = {
       id: user.id,
       email: user.email,
-      email_confirmed: !!user.email_confirmed_at,
-      email_confirmed_at: user.email_confirmed_at,
-      metadata: user.user_metadata || {},
-      created_at: user.created_at
+      email_confirmed: !!user.raw?.supabase?.email_confirmed_at,
+      email_confirmed_at: user.raw?.supabase?.email_confirmed_at,
+      metadata: user.raw?.supabase?.user_metadata || {},
+      created_at: user.raw?.supabase?.created_at
     };
 
     // 2. Membership в организации
@@ -299,10 +300,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
 
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check auth via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

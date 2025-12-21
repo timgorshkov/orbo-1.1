@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
  * POST /api/participants/[participantId]/sync-telegram-photo
@@ -17,11 +18,10 @@ export async function POST(
     const paramsData = await context.params;
     participantId = paramsData.participantId;
     
-    // Проверяем авторизацию
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Проверяем авторизацию via unified auth
+    const user = await getUnifiedUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

@@ -1,21 +1,18 @@
-import { createClientServer } from './server/supabaseServer'
-import { cookies } from 'next/headers'
+import { createAdminServer } from './server/supabaseServer'
 import { syncOrgAdmins } from './server/syncOrgAdmins'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 type OrgRole = 'owner' | 'admin' | 'editor' | 'member' | 'viewer';
 
-export async function requireOrgAccess(orgId: string, cookieStore?: any, allowedRoles?: OrgRole[]) {
+export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) {
   const logger = createServiceLogger('requireOrgAccess');
-  // Если cookies переданы, используем их, иначе получаем из headers
-  const cookiesObj = cookieStore || cookies();
   
-  const supabase = await createClientServer()
-  const {
-    data: { user },
-    error: userErr
-  } = await supabase.auth.getUser()
-  if (userErr || !user) throw new Error('Unauthorized')
+  // Check auth via unified auth (supports both Supabase and NextAuth)
+  const user = await getUnifiedUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const adminSupabase = createAdminServer()
 
   // Sync admin roles from Telegram groups
   // This runs in background and doesn't block access
@@ -26,34 +23,25 @@ export async function requireOrgAccess(orgId: string, cookieStore?: any, allowed
     }, 'Background admin sync failed');
   })
 
-  // Проверяем членство в org через RPC
-  const { data, error } = await supabase.rpc('is_org_member_rpc', { _org: orgId })
-  if (error || !data) throw new Error('Forbidden')
-
+  // Проверяем членство в org напрямую
   let role: OrgRole | null = null
 
-  if (typeof data === 'object' && data !== null && 'role' in data) {
-    role = (data as { role?: string }).role as OrgRole | undefined ?? null
+  const { data: membership, error: membershipError } = await adminSupabase
+    .from('memberships')
+    .select('role')
+    .eq('org_id', orgId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (membershipError || !membership) {
+    throw new Error('Forbidden')
   }
 
-  if (!role) {
-    const { data: membership, error: membershipError } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (membershipError || !membership) {
-      throw new Error('Forbidden')
-    }
-
-    role = membership.role as OrgRole
-  }
+  role = membership.role as OrgRole
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     throw new Error('Forbidden')
   }
 
-  return { supabase, user, role }
+  return { supabase: adminSupabase, user, role }
 }

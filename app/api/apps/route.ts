@@ -1,7 +1,8 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // GET /api/apps - List apps for organization
 export async function GET(request: NextRequest) {
@@ -9,7 +10,6 @@ export async function GET(request: NextRequest) {
   const logger = createAPILogger(request);
   
   try {
-    const supabase = await createClientServer();
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('orgId');
 
@@ -20,14 +20,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Check membership
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -37,9 +39,6 @@ export async function GET(request: NextRequest) {
     if (membershipError || !membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
-
-    // Use admin client to bypass RLS after authorization
-    const adminSupabase = createAdminServer();
     const { data: apps, error: appsError } = await adminSupabase
       .from('apps')
       .select(`
@@ -92,7 +91,6 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request);
   
   try {
-    const supabase = await createClientServer();
     const body = await request.json();
     const { orgId, name, description, icon, appType, config, visibility } = body;
 
@@ -103,14 +101,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Check admin/owner role
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -127,9 +127,6 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-
-    // Use admin client to bypass RLS after authorization
-    const adminSupabase = createAdminServer();
     const { data: app, error: createError } = await adminSupabase
       .from('apps')
       .insert({
