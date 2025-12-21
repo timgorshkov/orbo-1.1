@@ -1,14 +1,13 @@
 import { redirect } from 'next/navigation'
-import { createClientServer } from '@/lib/server/supabaseServer'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import EventForm from '@/components/events/event-form'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export default async function NewEventPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params
-  const supabase = await createClientServer()
   
-  // Check authentication and admin rights
-  const { data: { user } } = await supabase.auth.getUser()
+  // Check authentication via unified auth (supports both Supabase and NextAuth)
+  const user = await getUnifiedUser()
   if (!user) {
     redirect('/signin')
   }

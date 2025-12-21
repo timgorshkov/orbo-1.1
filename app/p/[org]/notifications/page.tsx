@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import NotificationsList from '@/components/notifications/notifications-list';
 import type { Metadata } from 'next';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // Disable OG image for notification links in Telegram
 export const metadata: Metadata = {
@@ -21,11 +22,10 @@ export const metadata: Metadata = {
 export default async function NotificationsPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params;
   
-  const supabase = await createClientServer();
   const adminSupabase = createAdminServer();
 
-  // Проверяем авторизацию
-  const { data: { user } } = await supabase.auth.getUser();
+  // Проверяем авторизацию через unified auth (поддержка Supabase и NextAuth)
+  const user = await getUnifiedUser();
   
   if (!user) {
     redirect(`/p/${orgId}/auth`);

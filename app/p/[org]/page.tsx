@@ -5,6 +5,7 @@ import { getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import AuthenticatedHome from '@/components/home/authenticated-home'
 import PublicCommunityHub from '@/components/home/public-community-hub'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -127,17 +128,18 @@ export async function generateMetadata({
 export default async function CommunityHubPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params
   const supabase = await createClientServer()
+  const adminSupabase = createAdminServer()
 
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
+  // Check authentication via unified auth (supports both Supabase and NextAuth)
+  const user = await getUnifiedUser()
 
   // If not authenticated, show public version
   if (!user) {
     return <PublicCommunityHub orgId={orgId} />
   }
 
-  // Check if user has access to this organization
-  const { data: membership } = await supabase
+  // Check if user has access to this organization (use admin client to bypass RLS)
+  const { data: membership } = await adminSupabase
     .from('memberships')
     .select('role')
     .eq('user_id', user.id)

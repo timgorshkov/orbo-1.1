@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 const logger = createServiceLogger('TelegramGroupsForOrgAPI')
 
@@ -17,11 +18,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId is required' }, { status: 400 })
     }
 
-    const supabase = await createClientServer()
-
-    // Check user access
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    // Check user access via unified auth (supports both Supabase and NextAuth)
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

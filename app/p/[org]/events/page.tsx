@@ -1,17 +1,17 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import EventsList from '@/components/events/events-list'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export default async function EventsPage({ params }: { params: Promise<{ org: string }> }) {
   const logger = createServiceLogger('EventsPage');
   const { org: orgId } = await params
-  const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
   
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
+  // Check authentication via unified auth (supports both Supabase and NextAuth)
+  const user = await getUnifiedUser()
   if (!user) {
     redirect(`/p/${orgId}/auth`)
   }

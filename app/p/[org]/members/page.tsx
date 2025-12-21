@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { Suspense } from 'react'
 import MembersTabs from '@/components/members/members-tabs'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export default async function MembersPage({ params, searchParams }: { 
   params: Promise<{ org: string }>
@@ -12,25 +13,15 @@ export default async function MembersPage({ params, searchParams }: {
   const { tab = 'list' } = await searchParams
   const logger = createServiceLogger('MembersPage');
   
-  const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
 
-  // ⚡ Параллельные запросы: auth + membership
-  const [userResult, membershipResult] = await Promise.all([
-    supabase.auth.getUser(),
-    adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .maybeSingle()
-  ])
-
-  const user = userResult.data?.user
+  // Check authentication via unified auth (supports both Supabase and NextAuth)
+  const user = await getUnifiedUser()
   if (!user) {
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Now get membership for this specific user
+  // Get membership for this user (use admin client to bypass RLS)
   const { data: membership } = await adminSupabase
     .from('memberships')
     .select('role')

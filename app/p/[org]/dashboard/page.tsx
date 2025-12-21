@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
-import { cookies } from 'next/headers'
+import { createAdminServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import WelcomeBlock from '@/components/dashboard/welcome-block'
 import OnboardingChecklist from '@/components/dashboard/onboarding-checklist'
 import AttentionZones from '@/components/dashboard/attention-zones'
@@ -42,11 +42,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
   const logger = createServiceLogger('DashboardPage');
   const { org: orgId } = await params
   
-  const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
 
-  // Проверяем авторизацию
-  const { data: { user } } = await supabase.auth.getUser()
+  // Проверяем авторизацию через unified auth (поддержка Supabase и NextAuth)
+  const user = await getUnifiedUser()
   
   if (!user) {
     redirect(`/p/${orgId}/auth`)
