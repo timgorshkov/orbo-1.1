@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,7 @@ import { createClientLogger } from '@/lib/logger'
 
 export default function CreateOrganization() {
   const router = useRouter()
+  const { data: nextAuthSession, status: nextAuthStatus } = useSession()
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(true) // Start with loading true to check org count
   const [error, setError] = useState<string | null>(null)
@@ -19,28 +21,63 @@ export default function CreateOrganization() {
   // Check organization count on mount
   useEffect(() => {
     async function checkOrgCount() {
+      // Wait for NextAuth to finish loading
+      if (nextAuthStatus === 'loading') {
+        return
+      }
+
       try {
         const supabase = createClientBrowser()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user: supabaseUser } } = await supabase.auth.getUser()
         
-        if (!user) {
+        // Check if user is authenticated via either provider
+        const isAuthenticated = !!supabaseUser || nextAuthStatus === 'authenticated'
+        
+        if (!isAuthenticated) {
           router.push('/signin')
           return
         }
 
-        // Get organization count
-        const { data: memberships } = await supabase
-          .from('memberships')
-          .select('org_id')
-          .eq('user_id', user.id)
+        // For NextAuth users, we need to fetch org count via API since we can't 
+        // query Supabase directly with their session
+        if (!supabaseUser && nextAuthSession?.user?.email) {
+          // Use API to get org count for NextAuth users
+          try {
+            const response = await fetch('/api/user/organizations')
+            if (response.ok) {
+              const data = await response.json()
+              const count = data.organizations?.length || 0
+              setOrgCount(count)
+              setIsFirstOrg(count === 0)
+              if (count === 0) {
+                setName('Моё сообщество')
+              }
+            }
+          } catch (apiErr) {
+            // Fallback: assume first org if we can't get count
+            setOrgCount(0)
+            setIsFirstOrg(true)
+            setName('Моё сообщество')
+          }
+          setLoading(false)
+          return
+        }
 
-        const count = memberships?.length || 0
-        setOrgCount(count)
-        setIsFirstOrg(count === 0)
+        // For Supabase users, query directly
+        if (supabaseUser) {
+          const { data: memberships } = await supabase
+            .from('memberships')
+            .select('org_id')
+            .eq('user_id', supabaseUser.id)
 
-        // Pre-fill name for first organization
-        if (count === 0) {
-          setName('Моё сообщество')
+          const count = memberships?.length || 0
+          setOrgCount(count)
+          setIsFirstOrg(count === 0)
+
+          // Pre-fill name for first organization
+          if (count === 0) {
+            setName('Моё сообщество')
+          }
         }
 
         setLoading(false)
@@ -55,7 +92,7 @@ export default function CreateOrganization() {
     }
 
     checkOrgCount()
-  }, [router])
+  }, [router, nextAuthStatus, nextAuthSession])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -65,14 +102,16 @@ export default function CreateOrganization() {
     try {
       const supabase = createClientBrowser()
       
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      // Get current user (check both Supabase and NextAuth)
+      const { data: { user: supabaseUser } } = await supabase.auth.getUser()
+      const isAuthenticated = !!supabaseUser || nextAuthStatus === 'authenticated'
       
-      if (userError || !user) {
+      if (!isAuthenticated) {
         throw new Error('Вы не авторизованы')
       }
 
       // Create organization via API endpoint (uses service role to bypass RLS)
+      // API will handle user identification via cookies
       const response = await fetch('/api/organizations', {
         method: 'POST',
         headers: {

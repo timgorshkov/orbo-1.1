@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic';
 
@@ -10,94 +9,30 @@ export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/organizations' });
   try {
     const { name } = await req.json()
+    
     // Используем сервисную роль для обхода RLS
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Сначала получаем пользователя из стандартного клиента с куками
-    const regularSupabase = await createClientServer()
-    const { data: { user: regularUser }, error: regularUserError } = await regularSupabase.auth.getUser()
+    // Используем unified auth для поддержки Supabase и NextAuth пользователей
+    const session = await getUnifiedSession();
     
     logger.debug({ 
-      user_id: regularUser?.id,
-      has_user: !!regularUser
-    }, 'User data from regular client');
+      user_id: session?.user?.id,
+      provider: session?.provider,
+      has_session: !!session
+    }, 'User data from unified auth');
     
-    if (regularUserError) {
-      logger.warn({ 
-        error: regularUserError.message
-      }, 'Error getting user with regular client');
-    }
-    
-    // Используем пользователя из стандартного клиента
-    let user = regularUser
-    
-    // Если не получили пользователя через стандартный клиент, пробуем получить идентификатор из куки
-    if (!user) {
-      // Получаем все куки
-      const allCookies = cookies().getAll()
-      logger.debug({ 
-        cookie_names: allCookies.map(c => c.name)
-      }, 'Available cookies');
-      
-      // Проверяем, есть ли куки с идентификатором пользователя
-      const sbAccessToken = cookies().get('sb-access-token')?.value
-      const sbRefreshToken = cookies().get('sb-refresh-token')?.value
-      
-      if (sbAccessToken) {
-        logger.debug({}, 'Found access token in cookies');
-        
-        try {
-          // Пробуем получить пользователя с помощью токена
-          const { data: userData, error: tokenError } = await supabase.auth.getUser(sbAccessToken)
-          
-          if (userData?.user) {
-            user = userData.user
-            logger.debug({ user_id: user.id }, 'Got user from access token');
-          } else if (tokenError) {
-            logger.warn({ 
-              error: tokenError.message
-            }, 'Error getting user with token');
-          }
-        } catch (e) {
-          logger.error({ 
-            error: e instanceof Error ? e.message : String(e)
-          }, 'Exception while getting user with token');
-        }
-      }
-    }
-    
-    // Если все методы не сработали, пробуем получить пользователя через админский API
-    if (!user) {
-      try {
-        // Получаем список всех пользователей (только для отладки)
-        const { data: allUsers, error: listError } = await supabase.auth.admin.listUsers()
-        logger.debug({ 
-          user_count: allUsers?.users?.length || 0
-        }, 'All users count');
-        
-        if (listError) {
-          logger.warn({ 
-            error: listError.message
-          }, 'Error listing users');
-        }
-      } catch (e) {
-        logger.error({ 
-          error: e instanceof Error ? e.message : String(e)
-        }, 'Exception while listing users');
-      }
-    }
-    
-    const userError = regularUserError
-    
-    if (userError || !user) {
+    if (!session) {
       return NextResponse.json(
         { error: 'Unauthorized' }, 
         { status: 401 }
       )
     }
+    
+    const user = { id: session.user.id, email: session.user.email };
 
     // Создаем новую организацию (с серверной стороны обходит RLS)
     const { data: org, error: orgError } = await supabase

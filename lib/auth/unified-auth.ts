@@ -19,10 +19,19 @@
 
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { auth as nextAuth } from '@/auth';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('UnifiedAuth');
+
+// Создаём admin client для поиска пользователей по email
+function getAdminSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 /**
  * Unified user representation
@@ -98,10 +107,41 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     // 2. Check NextAuth session (fallback)
     const nextAuthSession = await nextAuth();
     
-    if (nextAuthSession?.user) {
+    if (nextAuthSession?.user?.email) {
+      // Ищем существующего Supabase пользователя по email
+      // чтобы использовать его ID для запросов к базе
+      let userId = nextAuthSession.user.id || '';
+      
+      try {
+        const adminSupabase = getAdminSupabase();
+        
+        // Сначала пробуем найти в auth.users
+        const { data: authUsers } = await adminSupabase.auth.admin.listUsers();
+        const existingAuthUser = authUsers?.users?.find(
+          (u: { email?: string }) => u.email?.toLowerCase() === nextAuthSession.user?.email?.toLowerCase()
+        );
+        
+        if (existingAuthUser) {
+          userId = existingAuthUser.id;
+          logger.debug({
+            email: nextAuthSession.user.email,
+            supabase_user_id: userId,
+          }, 'Found existing Supabase user for NextAuth email');
+        } else {
+          logger.debug({
+            email: nextAuthSession.user.email,
+          }, 'No existing Supabase user found for NextAuth email');
+        }
+      } catch (error) {
+        logger.warn({
+          error: error instanceof Error ? error.message : String(error),
+          email: nextAuthSession.user.email,
+        }, 'Error looking up Supabase user for NextAuth session');
+      }
+      
       return {
         user: {
-          id: nextAuthSession.user.id || nextAuthSession.user.email || '',
+          id: userId,
           email: nextAuthSession.user.email,
           name: nextAuthSession.user.name,
           image: nextAuthSession.user.image,

@@ -1,6 +1,7 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedSession } from '@/lib/auth/unified-auth';
 
 const logger = createAPILogger;
 
@@ -10,16 +11,17 @@ export async function GET(request: NextRequest) {
   const log = logger(request);
   
   try {
-    const supabase = await createClientServer();
+    // Use unified auth to support both Supabase and NextAuth users
+    const session = await getUnifiedSession();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Get user's memberships
-    const { data: memberships, error: membershipError } = await supabase
+    const { data: memberships, error: membershipError } = await adminSupabase
       .from('memberships')
       .select(`
         role,
@@ -29,12 +31,12 @@ export async function GET(request: NextRequest) {
           logo_url
         )
       `)
-      .eq('user_id', user.id);
+      .eq('user_id', session.user.id);
 
     if (membershipError) {
       log.error({
         error: membershipError,
-        userId: user.id,
+        userId: session.user.id,
       }, 'Failed to fetch memberships');
       
       return NextResponse.json(
@@ -55,7 +57,8 @@ export async function GET(request: NextRequest) {
 
     const duration = Date.now() - startTime;
     log.info({
-      userId: user.id,
+      userId: session.user.id,
+      provider: session.provider,
       orgCount: organizations.length,
       duration,
     }, 'User organizations fetched');
