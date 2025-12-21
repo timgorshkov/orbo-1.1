@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/organizations/list' });
   try {
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // POST /api/events/[id]/register - Register for event
 export async function POST(
@@ -11,11 +12,10 @@ export async function POST(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
   try {
     const eventId = params.id
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
