@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
@@ -21,16 +20,20 @@ export default function SignUp() {
     setMessage(null)
     
     try {
-      const supabase = createClientBrowser()
-      const { error } = await supabase.auth.signInWithOtp({ 
-        email, 
-        options: { 
-          emailRedirectTo: `${window.location.origin}/auth/callback` 
-        } 
+      // Используем собственный email auth через Unisender Go
+      const response = await fetch('/api/auth/email/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email,
+          redirectUrl: '/welcome' // Для новых пользователей - на welcome
+        })
       })
       
-      if (error) {
-        setMessage(`Ошибка: ${error.message}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
         setMessage('✉️ Отлично! Мы отправили ссылку для подтверждения на ваш email.')
       }

@@ -2,7 +2,6 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
@@ -25,6 +24,14 @@ function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
         'OAuthCreateAccount': 'Не удалось создать аккаунт через OAuth.',
         'Callback': 'Ошибка обратного вызова.',
         'Default': 'Произошла неизвестная ошибка.',
+        // Ошибки email magic link
+        'missing_token': 'Отсутствует токен авторизации. Запросите ссылку повторно.',
+        'invalid_token': 'Недействительная ссылка. Запросите новую ссылку для входа.',
+        'expired_token': 'Срок действия ссылки истёк. Запросите новую ссылку для входа.',
+        'user_create_failed': 'Не удалось создать аккаунт. Попробуйте позже.',
+        'user_error': 'Ошибка пользователя. Попробуйте позже.',
+        'session_error': 'Ошибка создания сессии. Попробуйте позже.',
+        'verification_failed': 'Ошибка верификации. Попробуйте позже.',
       }
       onError(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
     }
@@ -46,16 +53,20 @@ export default function SignIn() {
     setMessage(null)
     
     try {
-      const supabase = createClientBrowser()
-      const { error } = await supabase.auth.signInWithOtp({ 
-        email, 
-        options: { 
-          emailRedirectTo: `${window.location.origin}/auth/callback` 
-        } 
+      // Используем собственный email auth через Unisender Go
+      const response = await fetch('/api/auth/email/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email,
+          redirectUrl: '/orgs'
+        })
       })
       
-      if (error) {
-        setMessage(`Ошибка: ${error.message}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
         setMessage('✉️ Мы отправили ссылку для входа на ваш email. Проверьте почту!')
       }
