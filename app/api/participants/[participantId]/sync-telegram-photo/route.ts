@@ -3,6 +3,9 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { createStorage, getBucket, getStoragePath } from '@/lib/storage';
+
+const BUCKET_NAME = 'participant-photos';
 
 /**
  * POST /api/participants/[participantId]/sync-telegram-photo
@@ -101,17 +104,25 @@ export async function POST(
       // Скачиваем файл
       const fileBuffer = await telegramService.downloadFile(fileResponse.result.file_path);
       
+      // Initialize storage provider (Selectel S3)
+      const storage = createStorage();
+      const bucket = getBucket(BUCKET_NAME);
+      
       // Определяем расширение файла (обычно .jpg для Telegram)
       const fileExtension = fileResponse.result.file_path.split('.').pop() || 'jpg';
-      const fileName = `${participant.org_id}/${participantId}-telegram.${fileExtension}`;
+      const fileName = `${participantId}-telegram.${fileExtension}`;
+      const filePath = getStoragePath(BUCKET_NAME, `${participant.org_id}/${fileName}`);
       
-      // Загружаем файл в Supabase Storage
-      const { data: uploadData, error: uploadError } = await adminSupabase.storage
-        .from('participant-photos')
-        .upload(fileName, fileBuffer, {
+      // Загружаем файл в S3 Storage
+      const { error: uploadError } = await storage.upload(
+        bucket,
+        filePath,
+        fileBuffer,
+        {
           contentType: `image/${fileExtension}`,
-          upsert: true
-        });
+          cacheControl: 'public, max-age=31536000',
+        }
+      );
       
       if (uploadError) {
         logger.error({ error: uploadError.message, participant_id: participantId, org_id: participant.org_id }, 'Failed to upload photo to storage');
@@ -123,9 +134,7 @@ export async function POST(
       }
       
       // Получаем публичный URL
-      const { data: { publicUrl } } = adminSupabase.storage
-        .from('participant-photos')
-        .getPublicUrl(fileName);
+      const publicUrl = storage.getPublicUrl(bucket, filePath);
       
       // Обновляем photo_url участника
       const { error: updateError } = await adminSupabase
@@ -145,7 +154,7 @@ export async function POST(
         }, { status: 500 });
       }
       
-      logger.info({ participant_id: participantId, org_id: participant.org_id }, 'Successfully synced photo for participant');
+      logger.info({ participant_id: participantId, org_id: participant.org_id, url: publicUrl }, 'Successfully synced photo for participant');
       
       return NextResponse.json({
         success: true,
@@ -196,4 +205,3 @@ export async function POST(
     );
   }
 }
-

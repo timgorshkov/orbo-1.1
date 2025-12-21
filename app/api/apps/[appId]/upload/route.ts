@@ -2,6 +2,9 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { createStorage, getBucket, getStoragePath } from '@/lib/storage';
+
+const BUCKET_NAME = 'app-files';
 
 // POST /api/apps/[appId]/upload - Upload file (image/video/document)
 export async function POST(
@@ -82,53 +85,48 @@ export async function POST(
       );
     }
 
+    // Initialize storage provider (Selectel S3)
+    const storage = createStorage();
+    const bucket = getBucket(BUCKET_NAME);
+
     // Generate unique filename
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(7);
     const fileExtension = file.name.split('.').pop();
     const fileName = `${timestamp}-${randomString}.${fileExtension}`;
-    const filePath = `${app.org_id}/apps/${appId}/${fileName}`;
+    const logicalPath = `${app.org_id}/apps/${appId}/${fileName}`;
+    const filePath = getStoragePath(BUCKET_NAME, logicalPath);
 
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Supabase Storage (using admin client to bypass RLS)
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('app-files') // We'll create this bucket
-      .upload(filePath, buffer, {
+    // Upload to S3 Storage
+    const { error: uploadError } = await storage.upload(
+      bucket,
+      filePath,
+      buffer,
+      {
         contentType: file.type,
-        cacheControl: '3600',
-        upsert: false
-      });
+        cacheControl: 'public, max-age=3600',
+      }
+    );
 
     if (uploadError) {
       logger.error({ 
-        error: uploadError, 
+        error: uploadError.message, 
         appId, 
         fileName 
       }, 'Error uploading file');
       
-      // Check if bucket exists
-      if (uploadError.message?.includes('Bucket not found')) {
-        return NextResponse.json(
-          { error: 'Storage bucket not configured. Please contact support.' },
-          { status: 500 }
-        );
-      }
-      
       return NextResponse.json(
-        { error: 'Failed to upload file' },
+        { error: 'Failed to upload file: ' + uploadError.message },
         { status: 500 }
       );
     }
 
     // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
-      .from('app-files')
-      .getPublicUrl(filePath);
-
-    const publicUrl = urlData.publicUrl;
+    const publicUrl = storage.getPublicUrl(bucket, filePath);
 
     const duration = Date.now() - startTime;
     logger.info({
@@ -212,22 +210,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Verify file belongs to this app/org
-    if (!filePath.startsWith(`${app.org_id}/apps/${appId}/`)) {
-      return NextResponse.json(
-        { error: 'Invalid file path' },
-        { status: 403 }
-      );
-    }
+    // Initialize storage provider
+    const storage = createStorage();
+    const bucket = getBucket(BUCKET_NAME);
 
-    // Delete file (using admin client)
-    const { error: deleteError } = await supabaseAdmin.storage
-      .from('app-files')
-      .remove([filePath]);
+    // Delete file
+    const { error: deleteError } = await storage.delete(bucket, filePath);
 
     if (deleteError) {
       logger.error({ 
-        error: deleteError, 
+        error: deleteError.message, 
         appId, 
         filePath 
       }, 'Error deleting file');
@@ -258,4 +250,3 @@ export async function DELETE(
     );
   }
 }
-

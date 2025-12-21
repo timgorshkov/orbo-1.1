@@ -8,6 +8,7 @@ import { Upload, X, Image as ImageIcon } from 'lucide-react'
 interface CoverImageUploadProps {
   value: string | null
   onChange: (url: string | null) => void
+  onFileSelect?: (file: File | null) => void
   eventId?: string
   orgId: string
   disabled?: boolean
@@ -16,6 +17,7 @@ interface CoverImageUploadProps {
 export default function CoverImageUpload({
   value,
   onChange,
+  onFileSelect,
   eventId,
   orgId,
   disabled = false
@@ -75,12 +77,15 @@ export default function CoverImageUpload({
       // Actual upload will happen when event is created
       const objectUrl = URL.createObjectURL(file)
       onChange(objectUrl)
+      // Pass the file to parent for upload after event creation
+      onFileSelect?.(file)
     }
   }
 
   const handleDelete = async () => {
     if (!eventId || !value) {
       onChange(null)
+      onFileSelect?.(null)
       return
     }
 

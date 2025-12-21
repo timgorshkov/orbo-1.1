@@ -21,17 +21,35 @@ const nextConfig = {
   // Allow external images from storage providers
   images: {
     remotePatterns: [
+      // Supabase Storage (legacy)
       {
         protocol: 'https',
         hostname: '*.supabase.co',
       },
+      // Selectel S3 - CDN domain
       {
         protocol: 'https',
         hostname: '*.selcdn.ru',
       },
+      // Selectel S3 - direct storage domain (ru-1)
       {
         protocol: 'https',
         hostname: 's3.ru-1.storage.selcloud.ru',
+      },
+      // Selectel S3 - direct storage domain (all regions)
+      {
+        protocol: 'https',
+        hostname: '*.storage.selcloud.ru',
+      },
+      // Selectel S3 - bucket-specific domain
+      {
+        protocol: 'https',
+        hostname: '*.s3.storage.selcloud.ru',
+      },
+      // Selectel - selstorage.ru domain
+      {
+        protocol: 'https',
+        hostname: '*.selstorage.ru',
       },
     ],
   },

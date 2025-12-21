@@ -2,6 +2,9 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { createStorage, getBucket, getStoragePath } from '@/lib/storage';
+
+const BUCKET_NAME = 'app-files';
 
 // POST /api/apps/upload-logo - Upload app logo
 export async function POST(request: NextRequest) {
@@ -91,53 +94,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Initialize storage provider (Selectel S3)
+    const storage = createStorage();
+    const bucket = getBucket(BUCKET_NAME);
+
     // Generate unique filename
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(7);
     const fileExtension = file.name.split('.').pop();
     const fileName = `logo-${timestamp}-${randomString}.${fileExtension}`;
-    const filePath = `${app.org_id}/apps/${appId}/logos/${fileName}`;
+    const logicalPath = `${app.org_id}/apps/${appId}/logos/${fileName}`;
+    const filePath = getStoragePath(BUCKET_NAME, logicalPath);
 
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('app-files')
-      .upload(filePath, buffer, {
+    // Upload to S3 Storage
+    const { error: uploadError } = await storage.upload(
+      bucket,
+      filePath,
+      buffer,
+      {
         contentType: file.type,
-        cacheControl: '31536000', // Cache for 1 year
-        upsert: false
-      });
+        cacheControl: 'public, max-age=31536000', // Cache for 1 year
+      }
+    );
 
     if (uploadError) {
       logger.error({ 
-        error: uploadError, 
+        error: uploadError.message, 
         appId, 
         fileName 
       }, 'Error uploading logo');
       
-      // Check if bucket exists
-      if (uploadError.message?.includes('Bucket not found')) {
-        return NextResponse.json(
-          { error: 'Storage bucket not configured. Please contact support.' },
-          { status: 500 }
-        );
-      }
-      
       return NextResponse.json(
-        { error: 'Failed to upload logo' },
+        { error: 'Failed to upload logo: ' + uploadError.message },
         { status: 500 }
       );
     }
 
     // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
-      .from('app-files')
-      .getPublicUrl(filePath);
-
-    const publicUrl = urlData.publicUrl;
+    const publicUrl = storage.getPublicUrl(bucket, filePath);
 
     const duration = Date.now() - startTime;
     logger.info({
@@ -166,4 +164,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

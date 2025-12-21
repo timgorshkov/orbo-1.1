@@ -66,6 +66,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [title, setTitle] = useState(initialEvent?.title || '')
   const [description, setDescription] = useState(initialEvent?.description || '')
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(initialEvent?.cover_image_url || null)
+  const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null)
   const [eventType, setEventType] = useState<'online' | 'offline'>(initialEvent?.event_type || 'online')
   const [locationInfo, setLocationInfo] = useState(initialEvent?.location_info || '')
   const [mapLink, setMapLink] = useState(initialEvent?.map_link || '')
@@ -163,11 +164,14 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       return
     }
 
+    // Don't send blob: URLs to the server - they're invalid
+    const actualCoverUrl = coverImageUrl?.startsWith('blob:') ? null : coverImageUrl
+    
     const eventData = {
       orgId,
       title,
       description,
-      coverImageUrl: coverImageUrl || null,
+      coverImageUrl: actualCoverUrl,
       eventType,
       locationInfo: locationInfo || null,
       mapLink: eventType === 'offline' && mapLink ? mapLink : null,
@@ -211,11 +215,32 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
           throw new Error(data.error || 'Произошла ошибка')
         }
 
+        const createdEventId = data.event.id
+
+        // If there's a pending cover file, upload it now
+        if (pendingCoverFile && mode === 'create') {
+          try {
+            const formData = new FormData()
+            formData.append('file', pendingCoverFile)
+            
+            const uploadResponse = await fetch(`/api/events/${createdEventId}/cover`, {
+              method: 'POST',
+              body: formData,
+            })
+            
+            if (!uploadResponse.ok) {
+              console.error('Failed to upload cover image')
+            }
+          } catch (uploadErr) {
+            console.error('Error uploading cover:', uploadErr)
+          }
+        }
+
         setSuccess(true)
         
         // Redirect to event detail page
         setTimeout(() => {
-          router.push(`/p/${orgId}/events/${data.event.id}`)
+          router.push(`/p/${orgId}/events/${createdEventId}`)
         }, 1000)
       } catch (err: any) {
         setError(err.message || 'Произошла ошибка при сохранении')
@@ -263,6 +288,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                 <CoverImageUpload
                   value={coverImageUrl}
                   onChange={(url) => setCoverImageUrl(url)}
+                  onFileSelect={(file) => setPendingCoverFile(file)}
                   eventId={initialEvent?.id}
                   orgId={orgId}
                   disabled={isPending}
