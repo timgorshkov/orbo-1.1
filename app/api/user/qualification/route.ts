@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { QUALIFICATION_FORM_VERSION, validateResponses } from '@/lib/qualification/config';
 import { logger } from '@/lib/logger';
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createClientServer();
+    // Use admin client since NextAuth users don't have Supabase session
+    const supabase = createAdminServer();
     
     const { data, error } = await supabase
       .from('user_qualification_responses')
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const supabase = await createClientServer();
+    // Use admin client since NextAuth users don't have Supabase session
+    const supabase = createAdminServer();
 
     // Upsert qualification record
     const { data, error } = await supabase
@@ -153,7 +155,8 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const supabase = await createClientServer();
+    // Use admin client since NextAuth users don't have Supabase session
+    const supabase = createAdminServer();
 
     // Get existing qualification
     const { data: existing } = await supabase
