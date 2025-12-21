@@ -50,13 +50,35 @@ export async function GET(request: NextRequest) {
       created_at: user.raw?.supabase?.created_at
     };
 
-    // 2. Membership в организации
-    const { data: membership, error: membershipError } = await adminSupabase
-      .from('memberships')
-      .select('role, role_source, metadata, created_at')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+    // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно
+    const [membershipResult, telegramResult, organizationResult] = await Promise.all([
+      // 2. Membership в организации
+      adminSupabase
+        .from('memberships')
+        .select('role, role_source, metadata, created_at')
+        .eq('org_id', orgId)
+        .eq('user_id', user.id)
+        .single(),
+      
+      // 3. Telegram аккаунт для организации
+      adminSupabase
+        .from('user_telegram_accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .maybeSingle(),
+      
+      // 6. Информация об организации (перенесено сюда для параллельности)
+      adminSupabase
+        .from('organizations')
+        .select('id, name, logo_url')
+        .eq('id', orgId)
+        .single()
+    ]);
+
+    const { data: membership, error: membershipError } = membershipResult;
+    const { data: telegramAccount, error: telegramError } = telegramResult;
+    const { data: organization } = organizationResult;
 
     if (membershipError) {
       logger.error({ 
@@ -73,17 +95,8 @@ export async function GET(request: NextRequest) {
     // Проверяем, является ли пользователь теневым админом
     const isShadowProfile = membership.metadata?.shadow_profile === true;
 
-    // 3. Telegram аккаунт для организации
-    logger.debug({ user_id: user.id, org_id: orgId }, 'Looking for telegram account');
-    const { data: telegramAccount, error: telegramError } = await adminSupabase
-      .from('user_telegram_accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle();
-    
     if (telegramError) {
-      logger.error({ 
+      logger.warn({ 
         user_id: user.id,
         org_id: orgId,
         error: telegramError.message
@@ -93,9 +106,8 @@ export async function GET(request: NextRequest) {
     logger.debug({ 
       has_telegram_account: !!telegramAccount,
       telegram_user_id: telegramAccount?.telegram_user_id,
-      telegram_username: telegramAccount?.telegram_username,
       is_verified: telegramAccount?.is_verified
-    }, 'Telegram account found');
+    }, 'Initial queries complete');
 
     // 4. Профиль участника (если есть)
     let participant = null;
@@ -236,12 +248,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 6. Информация об организации
-    const { data: organization } = await adminSupabase
-      .from('organizations')
-      .select('id, name, logo_url')
-      .eq('id', orgId)
-      .single();
+    // 6. Информация об организации - уже получена в параллельном запросе выше
 
     const profile = {
       user: authUser,

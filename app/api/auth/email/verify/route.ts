@@ -70,6 +70,17 @@ export async function GET(request: NextRequest) {
     if (existingUser) {
       userId = existingUser
       logger.info({ email, user_id: userId }, 'Found existing user')
+      
+      // Обновляем email_confirmed_at для существующих пользователей (клик по magic link подтверждает email)
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser, {
+        email_confirm: true
+      })
+      
+      if (updateError) {
+        logger.warn({ error: updateError.message, user_id: existingUser }, 'Failed to update email_confirmed_at')
+      } else {
+        logger.debug({ user_id: existingUser }, 'Updated email confirmation for magic link user')
+      }
     } else {
       // Создаём нового пользователя
       const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`

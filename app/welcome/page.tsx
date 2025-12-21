@@ -13,19 +13,7 @@ export default async function WelcomePage() {
 
   const user = { id: session.user.id, email: session.user.email };
 
-  // Проверяем количество организаций пользователя
   const adminSupabase = createAdminServer()
-  const { data: memberships } = await adminSupabase
-    .from('memberships')
-    .select('org_id')
-    .eq('user_id', user.id)
-
-  const orgCount = memberships?.length || 0
-
-  // Если у пользователя уже есть организации, редиректим на список организаций
-  if (orgCount > 0) {
-    redirect('/orgs')
-  }
 
   // Проверяем, заполнена ли квалификация
   const { data: qualification } = await adminSupabase
@@ -36,10 +24,24 @@ export default async function WelcomePage() {
 
   const qualificationCompleted = !!qualification?.completed_at
 
+  // Проверяем количество организаций пользователя
+  const { data: memberships } = await adminSupabase
+    .from('memberships')
+    .select('org_id')
+    .eq('user_id', user.id)
+
+  const orgCount = memberships?.length || 0
+
+  // Если квалификация пройдена И есть организации — редирект на /orgs
+  if (qualificationCompleted && orgCount > 0) {
+    redirect('/orgs')
+  }
+
   return (
     <WelcomeContent 
       qualificationCompleted={qualificationCompleted}
       initialResponses={qualification?.responses || {}}
+      hasOrganizations={orgCount > 0}
     />
   )
 }

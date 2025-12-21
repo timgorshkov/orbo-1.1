@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,22 +11,35 @@ import { ArrowRight, MessageSquare, Calendar, BarChart3 } from 'lucide-react';
 interface WelcomeContentProps {
   qualificationCompleted: boolean;
   initialResponses: Record<string, unknown>;
+  hasOrganizations?: boolean;
 }
 
 export function WelcomeContent({ 
   qualificationCompleted: initialCompleted,
   initialResponses,
+  hasOrganizations = false,
 }: WelcomeContentProps) {
+  const router = useRouter();
   const [showQualification, setShowQualification] = useState(!initialCompleted);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
     setQualificationDone(true);
     setShowQualification(false);
+    
+    // Если у пользователя есть организации — редирект на /orgs
+    if (hasOrganizations) {
+      router.push('/orgs');
+    }
   };
 
   const handleSkip = () => {
     setShowQualification(false);
+    
+    // Если у пользователя есть организации — редирект на /orgs
+    if (hasOrganizations) {
+      router.push('/orgs');
+    }
   };
 
   // Show qualification form if not completed
@@ -42,7 +56,7 @@ export function WelcomeContent({
     );
   }
 
-  // Show welcome screen after qualification
+  // Show welcome screen after qualification (only for users without organizations)
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-2xl border-0 shadow-lg">

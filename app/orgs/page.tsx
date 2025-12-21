@@ -28,9 +28,21 @@ export default async function OrganizationsPage() {
       provider: session.provider,
     }, 'User authenticated via unified auth');
 
-  // Используем admin client для получения всех memberships пользователя
-  const adminSupabase = createAdminServer()
-  
+  // Проверяем, прошёл ли пользователь квалификацию
+  const adminSupabase = createAdminServer();
+  const { data: qualification } = await adminSupabase
+    .from('user_qualification_responses')
+    .select('completed_at')
+    .eq('user_id', user.id)
+    .single();
+
+  // Если квалификация не пройдена — редирект на welcome для прохождения
+  if (!qualification?.completed_at) {
+    logger.debug({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
+    redirect('/welcome');
+  }
+
+  // Получаем все memberships пользователя
   const { data: memberships, error: membershipsError } = await adminSupabase
     .from('memberships')
     .select(`

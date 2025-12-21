@@ -39,6 +39,23 @@ async function ensureSupabaseUser(email: string, name?: string | null, image?: s
     
     if (existingUserId) {
       logger.debug({ email, supabase_user_id: existingUserId }, 'Found existing Supabase user');
+      
+      // Обновляем email_confirmed_at для существующих пользователей (OAuth гарантирует email)
+      const { error: updateError } = await adminSupabase.auth.admin.updateUserById(existingUserId, {
+        email_confirm: true,
+        user_metadata: {
+          full_name: name || undefined,
+          avatar_url: image || undefined,
+          last_oauth_login: new Date().toISOString()
+        }
+      });
+      
+      if (updateError) {
+        logger.warn({ error: updateError.message, user_id: existingUserId }, 'Failed to update email_confirmed_at for OAuth user');
+      } else {
+        logger.debug({ user_id: existingUserId }, 'Updated email confirmation for OAuth user');
+      }
+      
       return existingUserId;
     }
     
