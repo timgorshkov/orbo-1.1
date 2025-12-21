@@ -1,16 +1,19 @@
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 export default async function WelcomePage() {
-  const supabase = await createClientServer()
-  const { data: { user }, error } = await supabase.auth.getUser()
+  // Проверяем авторизацию через unified auth (Supabase или NextAuth)
+  const session = await getUnifiedSession();
 
-  if (error || !user) {
+  if (!session) {
     redirect('/signin')
   }
+
+  const user = { id: session.user.id, email: session.user.email };
 
   // Проверяем количество организаций пользователя
   const adminSupabase = createAdminServer()

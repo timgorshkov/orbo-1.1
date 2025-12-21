@@ -1,7 +1,8 @@
 import { ReactNode } from 'react'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -14,21 +15,19 @@ export default async function PublicOrgLayout({
 }) {
   const { org: orgId } = await params
   
-  const supabase = await createClientServer()
+  // Проверяем авторизацию через unified auth (Supabase или NextAuth)
+  const session = await getUnifiedSession();
   const adminSupabase = createAdminServer()
 
-  // ⚡ Параллельные запросы: авторизация + организация одновременно
-  const [userResult, orgResult] = await Promise.all([
-    supabase.auth.getUser(),
-    adminSupabase
-      .from('organizations')
-      .select('id, name, logo_url')
-      .eq('id', orgId)
-      .single()
-  ])
+  // Получаем организацию
+  const { data: org } = await adminSupabase
+    .from('organizations')
+    .select('id, name, logo_url')
+    .eq('id', orgId)
+    .single()
 
-  const user = userResult.data?.user
-  const org = orgResult.data
+  // Преобразуем session в объект user для совместимости
+  const user = session ? { id: session.user.id, email: session.user.email } : null
 
   if (!org) {
     // Если организация не найдена, просто рендерим детей без навигации

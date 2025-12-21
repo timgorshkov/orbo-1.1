@@ -1,9 +1,10 @@
 import { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 const logger = createServiceLogger('OrgLayout');
 
@@ -19,32 +20,28 @@ export default async function OrgLayout({
   const { org: orgId } = await params
   logger.debug({ org_id: orgId }, 'OrgLayout start');
   
-  const supabase = await createClientServer()
+  // Проверяем авторизацию через unified auth (Supabase или NextAuth)
+  const session = await getUnifiedSession();
   const adminSupabase = createAdminServer()
 
-  // ⚡ Параллельные запросы: авторизация + организация одновременно
-  const [userResult, orgResult] = await Promise.all([
-    supabase.auth.getUser(),
-    adminSupabase
-      .from('organizations')
-      .select('id, name, logo_url')
-      .eq('id', orgId)
-      .single()
-  ])
-
-  const { data: { user }, error: userError } = userResult
-  const { data: org, error: orgError } = orgResult
+  // Получаем организацию
+  const { data: org, error: orgError } = await adminSupabase
+    .from('organizations')
+    .select('id, name, logo_url')
+    .eq('id', orgId)
+    .single()
 
   logger.debug({ 
-    user_id: user?.id,
-    has_error: !!userError,
-    error: userError?.message
+    user_id: session?.user?.id,
+    provider: session?.provider,
   }, 'User auth check');
 
-  if (!user) {
+  if (!session) {
     logger.warn({ org_id: orgId }, 'No user, redirecting to signin');
     redirect('/signin')
   }
+
+  const user = { id: session.user.id, email: session.user.email };
 
   if (orgError || !org) {
     logger.error({ 
