@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
@@ -9,15 +9,10 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { createClientLogger } from '@/lib/logger'
 
-export default function SignIn() {
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+// Компонент для обработки ошибок из URL (требует Suspense)
+function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
   const searchParams = useSearchParams()
-  const logger = createClientLogger('SignIn');
-
-  // Обработка ошибок из URL (NextAuth редиректит с ?error=...)
+  
   useEffect(() => {
     const error = searchParams.get('error')
     if (error) {
@@ -31,9 +26,19 @@ export default function SignIn() {
         'Callback': 'Ошибка обратного вызова.',
         'Default': 'Произошла неизвестная ошибка.',
       }
-      setMessage(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
+      onError(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
     }
-  }, [searchParams]);
+  }, [searchParams, onError])
+  
+  return null
+}
+
+export default function SignIn() {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const logger = createClientLogger('SignIn');
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -92,6 +97,11 @@ export default function SignIn() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Обработка ошибок из URL (NextAuth редиректит с ?error=...) */}
+      <Suspense fallback={null}>
+        <ErrorHandler onError={setMessage} />
+      </Suspense>
+      
       {/* Left side - Branding */}
       <div className="hidden lg:flex flex-col justify-center items-center bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 text-white p-12">
         <div className="max-w-md space-y-6">
