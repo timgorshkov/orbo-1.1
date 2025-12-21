@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,15 +16,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
 
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const adminSupabase = createAdminServer();
+
     // Получаем Telegram аккаунт пользователя для данной организации
-    const { data: telegramAccount, error } = await supabase
+    const { data: telegramAccount, error } = await adminSupabase
       .from('user_telegram_accounts')
       .select('*')
       .eq('user_id', user.id)
@@ -58,12 +60,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    const supabase = createAdminServer();
 
     // Пытаемся автоматически получить информацию о пользователе через Telegram API
     let fetchedUsername = telegramUsername;
@@ -221,12 +224,13 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    const supabase = createAdminServer();
 
     // Ищем аккаунт с данным кодом верификации
     const { data: telegramAccount, error: findError } = await supabase
