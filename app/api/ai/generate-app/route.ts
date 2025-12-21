@@ -1,8 +1,9 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
 import { validateAppConfig, logAIRequest } from '@/lib/services/aiConstructorService';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const logger = createAPILogger;
 
@@ -12,12 +13,11 @@ export async function POST(request: NextRequest) {
   const log = logger(request);
   
   try {
-    const supabase = await createClientServer();
     const supabaseAdmin = createAdminServer();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check membership and permissions (admin or owner)
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)

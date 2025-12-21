@@ -1,6 +1,7 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // POST /api/apps/[appId]/upload - Upload file (image/video/document)
 export async function POST(
@@ -12,17 +13,16 @@ export async function POST(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
     const supabaseAdmin = createAdminServer();
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get app to verify access
-    const { data: app, error: appError } = await supabase
+    const { data: app, error: appError } = await supabaseAdmin
       .from('apps')
       .select('id, org_id')
       .eq('id', appId)
@@ -33,7 +33,7 @@ export async function POST(
     }
 
     // Check membership
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('org_id', app.org_id)
@@ -172,7 +172,6 @@ export async function DELETE(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
     const supabaseAdmin = createAdminServer();
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get('path');
@@ -184,14 +183,14 @@ export async function DELETE(
       );
     }
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get app to verify access
-    const { data: app, error: appError } = await supabase
+    const { data: app, error: appError } = await supabaseAdmin
       .from('apps')
       .select('id, org_id')
       .eq('id', appId)
@@ -202,7 +201,7 @@ export async function DELETE(
     }
 
     // Check membership
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('org_id', app.org_id)
