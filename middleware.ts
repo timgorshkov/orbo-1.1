@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
-import { auth } from '@/auth'
+// НЕ импортируем auth здесь - это вызывает UntrustedHost ошибку
+// Проверка NextAuth сессии происходит через SessionProvider на клиенте
 
 /**
  * Get the public base URL for redirects
@@ -94,17 +95,18 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // ⭐ Проверка авторизации через оба провайдера
-  // 1. Supabase session (email OTP, Telegram)
+  // ⭐ Проверка авторизации через Supabase
+  // NextAuth сессия проверяется через cookies authjs.session-token
   const {
     data: { session: supabaseSession },
   } = await supabase.auth.getSession()
 
-  // 2. NextAuth session (Google, Yandex OAuth)
-  const nextAuthSession = await auth()
+  // Проверяем наличие NextAuth session cookie (не вызываем auth() чтобы избежать UntrustedHost)
+  const hasNextAuthSession = request.cookies.has('authjs.session-token') || 
+                              request.cookies.has('__Secure-authjs.session-token')
 
   // Пользователь авторизован если есть хотя бы одна активная сессия
-  const isAuthenticated = !!supabaseSession || !!nextAuthSession
+  const isAuthenticated = !!supabaseSession || hasNextAuthSession
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
