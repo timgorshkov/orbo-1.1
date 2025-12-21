@@ -2,7 +2,7 @@
  * Утилиты для определения роли пользователя в организации
  */
 
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'guest'
@@ -15,12 +15,13 @@ export interface UserOrgRole {
 
 /**
  * Получить роль пользователя в организации (server-side)
+ * Использует admin client для работы с NextAuth пользователями (нет Supabase session)
  */
 export async function getUserRoleInOrg(
   userId: string,
   orgId: string
 ): Promise<UserRole> {
-  const supabase = await createClientServer()
+  const supabase = createAdminServer()
 
   // Вызываем SQL функцию get_user_role_in_org
   const { data, error } = await supabase.rpc('get_user_role_in_org', {
@@ -72,9 +73,10 @@ export function isMember(role: UserRole): boolean {
 
 /**
  * Получить все организации пользователя с ролями
+ * Использует admin client для работы с NextAuth пользователями
  */
 export async function getUserOrganizations(userId: string) {
-  const supabase = await createClientServer()
+  const supabase = createAdminServer()
 
   const { data, error } = await supabase
     .from('user_organizations')

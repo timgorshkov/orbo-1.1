@@ -152,7 +152,25 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     }
 
     // 2. Check NextAuth session (fallback)
-    const nextAuthSession = await nextAuth();
+    // Обёрнуто в try-catch для обработки UntrustedHost ошибки
+    let nextAuthSession: Awaited<ReturnType<typeof nextAuth>> | null = null;
+    try {
+      nextAuthSession = await nextAuth();
+    } catch (authError) {
+      // UntrustedHost или другая ошибка NextAuth
+      logger.warn({
+        error: authError instanceof Error ? authError.message : String(authError),
+      }, 'NextAuth auth() failed, checking cookies directly');
+      
+      // Fallback: проверяем наличие session cookie
+      const hasSessionCookie = cookieStore.get('authjs.session-token') || 
+                               cookieStore.get('__Secure-authjs.session-token');
+      if (hasSessionCookie) {
+        logger.debug({}, 'Found NextAuth session cookie but auth() failed');
+        // Не можем получить данные сессии без auth(), возвращаем null
+        // Пользователю придётся перелогиниться
+      }
+    }
     
     if (nextAuthSession?.user?.email) {
       const userEmail = nextAuthSession.user.email.toLowerCase();

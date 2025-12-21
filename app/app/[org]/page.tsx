@@ -1,20 +1,19 @@
 import { redirect } from 'next/navigation'
-import { createClientServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { getDefaultRoute } from '@/lib/auth/getDefaultRoute'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 export default async function OrgIndexPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params
-  const supabase = await createClientServer()
 
-  // Проверяем авторизацию
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Проверяем авторизацию через unified auth (Supabase или NextAuth)
+  const session = await getUnifiedSession()
 
-  if (!user) {
+  if (!session) {
     redirect(`/signin?redirect=/app/${orgId}`)
   }
+
+  const user = { id: session.user.id, email: session.user.email }
 
   // Определяем роль пользователя
   const role = await getUserRoleInOrg(user.id, orgId)
