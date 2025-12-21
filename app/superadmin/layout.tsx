@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { Shield, Users, Building2, MessageSquare, UserCog, Send, DollarSign, AlertCircle, FileText, ClipboardList } from 'lucide-react'
 import Link from 'next/link'
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const metadata = {
   title: 'Superadmin | Orbo',
@@ -16,8 +16,8 @@ export default async function SuperadminLayout({
 }) {
   await requireSuperadmin()
   
-  const supabase = await createClientServer()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Используем unified auth для поддержки OAuth
+  const user = await getUnifiedUser()
   
   const navItems = [
     { href: '/superadmin/organizations', label: 'Организации', icon: Building2 },
