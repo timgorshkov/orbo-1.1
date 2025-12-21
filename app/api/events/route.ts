@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create event
-    const { data: event, error } = await supabase
+    const { data: event, error } = await adminSupabase
       .from('events')
       .insert(eventData)
       .select()
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
       
       // Insert enabled fields
       if (fieldsToInsert.length > 0) {
-        const { error: fieldsError } = await supabase
+        const { error: fieldsError } = await adminSupabase
           .from('event_registration_fields')
           .insert(fieldsToInsert)
         
