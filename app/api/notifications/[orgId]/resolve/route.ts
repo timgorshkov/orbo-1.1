@@ -49,13 +49,16 @@ export async function POST(
     // Получаем имя пользователя для отображения
     let userName: string = 'Пользователь';
     
-    // 1. Пробуем из user_metadata (заполняется при регистрации)
-    if (user.user_metadata?.full_name) {
-      userName = user.user_metadata.full_name;
-    } else if (user.user_metadata?.name) {
-      userName = user.user_metadata.name;
+    // 1. Пробуем из UnifiedUser.name (из NextAuth или Supabase)
+    if (user.name) {
+      userName = user.name;
+    } else if (user.raw?.supabase?.user_metadata?.full_name) {
+      // 2. Пробуем из raw Supabase user_metadata
+      userName = user.raw.supabase.user_metadata.full_name;
+    } else if (user.raw?.supabase?.user_metadata?.name) {
+      userName = user.raw.supabase.user_metadata.name;
     } else {
-      // 2. Пробуем через RPC функцию
+      // 3. Пробуем через RPC функцию
       try {
         const { data: displayName } = await adminSupabase
           .rpc('get_user_display_name', { p_user_id: user.id });
