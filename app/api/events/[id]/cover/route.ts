@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { createClient } from '@supabase/supabase-js'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { createStorage, getBucket, getStoragePath } from '@/lib/storage'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const BUCKET_NAME = 'event-covers'
 
 // POST /api/events/[id]/cover - Upload event cover image
 export async function POST(
@@ -76,38 +77,44 @@ export async function POST(
       )
     }
 
-    // Create admin Supabase client for storage
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    // Initialize storage provider (Selectel S3 or other)
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_NAME)
 
-    // Delete old cover if exists and is from our bucket
-    if (event.cover_image_url && event.cover_image_url.includes('/event-covers/')) {
-      const urlParts = event.cover_image_url.split('/event-covers/')
-      if (urlParts.length > 1) {
-        const oldPath = urlParts[1].split('?')[0] // Remove query params
-        await adminSupabase.storage
-          .from('event-covers')
-          .remove([oldPath])
+    // Delete old cover if exists
+    if (event.cover_image_url && !event.cover_image_url.startsWith('blob:')) {
+      try {
+        // Try to extract path from old URL and delete
+        const oldFileName = event.cover_image_url.split('/').pop()?.split('?')[0]
+        if (oldFileName) {
+          const oldPath = getStoragePath(BUCKET_NAME, `${event.org_id}/${oldFileName}`)
+          await storage.delete(bucket, oldPath)
+          logger.info({ old_path: oldPath }, 'Deleted old cover image')
+        }
+      } catch (deleteErr) {
+        // Log but don't fail - old file might not exist
+        logger.warn({ error: deleteErr }, 'Failed to delete old cover, continuing')
       }
     }
 
     // Get file extension
     const ext = file.name.split('.').pop() || 'jpg'
     const fileName = `${eventId}-${Date.now()}.${ext}`
-    const filePath = `${event.org_id}/${fileName}`
+    const filePath = getStoragePath(BUCKET_NAME, `${event.org_id}/${fileName}`)
 
     // Upload new file
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    const { data: uploadData, error: uploadError } = await adminSupabase.storage
-      .from('event-covers')
-      .upload(filePath, buffer, {
+    const { data: uploadData, error: uploadError } = await storage.upload(
+      bucket,
+      filePath,
+      buffer,
+      {
         contentType: file.type,
-        upsert: false
-      })
+        cacheControl: 'public, max-age=31536000', // 1 year cache
+      }
+    )
 
     if (uploadError) {
       logger.error({ error: uploadError.message, event_id: eventId }, 'Upload error');
@@ -118,9 +125,8 @@ export async function POST(
     }
 
     // Get public URL
-    const { data: { publicUrl } } = adminSupabase.storage
-      .from('event-covers')
-      .getPublicUrl(filePath)
+    const publicUrl = storage.getPublicUrl(bucket, filePath)
+    logger.info({ event_id: eventId, url: publicUrl }, 'Cover uploaded successfully')
 
     // Update event
     const { data: updatedEvent, error: updateError } = await supabase
@@ -205,19 +211,21 @@ export async function DELETE(
       )
     }
 
-    // Delete from storage if it's from our bucket
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    // Initialize storage provider
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_NAME)
 
-    if (event.cover_image_url.includes('/event-covers/')) {
-      const urlParts = event.cover_image_url.split('/event-covers/')
-      if (urlParts.length > 1) {
-        const oldPath = urlParts[1].split('?')[0] // Remove query params
-        await adminSupabase.storage
-          .from('event-covers')
-          .remove([oldPath])
+    // Delete from storage (skip blob: URLs which are invalid)
+    if (!event.cover_image_url.startsWith('blob:')) {
+      try {
+        const oldFileName = event.cover_image_url.split('/').pop()?.split('?')[0]
+        if (oldFileName) {
+          const oldPath = getStoragePath(BUCKET_NAME, `${event.org_id}/${oldFileName}`)
+          await storage.delete(bucket, oldPath)
+          logger.info({ path: oldPath }, 'Deleted cover image from storage')
+        }
+      } catch (deleteErr) {
+        logger.warn({ error: deleteErr }, 'Failed to delete from storage, continuing')
       }
     }
 
@@ -252,4 +260,3 @@ export async function DELETE(
     )
   }
 }
-

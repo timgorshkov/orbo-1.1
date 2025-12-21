@@ -3,7 +3,10 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { createStorage, getBucket, getStoragePath } from '@/lib/storage'
 import sharp from 'sharp'
+
+const BUCKET_NAME = 'participant-photos'
 
 export async function POST(
   req: NextRequest,
@@ -77,26 +80,37 @@ export async function POST(
       .webp({ quality: 90 }) // Увеличена качество для лучшей четкости
       .toBuffer()
 
+    // Initialize storage provider (Selectel S3)
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_NAME)
+
     // Delete old photo if exists
-    if (participant.photo_url) {
-      const oldPath = participant.photo_url.split('/').pop()
-      if (oldPath) {
-        await adminSupabase.storage
-          .from('participant-photos')
-          .remove([`${orgId}/${oldPath}`])
+    if (participant.photo_url && !participant.photo_url.startsWith('blob:')) {
+      try {
+        const oldFileName = participant.photo_url.split('/').pop()?.split('?')[0]
+        if (oldFileName) {
+          const oldPath = getStoragePath(BUCKET_NAME, `${orgId}/${oldFileName}`)
+          await storage.delete(bucket, oldPath)
+          logger.info({ old_path: oldPath }, 'Deleted old photo')
+        }
+      } catch (deleteErr) {
+        logger.warn({ error: deleteErr }, 'Failed to delete old photo, continuing')
       }
     }
 
-    // Upload to Supabase Storage
+    // Upload to storage
     const fileName = `${participantId}-${Date.now()}.webp`
-    const filePath = `${orgId}/${fileName}`
+    const filePath = getStoragePath(BUCKET_NAME, `${orgId}/${fileName}`)
 
-    const { error: uploadError } = await adminSupabase.storage
-      .from('participant-photos')
-      .upload(filePath, processedBuffer, {
+    const { error: uploadError } = await storage.upload(
+      bucket,
+      filePath,
+      processedBuffer,
+      {
         contentType: 'image/webp',
-        upsert: false,
-      })
+        cacheControl: 'public, max-age=31536000',
+      }
+    )
 
     if (uploadError) {
       logger.error({ error: uploadError.message, participant_id: participantId, org_id: orgId }, 'Upload error');
@@ -104,9 +118,7 @@ export async function POST(
     }
 
     // Get public URL
-    const {
-      data: { publicUrl },
-    } = adminSupabase.storage.from('participant-photos').getPublicUrl(filePath)
+    const publicUrl = storage.getPublicUrl(bucket, filePath)
 
     // Update participant record
     const { error: updateError } = await adminSupabase
@@ -119,7 +131,7 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update participant' }, { status: 500 })
     }
 
-    logger.info({ participant_id: participantId, org_id: orgId }, 'Photo uploaded successfully');
+    logger.info({ participant_id: participantId, org_id: orgId, url: publicUrl }, 'Photo uploaded successfully');
     return NextResponse.json({ photo_url: publicUrl })
   } catch (error) {
     logger.error({ 
@@ -186,13 +198,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Initialize storage provider
+    const storage = createStorage()
+    const bucket = getBucket(BUCKET_NAME)
+
     // Delete from storage
-    if (participant.photo_url) {
-      const oldPath = participant.photo_url.split('/').pop()
-      if (oldPath) {
-        await adminSupabase.storage
-          .from('participant-photos')
-          .remove([`${orgId}/${oldPath}`])
+    if (participant.photo_url && !participant.photo_url.startsWith('blob:')) {
+      try {
+        const oldFileName = participant.photo_url.split('/').pop()?.split('?')[0]
+        if (oldFileName) {
+          const oldPath = getStoragePath(BUCKET_NAME, `${orgId}/${oldFileName}`)
+          await storage.delete(bucket, oldPath)
+          logger.info({ path: oldPath }, 'Photo deleted from storage')
+        }
+      } catch (deleteErr) {
+        logger.warn({ error: deleteErr }, 'Failed to delete from storage, continuing')
       }
     }
 
@@ -218,4 +238,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
