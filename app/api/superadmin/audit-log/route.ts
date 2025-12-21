@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,13 +17,14 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Verify that the current user is a superadmin
+ * ⚡ ОБНОВЛЕНО: Использует unified auth для поддержки OAuth
  */
 async function verifySuperadmin(): Promise<{ authorized: boolean; userId?: string; error?: string }> {
   try {
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Используем unified auth для поддержки OAuth
+    const user = await getUnifiedUser();
     
-    if (authError || !user) {
+    if (!user) {
       return { authorized: false, error: 'Unauthorized' };
     }
     

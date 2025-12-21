@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { isSuperadmin } from '@/lib/server/superadminGuard'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 /**
  * API для добавления нового суперадмина
+ * ⚡ ОБНОВЛЕНО: Использует unified auth для поддержки OAuth
  */
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'superadmin/add' });
   
   try {
-    // Проверяем права
+    // Проверяем права через unified auth
     const isAdmin = await isSuperadmin()
     if (!isAdmin) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -23,10 +25,9 @@ export async function POST(req: NextRequest) {
     }
     
     const supabaseAdmin = createAdminServer()
-    const supabase = await createClientServer()
     
-    // Получаем current user
-    const { data: { user } } = await supabase.auth.getUser()
+    // Получаем current user через unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

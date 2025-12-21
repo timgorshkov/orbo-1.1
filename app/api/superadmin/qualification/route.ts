@@ -3,6 +3,13 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { logger } from '@/lib/logger';
 import { RESPONSE_LABELS } from '@/lib/qualification/config';
 
+interface UserInfo {
+  email?: string;
+  name?: string;
+  telegram_username?: string;
+  org_name?: string;
+}
+
 // GET - Get qualification statistics and recent responses
 export async function GET(request: NextRequest) {
   try {
@@ -31,29 +38,93 @@ export async function GET(request: NextRequest) {
       logger.error({ error: recentError.message }, 'Error fetching recent qualifications');
     }
 
-    // Get user emails for the qualifications
+    // Get detailed user info for the qualifications
     const userIds = recentQualifications?.map(q => q.user_id) || [];
-    let userEmails: Record<string, string> = {};
+    const userInfoMap: Record<string, UserInfo> = {};
     
     if (userIds.length > 0) {
-      const { data: users } = await adminSupabase
+      // 1. Get emails from auth.users via admin API
+      try {
+        const { data: authUsers } = await adminSupabase.auth.admin.listUsers({
+          perPage: 100,
+        });
+        
+        authUsers?.users?.forEach(u => {
+          if (userIds.includes(u.id)) {
+            userInfoMap[u.id] = {
+              email: u.email,
+              name: u.user_metadata?.full_name || u.user_metadata?.name || undefined,
+            };
+          }
+        });
+      } catch (e) {
+        logger.warn({ error: e }, 'Could not fetch auth users');
+      }
+      
+      // 2. Get Telegram usernames
+      const { data: telegramAccounts } = await adminSupabase
         .from('user_telegram_accounts')
-        .select('user_id, first_name, last_name')
+        .select('user_id, telegram_username, telegram_first_name, telegram_last_name')
         .in('user_id', userIds);
       
-      // Also try to get emails from auth.users via RPC if available
-      // For now, use telegram names as fallback
-      users?.forEach(u => {
-        userEmails[u.user_id] = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.user_id;
+      telegramAccounts?.forEach(ta => {
+        const existing = userInfoMap[ta.user_id] || {};
+        userInfoMap[ta.user_id] = {
+          ...existing,
+          telegram_username: ta.telegram_username || undefined,
+          name: existing.name || [ta.telegram_first_name, ta.telegram_last_name].filter(Boolean).join(' ') || undefined,
+        };
+      });
+      
+      // 3. Get organization names (first org where user is owner/admin)
+      const { data: memberships } = await adminSupabase
+        .from('memberships')
+        .select(`
+          user_id,
+          role,
+          organizations (
+            name
+          )
+        `)
+        .in('user_id', userIds)
+        .in('role', ['owner', 'admin'])
+        .order('role', { ascending: true }); // owner first
+      
+      memberships?.forEach(m => {
+        const existing = userInfoMap[m.user_id] || {};
+        if (!existing.org_name) {
+          const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
+          userInfoMap[m.user_id] = {
+            ...existing,
+            org_name: org?.name || undefined,
+          };
+        }
       });
     }
 
-    // Enrich qualifications with readable labels
-    const enrichedQualifications = recentQualifications?.map(q => ({
-      ...q,
-      user_display: userEmails[q.user_id] || q.user_id,
-      responses_readable: enrichResponses(q.responses),
-    }));
+    // Enrich qualifications with readable labels and user info
+    const enrichedQualifications = recentQualifications?.map(q => {
+      const userInfo = userInfoMap[q.user_id] || {};
+      
+      // Build display name: Name (email) or just email or just user_id
+      let userDisplay = userInfo.name || '';
+      if (userInfo.email) {
+        userDisplay = userDisplay ? `${userDisplay} (${userInfo.email})` : userInfo.email;
+      }
+      if (!userDisplay) {
+        userDisplay = q.user_id.slice(0, 8) + '...';
+      }
+      
+      return {
+        ...q,
+        user_display: userDisplay,
+        user_email: userInfo.email || null,
+        user_name: userInfo.name || null,
+        telegram_username: userInfo.telegram_username || null,
+        org_name: userInfo.org_name || null,
+        responses_readable: enrichResponses(q.responses),
+      };
+    });
 
     return NextResponse.json({
       summary: summaryData?.[0] || {

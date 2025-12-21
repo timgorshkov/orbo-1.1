@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { createClientLogger } from '@/lib/logger'
 
 interface CostSummary {
@@ -79,38 +78,31 @@ export default function AICoststPage() {
 
   async function loadData() {
     setLoading(true)
-    const supabase = createClientBrowser()
-    
-    // Fetch summary
-    const { data: summaryData, error: summaryError } = await supabase
-      .rpc('get_openai_cost_summary', { p_org_id: null, p_days: daysFilter })
-      .single()
-    
     const logger = createClientLogger('AICostsPage');
-    if (summaryError) {
+    
+    try {
+      // Fetch via API route (supports OAuth auth)
+      const response = await fetch(`/api/superadmin/ai-costs?days=${daysFilter}`)
+      
+      if (!response.ok) {
+        const error = await response.json()
+        logger.error({
+          error: error.error || 'Unknown error',
+          status: response.status
+        }, 'Error loading AI costs');
+        return
+      }
+      
+      const data = await response.json()
+      setSummary(data.summary as CostSummary)
+      setRecentLogs(data.logs || [])
+    } catch (err) {
       logger.error({
-        error: summaryError.message,
-        error_code: summaryError.code,
-        days_filter: daysFilter
-      }, 'Error loading summary');
-    } else {
-      setSummary(summaryData as CostSummary)
+        error: err instanceof Error ? err.message : String(err)
+      }, 'Error loading AI costs');
+    } finally {
+      setLoading(false)
     }
-    
-    // Fetch recent logs via RPC (bypasses RLS issues)
-    const { data: logsData, error: logsError } = await supabase
-      .rpc('get_openai_api_logs', { p_org_id: null, p_limit: 50 })
-    
-    if (logsError) {
-      logger.error({
-        error: logsError.message,
-        error_code: logsError.code
-      }, 'Error loading logs');
-    } else {
-      setRecentLogs(logsData || [])
-    }
-    
-    setLoading(false)
   }
 
   if (loading) {

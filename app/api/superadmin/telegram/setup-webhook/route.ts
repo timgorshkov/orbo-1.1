@@ -1,24 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * API endpoint to manually setup Telegram webhook
  * Only accessible by superadmins
+ * ⚡ ОБНОВЛЕНО: Использует unified auth для поддержки OAuth
  */
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'superadmin/telegram/setup-webhook' });
   
   try {
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -174,16 +175,16 @@ export async function POST(req: NextRequest) {
 
 /**
  * Get current webhook info
+ * ⚡ ОБНОВЛЕНО: Использует unified auth для поддержки OAuth
  */
 export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'superadmin/telegram/setup-webhook' });
   
   try {
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

@@ -1,25 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { sendTestEvent } from '@/lib/hawk';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { isSuperadmin } from '@/lib/server/superadminGuard';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const logger = createAPILogger({ headers: { get: () => null } }, { endpoint: 'hawk-test' });
 
 export async function POST(request: NextRequest) {
   try {
-    // Проверка авторизации суперадмина
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    // Проверка что пользователь - суперадмин
-    const superadminEmails = (process.env.SUPERADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
-    if (!superadminEmails.includes(user.email?.toLowerCase() || '')) {
+    // Проверка авторизации суперадмина (unified auth + superadmins table)
+    const isAdmin = await isSuperadmin();
+    if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    
+    const user = await getUnifiedUser();
 
     // Отправляем тестовое событие
     const success = sendTestEvent();

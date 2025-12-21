@@ -9,12 +9,14 @@
  * - Test API call (optional)
  * 
  * GET /api/superadmin/openai-status
+ * 
+ * ⚡ ОБНОВЛЕНО: Использует unified auth для поддержки OAuth
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
 import { createClient } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,9 +28,8 @@ export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/superadmin/openai-status' });
   
   try {
-    // Check if user is superadmin
-    const supabase = await createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check if user is superadmin via unified auth
+    const user = await getUnifiedUser();
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

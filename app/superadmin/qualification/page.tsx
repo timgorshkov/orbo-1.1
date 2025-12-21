@@ -23,6 +23,10 @@ interface QualificationResponse {
   id: string;
   user_id: string;
   user_display: string;
+  user_email: string | null;
+  user_name: string | null;
+  telegram_username: string | null;
+  org_name: string | null;
   responses: Record<string, unknown>;
   responses_readable: Record<string, string>;
   form_version: string;
@@ -201,20 +205,49 @@ export default function QualificationPage() {
                   key={q.id} 
                   className="border rounded-lg p-4 space-y-3"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{q.user_display}</span>
-                      {q.completed_at ? (
-                        <Badge variant="default" className="bg-green-500">Завершено</Badge>
-                      ) : (
-                        <Badge variant="secondary">В процессе</Badge>
-                      )}
+                  {/* User Info Header */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-base">
+                          {q.user_name || q.user_email || q.user_id.slice(0, 8) + '...'}
+                        </span>
+                        {q.completed_at ? (
+                          <Badge variant="default" className="bg-green-500">Завершено</Badge>
+                        ) : (
+                          <Badge variant="secondary">В процессе</Badge>
+                        )}
+                      </div>
+                      
+                      {/* Contact Info */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
+                        {q.user_email && (
+                          <span>📧 {q.user_email}</span>
+                        )}
+                        {q.telegram_username && (
+                          <span>
+                            <a 
+                              href={`https://t.me/${q.telegram_username}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              @{q.telegram_username}
+                            </a>
+                          </span>
+                        )}
+                        {q.org_name && (
+                          <span>🏢 {q.org_name}</span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-sm text-muted-foreground">
+                    
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
                       {formatDistanceToNow(new Date(q.created_at), { addSuffix: true, locale: ru })}
                     </span>
                   </div>
                   
+                  {/* Qualification Answers */}
                   <div className="flex flex-wrap gap-2">
                     {q.responses_readable.role && (
                       <Badge variant="outline">
