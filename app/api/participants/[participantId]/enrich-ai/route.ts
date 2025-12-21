@@ -12,10 +12,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/participantEnrichmentService';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +27,7 @@ export async function GET(
   try {
     const paramsData = await params;
     participantId = paramsData.participantId;
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const searchParams = request.nextUrl.searchParams;
     const orgId = searchParams.get('orgId');
     const daysBack = parseInt(searchParams.get('daysBack') || '90');
@@ -35,13 +36,13 @@ export async function GET(
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
     
-    // Check permissions (owner/admin only)
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check permissions (owner/admin only) via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -86,7 +87,7 @@ export async function POST(
   try {
     const paramsData = await params;
     participantId = paramsData.participantId;
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const body = await request.json();
     const { useAI = true, includeBehavior = true, includeReactions = true, daysBack = 90 } = body;
     orgId = body.orgId;
@@ -95,13 +96,13 @@ export async function POST(
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
     
-    // Check permissions (owner/admin only)
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check permissions (owner/admin only) via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
-import pino from 'pino';
+import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createServiceLogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const logger = createServiceLogger('ParticipantTagsById');
 
 export const dynamic = 'force-dynamic';
 
@@ -16,18 +17,17 @@ export async function DELETE(
 ) {
   try {
     const { participantId, tagId } = await params;
+    const adminSupabase = createAdminServer();
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (authError || !user) {
-      logger.error({ error: authError }, 'Authentication failed');
+    if (!user) {
+      logger.error({}, 'Authentication failed');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get participant's org_id
-    const adminSupabase = createAdminServer();
     const { data: participant, error: participantError } = await adminSupabase
       .from('participants')
       .select('org_id')
@@ -40,7 +40,7 @@ export async function DELETE(
     }
 
     // Check admin permissions
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', participant.org_id)

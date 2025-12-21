@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const logger = createServiceLogger('ParticipantTags');
 
@@ -16,18 +17,17 @@ export async function GET(
 ) {
   try {
     const { participantId } = await params;
+    const adminSupabase = createAdminServer();
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
 
-    if (authError || !user) {
-      logger.error({ error: authError }, 'Authentication failed');
+    if (!user) {
+      logger.error({}, 'Authentication failed');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get participant's org_id
-    const adminSupabase = createAdminServer();
     const { data: participant, error: participantError } = await adminSupabase
       .from('participants')
       .select('org_id')
@@ -40,7 +40,7 @@ export async function GET(
     }
 
     // Check admin permissions
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', participant.org_id)
@@ -91,17 +91,17 @@ export async function POST(
       return NextResponse.json({ error: 'tag_id is required' }, { status: 400 });
     }
 
-    // Check authentication
-    const supabase = await createClientServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const adminSupabase = createAdminServer();
 
-    if (authError || !user) {
-      logger.error({ error: authError }, 'Authentication failed');
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+
+    if (!user) {
+      logger.error({}, 'Authentication failed');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get participant's org_id
-    const adminSupabase = createAdminServer();
     const { data: participant, error: participantError } = await adminSupabase
       .from('participants')
       .select('org_id')
@@ -114,7 +114,7 @@ export async function POST(
     }
 
     // Check admin permissions
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', participant.org_id)

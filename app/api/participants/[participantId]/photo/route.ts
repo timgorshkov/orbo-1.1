@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import sharp from 'sharp'
 
 export async function POST(
@@ -13,12 +14,10 @@ export async function POST(
   try {
     const paramsData = await params;
     participantId = paramsData.participantId;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -37,7 +36,6 @@ export async function POST(
     const role = await getUserRoleInOrg(user.id, orgId)
     const isAdmin = role === 'owner' || role === 'admin'
 
-    const adminSupabase = createAdminServer()
     const { data: participant } = await adminSupabase
       .from('participants')
       .select('tg_user_id, photo_url')
@@ -51,7 +49,7 @@ export async function POST(
     // Check if own profile
     let isOwnProfile = false
     if (participant.tg_user_id) {
-      const { data: telegramAccount } = await supabase
+      const { data: telegramAccount } = await adminSupabase
         .from('user_telegram_accounts')
         .select('user_id')
         .eq('telegram_user_id', participant.tg_user_id)
@@ -142,12 +140,10 @@ export async function DELETE(
   try {
     const paramsData = await params;
     participantId = paramsData.participantId;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -163,7 +159,6 @@ export async function DELETE(
     const role = await getUserRoleInOrg(user.id, orgId)
     const isAdmin = role === 'owner' || role === 'admin'
 
-    const adminSupabase = createAdminServer()
     const { data: participant } = await adminSupabase
       .from('participants')
       .select('tg_user_id, photo_url')
@@ -177,7 +172,7 @@ export async function DELETE(
     // Check if own profile
     let isOwnProfile = false
     if (participant.tg_user_id) {
-      const { data: telegramAccount } = await supabase
+      const { data: telegramAccount } = await adminSupabase
         .from('user_telegram_accounts')
         .select('user_id')
         .eq('telegram_user_id', participant.tg_user_id)

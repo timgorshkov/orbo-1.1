@@ -58,6 +58,10 @@ if (hasYandexCredentials) {
       url: 'https://oauth.yandex.ru/authorize',
       params: {
         response_type: 'code',
+        // Yandex использует свои собственные scopes, не OpenID Connect
+        // login:email - доступ к email
+        // login:info - доступ к базовой информации профиля
+        scope: 'login:email login:info',
       },
     },
     token: {

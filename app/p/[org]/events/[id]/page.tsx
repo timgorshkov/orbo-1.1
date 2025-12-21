@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import EventDetail from '@/components/events/event-detail'
 import { Metadata } from 'next'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import { createServiceLogger } from '@/lib/logger'
 import { RequestTiming } from '@/lib/utils/timing'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
@@ -157,7 +158,6 @@ export default async function EventDetailPage({
   const { org: orgId, id: eventId } = await params
   const { edit } = await searchParams
   
-  const supabase = await createClientServer()
   const adminSupabase = createAdminServer()
   const logger = createServiceLogger('EventDetailPage');
   
@@ -214,12 +214,12 @@ export default async function EventDetailPage({
     )
   }
 
-  // Check authentication
+  // Check authentication via unified auth
   timing.mark('check_auth_start');
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const user = await getUnifiedUser();
   timing.mark('check_auth_end');
   timing.measure('check_auth', 'check_auth_start', 'check_auth_end');
-  const isAuthenticated = !authError && !!user
+  const isAuthenticated = !!user
   
   // For PUBLIC events: show event details to everyone (auth required only for registration)
   // For PRIVATE events: require authentication and org membership
@@ -264,19 +264,16 @@ export default async function EventDetailPage({
   if (!event.is_public) {
     // Check membership directly instead of using requireOrgAccess (which throws)
     timing.mark('check_org_access_start');
-    const [{ data: membership }, { data: rpcCheck }] = await Promise.all([
-      supabase
-        .from('memberships')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('org_id', orgId)
-        .maybeSingle(),
-      supabase.rpc('is_org_member_rpc', { _org: orgId })
-    ]);
+    const { data: membership } = await adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle();
     timing.mark('check_org_access_end');
     timing.measure('check_org_access', 'check_org_access_start', 'check_org_access_end');
     
-    hasOrgAccess = !!(membership || rpcCheck)
+    hasOrgAccess = !!membership
   }
   
   // If user doesn't have access to private event, show auth form
@@ -336,7 +333,7 @@ export default async function EventDetailPage({
 
   // Check user's role
   timing.mark('fetch_membership_start');
-  const { data: membership } = await supabase
+  const { data: membershipData } = await adminSupabase
     .from('memberships')
     .select('role')
     .eq('user_id', user.id)
@@ -345,7 +342,7 @@ export default async function EventDetailPage({
   timing.mark('fetch_membership_end');
   timing.measure('fetch_membership', 'fetch_membership_start', 'fetch_membership_end');
 
-  const role = membership?.role || 'guest'
+  const role = membershipData?.role || 'guest'
   
   logger.debug({
     user_id: user.id,
@@ -358,7 +355,7 @@ export default async function EventDetailPage({
   // Check if current user is registered
   // Find participant via user_telegram_accounts
   timing.mark('fetch_tg_account_start');
-  const { data: telegramAccount } = await supabase
+  const { data: telegramAccount } = await adminSupabase
     .from('user_telegram_accounts')
     .select('telegram_user_id')
     .eq('user_id', user.id)

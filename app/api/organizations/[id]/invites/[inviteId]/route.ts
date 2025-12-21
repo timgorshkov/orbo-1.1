@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // DELETE - удалить приглашение
 export async function DELETE(
@@ -14,19 +15,17 @@ export async function DELETE(
     const paramsData = await params;
     orgId = paramsData.id;
     inviteId = paramsData.inviteId;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Проверяем авторизацию
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    // Проверяем авторизацию via unified auth
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Проверяем права (только owner/admin)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -38,7 +37,7 @@ export async function DELETE(
     }
 
     // Удаляем приглашение
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('organization_invites')
       .delete()
       .eq('id', inviteId)
@@ -81,19 +80,17 @@ export async function PUT(
     const paramsData = await params;
     orgId = paramsData.id;
     inviteId = paramsData.inviteId;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Проверяем авторизацию
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    // Проверяем авторизацию via unified auth
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Проверяем права (только owner/admin)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)
@@ -109,7 +106,7 @@ export async function PUT(
     const { is_active, description, max_uses, expires_at } = body
 
     // Обновляем приглашение
-    const { data: invite, error } = await supabase
+    const { data: invite, error } = await adminSupabase
       .from('organization_invites')
       .update({
         is_active: is_active !== undefined ? is_active : undefined,

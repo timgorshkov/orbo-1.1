@@ -1,8 +1,9 @@
 import { notFound, redirect } from 'next/navigation'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail'
 import ParticipantDetailTabs from '@/components/members/participant-detail-tabs'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,12 +13,10 @@ export default async function ParticipantPage({
   params: Promise<{ org: string; participantId: string }> 
 }) {
   const { org: orgId, participantId } = await params
-  const supabase = await createClientServer()
+  const adminSupabase = createAdminServer()
 
-  // Check authentication
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Check authentication via unified auth
+  const user = await getUnifiedUser()
 
   if (!user) {
     redirect('/signin')
@@ -41,7 +40,7 @@ export default async function ParticipantPage({
   // Check if user can edit (admin or own profile via telegram)
   let isOwnProfile = false
   if (detail.participant.tg_user_id) {
-    const { data: telegramAccount } = await supabase
+    const { data: telegramAccount } = await adminSupabase
       .from('user_telegram_accounts')
       .select('user_id')
       .eq('telegram_user_id', detail.participant.tg_user_id)

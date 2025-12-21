@@ -6,19 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export async function GET(
   request: NextRequest,
@@ -27,16 +17,16 @@ export async function GET(
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
   const orgId = params.id;
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check permissions
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -48,7 +38,7 @@ export async function GET(
     }
 
     // Fetch settings
-    const { data: org, error } = await supabaseAdmin
+    const { data: org, error } = await adminSupabase
       .from('organizations')
       .select('digest_enabled, digest_day, digest_time, last_digest_sent_at, timezone')
       .eq('id', orgId)
@@ -91,18 +81,18 @@ export async function PATCH(
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
   const orgId = params.id;
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const body = await request.json();
     const { digest_enabled, digest_day, digest_time } = body;
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check permissions (owner only for settings)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -132,7 +122,7 @@ export async function PATCH(
     if (typeof digest_day !== 'undefined') updates.digest_day = digest_day;
     if (typeof digest_time !== 'undefined') updates.digest_time = digest_time;
 
-    const { error } = await supabaseAdmin
+    const { error } = await adminSupabase
       .from('organizations')
       .update(updates)
       .eq('id', orgId);
