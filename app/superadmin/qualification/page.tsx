@@ -199,81 +199,65 @@ export default function QualificationPage() {
               Пока нет ответов на квалификацию
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="divide-y">
               {recent.map((q) => (
-                <div 
-                  key={q.id} 
-                  className="border rounded-lg p-4 space-y-3"
-                >
-                  {/* User Info Header */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-base">
-                          {q.user_name || q.user_email || q.user_id.slice(0, 8) + '...'}
-                        </span>
-                        {q.completed_at ? (
-                          <Badge variant="default" className="bg-green-500">Завершено</Badge>
-                        ) : (
-                          <Badge variant="secondary">В процессе</Badge>
-                        )}
-                      </div>
-                      
-                      {/* Contact Info */}
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
-                        {q.user_email && (
-                          <span>📧 {q.user_email}</span>
-                        )}
-                        {q.telegram_username && (
-                          <span>
-                            <a 
-                              href={`https://t.me/${q.telegram_username}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline"
-                            >
-                              @{q.telegram_username}
-                            </a>
-                          </span>
-                        )}
-                        {q.org_name && (
-                          <span>🏢 {q.org_name}</span>
-                        )}
-                      </div>
+                <div key={q.id} className="py-3 first:pt-0 last:pb-0">
+                  {/* Compact Row */}
+                  <div className="flex items-center justify-between gap-3">
+                    {/* User + Status */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="font-medium truncate">
+                        {q.user_name || q.user_email || 'Неизвестный пользователь'}
+                      </span>
+                      {q.telegram_username && (
+                        <a 
+                          href={`https://t.me/${q.telegram_username}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline text-sm"
+                        >
+                          @{q.telegram_username}
+                        </a>
+                      )}
+                      {q.org_name && (
+                        <span className="text-sm text-muted-foreground hidden sm:inline">• {q.org_name}</span>
+                      )}
                     </div>
                     
-                    <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      {formatDistanceToNow(new Date(q.created_at), { addSuffix: true, locale: ru })}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {q.completed_at ? (
+                        <Badge variant="default" className="bg-green-500 text-xs">✓</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">...</Badge>
+                      )}
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDistanceToNow(new Date(q.created_at), { addSuffix: true, locale: ru })}
+                      </span>
+                    </div>
                   </div>
                   
-                  {/* Qualification Answers */}
-                  <div className="flex flex-wrap gap-2">
+                  {/* Answers Row */}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {q.responses_readable.role && (
-                      <Badge variant="outline">
-                        👤 {q.responses_readable.role}
+                      <Badge variant="outline" className="text-xs py-0">
+                        {q.responses_readable.role}
                       </Badge>
                     )}
                     {q.responses_readable.community_type && (
-                      <Badge variant="outline">
-                        🏢 {q.responses_readable.community_type}
+                      <Badge variant="outline" className="text-xs py-0">
+                        {q.responses_readable.community_type}
                       </Badge>
                     )}
                     {q.responses_readable.groups_count && (
-                      <Badge variant="outline">
-                        💬 {q.responses_readable.groups_count} групп
+                      <Badge variant="outline" className="text-xs py-0">
+                        {q.responses_readable.groups_count} групп
                       </Badge>
                     )}
-                  </div>
-
-                  {q.responses_readable.pain_points && (
-                    <div className="text-sm text-muted-foreground">
-                      <span className="font-medium">Боли:</span> {q.responses_readable.pain_points}
-                    </div>
-                  )}
-
-                  <div className="text-xs text-muted-foreground">
-                    ID: {q.user_id.slice(0, 8)}... | Версия: {q.form_version}
+                    {q.responses_readable.pain_points && (
+                      <span className="text-xs text-muted-foreground">
+                        • {q.responses_readable.pain_points}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
