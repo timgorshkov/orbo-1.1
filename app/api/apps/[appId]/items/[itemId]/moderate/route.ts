@@ -1,8 +1,9 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
 import { notifyItemApproved, notifyItemRejected } from '@/lib/services/appsNotificationService';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -33,8 +34,6 @@ export async function POST(
   const { appId, itemId } = await params;
   
   try {
-    // ✅ Use separate clients: user client for auth, admin for DB operations
-    const supabase = await createClientServer();
     const adminSupabase = createAdminServer();
     
     const body = await request.json();
@@ -47,9 +46,9 @@ export async function POST(
       );
     }
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -66,7 +65,7 @@ export async function POST(
     }
 
     // Check moderator permissions
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingItem.org_id)
@@ -125,7 +124,7 @@ export async function POST(
 
     // Log analytics event
     try {
-      await supabase.rpc('log_app_event', {
+      await adminSupabase.rpc('log_app_event', {
         p_app_id: appId,
         p_event_type: action === 'approve' ? 'item_approved' : 'item_rejected',
         p_user_id: user.id,

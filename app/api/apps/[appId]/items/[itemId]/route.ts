@@ -1,6 +1,7 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // GET /api/apps/[appId]/items/[itemId] - Get item details (PUBLIC)
 export async function GET(
@@ -14,11 +15,9 @@ export async function GET(
   try {
     // Use admin client for public read access (no RLS restrictions)
     const adminSupabase = createAdminServer();
-    // Also create regular client for analytics (to get user session if available)
-    const supabase = await createClientServer();
 
-    // ✅ Check user permissions
-    const { data: { user } } = await supabase.auth.getUser();
+    // ✅ Check user permissions via unified auth
+    const user = await getUnifiedUser();
     let isAdmin = false;
     
     if (user) {
@@ -30,7 +29,7 @@ export async function GET(
         .maybeSingle();
       
       if (itemOrg) {
-        const { data: membership } = await supabase
+        const { data: membership } = await adminSupabase
           .from('memberships')
           .select('role')
           .eq('org_id', itemOrg.org_id)
@@ -164,8 +163,6 @@ export async function GET(
 
     // Log analytics event (optional - fire and forget)
     try {
-      // Try to get user session (if available, e.g. logged in user viewing)
-      const { data: { user } } = await supabase.auth.getUser();
       // Use admin client for RPC call (bypasses RLS)
       await adminSupabase.rpc('log_app_event', {
         p_app_id: appId,
@@ -209,8 +206,7 @@ export async function PATCH(
   const { appId, itemId } = await params;
   
   try {
-    const supabase = await createClientServer();
-    const adminSupabase = createAdminServer(); // ✅ For participant lookup (bypass RLS)
+    const adminSupabase = createAdminServer();
     const body = await request.json();
     const { 
       data, 
@@ -222,14 +218,14 @@ export async function PATCH(
       status 
     } = body;
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get existing item
-    const { data: existingItem, error: fetchError } = await supabase
+    const { data: existingItem, error: fetchError } = await adminSupabase
       .from('app_items')
       .select('creator_id, org_id, collection_id')
       .eq('id', itemId)
@@ -240,7 +236,7 @@ export async function PATCH(
     }
 
     // Check permissions
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingItem.org_id)
@@ -296,7 +292,7 @@ export async function PATCH(
     }
 
     // Update item
-    const { data: item, error: updateError } = await supabase
+    const { data: item, error: updateError } = await adminSupabase
       .from('app_items')
       .update(updates)
       .eq('id', itemId)
@@ -313,7 +309,7 @@ export async function PATCH(
 
     // Log analytics event
     try {
-      await supabase.rpc('log_app_event', {
+      await adminSupabase.rpc('log_app_event', {
         p_app_id: appId,
         p_event_type: 'item_updated',
         p_user_id: user.id,
@@ -354,17 +350,16 @@ export async function DELETE(
   const { appId, itemId } = await params;
   
   try {
-    const supabase = await createClientServer();
     const adminSupabase = createAdminServer();
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get existing item
-    const { data: existingItem, error: fetchError } = await supabase
+    const { data: existingItem, error: fetchError } = await adminSupabase
       .from('app_items')
       .select('creator_id, org_id, collection_id')
       .eq('id', itemId)
@@ -375,7 +370,7 @@ export async function DELETE(
     }
 
     // Check permissions (owner or admin)
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', existingItem.org_id)
@@ -418,7 +413,7 @@ export async function DELETE(
     }
 
     // Delete item (CASCADE will delete reactions, comments)
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminSupabase
       .from('app_items')
       .delete()
       .eq('id', itemId);
