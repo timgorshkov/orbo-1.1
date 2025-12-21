@@ -106,13 +106,99 @@ const userIdCache = new Map<string, { userId: string; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут
 
 /**
+ * Helper function to check NextAuth session
+ * Extracted for reuse and to avoid duplicate code
+ */
+async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cookies>>): Promise<UnifiedSession | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let nextAuthSession: any = null;
+  try {
+    const authResult = await nextAuth();
+    if (authResult && typeof authResult === 'object' && 'user' in authResult) {
+      nextAuthSession = authResult;
+    }
+  } catch (authError) {
+    logger.warn({
+      error: authError instanceof Error ? authError.message : String(authError),
+    }, 'NextAuth auth() failed');
+    return null;
+  }
+  
+  if (!nextAuthSession?.user?.email) {
+    return null;
+  }
+  
+  const userEmail = nextAuthSession.user.email.toLowerCase();
+  let userId = nextAuthSession.user.id || '';
+  
+  // Проверяем кэш для быстрого ответа
+  const cached = userIdCache.get(userEmail);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    userId = cached.userId;
+    logger.debug({ email: userEmail, cached_user_id: userId }, 'Using cached Supabase user ID');
+  } else {
+    // Ищем существующего Supabase пользователя по email (с таймаутом)
+    try {
+      const lookupPromise = lookupSupabaseUserByEmail(userEmail, nextAuthSession.user.id);
+      const timeoutPromise = new Promise<string | null>((_, reject) => 
+        setTimeout(() => reject(new Error('User lookup timeout')), 3000)
+      );
+      
+      const supabaseUserId = await Promise.race([lookupPromise, timeoutPromise]);
+      
+      if (supabaseUserId) {
+        userId = supabaseUserId;
+        userIdCache.set(userEmail, { userId, timestamp: Date.now() });
+      }
+    } catch (error) {
+      logger.warn({
+        error: error instanceof Error ? error.message : String(error),
+        email: userEmail,
+      }, 'User lookup failed or timed out, using NextAuth ID');
+    }
+  }
+  
+  return {
+    user: {
+      id: userId,
+      email: nextAuthSession.user.email,
+      name: nextAuthSession.user.name,
+      image: nextAuthSession.user.image,
+      provider: 'nextauth',
+      raw: { nextauth: nextAuthSession.user },
+    },
+    provider: 'nextauth',
+    expires: nextAuthSession.expires,
+  };
+}
+
+/**
  * Get unified session from either Supabase or NextAuth
  * Prefers Supabase session if both are present (for backward compatibility)
+ * ⚡ ОПТИМИЗАЦИЯ: Проверяем cookies сначала, чтобы избежать лишних сетевых вызовов
  */
 export async function getUnifiedSession(): Promise<UnifiedSession | null> {
   try {
-    // 1. Check Supabase session first (primary)
     const cookieStore = await cookies();
+    
+    // ⚡ ОПТИМИЗАЦИЯ: Быстрая проверка наличия cookies без сетевых вызовов
+    const hasSupabaseCookies = cookieStore.getAll().some(c => 
+      c.name.includes('sb-') && c.name.includes('-auth-token')
+    );
+    const hasNextAuthCookies = cookieStore.get('authjs.session-token') || 
+                               cookieStore.get('__Secure-authjs.session-token');
+    
+    // Если нет ни одной auth cookie - сразу возвращаем null
+    if (!hasSupabaseCookies && !hasNextAuthCookies) {
+      return null;
+    }
+    
+    // Если есть только NextAuth cookies - сразу проверяем NextAuth (пропускаем Supabase)
+    if (!hasSupabaseCookies && hasNextAuthCookies) {
+      return await checkNextAuthSession(cookieStore);
+    }
+    
+    // 1. Check Supabase session (primary)
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -156,75 +242,9 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
       };
     }
 
-    // 2. Check NextAuth session (fallback)
-    // Обёрнуто в try-catch для обработки UntrustedHost ошибки
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let nextAuthSession: any = null;
-    try {
-      const authResult = await nextAuth();
-      // auth() может вернуть Session или middleware handler, проверяем что это Session
-      if (authResult && typeof authResult === 'object' && 'user' in authResult) {
-        nextAuthSession = authResult;
-      }
-    } catch (authError) {
-      // UntrustedHost или другая ошибка NextAuth
-      logger.warn({
-        error: authError instanceof Error ? authError.message : String(authError),
-      }, 'NextAuth auth() failed, checking cookies directly');
-      
-      // Fallback: проверяем наличие session cookie
-      const hasSessionCookie = cookieStore.get('authjs.session-token') || 
-                               cookieStore.get('__Secure-authjs.session-token');
-      if (hasSessionCookie) {
-        logger.debug({}, 'Found NextAuth session cookie but auth() failed');
-        // Не можем получить данные сессии без auth(), возвращаем null
-        // Пользователю придётся перелогиниться
-      }
-    }
-    
-    if (nextAuthSession?.user?.email) {
-      const userEmail = nextAuthSession.user.email.toLowerCase();
-      let userId = nextAuthSession.user.id || '';
-      
-      // Проверяем кэш для быстрого ответа
-      const cached = userIdCache.get(userEmail);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-        userId = cached.userId;
-        logger.debug({ email: userEmail, cached_user_id: userId }, 'Using cached Supabase user ID');
-      } else {
-        // Ищем существующего Supabase пользователя по email (с таймаутом)
-        try {
-          const lookupPromise = lookupSupabaseUserByEmail(userEmail, nextAuthSession.user.id);
-          const timeoutPromise = new Promise<string | null>((_, reject) => 
-            setTimeout(() => reject(new Error('User lookup timeout')), 3000)
-          );
-          
-          const supabaseUserId = await Promise.race([lookupPromise, timeoutPromise]);
-          
-          if (supabaseUserId) {
-            userId = supabaseUserId;
-            userIdCache.set(userEmail, { userId, timestamp: Date.now() });
-          }
-        } catch (error) {
-          logger.warn({
-            error: error instanceof Error ? error.message : String(error),
-            email: userEmail,
-          }, 'User lookup failed or timed out, using NextAuth ID');
-        }
-      }
-      
-      return {
-        user: {
-          id: userId,
-          email: nextAuthSession.user.email,
-          name: nextAuthSession.user.name,
-          image: nextAuthSession.user.image,
-          provider: 'nextauth',
-          raw: { nextauth: nextAuthSession.user },
-        },
-        provider: 'nextauth',
-        expires: nextAuthSession.expires,
-      };
+    // 2. Check NextAuth session (fallback) - только если есть cookie
+    if (hasNextAuthCookies) {
+      return await checkNextAuthSession(cookieStore);
     }
 
     return null;

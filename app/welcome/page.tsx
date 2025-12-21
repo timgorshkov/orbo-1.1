@@ -15,21 +15,26 @@ export default async function WelcomePage() {
 
   const adminSupabase = createAdminServer()
 
-  // Проверяем, заполнена ли квалификация
-  const { data: qualification } = await adminSupabase
-    .from('user_qualification_responses')
-    .select('completed_at, responses')
-    .eq('user_id', user.id)
-    .single()
+  // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно
+  const [qualificationResult, membershipsResult] = await Promise.all([
+    // Проверяем, заполнена ли квалификация
+    adminSupabase
+      .from('user_qualification_responses')
+      .select('completed_at, responses')
+      .eq('user_id', user.id)
+      .single(),
+    
+    // Проверяем количество организаций пользователя
+    adminSupabase
+      .from('memberships')
+      .select('org_id')
+      .eq('user_id', user.id)
+  ]);
+
+  const { data: qualification } = qualificationResult;
+  const { data: memberships } = membershipsResult;
 
   const qualificationCompleted = !!qualification?.completed_at
-
-  // Проверяем количество организаций пользователя
-  const { data: memberships } = await adminSupabase
-    .from('memberships')
-    .select('org_id')
-    .eq('user_id', user.id)
-
   const orgCount = memberships?.length || 0
 
   // Если квалификация пройдена И есть организации — редирект на /orgs

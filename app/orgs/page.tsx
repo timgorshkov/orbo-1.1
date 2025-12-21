@@ -28,34 +28,48 @@ export default async function OrganizationsPage() {
       provider: session.provider,
     }, 'User authenticated via unified auth');
 
-  // Проверяем, прошёл ли пользователь квалификацию
   const adminSupabase = createAdminServer();
-  const { data: qualification } = await adminSupabase
-    .from('user_qualification_responses')
-    .select('completed_at')
-    .eq('user_id', user.id)
-    .single();
+
+  // ⚡ ОПТИМИЗАЦИЯ: Выполняем все начальные запросы параллельно
+  const [qualificationResult, membershipsResult, telegramAccountsResult] = await Promise.all([
+    // Проверяем квалификацию
+    adminSupabase
+      .from('user_qualification_responses')
+      .select('completed_at')
+      .eq('user_id', user.id)
+      .single(),
+    
+    // Получаем все memberships пользователя
+    adminSupabase
+      .from('memberships')
+      .select(`
+        role,
+        org_id,
+        organizations (
+          id,
+          name,
+          logo_url
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('role', { ascending: true }),
+    
+    // Получаем telegram аккаунты
+    adminSupabase
+      .from('user_telegram_accounts')
+      .select('org_id, telegram_user_id')
+      .eq('user_id', user.id)
+  ]);
+
+  const { data: qualification } = qualificationResult;
+  const { data: memberships, error: membershipsError } = membershipsResult;
+  const { data: telegramAccounts } = telegramAccountsResult;
 
   // Если квалификация не пройдена — редирект на welcome для прохождения
   if (!qualification?.completed_at) {
     logger.debug({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
     redirect('/welcome');
   }
-
-  // Получаем все memberships пользователя
-  const { data: memberships, error: membershipsError } = await adminSupabase
-    .from('memberships')
-    .select(`
-      role,
-      org_id,
-      organizations (
-        id,
-        name,
-        logo_url
-      )
-    `)
-    .eq('user_id', user.id)
-    .order('role', { ascending: true })
 
   if (membershipsError) {
     logger.error({ 
@@ -74,51 +88,62 @@ export default async function OrganizationsPage() {
     };
   }) || []
 
-  // Дополнительно: находим организации, где пользователь участник через Telegram
-  const { data: telegramAccounts } = await adminSupabase
-    .from('user_telegram_accounts')
-    .select('org_id, telegram_user_id')
-    .eq('user_id', user.id)
-
+  // ⚡ ОПТИМИЗАЦИЯ: Обрабатываем telegram аккаунты параллельно вместо цикла с await
   if (telegramAccounts && telegramAccounts.length > 0) {
-    for (const ta of telegramAccounts) {
-      // Проверяем, есть ли уже эта организация в списке
-      if (!organizations.find(o => o.org_id === ta.org_id)) {
-        // Проверяем, есть ли участник в этой организации
-        const { data: participant } = await adminSupabase
+    // Фильтруем только те, что ещё не в списке организаций
+    const missingOrgIds = telegramAccounts
+      .filter(ta => !organizations.find(o => o.org_id === ta.org_id))
+      .map(ta => ta.org_id);
+    
+    if (missingOrgIds.length > 0) {
+      // Получаем организации одним запросом
+      const { data: orgsData } = await adminSupabase
+        .from('organizations')
+        .select('id, name, logo_url')
+        .in('id', missingOrgIds);
+      
+      if (orgsData && orgsData.length > 0) {
+        // Проверяем участников одним запросом
+        const tgUserIds = telegramAccounts
+          .filter(ta => missingOrgIds.includes(ta.org_id))
+          .map(ta => ta.telegram_user_id);
+        
+        const { data: participants } = await adminSupabase
           .from('participants')
-          .select('id')
-          .eq('org_id', ta.org_id)
-          .eq('tg_user_id', ta.telegram_user_id)
-          .is('merged_into', null)
-          .maybeSingle()
-
-        if (participant) {
-          // Получаем инфо об организации
-          const { data: orgData } = await adminSupabase
-            .from('organizations')
-            .select('id, name, logo_url')
-            .eq('id', ta.org_id)
-            .single()
-
-          if (orgData) {
-            organizations.push({
-              org_id: orgData.id,
-              org_name: orgData.name || 'Без названия',
-              logo_url: orgData.logo_url || null,
-              role: 'member'
-            })
-
-            // Автоматически создаём membership для будущих визитов
-            await adminSupabase
-              .from('memberships')
-              .insert({
-                user_id: user.id,
-                org_id: orgData.id,
-                role: 'member'
-              })
-              // Игнорируем duplicate key error (если membership уже существует)
-          }
+          .select('id, org_id, tg_user_id')
+          .in('org_id', missingOrgIds)
+          .in('tg_user_id', tgUserIds)
+          .is('merged_into', null);
+        
+        // Создаём Set для быстрой проверки
+        const participantOrgIds = new Set(participants?.map(p => p.org_id) || []);
+        
+        // Добавляем организации, где есть participants
+        const orgsToAdd = orgsData.filter(org => participantOrgIds.has(org.id));
+        
+        for (const orgData of orgsToAdd) {
+          organizations.push({
+            org_id: orgData.id,
+            org_name: orgData.name || 'Без названия',
+            logo_url: orgData.logo_url || null,
+            role: 'member'
+          });
+        }
+        
+        // Создаём memberships для всех новых организаций одним запросом
+        if (orgsToAdd.length > 0) {
+          const membershipsToInsert = orgsToAdd.map(org => ({
+            user_id: user.id,
+            org_id: org.id,
+            role: 'member'
+          }));
+          
+          await adminSupabase
+            .from('memberships')
+            .upsert(membershipsToInsert, { 
+              onConflict: 'user_id,org_id',
+              ignoreDuplicates: true 
+            });
         }
       }
     }
