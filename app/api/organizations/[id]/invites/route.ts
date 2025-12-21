@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET - получить все приглашения организации
 export async function GET(
@@ -12,16 +13,14 @@ export async function GET(
   try {
     const paramsData = await params;
     orgId = paramsData.id;
-    const supabase = await createClientServer()
-
-    // Проверяем авторизацию
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const supabase = createAdminServer()
 
     // Проверяем права (только owner/admin)
     const { data: membership } = await supabase
@@ -78,16 +77,14 @@ export async function POST(
   try {
     const paramsData = await params;
     orgId = paramsData.id;
-    const supabase = await createClientServer()
-
-    // Проверяем авторизацию
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    
+    const user = await getUnifiedUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const supabase = createAdminServer()
 
     // Проверяем права (только owner/admin)
     const { data: membership } = await supabase

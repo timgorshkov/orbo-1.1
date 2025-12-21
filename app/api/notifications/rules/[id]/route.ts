@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 const logger = createServiceLogger('NotificationRuleAPI')
 
@@ -14,10 +15,8 @@ export async function GET(
   try {
     const { id } = await params
     
-    const supabase = await createClientServer()
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -62,10 +61,8 @@ export async function PUT(
     const body = await request.json()
     const { name, description, rule_type, config, use_ai, notify_owner, notify_admins, is_enabled } = body
 
-    const supabase = await createClientServer()
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -134,10 +131,8 @@ export async function DELETE(
   try {
     const { id } = await params
     
-    const supabase = await createClientServer()
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
