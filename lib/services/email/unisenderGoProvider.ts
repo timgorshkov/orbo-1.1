@@ -14,12 +14,16 @@ export class UnisenderGoEmailProvider implements EmailProvider {
   private apiKey: string;
   private fromEmail: string;
   private fromName: string;
-  private baseUrl = 'https://go1.unisender.ru/ru/transactional/api/v1';
+  // URL зависит от региона аккаунта (go1 или go2)
+  // Можно переопределить через UNISENDER_API_URL
+  private baseUrl: string;
 
   constructor() {
     this.apiKey = process.env.UNISENDER_API_KEY || '';
     this.fromEmail = process.env.UNISENDER_FROM_EMAIL || 'noreply@orbo.ru';
     this.fromName = process.env.UNISENDER_FROM_NAME || 'Orbo';
+    // По умолчанию go2 (более новый), можно переопределить через env
+    this.baseUrl = process.env.UNISENDER_API_URL || 'https://go2.unisender.ru/ru/transactional/api/v1';
   }
 
   isConfigured(): boolean {
