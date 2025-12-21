@@ -3,13 +3,11 @@
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { MaterialService } from '@/lib/server/materials/service';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { cookies } from 'next/headers';
 import { createServiceLogger } from '@/lib/logger';
 
 export async function fetchMaterialsTree(orgIdentifier: string) {
   const logger = createServiceLogger('MaterialsData', { orgIdentifier });
-  const cookieStore = cookies();
-  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin', 'member']);
+  await requireOrgAccess(orgIdentifier, ['owner', 'admin', 'member']);
 
   const admin = createAdminServer();
 
@@ -38,8 +36,7 @@ export async function fetchMaterialsTree(orgIdentifier: string) {
 }
 
 export async function fetchMaterialPage(orgIdentifier: string, pageId: string) {
-  const cookieStore = cookies();
-  await requireOrgAccess(orgIdentifier, cookieStore, ['owner', 'admin', 'member']);
+  await requireOrgAccess(orgIdentifier, ['owner', 'admin', 'member']);
 
   const admin = createAdminServer();
 
