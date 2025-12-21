@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // PATCH /api/events/[id]/participants/[registrationId] - Update event registration (admin only)
 export async function PATCH(
@@ -15,12 +16,11 @@ export async function PATCH(
     const paramsData = await params;
     eventId = paramsData.id;
     registrationId = paramsData.registrationId;
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

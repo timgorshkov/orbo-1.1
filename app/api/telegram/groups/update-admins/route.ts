@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createClientServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +18,9 @@ export async function POST(request: Request) {
     
     logger.info({ org_id: orgId }, 'Updating admin rights for org');
     
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { telegramMarkdownToHtml } from '@/lib/utils/telegramMarkdownToHtml'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // POST /api/events/[id]/notify - Send Telegram notification for event
 export async function POST(
@@ -23,11 +24,10 @@ export async function POST(
       )
     }
 
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
-    // Check authentication and admin rights
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication and admin rights via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

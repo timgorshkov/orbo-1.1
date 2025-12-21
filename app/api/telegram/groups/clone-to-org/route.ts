@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +18,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
     
-    // Получаем текущего пользователя
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Получаем текущего пользователя через unified auth
+    const user = await getUnifiedUser();
     
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
