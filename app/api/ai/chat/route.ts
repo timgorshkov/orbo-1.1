@@ -1,7 +1,8 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { chatWithAIConstructor, validateAppConfig } from '@/lib/services/aiConstructorService';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -13,11 +14,11 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request); // ✅ Initialize logger with request parameter
   
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get org_id if user has membership (optional for AI constructor)
-    const { data: memberships } = await supabase
+    const { data: memberships } = await adminSupabase
       .from('memberships')
       .select('org_id')
       .eq('user_id', user.id)

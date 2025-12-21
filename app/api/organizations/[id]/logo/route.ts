@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createStorage, BUCKET_MATERIALS, getBucket, getStoragePath } from '@/lib/storage'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import sharp from 'sharp'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
@@ -18,16 +19,16 @@ export async function POST(
   try {
     const paramsData = await params;
     orgId = paramsData.id;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check user is owner or admin
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -72,7 +73,7 @@ export async function POST(
     const bucket = getBucket(BUCKET_MATERIALS)
 
     // Delete old logo if exists
-    const { data: org } = await supabase
+    const { data: org } = await adminSupabase
       .from('organizations')
       .select('logo_url')
       .eq('id', orgId)
@@ -175,7 +176,7 @@ export async function POST(
     }, 'Logo uploaded successfully')
 
     // Update organization
-    const { data: updatedOrg, error: updateError } = await supabase
+    const { data: updatedOrg, error: updateError } = await adminSupabase
       .from('organizations')
       .update({ logo_url: publicUrl })
       .eq('id', orgId)
@@ -216,16 +217,16 @@ export async function DELETE(
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/logo' });
   try {
     const { id: orgId } = await params
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check user is owner or admin
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -240,7 +241,7 @@ export async function DELETE(
     }
 
     // Get current logo
-    const { data: org } = await supabase
+    const { data: org } = await adminSupabase
       .from('organizations')
       .select('logo_url')
       .eq('id', orgId)
@@ -266,7 +267,7 @@ export async function DELETE(
     }
 
     // Update organization
-    const { data: updatedOrg, error: updateError } = await supabase
+    const { data: updatedOrg, error: updateError } = await adminSupabase
       .from('organizations')
       .update({ logo_url: null })
       .eq('id', orgId)

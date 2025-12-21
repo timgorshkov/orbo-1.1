@@ -1,6 +1,7 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // GET /api/apps/[appId]/items - List items in app
 export async function GET(
@@ -66,8 +67,7 @@ export async function GET(
     }
 
     // ✅ Filter by status - check user permissions
-    const supabase = await createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
     
     let isAdmin = false;
     let userId = user?.id || null;
@@ -81,7 +81,7 @@ export async function GET(
         .single();
       
       if (app) {
-        const { data: membership } = await supabase
+        const { data: membership } = await adminSupabase
           .from('memberships')
           .select('role')
           .eq('org_id', app.org_id)
@@ -246,7 +246,7 @@ export async function POST(
   const { appId } = await params;
   
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const body = await request.json();
     const { 
       collectionId, 
@@ -265,14 +265,11 @@ export async function POST(
       );
     }
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Use admin client for reading (after auth check)
-    const adminSupabase = createAdminServer();
 
     // Get app and collection to verify access and get config
     const { data: app, error: appError } = await adminSupabase

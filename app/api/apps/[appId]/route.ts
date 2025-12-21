@@ -1,7 +1,8 @@
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction } from '@/lib/logAdminAction';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 // GET /api/apps/[appId] - Get app details (PUBLIC - no auth required)
 export async function GET(
@@ -79,18 +80,15 @@ export async function PATCH(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const body = await request.json();
     const { name, description, icon, config, status, visibility, primary_color, secondary_color, logo_url, custom_css } = body;
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Use admin client for reading (after auth check)
-    const adminSupabase = createAdminServer();
 
     // Get app to check org_id
     const { data: existingApp, error: fetchError } = await adminSupabase
@@ -191,16 +189,13 @@ export async function DELETE(
   const { appId } = params;
   
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
 
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Use admin client for reading (after auth check)
-    const adminSupabase = createAdminServer();
 
     // Get app to check org_id
     const { data: existingApp, error: fetchError } = await adminSupabase
