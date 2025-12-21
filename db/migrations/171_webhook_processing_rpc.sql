@@ -21,6 +21,9 @@ ON participant_groups (participant_id, tg_group_id);
 
 -- 3. Main RPC function for processing webhook messages
 -- Combines: participant lookup/create, group link, activity event insert
+-- Drop any existing version first
+DROP FUNCTION IF EXISTS process_webhook_message(UUID, BIGINT, BIGINT, BIGINT, BIGINT, BIGINT, BIGINT, TEXT, TEXT, TEXT, TEXT, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, JSONB);
+
 CREATE OR REPLACE FUNCTION process_webhook_message(
   p_org_id UUID,
   p_tg_user_id BIGINT,
@@ -182,6 +185,10 @@ GRANT EXECUTE ON FUNCTION process_webhook_message TO service_role;
 
 -- 4. Cleanup function for idempotency table
 -- Should be called by cron every hour
+-- Drop any existing versions first to avoid signature conflicts
+DROP FUNCTION IF EXISTS cleanup_webhook_idempotency();
+DROP FUNCTION IF EXISTS cleanup_webhook_idempotency(INTEGER);
+
 CREATE OR REPLACE FUNCTION cleanup_webhook_idempotency(
   p_retention_days INTEGER DEFAULT 7
 ) RETURNS INTEGER AS $$
