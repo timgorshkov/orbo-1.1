@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import WelcomeBlock from '@/components/dashboard/welcome-block'
