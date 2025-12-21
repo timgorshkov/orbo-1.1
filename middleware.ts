@@ -2,8 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
-// НЕ импортируем auth здесь - это вызывает UntrustedHost ошибку
-// Проверка NextAuth сессии происходит через SessionProvider на клиенте
+import { auth } from '@/auth'
 
 /**
  * Get the public base URL for redirects
@@ -96,14 +95,28 @@ export async function middleware(request: NextRequest) {
   }
 
   // ⭐ Проверка авторизации через Supabase
-  // NextAuth сессия проверяется через cookies authjs.session-token
   const {
     data: { session: supabaseSession },
   } = await supabase.auth.getSession()
 
-  // Проверяем наличие NextAuth session cookie (не вызываем auth() чтобы избежать UntrustedHost)
-  const hasNextAuthSession = request.cookies.has('authjs.session-token') || 
-                              request.cookies.has('__Secure-authjs.session-token')
+  // Проверяем NextAuth сессию через auth() функцию
+  // trustHost: true в auth.ts позволяет использовать auth() в middleware
+  let hasNextAuthSession = false
+  try {
+    const nextAuthSession = await auth()
+    hasNextAuthSession = !!nextAuthSession?.user
+  } catch (error) {
+    // Fallback: проверяем наличие session cookie напрямую
+    hasNextAuthSession = request.cookies.has('authjs.session-token') || 
+                          request.cookies.has('__Secure-authjs.session-token') ||
+                          request.cookies.has('next-auth.session-token') ||
+                          request.cookies.has('__Secure-next-auth.session-token')
+    logger.debug({ 
+      error: error instanceof Error ? error.message : String(error),
+      hasNextAuthSession,
+      cookies: Array.from(request.cookies.getAll()).map(c => c.name)
+    }, 'NextAuth session check fallback');
+  }
 
   // Пользователь авторизован если есть хотя бы одна активная сессия
   const isAuthenticated = !!supabaseSession || hasNextAuthSession
