@@ -115,6 +115,13 @@ export async function middleware(request: NextRequest) {
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
+    // Логируем только редиректы (не каждый запрос)
+    logger.debug({ 
+      pathname, 
+      hasSupabase: !!supabaseSession, 
+      hasNextAuth: hasNextAuthSession 
+    }, 'Unauthenticated access, redirecting to signin')
+    
     // Перенаправляем на страницу входа (используем публичный URL для Docker)
     const baseUrl = getPublicBaseUrl(request)
     const redirectUrl = new URL('/signin', baseUrl)
