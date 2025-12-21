@@ -88,7 +88,7 @@ export async function POST(
 
     // Find existing participant via user_telegram_accounts
     // First, get telegram account linked to this user
-    const { data: telegramAccount } = await supabase
+    const { data: telegramAccount } = await adminSupabase
       .from('user_telegram_accounts')
       .select('telegram_user_id, telegram_username')
       .eq('user_id', user.id)
@@ -374,17 +374,16 @@ export async function DELETE(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
   const eventId = params.id;
   try {
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get event details
-    const { data: event, error: eventError } = await supabase
+    const { data: event, error: eventError } = await adminSupabase
       .from('events')
       .select('org_id')
       .eq('id', eventId)
@@ -395,7 +394,7 @@ export async function DELETE(
     }
 
     // Find participant via user_telegram_accounts
-    const { data: telegramAccount } = await supabase
+    const { data: telegramAccount } = await adminSupabase
       .from('user_telegram_accounts')
       .select('telegram_user_id, telegram_username')
       .eq('user_id', user.id)
