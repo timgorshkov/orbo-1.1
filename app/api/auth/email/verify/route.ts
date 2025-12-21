@@ -91,14 +91,20 @@ export async function GET(request: NextRequest) {
       logger.info({ email, user_id: userId }, 'Created new user')
     }
     
-    // 4. Создаём сессию через временный пароль
+    // 4. Проверяем что userId определён
+    if (!userId) {
+      logger.error({ email }, 'User ID is null after lookup/create')
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
+    }
+    
+    // 5. Создаём сессию через временный пароль
     const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
     if (!userData?.user) {
       logger.error({ user_id: userId }, 'Failed to fetch user')
       return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
-    // Устанавливаем временный пароль и логинимся
+    // 6. Устанавливаем временный пароль и логинимся
     const tempPassword = `temp_email_${Math.random().toString(36).slice(2)}_${Date.now()}`
     await supabaseAdmin.auth.admin.updateUserById(userId, { password: tempPassword })
     
@@ -115,7 +121,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=session_error', baseUrl))
     }
     
-    // 5. Помечаем токен как использованный
+    // 7. Помечаем токен как использованный
     await supabaseAdmin
       .from('email_auth_tokens')
       .update({ 
@@ -125,7 +131,7 @@ export async function GET(request: NextRequest) {
       })
       .eq('id', authToken.id)
     
-    // 6. Устанавливаем session cookies через @supabase/ssr
+    // 8. Устанавливаем session cookies через @supabase/ssr
     const cookieStore = await cookies()
     
     const supabaseSSR = createServerClient(
@@ -167,7 +173,7 @@ export async function GET(request: NextRequest) {
       // Continue anyway
     }
     
-    // 7. Редиректим на целевой URL
+    // 9. Редиректим на целевой URL
     const finalRedirectUrl = authToken.redirect_url || '/orgs'
     
     logger.info({ 
