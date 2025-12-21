@@ -4,15 +4,73 @@
  * Независимая от Supabase реализация OAuth авторизации.
  * Поддерживает: Google, Yandex
  * 
+ * При входе через OAuth автоматически создаётся пользователь в Supabase,
+ * чтобы работали foreign key constraints на таблицах (memberships и др.)
+ * 
  * @see https://authjs.dev/getting-started/installation
  */
 
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import type { NextAuthConfig } from 'next-auth';
+import { createClient } from '@supabase/supabase-js';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('NextAuth');
+
+// Admin client для создания пользователей в Supabase
+const getSupabaseAdmin = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+/**
+ * Находит или создаёт пользователя в Supabase по email
+ * Возвращает Supabase user ID
+ */
+async function ensureSupabaseUser(email: string, name?: string | null, image?: string | null): Promise<string | null> {
+  const adminSupabase = getSupabaseAdmin();
+  
+  try {
+    // 1. Пробуем найти существующего пользователя через RPC
+    const { data: existingUserId } = await adminSupabase.rpc('get_user_id_by_email', { 
+      p_email: email 
+    });
+    
+    if (existingUserId) {
+      logger.debug({ email, supabase_user_id: existingUserId }, 'Found existing Supabase user');
+      return existingUserId;
+    }
+    
+    // 2. Создаём нового пользователя
+    const tempPassword = `oauth_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    const { data: newUser, error: createError } = await adminSupabase.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: name,
+        avatar_url: image,
+        auth_provider: 'oauth'
+      }
+    });
+    
+    if (createError) {
+      logger.error({ error: createError.message, email }, 'Failed to create Supabase user');
+      return null;
+    }
+    
+    logger.info({ email, supabase_user_id: newUser.user.id }, 'Created new Supabase user for OAuth');
+    return newUser.user.id;
+    
+  } catch (error) {
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      email 
+    }, 'Error in ensureSupabaseUser');
+    return null;
+  }
+}
 
 // Проверяем наличие credentials для провайдеров
 const hasGoogleCredentials = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -113,17 +171,30 @@ export const authConfig: NextAuthConfig = {
         provider: account?.provider,
       }, 'OAuth sign-in attempt');
 
-      // Можно добавить проверку домена email, блокировку пользователей и т.д.
+      // Создаём/находим пользователя в Supabase для работы FK constraints
+      if (user.email) {
+        const supabaseUserId = await ensureSupabaseUser(user.email, user.name, user.image);
+        if (supabaseUserId) {
+          // Сохраняем Supabase user ID в user объект для использования в jwt callback
+          // @ts-ignore - добавляем кастомное поле
+          user.supabaseId = supabaseUserId;
+        }
+      }
+
       return true;
     },
 
     async jwt({ token, user, account, profile }) {
       // При первом входе сохраняем данные пользователя в токен
       if (user) {
-        token.id = user.id;
+        // Используем Supabase user ID если есть, иначе NextAuth ID
+        // @ts-ignore - кастомное поле
+        token.id = user.supabaseId || user.id;
         token.email = user.email;
         token.name = user.name;
         token.picture = user.image;
+        // @ts-ignore - сохраняем оригинальный NextAuth ID для справки
+        token.nextAuthId = user.id;
       }
 
       if (account) {
