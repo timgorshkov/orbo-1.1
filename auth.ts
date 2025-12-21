@@ -12,49 +12,28 @@ import Google from 'next-auth/providers/google';
 import type { NextAuthConfig } from 'next-auth';
 import { createServiceLogger } from '@/lib/logger';
 
-// Custom Yandex provider (не встроен в next-auth)
-const YandexProvider = {
-  id: 'yandex',
-  name: 'Yandex',
-  type: 'oauth' as const,
-  authorization: {
-    url: 'https://oauth.yandex.ru/authorize',
-    params: {
-      response_type: 'code',
-    },
-  },
-  token: {
-    url: 'https://oauth.yandex.ru/token',
-  },
-  userinfo: {
-    url: 'https://login.yandex.ru/info',
-    async request({ tokens, provider }: { tokens: any; provider: any }) {
-      const response = await fetch('https://login.yandex.ru/info?format=json', {
-        headers: {
-          Authorization: `OAuth ${tokens.access_token}`,
-        },
-      });
-      return response.json();
-    },
-  },
-  profile(profile: any) {
-    return {
-      id: profile.id,
-      name: profile.display_name || profile.real_name || profile.login,
-      email: profile.default_email || profile.emails?.[0],
-      image: profile.default_avatar_id 
-        ? `https://avatars.yandex.net/get-yapic/${profile.default_avatar_id}/islands-200`
-        : null,
-    };
-  },
-  clientId: process.env.YANDEX_CLIENT_ID,
-  clientSecret: process.env.YANDEX_CLIENT_SECRET,
-};
-
 const logger = createServiceLogger('NextAuth');
 
-export const authConfig: NextAuthConfig = {
-  providers: [
+// Проверяем наличие credentials для провайдеров
+const hasGoogleCredentials = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const hasYandexCredentials = !!(process.env.YANDEX_CLIENT_ID && process.env.YANDEX_CLIENT_SECRET);
+
+// Логируем состояние конфигурации (только при запуске, не при билде)
+if (process.env.NEXT_PHASE !== 'phase-production-build') {
+  logger.info({
+    google_configured: hasGoogleCredentials,
+    yandex_configured: hasYandexCredentials,
+    auth_secret_set: !!(process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET),
+    nextauth_url: process.env.NEXTAUTH_URL || process.env.AUTH_URL || 'NOT_SET',
+  }, 'NextAuth configuration status');
+}
+
+// Собираем провайдеры динамически
+const providers: NextAuthConfig['providers'] = [];
+
+// Google Provider
+if (hasGoogleCredentials) {
+  providers.push(
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -65,9 +44,56 @@ export const authConfig: NextAuthConfig = {
           response_type: 'code',
         },
       },
-    }),
-    YandexProvider,
-  ],
+    })
+  );
+}
+
+// Custom Yandex provider (не встроен в next-auth)
+if (hasYandexCredentials) {
+  providers.push({
+    id: 'yandex',
+    name: 'Yandex',
+    type: 'oauth' as const,
+    authorization: {
+      url: 'https://oauth.yandex.ru/authorize',
+      params: {
+        response_type: 'code',
+      },
+    },
+    token: {
+      url: 'https://oauth.yandex.ru/token',
+    },
+    userinfo: {
+      url: 'https://login.yandex.ru/info',
+      async request({ tokens }: { tokens: any }) {
+        const response = await fetch('https://login.yandex.ru/info?format=json', {
+          headers: {
+            Authorization: `OAuth ${tokens.access_token}`,
+          },
+        });
+        return response.json();
+      },
+    },
+    profile(profile: any) {
+      return {
+        id: profile.id,
+        name: profile.display_name || profile.real_name || profile.login,
+        email: profile.default_email || profile.emails?.[0],
+        image: profile.default_avatar_id 
+          ? `https://avatars.yandex.net/get-yapic/${profile.default_avatar_id}/islands-200`
+          : null,
+      };
+    },
+    clientId: process.env.YANDEX_CLIENT_ID!,
+    clientSecret: process.env.YANDEX_CLIENT_SECRET!,
+  });
+}
+
+export const authConfig: NextAuthConfig = {
+  providers,
+
+  // Важно для Docker: доверять host заголовкам
+  trustHost: true,
 
   pages: {
     signIn: '/signin',

@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,26 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const searchParams = useSearchParams()
   const logger = createClientLogger('SignIn');
+
+  // Обработка ошибок из URL (NextAuth редиректит с ?error=...)
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        'Configuration': 'Ошибка конфигурации OAuth. Проверьте настройки провайдера.',
+        'AccessDenied': 'Доступ запрещён. Попробуйте другой способ входа.',
+        'Verification': 'Ссылка для входа истекла. Запросите новую.',
+        'OAuthSignin': 'Ошибка при начале OAuth авторизации.',
+        'OAuthCallback': 'Ошибка при обработке ответа от провайдера.',
+        'OAuthCreateAccount': 'Не удалось создать аккаунт через OAuth.',
+        'Callback': 'Ошибка обратного вызова.',
+        'Default': 'Произошла неизвестная ошибка.',
+      }
+      setMessage(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
+    }
+  }, [searchParams]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
