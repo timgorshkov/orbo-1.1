@@ -153,9 +153,14 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
 
     // 2. Check NextAuth session (fallback)
     // Обёрнуто в try-catch для обработки UntrustedHost ошибки
-    let nextAuthSession: Awaited<ReturnType<typeof nextAuth>> | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let nextAuthSession: any = null;
     try {
-      nextAuthSession = await nextAuth();
+      const authResult = await nextAuth();
+      // auth() может вернуть Session или middleware handler, проверяем что это Session
+      if (authResult && typeof authResult === 'object' && 'user' in authResult) {
+        nextAuthSession = authResult;
+      }
     } catch (authError) {
       // UntrustedHost или другая ошибка NextAuth
       logger.warn({
