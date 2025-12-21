@@ -209,11 +209,6 @@ export async function PUT(
     if (existingEvent.cover_image_url && 
         existingEvent.cover_image_url !== coverImageUrl &&
         existingEvent.cover_image_url.includes('/event-covers/')) {
-      const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-      
       const urlParts = existingEvent.cover_image_url.split('/event-covers/')
       if (urlParts.length > 1) {
         const oldPath = urlParts[1].split('?')[0] // Remove query params
