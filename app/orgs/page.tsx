@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
-import { cookies } from 'next/headers'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import Link from 'next/link'
 import { createServiceLogger } from '@/lib/logger'
+import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic';
 
@@ -10,39 +10,23 @@ const logger = createServiceLogger('OrgsPage');
 
 export default async function OrganizationsPage() {
   try {
-    const supabase = await createClientServer()
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser()
+    // Проверяем авторизацию через unified auth (Supabase или NextAuth)
+    const session = await getUnifiedSession();
 
-    // Если есть ошибка auth (невалидный токен и т.д.)
-    if (error) {
-      // Если токен невалидный - очищаем сессию
-      if (error.message?.includes('missing sub claim') || 
-          error.message?.includes('invalid claim') ||
-          error.status === 403) {
-        logger.warn({ error: error.message }, 'Invalid auth token detected, clearing session');
-        
-        const cookieStore = await cookies();
-        const allCookies = cookieStore.getAll();
-        allCookies.forEach(cookie => {
-          if (cookie.name.includes('supabase') || 
-              cookie.name.includes('auth-token') ||
-              cookie.name.includes('sb-')) {
-            cookieStore.delete(cookie.name);
-          }
-        });
-      } else {
-        logger.debug({ error: error.message }, 'Auth error');
-      }
-      
+    if (!session) {
+      logger.debug({}, 'No unified session found, redirecting to signin');
       redirect('/signin');
     }
 
-    if (!user) {
-      redirect('/signin')
-    }
+    const user = {
+      id: session.user.id,
+      email: session.user.email,
+    };
+    
+    logger.debug({
+      user_id: user.id,
+      provider: session.provider,
+    }, 'User authenticated via unified auth');
 
   // Используем admin client для получения всех memberships пользователя
   const adminSupabase = createAdminServer()
