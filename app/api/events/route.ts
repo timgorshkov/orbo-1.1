@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
@@ -16,10 +17,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
 
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
     // Build query
-    let query = supabase
+    let query = adminSupabase
       .from('events')
       .select(`
         *,
@@ -120,15 +121,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check if user has admin rights
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check if user has admin rights via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)

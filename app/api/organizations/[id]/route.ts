@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 // GET /api/organizations/[id] - Get organization details
 export async function GET(
@@ -12,16 +13,16 @@ export async function GET(
   try {
     const paramsData = await params;
     orgId = paramsData.id;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check user has access to this organization
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -33,7 +34,7 @@ export async function GET(
     }
 
     // Get organization details
-    const { data: org, error } = await supabase
+    const { data: org, error } = await adminSupabase
       .from('organizations')
       .select('*')
       .eq('id', orgId)
@@ -67,16 +68,16 @@ export async function PUT(
   try {
     const paramsData = await params;
     orgId = paramsData.id;
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check user is owner or admin
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -118,7 +119,7 @@ export async function PUT(
       updateData.telegram_group_link = telegram_group_link
     }
 
-    const { data: org, error } = await supabase
+    const { data: org, error } = await adminSupabase
       .from('organizations')
       .update(updateData)
       .eq('id', orgId)
