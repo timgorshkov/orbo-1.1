@@ -34,6 +34,49 @@ function getAdminSupabase() {
 }
 
 /**
+ * Look up Supabase user ID by email
+ * Uses RPC function get_user_id_by_email if available
+ */
+async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Promise<string | null> {
+  const adminSupabase = getAdminSupabase();
+  
+  logger.debug({ email, nextauth_id: nextAuthId }, 'Looking up Supabase user');
+  
+  // Метод 1: Используем RPC функцию (самый быстрый и надежный)
+  try {
+    const { data: foundUserId, error: rpcError } = await adminSupabase
+      .rpc('get_user_id_by_email', { p_email: email });
+    
+    if (!rpcError && foundUserId) {
+      logger.info({ email, supabase_user_id: foundUserId }, 'Found Supabase user via RPC');
+      return foundUserId;
+    }
+    
+    if (rpcError) {
+      logger.debug({ error: rpcError.message, email }, 'RPC failed, function may not exist');
+    }
+  } catch (e) {
+    logger.debug({ error: e instanceof Error ? e.message : String(e) }, 'RPC call failed');
+  }
+  
+  // Метод 2: Fallback - проверяем по NextAuth ID (на случай если уже создан)
+  if (nextAuthId) {
+    try {
+      const { data: userData, error: userError } = await adminSupabase.auth.admin.getUserById(nextAuthId);
+      if (!userError && userData?.user) {
+        logger.info({ email, supabase_user_id: userData.user.id }, 'Found Supabase user by ID');
+        return userData.user.id;
+      }
+    } catch (e) {
+      // Игнорируем
+    }
+  }
+  
+  logger.debug({ email }, 'No Supabase user found');
+  return null;
+}
+
+/**
  * Unified user representation
  */
 export interface UnifiedUser {
@@ -57,6 +100,10 @@ export interface UnifiedSession {
   expires?: string;
   accessToken?: string;
 }
+
+// Кэш для user ID lookup (в памяти процесса)
+const userIdCache = new Map<string, { userId: string; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут
 
 /**
  * Get unified session from either Supabase or NextAuth
@@ -108,78 +155,34 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     const nextAuthSession = await nextAuth();
     
     if (nextAuthSession?.user?.email) {
-      // Ищем существующего Supabase пользователя по email
-      // чтобы использовать его ID для запросов к базе
+      const userEmail = nextAuthSession.user.email.toLowerCase();
       let userId = nextAuthSession.user.id || '';
-      let supabaseUserId: string | null = null;
       
-      try {
-        const adminSupabase = getAdminSupabase();
-        const userEmail = nextAuthSession.user.email.toLowerCase();
-        
-        logger.debug({
-          email: userEmail,
-          nextauth_user_id: nextAuthSession.user.id,
-        }, 'Looking up Supabase user for NextAuth email');
-        
-        // Метод 1: Проверяем, существует ли NextAuth ID в Supabase
-        // (на случай если пользователь уже создан)
-        if (nextAuthSession.user.id) {
-          try {
-            const { data: userData, error: userError } = await adminSupabase.auth.admin.getUserById(nextAuthSession.user.id);
-            if (!userError && userData?.user) {
-              // Если ID уже существует в Supabase - используем его
-              supabaseUserId = userData.user.id;
-              logger.debug({
-                email: userEmail,
-                supabase_user_id: supabaseUserId,
-              }, 'Found Supabase user by NextAuth ID');
-            }
-          } catch (e) {
-            // Игнорируем - пробуем следующий метод
+      // Проверяем кэш для быстрого ответа
+      const cached = userIdCache.get(userEmail);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        userId = cached.userId;
+        logger.debug({ email: userEmail, cached_user_id: userId }, 'Using cached Supabase user ID');
+      } else {
+        // Ищем существующего Supabase пользователя по email (с таймаутом)
+        try {
+          const lookupPromise = lookupSupabaseUserByEmail(userEmail, nextAuthSession.user.id);
+          const timeoutPromise = new Promise<string | null>((_, reject) => 
+            setTimeout(() => reject(new Error('User lookup timeout')), 3000)
+          );
+          
+          const supabaseUserId = await Promise.race([lookupPromise, timeoutPromise]);
+          
+          if (supabaseUserId) {
+            userId = supabaseUserId;
+            userIdCache.set(userEmail, { userId, timestamp: Date.now() });
           }
+        } catch (error) {
+          logger.warn({
+            error: error instanceof Error ? error.message : String(error),
+            email: userEmail,
+          }, 'User lookup failed or timed out, using NextAuth ID');
         }
-        
-        // Метод 2: Используем RPC функцию get_user_id_by_email (самый надежный способ)
-        if (!supabaseUserId) {
-          try {
-            const { data: foundUserId, error: rpcError } = await adminSupabase
-              .rpc('get_user_id_by_email', { p_email: userEmail });
-            
-            if (rpcError) {
-              logger.warn({
-                error: rpcError.message,
-                email: userEmail,
-              }, 'RPC get_user_id_by_email failed');
-            } else if (foundUserId) {
-              supabaseUserId = foundUserId;
-              logger.info({
-                email: userEmail,
-                supabase_user_id: supabaseUserId,
-                nextauth_user_id: nextAuthSession.user.id,
-              }, 'Found existing Supabase user for NextAuth email');
-            } else {
-              logger.warn({
-                email: userEmail,
-              }, 'No existing Supabase user found for NextAuth email');
-            }
-          } catch (queryError) {
-            logger.error({
-              error: queryError instanceof Error ? queryError.message : String(queryError),
-              email: userEmail,
-            }, 'Error calling get_user_id_by_email RPC');
-          }
-        }
-        
-        if (supabaseUserId) {
-          userId = supabaseUserId;
-        }
-      } catch (error) {
-        logger.error({
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          email: nextAuthSession.user.email,
-        }, 'Error looking up Supabase user for NextAuth session');
       }
       
       return {
