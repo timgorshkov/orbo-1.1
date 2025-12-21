@@ -10,12 +10,13 @@
 
 -- 1. Composite index for fast participant lookup
 -- Reduces lookup from ~20ms to ~1ms
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_participants_org_tguser_active
+-- Note: Not using CONCURRENTLY as it can't run in transaction (Supabase migrations)
+CREATE INDEX IF NOT EXISTS idx_participants_org_tguser_active
 ON participants (org_id, tg_user_id) 
 WHERE merged_into IS NULL;
 
 -- 2. Index for participant_groups lookup
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_participant_groups_lookup
+CREATE INDEX IF NOT EXISTS idx_participant_groups_lookup
 ON participant_groups (participant_id, tg_group_id);
 
 -- 3. Main RPC function for processing webhook messages
