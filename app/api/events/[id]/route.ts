@@ -88,7 +88,7 @@ export async function GET(
     let userPaymentStatus: string | null = null
 
     if (user) {
-      const { data: participant } = await supabase
+      const { data: participant } = await adminSupabase
         .from('participants')
         .select('id')
         .eq('org_id', event.org_id)
@@ -263,7 +263,7 @@ export async function PUT(
       updateData.price_info = priceInfo || null
     }
 
-    const { data: event, error } = await supabase
+    const { data: event, error } = await adminSupabase
       .from('events')
       .update(updateData)
       .eq('id', eventId)
@@ -292,7 +292,7 @@ export async function PUT(
     // Sync registration fields based on registrationFieldsConfig
     if (event?.id) {
       // First, delete all existing standard fields for this event
-      await supabase
+      await adminSupabase
         .from('event_registration_fields')
         .delete()
         .eq('event_id', event.id)
@@ -330,7 +330,7 @@ export async function PUT(
         
         // Insert enabled fields
         if (fieldsToInsert.length > 0) {
-          const { error: fieldsError } = await supabase
+          const { error: fieldsError } = await adminSupabase
             .from('event_registration_fields')
             .insert(fieldsToInsert)
           
@@ -400,7 +400,7 @@ export async function DELETE(
     }
 
     // Delete event (will cascade to registrations)
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from('events')
       .delete()
       .eq('id', eventId)
