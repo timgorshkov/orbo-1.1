@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
-import Image from 'next/image';
+// Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle } from 'lucide-react';
 
 // Types for Telegram WebApp
@@ -690,13 +690,12 @@ export default function TelegramEventPage() {
       <div className="min-h-screen flex flex-col bg-white">
         {/* Cover image */}
         {event?.cover_image_url && (
-          <div className="relative w-full aspect-[16/9] flex-shrink-0">
-            <Image
+          <div className="relative w-full aspect-[16/9] flex-shrink-0 overflow-hidden">
+            <img
               src={event.cover_image_url}
               alt={event.title}
-              fill
-              className="object-cover"
-              priority
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="eager"
             />
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
