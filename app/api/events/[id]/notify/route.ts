@@ -45,7 +45,7 @@ export async function POST(
     }
 
     // Check admin rights
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('user_id', user.id)

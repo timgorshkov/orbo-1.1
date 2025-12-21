@@ -288,7 +288,6 @@ export async function GET(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/participants' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
     // Get event details
@@ -308,7 +307,7 @@ export async function GET(
     }
 
     // Check if event is accessible
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUnifiedUser()
     
     // Public events are accessible to everyone
     // Private events require membership
