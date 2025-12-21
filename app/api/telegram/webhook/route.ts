@@ -237,11 +237,11 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
         .filter('tg_chat_id::text', 'eq', String(msgChatId))
         .limit(1);
       
-      if (orgMapping && orgMapping.length > 0) {
+      if (orgMapping && orgMapping.length > 0 && orgMapping[0].org_id) {
         orgId = orgMapping[0].org_id;
         
         // Use optimized processing if enabled
-        if (USE_OPTIMIZED_PROCESSING && body.message?.from?.id) {
+        if (USE_OPTIMIZED_PROCESSING && body.message?.from?.id && orgId) {
           // ⚡ Optimized path: 1 RPC call instead of 8-12 queries
           const result = await processMessageOptimized(orgId, body.message, updateId);
           
