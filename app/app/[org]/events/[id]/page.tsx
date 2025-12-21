@@ -38,7 +38,7 @@ export default async function EventDetailPage({
   }
 
   // Require org access
-  await requireOrgAccess(params.org, undefined, ['owner', 'admin', 'member', 'viewer'])
+  await requireOrgAccess(params.org, ['owner', 'admin', 'member', 'viewer'])
 
   const adminSupabase = createAdminServer()
 

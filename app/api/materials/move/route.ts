@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     if (!orgId) {
       return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
     }
-    await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    await requireOrgAccess(orgId, ['owner', 'admin']);
     const page = await MaterialService.movePage({
       pageId: pageId!,
       newParentId: body.parentId ?? null,

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { org: str
 
   try {
     // ✅ Разрешаем просмотр дерева материалов для members
-    await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member']);
+    await requireOrgAccess(orgId, ['owner', 'admin', 'member']);
     const tree = await MaterialService.getTree(orgId);
     return NextResponse.json({ tree });
   } catch (error: any) {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: { org: st
   }
 
   try {
-    const { user } = await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    const { user } = await requireOrgAccess(orgId, ['owner', 'admin']);
     const page = await MaterialService.createPage({
       orgId,
       parentId: body.parentId ?? null,

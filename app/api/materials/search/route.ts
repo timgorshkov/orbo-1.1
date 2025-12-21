@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    await requireOrgAccess(orgId, ['owner', 'admin']);
     if (!query.trim()) {
       return NextResponse.json({ results: [] });
     }

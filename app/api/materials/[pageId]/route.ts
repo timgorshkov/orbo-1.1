@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: { pageId: 
   }
 
   // ✅ Разрешаем просмотр материалов для members
-  const { role } = await requireOrgAccess(orgId, undefined, ['owner', 'admin', 'member']);
+  const { role } = await requireOrgAccess(orgId, ['owner', 'admin', 'member']);
   if (!['owner', 'admin', 'member'].includes(role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -44,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { pageId
   }
 
   try {
-    const { user, role } = await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    const { user, role } = await requireOrgAccess(orgId, ['owner', 'admin']);
     const page = await MaterialService.updatePage(params.pageId, {
       title: body.title,
       slug: body.slug,
@@ -72,7 +72,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { pageI
   }
 
   try {
-    await requireOrgAccess(orgId, undefined, ['owner', 'admin']);
+    await requireOrgAccess(orgId, ['owner', 'admin']);
     await MaterialService.deletePage(params.pageId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
