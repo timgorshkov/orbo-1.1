@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createClient } from '@supabase/supabase-js'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -14,13 +15,14 @@ export async function POST(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/cover' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const supabase = createAdminServer()
 
     // Get event to check org_id
     const { data: event, error: eventError } = await supabase
@@ -161,13 +163,14 @@ export async function DELETE(
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/cover' });
   try {
     const { id: eventId } = await params
-    const supabase = await createClientServer()
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const supabase = createAdminServer()
 
     // Get event to check org_id
     const { data: event, error: eventError } = await supabase
