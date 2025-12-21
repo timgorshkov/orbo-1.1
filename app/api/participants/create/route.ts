@@ -1,30 +1,31 @@
 import { NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { participantMatcher } from '@/lib/services/participants/matcher';
 import { PostgrestSingleResponse } from '@supabase/supabase-js';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 // REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string) {
-  const supabase = await createClientServer();
-  const { data: authResult } = await supabase.auth.getUser();
+  const user = await getUnifiedUser();
 
-  if (!authResult?.user) {
+  if (!user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
-  const { data: membership } = await supabase
+  const adminSupabase = createAdminServer();
+  const { data: membership } = await adminSupabase
     .from('memberships')
     .select('role')
     .eq('org_id', orgId)
-    .eq('user_id', authResult.user.id)
+    .eq('user_id', user.id)
     .maybeSingle();
 
   if (!membership) {
     return { error: NextResponse.json({ error: 'Access denied' }, { status: 403 }) };
   }
 
-  return { user: authResult.user };
+  return { user };
 }
 
 function normalizePhone(input?: string | null): string | null {

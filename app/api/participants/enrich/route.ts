@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 // REMOVED: logParticipantAudit - audit logging removed in migration 072
 
 async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createAPILogger>) {
-  const supabase = await createClientServer();
-  const { data: authResult, error } = await supabase.auth.getUser();
+  const user = await getUnifiedUser();
 
-  if (error || !authResult?.user) {
+  if (!user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
@@ -17,12 +17,12 @@ async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createA
     .from('memberships')
     .select('role')
     .eq('org_id', orgId)
-    .eq('user_id', authResult.user.id)
+    .eq('user_id', user.id)
     .maybeSingle();
 
   if (membershipError) {
     if (logger) {
-      logger.error({ error: membershipError.message, org_id: orgId, user_id: authResult.user.id }, 'Membership check error');
+      logger.error({ error: membershipError.message, org_id: orgId, user_id: user.id }, 'Membership check error');
     }
     return { error: NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 }) };
   }
@@ -31,7 +31,7 @@ async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createA
     return { error: NextResponse.json({ error: 'Access denied' }, { status: 403 }) };
   }
 
-  return { admin, user: authResult.user };
+  return { admin, user };
 }
 
 function normalizePhone(input?: string | null): string | null {
