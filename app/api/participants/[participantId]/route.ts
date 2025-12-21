@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createAPILogger>) {
-  const supabase = await createClientServer();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const user = await getUnifiedUser();
 
-  if (error || !user) {
+  if (!user) {
     return { user: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 

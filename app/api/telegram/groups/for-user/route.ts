@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,12 +37,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
     
-    // Получаем текущего пользователя
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Получаем текущего пользователя через unified auth
+    const user = await getUnifiedUser();
     
-    if (userError || !user) {
-      logger.error({ error: userError?.message }, 'Auth error');
+    if (!user) {
+      logger.error({}, 'Auth error');
       return NextResponse.json({ 
         error: 'Unauthorized', 
         groups: [],

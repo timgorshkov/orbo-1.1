@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,11 +28,10 @@ function safeErrorJson(error: any): string {
 export async function POST(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/update-admin-rights' });
   try {
-    // Получаем текущего пользователя
-    const supabase = await createClientServer();
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Получаем текущего пользователя через unified auth
+    const user = await getUnifiedUser();
     
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
