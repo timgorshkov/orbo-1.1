@@ -15,18 +15,19 @@ export async function POST(request: NextRequest) {
     }
     
     const user = await getUnifiedUser();
+    const userId = user?.id || 'unknown';
 
     // Отправляем тестовое событие
     const success = sendTestEvent();
     
     if (success) {
-      logger.info({ user_id: user.id }, 'Hawk test event sent successfully');
+      logger.info({ user_id: userId }, 'Hawk test event sent successfully');
       return NextResponse.json({ 
         success: true, 
         message: 'Test event sent to Hawk. Check Hawk dashboard in a few seconds.' 
       });
     } else {
-      logger.warn({ user_id: user.id }, 'Failed to send Hawk test event - not initialized');
+      logger.warn({ user_id: userId }, 'Failed to send Hawk test event - not initialized');
       return NextResponse.json({ 
         success: false, 
         message: 'Hawk is not initialized. Check HAWK_TOKEN environment variable.' 
