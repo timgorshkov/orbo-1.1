@@ -125,9 +125,27 @@ class WeeekService {
         options.body = JSON.stringify(body);
       }
 
-      logger.debug({ method, endpoint }, 'Weeek API request');
+      logger.debug({ method, endpoint, body }, 'Weeek API request');
 
       const response = await fetch(url, options);
+      const contentType = response.headers.get('content-type') || '';
+      
+      // Check if response is JSON
+      if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        logger.error({ 
+          status: response.status, 
+          contentType,
+          responsePreview: text.substring(0, 200),
+          endpoint,
+          url
+        }, 'Weeek API returned non-JSON response');
+        return { 
+          success: false, 
+          error: `Non-JSON response (${response.status}): ${contentType}` 
+        };
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -204,13 +222,15 @@ class WeeekService {
    * Create a new contact
    */
   async createContact(params: CreateContactParams): Promise<string | null> {
+    // firstName is required by Weeek API
+    // Use email prefix as default name if not provided
+    const defaultName = params.email.split('@')[0] || 'User';
+    
     const contactData: any = {
       email: params.email,
+      firstName: params.firstName || defaultName,
     };
 
-    if (params.firstName) {
-      contactData.firstName = params.firstName;
-    }
     if (params.lastName) {
       contactData.lastName = params.lastName;
     }
@@ -298,11 +318,22 @@ class WeeekService {
       dealData.description = params.description;
     }
 
-    const result = await this.request<{ deal: WeeekDeal }>(
+    // Try the funnel-specific endpoint first
+    let result = await this.request<{ deal: WeeekDeal }>(
       'POST',
-      '/crm/deals',
+      `/crm/funnels/${this.funnelId}/deals`,
       dealData
     );
+
+    // If that fails, try the generic deals endpoint
+    if (!result.success) {
+      logger.debug({ funnelId: this.funnelId }, 'Funnel-specific endpoint failed, trying /crm/deals');
+      result = await this.request<{ deal: WeeekDeal }>(
+        'POST',
+        '/crm/deals',
+        dealData
+      );
+    }
 
     if (result.success && result.data?.deal?.id) {
       logger.info({ 

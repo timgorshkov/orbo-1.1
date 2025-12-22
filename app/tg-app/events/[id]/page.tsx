@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
+import ReactMarkdown from 'react-markdown';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
-import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X } from 'lucide-react';
 
 // Types for Telegram WebApp
 declare global {
@@ -125,6 +126,7 @@ export default function TelegramEventPage() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [telegramUser, setTelegramUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
   const [webAppReady, setWebAppReady] = useState(false);
@@ -369,6 +371,56 @@ export default function TelegramEventPage() {
     handleRegister();
   };
 
+  // Handle cancel registration
+  const handleCancelRegistration = useCallback(async () => {
+    if (!event) return;
+    
+    // Show confirmation
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showConfirm) {
+      tg.showConfirm('Отменить регистрацию на мероприятие?', async (confirmed) => {
+        if (!confirmed) return;
+        await performCancelRegistration();
+      });
+    } else {
+      if (!confirm('Отменить регистрацию на мероприятие?')) return;
+      await performCancelRegistration();
+    }
+  }, [event, eventId]);
+
+  const performCancelRegistration = async () => {
+    setIsCancelling(true);
+    setError(null);
+    
+    try {
+      const initData = getInitData();
+      
+      const response = await fetch(`/api/telegram/webapp/events/${eventId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Telegram-Init-Data': initData,
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to cancel registration');
+      }
+      
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+      setIsRegistered(false);
+      setPaymentStatus(null);
+      setViewState('event');
+    } catch (err: any) {
+      window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('error');
+      setError(err.message);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   // Currency symbol
   const getCurrencySymbol = (currency: string) => {
     const symbols: Record<string, string> = { RUB: '₽', USD: '$', EUR: '€', KZT: '₸' };
@@ -537,6 +589,15 @@ export default function TelegramEventPage() {
             className="w-full py-3 text-center text-gray-500 font-medium"
           >
             Закрыть
+          </button>
+          
+          {/* Cancel registration button - subtle at the bottom */}
+          <button
+            onClick={handleCancelRegistration}
+            disabled={isCancelling}
+            className="w-full mt-4 py-2 text-center text-gray-400 text-xs hover:text-red-500 transition-colors"
+          >
+            {isCancelling ? 'Отмена...' : 'Отменить регистрацию'}
           </button>
         </div>
       </div>
@@ -777,13 +838,27 @@ export default function TelegramEventPage() {
             )}
           </div>
           
-          {/* Description */}
+          {/* Description with markdown support */}
           {event?.description && (
             <div className="px-4 pb-4">
               <div className="border-t border-gray-100 pt-4">
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {event.description}
-                </p>
+                <div className="prose prose-sm max-w-none text-gray-700 
+                  prose-p:my-2 prose-p:leading-relaxed
+                  prose-strong:font-semibold prose-strong:text-gray-900
+                  prose-em:italic
+                  prose-a:text-blue-500 prose-a:no-underline hover:prose-a:underline
+                  prose-ul:my-2 prose-ul:pl-4 prose-li:my-0.5
+                  prose-ol:my-2 prose-ol:pl-4
+                  prose-headings:font-semibold prose-headings:text-gray-900
+                  prose-h1:text-lg prose-h2:text-base prose-h3:text-base
+                  prose-blockquote:border-l-2 prose-blockquote:border-gray-300 prose-blockquote:pl-3 prose-blockquote:italic prose-blockquote:text-gray-600
+                  prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:text-gray-800
+                  prose-pre:bg-gray-100 prose-pre:p-3 prose-pre:rounded-lg prose-pre:overflow-x-auto
+                ">
+                  <ReactMarkdown>
+                    {event.description}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           )}
@@ -797,7 +872,7 @@ export default function TelegramEventPage() {
                 <CheckCircle2 className="w-5 h-5" />
                 Вы зарегистрированы
               </div>
-              {event?.requires_payment && event?.payment_link && (
+              {event?.requires_payment && event?.payment_link && paymentStatus !== 'paid' && (
                 <a
                   href={event.payment_link}
                   target="_blank"
@@ -807,6 +882,14 @@ export default function TelegramEventPage() {
                   Перейти к оплате →
                 </a>
               )}
+              {/* Cancel registration - subtle link */}
+              <button
+                onClick={handleCancelRegistration}
+                disabled={isCancelling}
+                className="mt-3 text-gray-400 text-xs hover:text-red-500 transition-colors"
+              >
+                {isCancelling ? 'Отмена...' : 'Отменить регистрацию'}
+              </button>
             </div>
           ) : (
             <button
