@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { AddAdminDialog } from './add-admin-dialog'
 
 interface TeamMember {
-  user_id: string
+  user_id: string | null
   role: 'owner' | 'admin'
   role_source: 'manual' | 'telegram_admin' | 'invitation'
   email: string | null
@@ -14,7 +14,7 @@ interface TeamMember {
   full_name: string | null
   telegram_username: string | null
   tg_user_id: number | null
-  created_at: string
+  created_at: string | null
   has_verified_telegram?: boolean
   is_shadow_profile?: boolean
   last_synced_at?: string
@@ -23,11 +23,13 @@ interface TeamMember {
     telegram_group_titles?: string[]
     is_owner_in_groups?: boolean
     synced_at?: string
+    shadow_profile?: boolean
   }
   admin_groups?: Array<{
     id: number
     title: string
   }>
+  activation_hint?: string
 }
 
 interface OrganizationTeamProps {
@@ -268,10 +270,29 @@ export default function OrganizationTeam({
                           <span className="text-xs text-green-600">✓ Верифицирован</span>
                         </div>
                       ) : admin.tg_user_id ? (
-                        <div className="text-sm text-amber-600 mt-2">
-                          ⚠️ Telegram не верифицирован
+                        <div className="space-y-1 mt-2">
+                          <div className="text-sm text-amber-600">
+                            ⚠️ Telegram не верифицирован
+                          </div>
+                          {admin.telegram_username && (
+                            <div className="text-sm text-neutral-500">
+                              @{admin.telegram_username}
+                            </div>
+                          )}
                         </div>
                       ) : null}
+                      
+                      {/* Activation hint for shadow profiles */}
+                      {admin.is_shadow_profile && admin.activation_hint && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="text-sm text-blue-800">
+                            💡 <strong>Как получить полный доступ:</strong>
+                          </div>
+                          <div className="text-sm text-blue-700 mt-1">
+                            {admin.activation_hint}
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Группы, где админ */}
                       {admin.role_source === 'telegram_admin' && admin.admin_groups && admin.admin_groups.length > 0 && (
