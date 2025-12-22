@@ -107,9 +107,8 @@ export async function POST(
           }
         })
 
-      // Отправляем уведомление новому админу
-      const { getEmailService } = await import('@/lib/services/emailService')
-      const emailService = getEmailService()
+      // Отправляем уведомление новому админу (через новый email провайдер)
+      const { sendEmail } = await import('@/lib/services/email')
       
       // Получаем название организации
       const { data: org } = await adminSupabase
@@ -118,11 +117,21 @@ export async function POST(
         .eq('id', orgId)
         .single()
       
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
+      const orgName = org?.name || 'организации'
+      
       try {
-        await emailService.sendAdminNotification(
-          existingUser.email!,
-          org?.name || 'организации'
-        )
+        await sendEmail({
+          to: existingUser.email!,
+          subject: `Вы добавлены в команду ${orgName}`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Добро пожаловать в команду! 🎉</h2>
+              <p>Вы добавлены в команду организации <strong>${orgName}</strong> с правами администратора.</p>
+              <p><a href="${appUrl}/orgs" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Перейти в Orbo</a></p>
+            </div>
+          `
+        })
         logger.info({ 
           email: existingUser.email,
           org_id: orgId
@@ -146,17 +155,62 @@ export async function POST(
       // Проверяем, нет ли уже активного приглашения
       const { data: existingInvite } = await adminSupabase
         .from('invitations')
-        .select('id, status')
+        .select('id, status, token, expires_at')
         .eq('org_id', orgId)
         .eq('email', email.toLowerCase())
         .eq('status', 'pending')
         .maybeSingle()
 
-      if (existingInvite) {
+      // Если resend=true и приглашение есть - обновляем токен и отправляем заново
+      const resend = body.resend === true
+      
+      if (existingInvite && !resend) {
         return NextResponse.json(
           { error: 'Приглашение уже отправлено на этот email' },
           { status: 400 }
         )
+      }
+      
+      // Resend existing invitation
+      if (existingInvite && resend) {
+        const newToken = crypto.randomUUID()
+        const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        
+        await adminSupabase
+          .from('invitations')
+          .update({ 
+            token: newToken, 
+            expires_at: newExpiresAt.toISOString() 
+          })
+          .eq('id', existingInvite.id)
+        
+        // Send email with new link
+        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${newToken}`
+        const { sendTeamInvitation } = await import('@/lib/services/email')
+        
+        const { data: org } = await adminSupabase
+          .from('organizations')
+          .select('name')
+          .eq('id', orgId)
+          .single()
+        
+        const { data: inviter } = await adminSupabase.auth.admin.getUserById(user.id)
+        const inviterName = inviter.user?.email || 'Администратор'
+        
+        await sendTeamInvitation(email, inviteLink, org?.name || 'организации', inviterName)
+        
+        logger.info({ 
+          email,
+          org_id: orgId,
+          invitation_id: existingInvite.id,
+          action: 'resend'
+        }, 'Invitation resent');
+        
+        return NextResponse.json({
+          success: true,
+          message: 'Приглашение отправлено повторно',
+          invitation_id: existingInvite.id
+        })
       }
 
       // Создаём приглашение
@@ -189,11 +243,10 @@ export async function POST(
         )
       }
 
-      // Отправляем приглашение на email
+      // Отправляем приглашение на email (через новый email провайдер)
       const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${inviteToken}`
       
-      const { getEmailService } = await import('@/lib/services/emailService')
-      const emailService = getEmailService()
+      const { sendTeamInvitation } = await import('@/lib/services/email')
       
       // Получаем информацию об организации и пригласившем
       const { data: org } = await adminSupabase
@@ -206,17 +259,27 @@ export async function POST(
       const inviterName = inviter.user?.email || 'Администратор'
       
       try {
-        await emailService.sendAdminInvitation(
+        const result = await sendTeamInvitation(
           email,
           inviteLink,
           org?.name || 'организации',
           inviterName
         )
-        logger.info({ 
-          email,
-          org_id: orgId,
-          invitation_id: invitation.id
-        }, 'Invitation sent');
+        
+        if (result.success) {
+          logger.info({ 
+            email,
+            org_id: orgId,
+            invitation_id: invitation.id,
+            message_id: result.messageId
+          }, 'Invitation sent');
+        } else {
+          logger.warn({ 
+            email,
+            org_id: orgId,
+            error: result.error
+          }, 'Invitation email not sent (provider issue)');
+        }
       } catch (emailError) {
         logger.error({ 
           error: emailError instanceof Error ? emailError.message : String(emailError),

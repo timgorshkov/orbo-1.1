@@ -17,6 +17,9 @@ interface TeamMember {
   created_at: string | null
   has_verified_telegram?: boolean
   is_shadow_profile?: boolean
+  is_pending_invitation?: boolean
+  invitation_id?: string
+  invitation_expires_at?: string
   last_synced_at?: string
   metadata?: {
     telegram_groups?: number[]
@@ -24,6 +27,7 @@ interface TeamMember {
     is_owner_in_groups?: boolean
     synced_at?: string
     shadow_profile?: boolean
+    invited_by?: string
   }
   admin_groups?: Array<{
     id: number
@@ -87,11 +91,61 @@ export default function OrganizationTeam({
 
   const owner = team.find(m => m.role === 'owner')
   
-  // Фильтруем админов, исключая владельца (если он дублируется)
+  // Фильтруем админов, исключая владельца и pending invitations
   const admins = team.filter(m => 
     m.role === 'admin' && 
-    m.user_id !== owner?.user_id // Не показываем владельца в списке админов
+    m.user_id !== owner?.user_id && // Не показываем владельца в списке админов
+    !m.is_pending_invitation // Показываем отдельно
   )
+  
+  // Pending invitations
+  const pendingInvitations = team.filter(m => m.is_pending_invitation)
+  
+  // Resend invitation handler
+  const [resendingInvitation, setResendingInvitation] = useState<string | null>(null)
+  
+  const handleResendInvitation = async (email: string) => {
+    setResendingInvitation(email)
+    try {
+      const response = await fetch(`/api/organizations/${organizationId}/team/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, resend: true })
+      })
+      
+      if (response.ok) {
+        setSyncMessage('Приглашение отправлено повторно')
+      } else {
+        const data = await response.json()
+        setSyncMessage(data.error || 'Не удалось отправить приглашение')
+      }
+    } catch (err) {
+      setSyncMessage('Ошибка при отправке приглашения')
+    } finally {
+      setResendingInvitation(null)
+    }
+  }
+  
+  // Cancel invitation handler
+  const handleCancelInvitation = async (invitationId: string) => {
+    if (!confirm('Вы уверены, что хотите отменить приглашение?')) return
+    
+    try {
+      const response = await fetch(`/api/organizations/${organizationId}/invitations/${invitationId}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        await fetchTeam()
+        setSyncMessage('Приглашение отменено')
+      } else {
+        const data = await response.json()
+        setSyncMessage(data.error || 'Не удалось отменить приглашение')
+      }
+    } catch (err) {
+      setSyncMessage('Ошибка при отмене приглашения')
+    }
+  }
 
   return (
     <Card>
@@ -335,12 +389,75 @@ export default function OrganizationTeam({
           </div>
         )}
 
-        {admins.length === 0 && (
+        {admins.length === 0 && pendingInvitations.length === 0 && (
           <div className="text-center py-6 text-neutral-500">
             <p>Нет администраторов</p>
             <p className="text-sm mt-1">
               Администраторы автоматически добавляются из Telegram-групп
             </p>
+          </div>
+        )}
+        
+        {/* Pending Invitations */}
+        {pendingInvitations.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-700 mb-3">
+              Ожидают приглашения ({pendingInvitations.length})
+            </h3>
+            <div className="space-y-3">
+              {pendingInvitations.map((invite) => (
+                <div key={invite.invitation_id || invite.email} className="border border-amber-200 rounded-lg p-4 bg-amber-50/50">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="font-medium">{invite.email}</div>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                          ⏳ Ожидает
+                        </span>
+                      </div>
+                      
+                      <div className="text-sm text-neutral-600 mt-1">
+                        Приглашение отправлено {invite.created_at && new Date(invite.created_at).toLocaleDateString('ru')}
+                      </div>
+                      
+                      {invite.invitation_expires_at && (
+                        <div className="text-xs text-neutral-500 mt-1">
+                          Действительно до: {new Date(invite.invitation_expires_at).toLocaleDateString('ru')}
+                        </div>
+                      )}
+                      
+                      {invite.activation_hint && (
+                        <div className="text-sm text-amber-700 mt-2">
+                          {invite.activation_hint}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Actions for owner */}
+                    {userRole === 'owner' && (
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleResendInvitation(invite.email!)}
+                          disabled={resendingInvitation === invite.email}
+                        >
+                          {resendingInvitation === invite.email ? '...' : '📧 Повторить'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => invite.invitation_id && handleCancelInvitation(invite.invitation_id)}
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

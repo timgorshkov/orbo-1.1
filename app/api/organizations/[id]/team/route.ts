@@ -231,9 +231,44 @@ export async function GET(
       })
     }
 
+    // Get pending invitations
+    const { data: pendingInvitations } = await adminSupabase
+      .from('invitations')
+      .select('id, email, role, created_at, expires_at, invited_by')
+      .eq('org_id', orgId)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+    
+    // Add pending invitations as pending team members
+    for (const invite of pendingInvitations || []) {
+      teamWithGroups.push({
+        user_id: null,
+        role: invite.role || 'admin',
+        role_source: 'invitation',
+        email: invite.email,
+        email_confirmed: false,
+        full_name: invite.email, // Use email as name for now
+        telegram_username: null,
+        tg_user_id: null,
+        has_verified_telegram: false,
+        is_shadow_profile: false,
+        is_pending_invitation: true,
+        invitation_id: invite.id,
+        invitation_expires_at: invite.expires_at,
+        created_at: invite.created_at,
+        last_synced_at: null,
+        admin_groups: [],
+        metadata: {
+          invited_by: invite.invited_by
+        },
+        activation_hint: 'Ожидает принятия приглашения по email'
+      })
+    }
+
     logger.info({ 
-      admin_count: teamWithGroups.filter((m: any) => m.role === 'admin').length,
+      admin_count: teamWithGroups.filter((m: any) => m.role === 'admin' && !m.is_pending_invitation).length,
       shadow_count: shadowAdminsMap.size,
+      pending_invitations: pendingInvitations?.length || 0,
       total_count: teamWithGroups.length,
       org_id: orgId
     }, 'Processed team');
