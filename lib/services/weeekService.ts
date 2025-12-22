@@ -495,7 +495,7 @@ export async function onUserRegistration(
 }
 
 /**
- * Handle organization creation - update deal with org name
+ * Handle organization creation - update deal title and add org to description
  */
 export async function onOrganizationCreated(
   userId: string,
@@ -518,10 +518,10 @@ export async function onOrganizationCreated(
   try {
     const supabase = getSupabaseAdmin();
     
-    // Get CRM mapping
+    // Get CRM mapping with qualification data
     const { data: syncLog } = await supabase
       .from('crm_sync_log')
-      .select('weeek_deal_id')
+      .select('weeek_deal_id, qualification_responses')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -540,9 +540,48 @@ export async function onOrganizationCreated(
     }
     const newTitle = `${orgName} (${email})`;
 
+    // Build full description including qualification data
+    const descriptionParts: string[] = [];
+    descriptionParts.push(`🏢 Организация: ${orgName}`);
+    
+    // Add qualification data if exists
+    const responses = syncLog.qualification_responses as Record<string, any> | null;
+    if (responses) {
+      if (responses.role) {
+        const roleLabels: Record<string, string> = {
+          owner: 'Владелец сообщества', admin: 'Администратор',
+          project_manager: 'Менеджер проектов', event_organizer: 'Организатор мероприятий',
+          hr: 'HR', other: 'Другое',
+        };
+        descriptionParts.push(`👤 Роль: ${roleLabels[responses.role] || responses.role}`);
+      }
+      if (responses.community_type) {
+        const typeLabels: Record<string, string> = {
+          professional: 'Профессиональное', hobby: 'Клуб по интересам',
+          education: 'Образование', client_chats: 'Клиентские чаты',
+          business_club: 'Бизнес-клуб', internal: 'Внутренние коммуникации', other: 'Другое',
+        };
+        descriptionParts.push(`📋 Тип: ${typeLabels[responses.community_type] || responses.community_type}`);
+      }
+      if (responses.groups_count) {
+        descriptionParts.push(`📊 Групп: ${responses.groups_count}`);
+      }
+      if (responses.pain_points?.length) {
+        const painLabels: Record<string, string> = {
+          missing_messages: 'Пропуск сообщений', inactive_tracking: 'Отслеживание неактивных',
+          event_registration: 'Регистрация на события', access_management: 'Управление доступом',
+          no_crm: 'Нет CRM', scattered_tools: 'Разрозненные инструменты', fear_of_blocking: 'Страх блокировок',
+        };
+        const pains = responses.pain_points.map((p: string) => painLabels[p] || p).join(', ');
+        descriptionParts.push(`🎯 Боли: ${pains}`);
+      }
+    }
+    
+    descriptionParts.push(`\n📅 Создано: ${formatMoscowDate()}`);
+
     await weeek.updateDeal(syncLog.weeek_deal_id, {
       title: newTitle,
-      description: `Организация: ${orgName}\nСоздана: ${formatMoscowDate()}`,
+      description: descriptionParts.join('\n'),
     });
 
     // Update sync log
