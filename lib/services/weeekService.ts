@@ -339,6 +339,8 @@ class WeeekService {
 
   /**
    * Update existing deal
+   * API: PATCH /crm/deals/{id}
+   * @see https://developers.weeek.net/api/deals#update-a-deal-fields
    */
   async updateDeal(dealId: string, params: UpdateDealParams): Promise<boolean> {
     const updateData: any = {};
@@ -346,7 +348,7 @@ class WeeekService {
     if (params.title) {
       updateData.title = params.title;
     }
-    if (params.description) {
+    if (params.description !== undefined) {
       updateData.description = params.description;
     }
 
@@ -354,17 +356,20 @@ class WeeekService {
       return true; // Nothing to update
     }
 
-    const result = await this.request<{ deal: WeeekDeal }>(
+    logger.debug({ dealId, updateData }, 'Updating Weeek deal');
+
+    const result = await this.request<{ success: boolean }>(
       'PATCH',
       `/crm/deals/${dealId}`,
       updateData
     );
 
     if (result.success) {
-      logger.info({ dealId }, 'Updated Weeek deal');
+      logger.info({ dealId, hasDescription: !!params.description, descriptionLength: params.description?.length }, 'Updated Weeek deal');
       return true;
     }
 
+    logger.error({ dealId, error: result.error }, 'Failed to update Weeek deal');
     return false;
   }
 
@@ -747,8 +752,14 @@ export async function onQualificationUpdated(
       ? descriptionParts.join('\n')
       : `Регистрация: ${formatMoscowDate()}`;
 
+    logger.debug({ userId, dealId, description, descriptionParts }, 'Qualification description to send');
+
     // Update deal
-    await weeek.updateDeal(dealId, { description });
+    const updateSuccess = await weeek.updateDeal(dealId, { description });
+    
+    if (!updateSuccess) {
+      logger.error({ userId, dealId }, 'Failed to update deal with qualification');
+    }
 
     // Update sync log
     await supabase
