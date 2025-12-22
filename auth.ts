@@ -114,7 +114,9 @@ if (hasGoogleCredentials) {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          prompt: 'consent',
+          // select_account - показывает выбор аккаунта, но пропускает повторное подтверждение
+          // для пользователей, которые уже давали согласие ранее
+          prompt: 'select_account',
           access_type: 'offline',
           response_type: 'code',
         },
