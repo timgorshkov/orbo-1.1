@@ -24,29 +24,38 @@ export default async function WelcomePage() {
       .eq('user_id', user.id)
       .single(),
     
-    // Проверяем количество организаций пользователя
+    // Проверяем количество АКТИВНЫХ организаций пользователя (не archived)
     adminSupabase
       .from('memberships')
-      .select('org_id')
+      .select(`
+        org_id,
+        organizations!inner (
+          status
+        )
+      `)
       .eq('user_id', user.id)
+      .or('status.is.null,status.eq.active', { foreignTable: 'organizations' })
   ]);
 
   const { data: qualification } = qualificationResult;
   const { data: memberships } = membershipsResult;
 
   const qualificationCompleted = !!qualification?.completed_at
-  const orgCount = memberships?.length || 0
+  // Считаем только активные организации
+  const activeOrgCount = memberships?.length || 0
 
-  // Если квалификация пройдена И есть организации — редирект на /orgs
-  if (qualificationCompleted && orgCount > 0) {
+  // Если квалификация пройдена И есть АКТИВНЫЕ организации — редирект на /orgs
+  if (qualificationCompleted && activeOrgCount > 0) {
     redirect('/orgs')
   }
 
+  // Если все организации в архиве (или их нет) — показываем welcome
+  // Это позволяет пользователю пройти квалификацию заново или создать новую org
   return (
     <WelcomeContent 
       qualificationCompleted={qualificationCompleted}
       initialResponses={qualification?.responses || {}}
-      hasOrganizations={orgCount > 0}
+      hasOrganizations={activeOrgCount > 0}
     />
   )
 }

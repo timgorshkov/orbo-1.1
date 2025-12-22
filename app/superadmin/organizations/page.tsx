@@ -14,6 +14,8 @@ export default async function SuperadminOrganizationsPage() {
       id,
       name,
       created_at,
+      status,
+      archived_at,
       user_telegram_accounts (
         is_verified,
         telegram_username,
@@ -59,6 +61,8 @@ export default async function SuperadminOrganizationsPage() {
       id: org.id,
       name: org.name,
       created_at: org.created_at,
+      status: org.status || 'active',
+      archived_at: org.archived_at,
       has_telegram: (org.user_telegram_accounts?.length || 0) > 0,
       telegram_verified: !!verifiedAccount,
       telegram_username: telegramDisplayName,
@@ -72,6 +76,10 @@ export default async function SuperadminOrganizationsPage() {
     }
   })
   
+  // Разделяем на активные и архивные
+  const activeOrgs = formattedOrgs.filter(o => o.status === 'active')
+  const archivedOrgs = formattedOrgs.filter(o => o.status === 'archived')
+  
   return (
     <div>
       <div className="mb-6">
@@ -81,7 +89,10 @@ export default async function SuperadminOrganizationsPage() {
         </p>
       </div>
       
-      <OrganizationsTable organizations={formattedOrgs} />
+      <OrganizationsTable 
+        organizations={activeOrgs} 
+        archivedOrganizations={archivedOrgs}
+      />
     </div>
   )
 }

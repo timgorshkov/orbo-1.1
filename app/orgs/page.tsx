@@ -39,19 +39,21 @@ export default async function OrganizationsPage() {
       .eq('user_id', user.id)
       .single(),
     
-    // Получаем все memberships пользователя
+    // Получаем все memberships пользователя (только активные организации)
     adminSupabase
       .from('memberships')
       .select(`
         role,
         org_id,
-        organizations (
+        organizations!inner (
           id,
           name,
-          logo_url
+          logo_url,
+          status
         )
       `)
       .eq('user_id', user.id)
+      .or('status.is.null,status.eq.active', { foreignTable: 'organizations' })
       .order('role', { ascending: true }),
     
     // Получаем telegram аккаунты
@@ -96,11 +98,12 @@ export default async function OrganizationsPage() {
       .map(ta => ta.org_id);
     
     if (missingOrgIds.length > 0) {
-      // Получаем организации одним запросом
+      // Получаем только активные организации одним запросом
       const { data: orgsData } = await adminSupabase
         .from('organizations')
-        .select('id, name, logo_url')
-        .in('id', missingOrgIds);
+        .select('id, name, logo_url, status')
+        .in('id', missingOrgIds)
+        .or('status.is.null,status.eq.active');
       
       if (orgsData && orgsData.length > 0) {
         // Проверяем участников одним запросом
