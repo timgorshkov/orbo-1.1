@@ -41,14 +41,25 @@ function isWebsiteDomain(request: NextRequest): boolean {
 }
 
 /**
- * Website routes that should be served from (website) group
+ * Website routes that should be rewritten to /site folder
+ * Public URL (orbo.ru/product) -> Internal path (/site/product)
  */
 const WEBSITE_ROUTES = ['/', '/product', '/events', '/notifications', '/crm', '/journal']
 
 function isWebsiteRoute(pathname: string): boolean {
   return WEBSITE_ROUTES.some(route => 
-    pathname === route || pathname.startsWith(route + '/')
+    pathname === route || (route !== '/' && pathname.startsWith(route + '/'))
   )
+}
+
+/**
+ * Map public website route to internal /site route
+ */
+function getWebsiteInternalPath(pathname: string): string {
+  if (pathname === '/') {
+    return '/site'
+  }
+  return `/site${pathname}`
 }
 
 export async function middleware(request: NextRequest) {
@@ -57,15 +68,19 @@ export async function middleware(request: NextRequest) {
   
   // ========================================
   // WEBSITE DOMAIN HANDLING (orbo.ru)
+  // Rewrites public routes to /site folder
   // ========================================
   if (isWebsiteDomain(request)) {
-    // For website domain, rewrite to (website) group routes
+    // Rewrite website routes to /site folder
+    // Public URL stays clean (orbo.ru/product), internal path is /site/product
     if (isWebsiteRoute(pathname)) {
-      // These routes are handled by app/(website)/ - just pass through
-      return NextResponse.next()
+      const internalPath = getWebsiteInternalPath(pathname)
+      const url = request.nextUrl.clone()
+      url.pathname = internalPath
+      return NextResponse.rewrite(url)
     }
     
-    // For any other route on website domain, redirect to my.orbo.ru
+    // For app routes on website domain, redirect to my.orbo.ru
     if (pathname.startsWith('/app') || pathname.startsWith('/orgs') || pathname.startsWith('/signin') || pathname.startsWith('/signup')) {
       const appUrl = new URL(pathname, 'https://my.orbo.ru')
       appUrl.search = request.nextUrl.search

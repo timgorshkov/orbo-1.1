@@ -17,7 +17,7 @@
 
 ```
 app/
-├── (website)/          # Публичный сайт
+├── site/               # Публичный сайт (rewrite с orbo.ru через middleware)
 │   ├── layout.tsx      # Layout для сайта
 │   ├── page.tsx        # Главная страница с Orb-эффектом
 │   ├── product/
@@ -208,9 +208,9 @@ import { Orb } from '@/components/website';
 
 ## Добавление новых страниц
 
-1. Создайте папку в `app/(website)/`:
+1. Создайте папку в `app/site/`:
 ```
-app/(website)/pricing/page.tsx
+app/site/pricing/page.tsx
 ```
 
 2. Добавьте роут в `WEBSITE_ROUTES` в `middleware.ts`:
@@ -251,13 +251,13 @@ const WEBSITE_ROUTES = ['/', '/product', '/events', '/notifications', '/crm', '/
 
 Рекомендуется добавить:
 
-1. **Yandex Metrica** — в `app/(website)/layout.tsx`
+1. **Yandex Metrica** — в `app/site/layout.tsx`
 2. **Google Analytics** — через `next/script`
 3. **Plausible** — privacy-friendly альтернатива
 
 Пример:
 ```tsx
-// app/(website)/layout.tsx
+// app/site/layout.tsx
 import Script from 'next/script';
 
 export default function WebsiteLayout({ children }) {
