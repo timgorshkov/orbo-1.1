@@ -197,7 +197,8 @@ export async function GET(
         created_at: member.created_at,
         last_synced_at: member.last_synced_at,
         admin_groups,
-        metadata: member.metadata
+        metadata: member.metadata,
+        activation_hint: undefined as string | undefined
       }
     })
 
