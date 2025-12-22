@@ -14,6 +14,9 @@ const logger = createServiceLogger('WeeekService');
 // API Configuration
 const WEEEK_API_URL = 'https://api.weeek.net/public/v1';
 
+// Helper to format date in Moscow timezone
+const formatMoscowDate = () => new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+
 interface WeeekContact {
   id: string;
   email?: string;
@@ -260,13 +263,14 @@ class WeeekService {
 
   /**
    * Update existing contact
+   * Note: Weeek API requires firstName even for updates
    */
-  async updateContact(contactId: string, params: UpdateContactParams): Promise<boolean> {
-    const updateData: any = {};
+  async updateContact(contactId: string, params: UpdateContactParams, existingFirstName?: string): Promise<boolean> {
+    const updateData: any = {
+      // firstName is required by Weeek API even for updates
+      firstName: params.firstName || existingFirstName || 'User',
+    };
 
-    if (params.firstName) {
-      updateData.firstName = params.firstName;
-    }
     if (params.lastName) {
       updateData.lastName = params.lastName;
     }
@@ -277,10 +281,6 @@ class WeeekService {
       }];
     }
 
-    if (Object.keys(updateData).length === 0) {
-      return true; // Nothing to update
-    }
-
     const result = await this.request<{ contact: WeeekContact }>(
       'PATCH',
       `/crm/contacts/${contactId}`,
@@ -288,7 +288,7 @@ class WeeekService {
     );
 
     if (result.success) {
-      logger.info({ contactId }, 'Updated Weeek contact');
+      logger.info({ contactId, telegramUsername: params.telegramUsername }, 'Updated Weeek contact');
       return true;
     }
 
@@ -458,7 +458,7 @@ export async function onUserRegistration(
     const dealId = await weeek.createDeal({
       title: dealTitle,
       contactId,
-      description: `Новая регистрация: ${new Date().toLocaleString('ru-RU')}`,
+      description: `Новая регистрация: ${formatMoscowDate()}`,
     });
 
     if (!dealId) {
@@ -537,7 +537,7 @@ export async function onOrganizationCreated(
 
     await weeek.updateDeal(syncLog.weeek_deal_id, {
       title: newTitle,
-      description: `Организация: ${orgName}\nСоздана: ${new Date().toLocaleString('ru-RU')}`,
+      description: `Организация: ${orgName}\nСоздана: ${formatMoscowDate()}`,
     });
 
     // Update sync log
@@ -589,10 +589,21 @@ export async function onTelegramLinked(
       return;
     }
 
-    // Update contact with Telegram
+    // Get user email for firstName fallback
+    let firstName = 'User';
+    try {
+      const { data: userData } = await supabase.auth.admin.getUserById(userId);
+      const email = userData?.user?.email || '';
+      const name = userData?.user?.user_metadata?.full_name;
+      firstName = name?.split(' ')[0] || email.split('@')[0] || 'User';
+    } catch {
+      // Use default
+    }
+
+    // Update contact with Telegram (include firstName as it's required)
     await weeek.updateContact(syncLog.weeek_contact_id, {
       telegramUsername: telegramUsername.replace('@', ''),
-    });
+    }, firstName);
 
     // Update sync log
     await supabase
@@ -659,7 +670,7 @@ export async function onQualificationUpdated(
       dealId = await weeek.createDeal({
         title: dealTitle,
         contactId,
-        description: `Регистрация: ${new Date().toLocaleString('ru-RU')}`,
+        description: `Регистрация: ${formatMoscowDate()}`,
       });
 
       if (!dealId) {
@@ -729,12 +740,12 @@ export async function onQualificationUpdated(
     }
     
     if (isComplete) {
-      descriptionParts.push(`\n✅ Квалификация завершена: ${new Date().toLocaleString('ru-RU')}`);
+      descriptionParts.push(`\n✅ Квалификация завершена: ${formatMoscowDate()}`);
     }
 
     const description = descriptionParts.length > 0 
       ? descriptionParts.join('\n')
-      : `Регистрация: ${new Date().toLocaleString('ru-RU')}`;
+      : `Регистрация: ${formatMoscowDate()}`;
 
     // Update deal
     await weeek.updateDeal(dealId, { description });
@@ -817,7 +828,7 @@ export async function ensureCrmRecord(
     const dealId = await weeek.createDeal({
       title: dealTitle,
       contactId,
-      description: `Регистрация: ${new Date().toLocaleString('ru-RU')}`,
+      description: `Регистрация: ${formatMoscowDate()}`,
     });
 
     if (!dealId) {
