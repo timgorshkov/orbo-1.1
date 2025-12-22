@@ -49,7 +49,8 @@ interface CreateDealParams {
 
 interface UpdateDealParams {
   title?: string;
-  description?: string;
+  amount?: number;
+  // Note: description doesn't work via Weeek API PUT/PATCH
 }
 
 interface UpdateContactParams {
@@ -265,6 +266,13 @@ class WeeekService {
    * Update existing contact
    * Note: Weeek API requires firstName even for updates
    */
+  /**
+   * Update existing contact
+   * API: PUT /crm/contacts/{id}
+   * @see https://developers.weeek.net/api/contacts#update-a-contact
+   * 
+   * Using middleName for Telegram username since links doesn't work
+   */
   async updateContact(contactId: string, params: UpdateContactParams, existingFirstName?: string): Promise<boolean> {
     const updateData: any = {
       // firstName is required by Weeek API even for updates
@@ -274,15 +282,13 @@ class WeeekService {
     if (params.lastName) {
       updateData.lastName = params.lastName;
     }
+    // Store telegram username in middleName since links API doesn't work
     if (params.telegramUsername) {
-      updateData.links = [{
-        type: 'telegram',
-        value: params.telegramUsername
-      }];
+      updateData.middleName = `@${params.telegramUsername.replace('@', '')}`;
     }
 
     const result = await this.request<{ contact: WeeekContact }>(
-      'PATCH',
+      'PUT',
       `/crm/contacts/${contactId}`,
       updateData
     );
@@ -339,8 +345,12 @@ class WeeekService {
 
   /**
    * Update existing deal
-   * API: PATCH /crm/deals/{id}
-   * @see https://developers.weeek.net/api/deals#update-a-deal-fields
+   * API: PUT /crm/deals/{id}
+   * @see https://developers.weeek.net/api/deals#update-a-deal
+   * 
+   * Note: PUT only supports title, amount, winStatus, customFields
+   * Description updates via PATCH don't seem to work, so we store
+   * qualification data in title or would need custom fields
    */
   async updateDeal(dealId: string, params: UpdateDealParams): Promise<boolean> {
     const updateData: any = {};
@@ -348,24 +358,26 @@ class WeeekService {
     if (params.title) {
       updateData.title = params.title;
     }
-    if (params.description !== undefined) {
-      updateData.description = params.description;
+    // Note: description doesn't work via API, storing in title suffix for now
+    // customFields would need manual setup in Weeek CRM first
+    if (params.amount !== undefined) {
+      updateData.amount = params.amount;
     }
 
     if (Object.keys(updateData).length === 0) {
       return true; // Nothing to update
     }
 
-    logger.debug({ dealId, updateData }, 'Updating Weeek deal');
+    logger.debug({ dealId, updateData }, 'Updating Weeek deal via PUT');
 
     const result = await this.request<{ success: boolean }>(
-      'PATCH',
+      'PUT',
       `/crm/deals/${dealId}`,
       updateData
     );
 
     if (result.success) {
-      logger.info({ dealId, hasDescription: !!params.description, descriptionLength: params.description?.length }, 'Updated Weeek deal');
+      logger.info({ dealId, title: params.title?.substring(0, 50) }, 'Updated Weeek deal');
       return true;
     }
 
@@ -495,7 +507,10 @@ export async function onUserRegistration(
 }
 
 /**
- * Handle organization creation - update deal title and add org to description
+ * Handle organization creation - update deal title with org name
+ * 
+ * Note: Weeek API doesn't support description updates via PUT/PATCH,
+ * so we only update the title.
  */
 export async function onOrganizationCreated(
   userId: string,
@@ -538,51 +553,18 @@ export async function onOrganizationCreated(
     } catch {
       // If can't get email, use empty string
     }
-    const newTitle = `${orgName} (${email})`;
-
-    // Build full description including qualification data
-    const descriptionParts: string[] = [];
-    descriptionParts.push(`🏢 Организация: ${orgName}`);
     
-    // Add qualification data if exists
+    // Build title with qualification data if exists
     const responses = syncLog.qualification_responses as Record<string, any> | null;
-    if (responses) {
-      if (responses.role) {
-        const roleLabels: Record<string, string> = {
-          owner: 'Владелец сообщества', admin: 'Администратор',
-          project_manager: 'Менеджер проектов', event_organizer: 'Организатор мероприятий',
-          hr: 'HR', other: 'Другое',
-        };
-        descriptionParts.push(`👤 Роль: ${roleLabels[responses.role] || responses.role}`);
-      }
-      if (responses.community_type) {
-        const typeLabels: Record<string, string> = {
-          professional: 'Профессиональное', hobby: 'Клуб по интересам',
-          education: 'Образование', client_chats: 'Клиентские чаты',
-          business_club: 'Бизнес-клуб', internal: 'Внутренние коммуникации', other: 'Другое',
-        };
-        descriptionParts.push(`📋 Тип: ${typeLabels[responses.community_type] || responses.community_type}`);
-      }
-      if (responses.groups_count) {
-        descriptionParts.push(`📊 Групп: ${responses.groups_count}`);
-      }
-      if (responses.pain_points?.length) {
-        const painLabels: Record<string, string> = {
-          missing_messages: 'Пропуск сообщений', inactive_tracking: 'Отслеживание неактивных',
-          event_registration: 'Регистрация на события', access_management: 'Управление доступом',
-          no_crm: 'Нет CRM', scattered_tools: 'Разрозненные инструменты', fear_of_blocking: 'Страх блокировок',
-        };
-        const pains = responses.pain_points.map((p: string) => painLabels[p] || p).join(', ');
-        descriptionParts.push(`🎯 Боли: ${pains}`);
-      }
-    }
+    const roleShort = responses?.role ? getRoleShort(responses.role) : '';
+    const typeShort = responses?.community_type ? getTypeShort(responses.community_type) : '';
     
-    descriptionParts.push(`\n📅 Создано: ${formatMoscowDate()}`);
+    // Format: "OrgName (email) | Role | Type"
+    let newTitle = `${orgName} (${email})`;
+    if (roleShort) newTitle += ` | ${roleShort}`;
+    if (typeShort) newTitle += ` | ${typeShort}`;
 
-    await weeek.updateDeal(syncLog.weeek_deal_id, {
-      title: newTitle,
-      description: descriptionParts.join('\n'),
-    });
+    await weeek.updateDeal(syncLog.weeek_deal_id, { title: newTitle });
 
     // Update sync log
     await supabase
@@ -670,8 +652,12 @@ export async function onTelegramLinked(
 }
 
 /**
- * Handle qualification step update - update deal description
+ * Handle qualification step update
  * Called when user completes qualification steps
+ * 
+ * Note: Weeek API doesn't support description updates via PUT/PATCH,
+ * so we only save to crm_sync_log for now. Custom fields would work
+ * but require manual setup in Weeek CRM first.
  */
 export async function onQualificationUpdated(
   userId: string,
@@ -709,8 +695,11 @@ export async function onQualificationUpdated(
         return;
       }
 
-      // Create deal
-      const dealTitle = email;
+      // Create deal with qualification info in title
+      const roleShort = responses.role ? getRoleShort(responses.role) : '';
+      const typeShort = responses.community_type ? getTypeShort(responses.community_type) : '';
+      const dealTitle = `${email}${roleShort ? ` | ${roleShort}` : ''}${typeShort ? ` | ${typeShort}` : ''}`;
+      
       dealId = await weeek.createDeal({
         title: dealTitle,
         contactId,
@@ -729,78 +718,17 @@ export async function onQualificationUpdated(
           user_id: userId,
           weeek_contact_id: contactId,
           weeek_deal_id: dealId,
+          qualification_responses: responses,
           synced_at: new Date().toISOString(),
         }, {
           onConflict: 'user_id'
         });
+        
+      logger.info({ userId, dealId, isComplete }, 'Created Weeek deal with qualification in title');
+      return;
     }
 
-    // Format qualification data for deal description
-    const descriptionParts: string[] = [];
-    
-    // Step 1: Role and community type
-    if (responses.role) {
-      const roleLabels: Record<string, string> = {
-        owner: 'Владелец сообщества',
-        admin: 'Администратор',
-        project_manager: 'Менеджер проектов',
-        event_organizer: 'Организатор мероприятий',
-        hr: 'HR',
-        other: 'Другое',
-      };
-      descriptionParts.push(`👤 Роль: ${roleLabels[responses.role] || responses.role}`);
-    }
-    
-    if (responses.community_type) {
-      const typeLabels: Record<string, string> = {
-        professional: 'Профессиональное',
-        hobby: 'Клуб по интересам',
-        education: 'Образование',
-        client_chats: 'Клиентские чаты',
-        business_club: 'Бизнес-клуб',
-        internal: 'Внутренние коммуникации',
-        other: 'Другое',
-      };
-      descriptionParts.push(`🏢 Тип: ${typeLabels[responses.community_type] || responses.community_type}`);
-    }
-    
-    // Step 2: Scale and pain points
-    if (responses.groups_count) {
-      descriptionParts.push(`📊 Групп: ${responses.groups_count}`);
-    }
-    
-    if (responses.pain_points && Array.isArray(responses.pain_points) && responses.pain_points.length > 0) {
-      const painLabels: Record<string, string> = {
-        missing_messages: 'Пропуск сообщений',
-        inactive_tracking: 'Отслеживание неактивных',
-        event_registration: 'Регистрация на события',
-        access_management: 'Управление доступом',
-        no_crm: 'Нет CRM',
-        scattered_tools: 'Разрозненные инструменты',
-        fear_of_blocking: 'Страх блокировок',
-      };
-      const pains = responses.pain_points.map((p: string) => painLabels[p] || p).join(', ');
-      descriptionParts.push(`🎯 Боли: ${pains}`);
-    }
-    
-    if (isComplete) {
-      descriptionParts.push(`\n✅ Квалификация завершена: ${formatMoscowDate()}`);
-    }
-
-    const description = descriptionParts.length > 0 
-      ? descriptionParts.join('\n')
-      : `Регистрация: ${formatMoscowDate()}`;
-
-    logger.debug({ userId, dealId, description, descriptionParts }, 'Qualification description to send');
-
-    // Update deal
-    const updateSuccess = await weeek.updateDeal(dealId, { description });
-    
-    if (!updateSuccess) {
-      logger.error({ userId, dealId }, 'Failed to update deal with qualification');
-    }
-
-    // Update sync log
+    // Update sync log with qualification data (Weeek description doesn't work via API)
     await supabase
       .from('crm_sync_log')
       .update({
@@ -809,14 +737,31 @@ export async function onQualificationUpdated(
       })
       .eq('user_id', userId);
 
-    logger.info({ userId, dealId, isComplete }, 'Updated Weeek deal with qualification data');
+    logger.info({ userId, dealId, isComplete }, 'Saved qualification data to sync log');
 
   } catch (error) {
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       userId 
-    }, 'Error updating Weeek deal with qualification');
+    }, 'Error updating qualification data');
   }
+}
+
+// Short labels for title
+function getRoleShort(role: string): string {
+  const labels: Record<string, string> = {
+    owner: 'Владелец', admin: 'Админ', project_manager: 'PM',
+    event_organizer: 'Орг. событий', hr: 'HR', other: 'Другое',
+  };
+  return labels[role] || role;
+}
+
+function getTypeShort(type: string): string {
+  const labels: Record<string, string> = {
+    professional: 'Проф', hobby: 'Хобби', education: 'Обучение',
+    client_chats: 'Клиенты', business_club: 'Бизнес', internal: 'Внутр', other: 'Другое',
+  };
+  return labels[type] || type;
 }
 
 /**
