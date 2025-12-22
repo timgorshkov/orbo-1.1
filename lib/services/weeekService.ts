@@ -297,6 +297,8 @@ class WeeekService {
 
   /**
    * Create a new deal
+   * API: POST /crm/statuses/{statusId}/deals
+   * @see https://developers.weeek.net/api/deals#create-a-deal
    */
   async createDeal(params: CreateDealParams): Promise<string | null> {
     const statusId = await this.getFirstStageId();
@@ -307,33 +309,22 @@ class WeeekService {
 
     const dealData: any = {
       title: params.title,
-      funnelId: this.funnelId,
-      statusId: statusId,
     };
 
+    // contacts is an array of contact IDs
     if (params.contactId) {
-      dealData.contactIds = [params.contactId];
+      dealData.contacts = [params.contactId];
     }
     if (params.description) {
       dealData.description = params.description;
     }
 
-    // Try the funnel-specific endpoint first
-    let result = await this.request<{ deal: WeeekDeal }>(
+    // Correct endpoint: /crm/statuses/{statusId}/deals
+    const result = await this.request<{ deal: WeeekDeal }>(
       'POST',
-      `/crm/funnels/${this.funnelId}/deals`,
+      `/crm/statuses/${statusId}/deals`,
       dealData
     );
-
-    // If that fails, try the generic deals endpoint
-    if (!result.success) {
-      logger.debug({ funnelId: this.funnelId }, 'Funnel-specific endpoint failed, trying /crm/deals');
-      result = await this.request<{ deal: WeeekDeal }>(
-        'POST',
-        '/crm/deals',
-        dealData
-      );
-    }
 
     if (result.success && result.data?.deal?.id) {
       logger.info({ 
