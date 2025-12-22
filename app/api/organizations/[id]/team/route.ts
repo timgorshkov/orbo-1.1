@@ -50,8 +50,67 @@ export async function GET(
       )
     }
 
+    // Also get shadow admins (Telegram admins without linked accounts)
+    const { data: shadowAdmins } = await adminSupabase
+      .from('telegram_group_admins')
+      .select(`
+        tg_user_id,
+        tg_chat_id,
+        username,
+        first_name,
+        last_name,
+        custom_title,
+        is_owner,
+        is_admin,
+        telegram_groups!inner(title),
+        org_telegram_groups!inner(org_id)
+      `)
+      .eq('org_telegram_groups.org_id', orgId)
+      .eq('is_admin', true)
+      .gt('expires_at', new Date().toISOString())
+
+    // Get tg_user_ids that already have memberships (to exclude from shadow list)
+    const linkedTgUserIds = new Set(
+      (team || [])
+        .filter((m: any) => m.tg_user_id)
+        .map((m: any) => String(m.tg_user_id))
+    )
+
+    // Group shadow admins by tg_user_id
+    const shadowAdminsMap = new Map<string, any>()
+    for (const admin of shadowAdmins || []) {
+      const tgUserId = String(admin.tg_user_id)
+      
+      // Skip if already has a linked account
+      if (linkedTgUserIds.has(tgUserId)) continue
+      
+      if (!shadowAdminsMap.has(tgUserId)) {
+        shadowAdminsMap.set(tgUserId, {
+          tg_user_id: admin.tg_user_id,
+          username: admin.username,
+          first_name: admin.first_name,
+          last_name: admin.last_name,
+          is_owner_in_groups: admin.is_owner,
+          groups: []
+        })
+      }
+      
+      const existing = shadowAdminsMap.get(tgUserId)!
+      // telegram_groups is returned as array from join
+      const groupTitle = Array.isArray(admin.telegram_groups) 
+        ? admin.telegram_groups[0]?.title 
+        : (admin.telegram_groups as any)?.title
+      existing.groups.push({
+        id: admin.tg_chat_id,
+        title: groupTitle || `Group ${admin.tg_chat_id}`,
+        custom_title: admin.custom_title
+      })
+      if (admin.is_owner) existing.is_owner_in_groups = true
+    }
+
     logger.info({ 
       team_count: team?.length || 0,
+      shadow_admins_count: shadowAdminsMap.size,
       org_id: orgId
     }, 'Found team members');
 
@@ -96,8 +155,36 @@ export async function GET(
       }
     })
 
+    // Add shadow admins to the team
+    for (const [tgUserId, shadowAdmin] of Array.from(shadowAdminsMap.entries())) {
+      const fullName = [shadowAdmin.first_name, shadowAdmin.last_name]
+        .filter(Boolean)
+        .join(' ') || shadowAdmin.username || `Telegram ${tgUserId}`
+      
+      teamWithGroups.push({
+        user_id: null, // No linked account
+        role: 'admin',
+        role_source: 'telegram_admin',
+        email: null,
+        email_confirmed: false,
+        full_name: fullName,
+        telegram_username: shadowAdmin.username,
+        tg_user_id: shadowAdmin.tg_user_id,
+        has_verified_telegram: false,
+        is_shadow_profile: true,
+        created_at: null,
+        last_synced_at: new Date().toISOString(),
+        admin_groups: shadowAdmin.groups,
+        metadata: {
+          shadow_profile: true,
+          is_owner_in_groups: shadowAdmin.is_owner_in_groups
+        }
+      })
+    }
+
     logger.info({ 
       admin_count: teamWithGroups.filter((m: any) => m.role === 'admin').length,
+      shadow_count: shadowAdminsMap.size,
       total_count: teamWithGroups.length,
       org_id: orgId
     }, 'Processed team');
