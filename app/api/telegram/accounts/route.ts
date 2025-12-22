@@ -290,6 +290,11 @@ export async function PUT(request: Request) {
         success: true
       });
 
+    // Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ onTelegramLinked }) => {
+      onTelegramLinked(user.id, telegramAccount.telegram_username).catch(() => {});
+    }).catch(() => {});
+
     return NextResponse.json({ 
       telegramAccount: verifiedAccount,
       message: 'Telegram account verified successfully!'

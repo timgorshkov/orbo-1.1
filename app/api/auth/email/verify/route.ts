@@ -100,6 +100,11 @@ export async function GET(request: NextRequest) {
       
       userId = newUser.user.id
       logger.info({ email, user_id: userId }, 'Created new user')
+      
+      // Sync to CRM (non-blocking)
+      import('@/lib/services/weeekService').then(({ onUserRegistration }) => {
+        onUserRegistration(userId!, email).catch(() => {});
+      }).catch(() => {});
     }
     
     // 4. Проверяем что userId определён

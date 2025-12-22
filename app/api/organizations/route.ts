@@ -88,6 +88,11 @@ export async function POST(req: NextRequest) {
       org_name: name
     }, 'Organization created successfully');
     
+    // Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ onOrganizationCreated }) => {
+      onOrganizationCreated(user.id, org.id, name.trim()).catch(() => {});
+    }).catch(() => {});
+    
     return NextResponse.json({ success: true, org_id: org.id })
     
   } catch (err: any) {

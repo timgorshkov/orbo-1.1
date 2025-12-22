@@ -78,6 +78,12 @@ async function ensureSupabaseUser(email: string, name?: string | null, image?: s
     }
     
     logger.info({ email, supabase_user_id: newUser.user.id }, 'Created new Supabase user for OAuth');
+    
+    // Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ onUserRegistration }) => {
+      onUserRegistration(newUser.user.id, email, name).catch(() => {});
+    }).catch(() => {});
+    
     return newUser.user.id;
     
   } catch (error) {
