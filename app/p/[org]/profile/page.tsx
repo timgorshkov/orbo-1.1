@@ -473,11 +473,14 @@ export default function ProfilePage() {
     )
   }
 
-  const displayName = profile.participant?.full_name || 
-                      (profile.participant?.username ? `@${profile.participant.username}` : null) ||
-                      (profile.participant?.tg_user_id ? `ID: ${profile.participant.tg_user_id}` : null) ||
+  // Display name priority:
+  // 1. User's email (this is the logged-in user's identity)
+  // 2. Telegram name from verified account
+  // 3. Participant data (might belong to a different user if Telegram was shared)
+  const displayName = profile.user.email ||
                       profile.telegram?.telegram_first_name ||
-                      profile.user.email ||
+                      profile.participant?.full_name || 
+                      (profile.participant?.username ? `@${profile.participant.username}` : null) ||
                       'Пользователь'
 
   const roleIcon = profile.membership.role === 'owner' ? (
@@ -884,20 +887,11 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Основная информация - ВСЕГДА показываем */}
+                {/* Основная информация - данные из Telegram */}
                 {profile.participant && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Основная информация</h3>
                     <div className="space-y-2">
-                      {/* Полное имя */}
-                      {profile.participant.full_name && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600">Имя:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.full_name}</span>
-                        </div>
-                      )}
-                      
                       {/* Telegram username */}
                       {profile.participant.username && (
                         <div className="flex items-center gap-2 text-sm">
@@ -915,15 +909,23 @@ export default function ProfilePage() {
                         </div>
                       )}
                       
-                      {/* Имя и Фамилия (если есть) */}
-                      {(profile.participant.first_name || profile.participant.last_name) && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Полное имя (Telegram):</span>
-                          <span className="font-medium text-gray-900">
-                            {[profile.participant.first_name, profile.participant.last_name].filter(Boolean).join(' ')}
-                          </span>
-                        </div>
-                      )}
+                      {/* Имя и Фамилия из Telegram (если есть и не совпадает с email) */}
+                      {(() => {
+                        // Show Telegram name if available and not an email (auto-generated names are often emails)
+                        const telegramName = [profile.participant.first_name, profile.participant.last_name].filter(Boolean).join(' ');
+                        const participantName = profile.participant.full_name;
+                        const nameToShow = telegramName || (participantName && !participantName.includes('@') ? participantName : null);
+                        
+                        if (!nameToShow) return null;
+                        
+                        return (
+                          <div className="flex items-center gap-2 text-sm">
+                            <User className="h-4 w-4 text-gray-400" />
+                            <span className="text-gray-600">Полное имя (Telegram):</span>
+                            <span className="font-medium text-gray-900">{nameToShow}</span>
+                          </div>
+                        );
+                      })()}
                       
                       {/* Последняя активность */}
                       {profile.participant.last_activity_at && (
