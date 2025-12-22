@@ -1,0 +1,690 @@
+/* ==========================================================================
+   ORBO WEBSITE STYLES
+   Публичный сайт orbo.ru - дизайн-система и компоненты
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   CSS Variables - Design Tokens
+   -------------------------------------------------------------------------- */
+:root {
+  /* Brand colors */
+  --website-primary: #8b5cf6;
+  --website-primary-dark: #7c3aed;
+  --website-primary-light: #a78bfa;
+  
+  /* Orb colors */
+  --orb-primary: hsl(260, 70%, 60%);
+  --orb-secondary: hsl(300, 80%, 50%);
+  --orb-tertiary: hsl(340, 60%, 70%);
+  --orb-bg: #f0eef5;
+  
+  /* Text */
+  --website-text: #1a1a2e;
+  --website-text-muted: #64748b;
+  --website-text-light: #94a3b8;
+  
+  /* Backgrounds */
+  --website-bg: #ffffff;
+  --website-bg-alt: #f8fafc;
+  --website-bg-dark: #1a1a2e;
+  
+  /* Spacing */
+  --website-container-max: 1200px;
+  --website-space-xs: 0.25rem;
+  --website-space-sm: 0.5rem;
+  --website-space-md: 1rem;
+  --website-space-lg: 1.5rem;
+  --website-space-xl: 2rem;
+  --website-space-2xl: 3rem;
+  --website-space-3xl: 4rem;
+  --website-space-4xl: 6rem;
+  
+  /* Typography */
+  --website-font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --website-font-size-xs: 0.75rem;
+  --website-font-size-sm: 0.875rem;
+  --website-font-size-base: 1rem;
+  --website-font-size-lg: 1.125rem;
+  --website-font-size-xl: 1.25rem;
+  --website-font-size-2xl: 1.5rem;
+  --website-font-size-3xl: 1.875rem;
+  --website-font-size-4xl: 2.25rem;
+  --website-font-size-5xl: 3rem;
+  --website-font-size-6xl: 3.75rem;
+  
+  /* Border radius */
+  --website-radius-sm: 0.375rem;
+  --website-radius-md: 0.5rem;
+  --website-radius-lg: 0.75rem;
+  --website-radius-xl: 1rem;
+  --website-radius-2xl: 1.5rem;
+  --website-radius-full: 9999px;
+  
+  /* Shadows */
+  --website-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --website-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --website-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --website-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  
+  /* Transitions */
+  --website-transition-fast: 150ms ease;
+  --website-transition-base: 200ms ease;
+  --website-transition-slow: 300ms ease;
+}
+
+/* --------------------------------------------------------------------------
+   Orb Background Component (WebGL via OGL)
+   Note: Orb is rendered via WebGL canvas, these are container styles only
+   -------------------------------------------------------------------------- */
+/* .orb-container styles are in Orb.css */
+
+/* --------------------------------------------------------------------------
+   Website Header
+   -------------------------------------------------------------------------- */
+.website-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: var(--website-space-lg) 0;
+  transition: background var(--website-transition-base), backdrop-filter var(--website-transition-base);
+}
+
+.website-header--scrolled {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.website-header__container {
+  max-width: var(--website-container-max);
+  margin: 0 auto;
+  padding: 0 var(--website-space-xl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.website-header__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--website-space-sm);
+  font-size: var(--website-font-size-xl);
+  font-weight: 700;
+  color: var(--website-text);
+  text-decoration: none !important;
+}
+
+.website-header__logo-img {
+  height: 32px;
+  width: auto;
+}
+
+.website-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--website-space-xl);
+}
+
+.website-header__nav a {
+  font-size: var(--website-font-size-sm);
+  font-weight: 500;
+  color: var(--website-text-muted);
+  text-decoration: none !important;
+  transition: color var(--website-transition-fast);
+}
+
+.website-header__nav a:hover {
+  color: var(--website-text);
+}
+
+.website-header__cta {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--website-space-sm) var(--website-space-lg);
+  font-size: var(--website-font-size-sm);
+  font-weight: 600;
+  color: white !important;
+  background: var(--website-primary);
+  border-radius: var(--website-radius-full);
+  text-decoration: none !important;
+  transition: background var(--website-transition-fast), transform var(--website-transition-fast);
+}
+
+.website-header__cta:hover {
+  background: var(--website-primary-dark);
+  transform: translateY(-1px);
+}
+
+/* Mobile menu button */
+.website-header__menu-btn {
+  display: none;
+  padding: var(--website-space-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .website-header__nav {
+    display: none;
+  }
+  
+  .website-header__menu-btn {
+    display: flex;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Website Footer
+   -------------------------------------------------------------------------- */
+.website-footer {
+  padding: var(--website-space-3xl) 0;
+  background: var(--website-bg-alt);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.website-footer__container {
+  max-width: var(--website-container-max);
+  margin: 0 auto;
+  padding: 0 var(--website-space-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--website-space-lg);
+}
+
+.website-footer__links {
+  display: flex;
+  gap: var(--website-space-xl);
+}
+
+.website-footer__links a {
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-muted);
+  text-decoration: none !important;
+  transition: color var(--website-transition-fast);
+}
+
+.website-footer__links a:hover {
+  color: var(--website-text);
+}
+
+.website-footer__copy {
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-light);
+}
+
+/* --------------------------------------------------------------------------
+   Hero Section with Orb
+   -------------------------------------------------------------------------- */
+.hero-orb-section {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--orb-bg);
+  overflow: hidden;
+}
+
+.hero-orb-section__content {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: calc(80px + var(--website-space-3xl)) var(--website-space-xl) var(--website-space-3xl);
+}
+
+.hero-orb-section__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--website-space-sm);
+  padding: var(--website-space-sm) var(--website-space-lg);
+  font-size: var(--website-font-size-sm);
+  font-weight: 500;
+  color: var(--website-primary-dark);
+  background: white;
+  border-radius: var(--website-radius-full);
+  box-shadow: var(--website-shadow-md);
+  margin-bottom: var(--website-space-xl);
+}
+
+.hero-orb-section__title {
+  font-size: clamp(var(--website-font-size-3xl), 6vw, var(--website-font-size-6xl));
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-lg);
+  max-width: 900px;
+}
+
+.hero-orb-section__subtitle {
+  font-size: var(--website-font-size-xl);
+  color: var(--website-text-muted);
+  margin: 0 0 var(--website-space-2xl);
+  max-width: 600px;
+}
+
+.hero-orb-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--website-space-md);
+  justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+   Pill Buttons
+   -------------------------------------------------------------------------- */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--website-space-sm);
+  padding: var(--website-space-md) var(--website-space-xl);
+  font-size: var(--website-font-size-base);
+  font-weight: 600;
+  border-radius: var(--website-radius-full);
+  text-decoration: none !important;
+  transition: all var(--website-transition-fast);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-pill--primary {
+  color: white;
+  background: var(--website-primary);
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+}
+
+.btn-pill--primary:hover {
+  background: var(--website-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+}
+
+.btn-pill--ghost {
+  color: var(--website-text);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--website-shadow);
+}
+
+.btn-pill--ghost:hover {
+  background: white;
+  transform: translateY(-2px);
+}
+
+.btn-pill--outline {
+  color: var(--website-primary);
+  background: transparent;
+  border: 2px solid var(--website-primary);
+}
+
+.btn-pill--outline:hover {
+  background: var(--website-primary);
+  color: white;
+}
+
+.btn-pill--white {
+  color: var(--website-primary-dark);
+  background: white;
+  box-shadow: var(--website-shadow-md);
+}
+
+.btn-pill--white:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--website-shadow-lg);
+}
+
+.btn-pill--ghost-dark {
+  color: white;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+}
+
+.btn-pill--ghost-dark:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* --------------------------------------------------------------------------
+   Messengers Section
+   -------------------------------------------------------------------------- */
+.messengers-section {
+  position: relative;
+  z-index: 10;
+  padding-bottom: var(--website-space-3xl);
+  text-align: center;
+}
+
+.messengers-section__label {
+  display: block;
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-muted);
+  margin-bottom: var(--website-space-md);
+}
+
+.messengers-section__logos {
+  display: flex;
+  justify-content: center;
+  gap: var(--website-space-xl);
+}
+
+.messenger-logo {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--website-text-muted);
+  opacity: 0.7;
+  transition: opacity var(--website-transition-fast), transform var(--website-transition-fast);
+}
+
+.messenger-logo:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.messenger-logo svg {
+  width: 36px;
+  height: 36px;
+}
+
+/* --------------------------------------------------------------------------
+   Content Sections
+   -------------------------------------------------------------------------- */
+.website-section {
+  padding: var(--website-space-4xl) 0;
+}
+
+.website-section--alt {
+  background: var(--website-bg-alt);
+}
+
+.website-section--dark {
+  background: var(--website-bg-dark);
+  color: white;
+}
+
+.website-container {
+  max-width: var(--website-container-max);
+  margin: 0 auto;
+  padding: 0 var(--website-space-xl);
+}
+
+/* Section Headers */
+.section-header {
+  margin-bottom: var(--website-space-3xl);
+}
+
+.section-header--center {
+  text-align: center;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section-header__eyebrow {
+  display: inline-block;
+  font-size: var(--website-font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--website-primary);
+  margin-bottom: var(--website-space-md);
+}
+
+.section-header__title {
+  font-size: var(--website-font-size-4xl);
+  font-weight: 700;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-md);
+}
+
+.website-section--dark .section-header__title {
+  color: white;
+}
+
+.section-header__subtitle {
+  font-size: var(--website-font-size-lg);
+  color: var(--website-text-muted);
+  margin: 0;
+}
+
+.website-section--dark .section-header__subtitle {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* --------------------------------------------------------------------------
+   Feature Cards
+   -------------------------------------------------------------------------- */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--website-space-xl);
+}
+
+.features-grid--4col {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.audience-card {
+  background: white;
+  border-radius: var(--website-radius-xl);
+  padding: var(--website-space-xl);
+  box-shadow: var(--website-shadow);
+  transition: transform var(--website-transition-fast), box-shadow var(--website-transition-fast);
+}
+
+.audience-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--website-shadow-lg);
+}
+
+.audience-card__icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--website-primary-light), var(--website-primary));
+  border-radius: var(--website-radius-lg);
+  color: white;
+  margin-bottom: var(--website-space-lg);
+}
+
+.audience-card__title {
+  font-size: var(--website-font-size-xl);
+  font-weight: 700;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-xs);
+}
+
+.audience-card__subtitle {
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-light);
+  margin: 0 0 var(--website-space-md);
+}
+
+.audience-card__text {
+  font-size: var(--website-font-size-base);
+  color: var(--website-text-muted);
+  margin: 0 0 var(--website-space-lg);
+  line-height: 1.6;
+}
+
+.audience-card__features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.audience-card__features li {
+  position: relative;
+  padding-left: var(--website-space-lg);
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text);
+  margin-bottom: var(--website-space-sm);
+}
+
+.audience-card__features li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  background: var(--website-primary);
+  border-radius: 50%;
+}
+
+/* Simple Cards */
+.feature-card {
+  background: white;
+  border-radius: var(--website-radius-lg);
+  padding: var(--website-space-lg);
+  box-shadow: var(--website-shadow-sm);
+  transition: transform var(--website-transition-fast), box-shadow var(--website-transition-fast);
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--website-shadow);
+}
+
+.feature-card__icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--website-bg-alt);
+  border-radius: var(--website-radius-md);
+  color: var(--website-primary);
+  margin-bottom: var(--website-space-md);
+}
+
+.feature-card__title {
+  font-size: var(--website-font-size-lg);
+  font-weight: 600;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-sm);
+}
+
+.feature-card__text {
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   Steps
+   -------------------------------------------------------------------------- */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--website-space-xl);
+  counter-reset: step;
+}
+
+.step-card {
+  position: relative;
+  text-align: center;
+}
+
+.step-card__number {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--website-font-size-xl);
+  font-weight: 700;
+  color: white;
+  background: var(--website-primary);
+  border-radius: 50%;
+  margin-bottom: var(--website-space-lg);
+}
+
+.step-card__title {
+  font-size: var(--website-font-size-lg);
+  font-weight: 600;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-sm);
+}
+
+.step-card__text {
+  font-size: var(--website-font-size-base);
+  color: var(--website-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   CTA Section
+   -------------------------------------------------------------------------- */
+.cta-section {
+  padding: var(--website-space-4xl) 0;
+  background: linear-gradient(135deg, var(--website-primary), var(--website-primary-dark));
+  text-align: center;
+}
+
+.cta-section__title {
+  font-size: var(--website-font-size-4xl);
+  font-weight: 700;
+  color: white;
+  margin: 0 0 var(--website-space-md);
+}
+
+.cta-section__text {
+  font-size: var(--website-font-size-lg);
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 var(--website-space-2xl);
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cta-section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--website-space-md);
+  justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+   Utilities
+   -------------------------------------------------------------------------- */
+.text-center {
+  text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .hero-orb-section__title {
+    font-size: var(--website-font-size-3xl);
+  }
+  
+  .hero-orb-section__actions {
+    flex-direction: column;
+    width: 100%;
+    padding: 0 var(--website-space-lg);
+  }
+  
+  .btn-pill {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .section-header__title {
+    font-size: var(--website-font-size-3xl);
+  }
+}

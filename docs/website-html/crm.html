@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM участников — Orbo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ========== HERO ========== -->
+<section class="hero hero--light">
+  <div class="container">
+    <div class="hero__content hero__content--center">
+      <span class="section-header__eyebrow">CRM</span>
+      <h1 class="hero__title">
+        Знайте <span class="text-gradient">своих людей</span>
+      </h1>
+      <p class="hero__subtitle" style="color: var(--color-text-secondary);">
+        Профили участников, AI-анализ интересов, история взаимодействий. Импорт из Telegram и WhatsApp.
+      </p>
+      <div class="hero__actions hero__actions--center">
+        <a href="https://my.orbo.ru/signup" class="btn btn--primary btn--lg">
+          Начать бесплатно
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PROBLEM ========== -->
+<section class="section">
+  <div class="container container--narrow">
+    <div class="section-header section-header--center">
+      <span class="section-header__eyebrow">Проблема</span>
+      <h2 class="section-header__title">Вы не знаете свою аудиторию</h2>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); margin-top: var(--space-8);">
+      <!-- Without Orbo -->
+      <div class="card" style="border-color: #FCA5A5;">
+        <h4 class="card__title" style="color: #DC2626;">Без CRM</h4>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #DC2626; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-x"/></svg>
+            <span>Кто эти 5000 человек в группе?</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #DC2626; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-x"/></svg>
+            <span>Чем они занимаются, что ищут?</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #DC2626; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-x"/></svg>
+            <span>Уходит менеджер — контекст теряется</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #DC2626; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-x"/></svg>
+            <span>WhatsApp-переписки похоронены в телефонах</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- With Orbo -->
+      <div class="card" style="border-color: #86EFAC;">
+        <h4 class="card__title" style="color: #16A34A;">С Orbo CRM</h4>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #16A34A; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <span>Профиль каждого участника</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #16A34A; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <span>AI анализирует интересы и запросы</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #16A34A; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <span>История в одном месте</span>
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: var(--space-3); color: var(--color-text-secondary);">
+            <svg width="20" height="20" style="color: #16A34A; flex-shrink: 0;"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <span>Импорт WhatsApp и Telegram</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURE: Participant List ========== -->
+<section class="section" style="background: var(--color-bg-secondary);">
+  <div class="container">
+    <div class="showcase">
+      <div class="showcase__content">
+        <span class="showcase__eyebrow">
+          <svg width="20" height="20"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-users"/></svg>
+          База участников
+        </span>
+        <h2 class="showcase__title">Все участники в одном месте</h2>
+        <p class="showcase__text">Таблица со всеми участниками всех групп. Удобный поиск и фильтрация.</p>
+        <ul class="showcase__list">
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Имя, username, telegram ID
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Телефон и email (если участник заполнил)
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            В каких группах состоит
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Количество сообщений, дата последнего
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Категория: ядро, активный, новичок, молчун
+          </li>
+        </ul>
+      </div>
+      <div class="showcase__media">
+        <div class="screenshot-placeholder">
+          <svg class="screenshot-placeholder__icon"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-image"/></svg>
+          <p class="screenshot-placeholder__text">СКРИНШОТ: Таблица участников с фильтрами</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURE: AI Profiles ========== -->
+<section class="section">
+  <div class="container">
+    <div class="showcase showcase--reverse">
+      <div class="showcase__content">
+        <span class="showcase__eyebrow">
+          <svg width="20" height="20"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-sparkles"/></svg>
+          AI-обогащение профилей
+        </span>
+        <h2 class="showcase__title">AI анализирует сообщения</h2>
+        <p class="showcase__text">На основе сообщений участника AI формирует структурированный профиль:</p>
+        <ul class="showcase__list">
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>Интересы</strong> — темы, о которых человек пишет
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>Запросы</strong> — что ищет (партнёров, услуги, советы)
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>Предложения</strong> — что предлагает сам
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>Биография</strong> — чем занимается, где работает
+          </li>
+        </ul>
+        
+        <!-- Example profile -->
+        <div class="card" style="margin-top: var(--space-6);">
+          <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <div style="width: 48px; height: 48px; background: var(--gradient-hero-soft); border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center;">
+              <svg width="24" height="24" style="color: var(--color-primary);"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-user"/></svg>
+            </div>
+            <div>
+              <strong style="display: block;">Иван Петров</strong>
+              <span style="font-size: var(--text-sm); color: var(--color-text-muted);">@ivan_petrov</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); font-size: var(--text-sm);">
+            <div>
+              <span style="color: var(--color-text-muted);">Интересы:</span><br>
+              <span style="color: var(--color-text-secondary);">маркетинг, growth hacking, стартапы</span>
+            </div>
+            <div>
+              <span style="color: var(--color-text-muted);">Запросы:</span><br>
+              <span style="color: var(--color-text-secondary);">ищет партнёров для проекта</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="showcase__media">
+        <div class="screenshot-placeholder">
+          <svg class="screenshot-placeholder__icon"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-image"/></svg>
+          <p class="screenshot-placeholder__text">СКРИНШОТ: Профиль с AI-обогащением</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURE: Message History ========== -->
+<section class="section" style="background: var(--color-bg-secondary);">
+  <div class="container">
+    <div class="showcase">
+      <div class="showcase__content">
+        <span class="showcase__eyebrow">
+          <svg width="20" height="20"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-message"/></svg>
+          История сообщений
+        </span>
+        <h2 class="showcase__title">Вся переписка под рукой</h2>
+        <p class="showcase__text">Откройте профиль — увидите все сообщения человека во всех группах:</p>
+        <ul class="showcase__list">
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Хронология сообщений с датами
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Фильтрация по группам
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Поиск по тексту сообщений
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Полезно для нетворкинга: «О чём он писал?»
+          </li>
+        </ul>
+      </div>
+      <div class="showcase__media">
+        <div class="screenshot-placeholder">
+          <svg class="screenshot-placeholder__icon"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-image"/></svg>
+          <p class="screenshot-placeholder__text">СКРИНШОТ: Лента сообщений в профиле</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURE: Import ========== -->
+<section class="section">
+  <div class="container">
+    <div class="showcase showcase--reverse">
+      <div class="showcase__content">
+        <span class="showcase__eyebrow">
+          <svg width="20" height="20"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-download"/></svg>
+          Импорт данных
+        </span>
+        <h2 class="showcase__title">Telegram и WhatsApp</h2>
+        <p class="showcase__text">Не теряйте историю. Загрузите экспорты переписок:</p>
+        <ul class="showcase__list">
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>Telegram</strong> — экспорт через Telegram Desktop
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            <strong>WhatsApp</strong> — экспорт из приложения
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Автоматическое сопоставление участников
+          </li>
+          <li>
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Полная история взаимодействий
+          </li>
+        </ul>
+        <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-4);">
+          Особенно полезно для агентств: уходит аккаунт-менеджер — контекст остаётся.
+        </p>
+      </div>
+      <div class="showcase__media">
+        <div class="screenshot-placeholder">
+          <svg class="screenshot-placeholder__icon"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-image"/></svg>
+          <p class="screenshot-placeholder__text">СКРИНШОТ: Форма импорта данных</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURE: Categories ========== -->
+<section class="section" style="background: var(--color-bg-secondary);">
+  <div class="container">
+    <div class="section-header section-header--center">
+      <span class="section-header__eyebrow">Категоризация</span>
+      <h2 class="section-header__title">Автоматическая сегментация</h2>
+      <p class="section-header__subtitle">Каждый участник получает категорию на основе активности</p>
+    </div>
+    
+    <div class="features features--4col" style="margin-top: var(--space-8);">
+      <div class="card" style="text-align: center;">
+        <div style="width: 64px; height: 64px; background: #DCFCE7; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
+          <span style="font-size: var(--text-2xl);">C</span>
+        </div>
+        <h4 class="card__title">Ядро</h4>
+        <p class="card__text">Активные участники, много сообщений регулярно</p>
+      </div>
+      
+      <div class="card" style="text-align: center;">
+        <div style="width: 64px; height: 64px; background: #DBEAFE; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
+          <span style="font-size: var(--text-2xl);">A</span>
+        </div>
+        <h4 class="card__title">Активные</h4>
+        <p class="card__text">Пишут регулярно, но не так часто как ядро</p>
+      </div>
+      
+      <div class="card" style="text-align: center;">
+        <div style="width: 64px; height: 64px; background: #FEF3C7; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
+          <span style="font-size: var(--text-2xl);">N</span>
+        </div>
+        <h4 class="card__title">Новички</h4>
+        <p class="card__text">Присоединились недавно, адаптируются</p>
+      </div>
+      
+      <div class="card" style="text-align: center;">
+        <div style="width: 64px; height: 64px; background: #F3F4F6; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4);">
+          <span style="font-size: var(--text-2xl);">S</span>
+        </div>
+        <h4 class="card__title">Молчуны</h4>
+        <p class="card__text">Читают, но почти не пишут</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FOR WHO ========== -->
+<section class="section">
+  <div class="container">
+    <div class="section-header section-header--center">
+      <span class="section-header__eyebrow">Для кого это полезно</span>
+      <h2 class="section-header__title">Разные задачи — один инструмент</h2>
+    </div>
+    
+    <div class="features" style="gap: var(--space-6);">
+      <div class="card">
+        <div class="card__icon">
+          <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-users"/></svg>
+        </div>
+        <h4 class="card__title">Владельцы сообществ</h4>
+        <p class="card__text" style="margin-bottom: var(--space-4);">Понимайте, кто ваша аудитория. Находите интересных людей для знакомства.</p>
+        <ul class="showcase__list" style="margin-bottom: 0;">
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Кто чем занимается
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Кто что ищет
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Нетворкинг внутри сообщества
+          </li>
+        </ul>
+      </div>
+      
+      <div class="card">
+        <div class="card__icon">
+          <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-building"/></svg>
+        </div>
+        <h4 class="card__title">Агентства</h4>
+        <p class="card__text" style="margin-bottom: var(--space-4);">«База знаний клиента». Контекст сохраняется даже при смене менеджера.</p>
+        <ul class="showcase__list" style="margin-bottom: 0;">
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Импорт WhatsApp-переписок
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            История всех взаимодействий
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Онбординг нового сотрудника
+          </li>
+        </ul>
+      </div>
+      
+      <div class="card">
+        <div class="card__icon">
+          <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-calendar"/></svg>
+        </div>
+        <h4 class="card__title">Организаторы событий</h4>
+        <p class="card__text" style="margin-bottom: var(--space-4);">Знайте участников до события. Персонализированное приглашение.</p>
+        <ul class="showcase__list" style="margin-bottom: 0;">
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Профили участников
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Подготовка к нетворкингу
+          </li>
+          <li style="font-size: var(--text-sm);">
+            <svg><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-check"/></svg>
+            Lead nurturing
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CROSS-LINKS ========== -->
+<section class="cross-links">
+  <div class="container">
+    <div class="section-header section-header--center">
+      <h2 class="section-header__title">Что ещё пригодится</h2>
+    </div>
+    
+    <div class="cross-links__grid">
+      <a href="/product/events/" class="cross-link">
+        <div class="cross-link__eyebrow">Для владельцев сообществ</div>
+        <h3 class="cross-link__title">События и регистрации</h3>
+        <p class="cross-link__text">Организуйте мероприятия для участников, собирайте оплаты</p>
+      </a>
+      
+      <a href="/product/notifications/" class="cross-link">
+        <div class="cross-link__eyebrow">Для агентств</div>
+        <h3 class="cross-link__title">Умные уведомления</h3>
+        <p class="cross-link__text">AI-мониторинг клиентских чатов: негатив, вопросы, SLA</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CTA ========== -->
+<section class="cta">
+  <div class="container">
+    <h2 class="cta__title">Начните знать свою аудиторию</h2>
+    <p class="cta__text">
+      Подключите группы — профили участников сформируются автоматически
+    </p>
+    <a href="https://my.orbo.ru/signup" class="btn btn--primary btn--lg">
+      Начать бесплатно
+      <svg width="20" height="20"><use href="https://www.orbo.ru/wp-content/uploads/2025/12/icons.svg#icon-arrow-right"/></svg>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>

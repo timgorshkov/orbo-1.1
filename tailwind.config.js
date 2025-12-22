@@ -21,7 +21,9 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('tailwindcss-animate'),
+  ],
   // Убедитесь, что Tailwind может справиться с динамическими классами
   safelist: [
     'bg-white',

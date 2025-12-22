@@ -20,8 +20,66 @@ function getPublicBaseUrl(request: NextRequest): string {
   return new URL(request.url).origin
 }
 
+/**
+ * Check if request is for the public website (orbo.ru)
+ * vs the application (my.orbo.ru)
+ */
+function isWebsiteDomain(request: NextRequest): boolean {
+  const host = request.headers.get('host') || request.headers.get('x-forwarded-host') || ''
+  
+  // Website domains: orbo.ru, www.orbo.ru, localhost:3001 (for dev)
+  // App domains: my.orbo.ru, localhost:3000 (for dev)
+  const websiteDomains = ['orbo.ru', 'www.orbo.ru']
+  const isWebsite = websiteDomains.some(domain => host.includes(domain))
+  
+  // Also check for explicit website port in development
+  if (host.includes('localhost:3001')) {
+    return true
+  }
+  
+  return isWebsite
+}
+
+/**
+ * Website routes that should be served from (website) group
+ */
+const WEBSITE_ROUTES = ['/', '/product', '/events', '/notifications', '/crm', '/journal']
+
+function isWebsiteRoute(pathname: string): boolean {
+  return WEBSITE_ROUTES.some(route => 
+    pathname === route || pathname.startsWith(route + '/')
+  )
+}
+
 export async function middleware(request: NextRequest) {
   const logger = createServiceLogger('middleware');
+  const { pathname } = request.nextUrl
+  
+  // ========================================
+  // WEBSITE DOMAIN HANDLING (orbo.ru)
+  // ========================================
+  if (isWebsiteDomain(request)) {
+    // For website domain, rewrite to (website) group routes
+    if (isWebsiteRoute(pathname)) {
+      // These routes are handled by app/(website)/ - just pass through
+      return NextResponse.next()
+    }
+    
+    // For any other route on website domain, redirect to my.orbo.ru
+    if (pathname.startsWith('/app') || pathname.startsWith('/orgs') || pathname.startsWith('/signin') || pathname.startsWith('/signup')) {
+      const appUrl = new URL(pathname, 'https://my.orbo.ru')
+      appUrl.search = request.nextUrl.search
+      return NextResponse.redirect(appUrl)
+    }
+    
+    // Static files and API routes pass through
+    return NextResponse.next()
+  }
+  
+  // ========================================
+  // APPLICATION DOMAIN HANDLING (my.orbo.ru)
+  // ========================================
+  
   // Create response once - don't recreate it multiple times
   const response = NextResponse.next({
     request: {
@@ -58,10 +116,8 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Проверяем маршруты, требующие аутентификации
-  const { pathname } = request.nextUrl
-  
   // Исключаем публичные пути и API маршруты из проверки аутентификации
+  // Note: pathname already extracted above for website domain check
   if (
     pathname.startsWith('/api/auth') || // NextAuth routes
     pathname.startsWith('/api/') ||
@@ -72,7 +128,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/auth/callback') || // Новый server-side callback
     pathname.startsWith('/auth/telegram') || // Telegram auth routes
     pathname.startsWith('/p/') || // Публичные страницы (проверка доступа внутри компонентов)
-    pathname === '/' ||
+    pathname === '/' || // Root redirects to /signin or /orgs
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
   ) {
     // ⚠️ НЕ вызываем getSession() для auth callback маршрутов - это нарушает PKCE flow!

@@ -5,6 +5,12 @@ import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('RootPage');
 
+/**
+ * App domain root page (my.orbo.ru)
+ * Redirects to /orgs if authenticated, /signin otherwise
+ * 
+ * Note: Website domain (orbo.ru) is handled via middleware rewrite to /_website routes
+ */
 export default async function Home() {
   try {
     const supabase = await createClientServer();
