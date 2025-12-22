@@ -249,9 +249,13 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
 
     return null;
   } catch (error) {
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-    }, 'Error getting unified session');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // Don't log "Dynamic server usage" errors as they're expected during static build
+    if (errorMessage.includes('Dynamic server usage') || errorMessage.includes('cookies')) {
+      // Expected during Next.js static generation - silently return null
+      return null;
+    }
+    logger.error({ error: errorMessage }, 'Error getting unified session');
     return null;
   }
 }
