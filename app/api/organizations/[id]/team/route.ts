@@ -51,15 +51,20 @@ export async function GET(
     }
 
     // Also get shadow admins (Telegram admins without linked accounts)
-    // Step 1: Get all chat IDs for this org
+    // Step 1: Get all chat IDs and titles for this org
     const { data: orgGroups } = await adminSupabase
       .from('org_telegram_groups')
-      .select('tg_chat_id')
+      .select('tg_chat_id, telegram_groups(title)')
       .eq('org_id', orgId)
     
     const orgChatIds = (orgGroups || []).map(g => g.tg_chat_id)
+    const chatTitles = new Map<number, string>()
+    for (const g of orgGroups || []) {
+      const title = (g.telegram_groups as any)?.title || `Group ${g.tg_chat_id}`
+      chatTitles.set(g.tg_chat_id, title)
+    }
     
-    // Step 2: Get admins for these chats
+    // Step 2: Get admins for these chats (without join to telegram_groups)
     let shadowAdmins: any[] = []
     if (orgChatIds.length > 0) {
       const { data: admins, error: adminsError } = await adminSupabase
@@ -72,8 +77,7 @@ export async function GET(
           last_name,
           custom_title,
           is_owner,
-          is_admin,
-          telegram_groups(title)
+          is_admin
         `)
         .in('tg_chat_id', orgChatIds)
         .eq('is_admin', true)
@@ -117,13 +121,11 @@ export async function GET(
       }
       
       const existing = shadowAdminsMap.get(tgUserId)!
-      // telegram_groups is returned as array from join
-      const groupTitle = Array.isArray(admin.telegram_groups) 
-        ? admin.telegram_groups[0]?.title 
-        : (admin.telegram_groups as any)?.title
+      // Get group title from our pre-fetched map
+      const groupTitle = chatTitles.get(admin.tg_chat_id) || `Group ${admin.tg_chat_id}`
       existing.groups.push({
         id: admin.tg_chat_id,
-        title: groupTitle || `Group ${admin.tg_chat_id}`,
+        title: groupTitle,
         custom_title: admin.custom_title
       })
       if (admin.is_owner) existing.is_owner_in_groups = true
