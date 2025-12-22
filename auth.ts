@@ -261,7 +261,7 @@ export const authConfig: NextAuthConfig = {
       // IMPORTANT: Use Supabase user ID, not NextAuth ID
       if (user.email) {
         const adminSupabase = getSupabaseAdmin();
-        adminSupabase.rpc('get_user_id_by_email', { p_email: user.email })
+        Promise.resolve(adminSupabase.rpc('get_user_id_by_email', { p_email: user.email }))
           .then(({ data: supabaseUserId }) => {
             if (supabaseUserId) {
               import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
