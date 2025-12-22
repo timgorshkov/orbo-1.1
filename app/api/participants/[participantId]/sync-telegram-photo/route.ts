@@ -68,21 +68,43 @@ export async function POST(
       );
     }
 
-    // Получаем фото профиля из Telegram
-    const telegramService = new TelegramService('main');
+    // Попробуем все доступные боты — пользователь мог взаимодействовать с любым из них
+    const botTypes: Array<'main' | 'notifications'> = ['main', 'notifications'];
+    let photosResponse: any = null;
+    let workingBotType: string | null = null;
+    let telegramService: TelegramService | null = null;
+    
+    for (const botType of botTypes) {
+      try {
+        telegramService = new TelegramService(botType);
+        const response = await telegramService.getUserProfilePhotos(
+          Number(participant.tg_user_id),
+          0,
+          1
+        );
+        
+        if (response.ok && response.result.photos.length > 0) {
+          photosResponse = response;
+          workingBotType = botType;
+          logger.debug({ bot_type: botType, tg_user_id: participant.tg_user_id }, 'Found photos using bot');
+          break;
+        }
+      } catch (err) {
+        // Продолжаем попытки с другими ботами
+        logger.debug({ bot_type: botType, error: (err as Error).message }, 'Bot failed to get photos, trying next');
+      }
+    }
     
     try {
-      const photosResponse = await telegramService.getUserProfilePhotos(
-        Number(participant.tg_user_id),
-        0,
-        1
-      );
-      
-      if (!photosResponse.ok || !photosResponse.result.photos.length) {
-        logger.info({ tg_user_id: participant.tg_user_id, participant_id: participantId }, 'No profile photos found for user');
+      if (!photosResponse || !photosResponse.result.photos.length) {
+        logger.info({ 
+          tg_user_id: participant.tg_user_id, 
+          participant_id: participantId,
+          bots_tried: botTypes.length
+        }, 'No profile photos found for user (privacy settings may restrict access)');
         return NextResponse.json({
           success: false,
-          message: 'No profile photos found'
+          message: 'No profile photos found - user may have privacy restrictions'
         });
       }
       
@@ -90,8 +112,8 @@ export async function POST(
       const photos = photosResponse.result.photos[0];
       const largestPhoto = photos[photos.length - 1];
       
-      // Получаем информацию о файле
-      const fileResponse = await telegramService.getFile(largestPhoto.file_id);
+      // Получаем информацию о файле (используем бот, который нашёл фото)
+      const fileResponse = await telegramService!.getFile(largestPhoto.file_id);
       
       if (!fileResponse.ok || !fileResponse.result.file_path) {
         logger.error({ file_response: fileResponse, participant_id: participantId }, 'Failed to get file info');
@@ -102,7 +124,7 @@ export async function POST(
       }
       
       // Скачиваем файл
-      const fileBuffer = await telegramService.downloadFile(fileResponse.result.file_path);
+      const fileBuffer = await telegramService!.downloadFile(fileResponse.result.file_path);
       
       // Initialize storage provider (Selectel S3)
       const storage = createStorage();
@@ -154,7 +176,12 @@ export async function POST(
         }, { status: 500 });
       }
       
-      logger.info({ participant_id: participantId, org_id: participant.org_id, url: publicUrl }, 'Successfully synced photo for participant');
+      logger.info({ 
+        participant_id: participantId, 
+        org_id: participant.org_id, 
+        url: publicUrl,
+        bot_used: workingBotType
+      }, 'Successfully synced photo for participant');
       
       return NextResponse.json({
         success: true,
