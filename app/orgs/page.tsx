@@ -80,13 +80,20 @@ export default async function OrganizationsPage() {
     }, 'Error fetching memberships');
   }
 
-  let organizations = memberships?.map(m => {
+  let organizations: Array<{
+    org_id: string;
+    org_name: string;
+    logo_url: string | null;
+    role: string;
+    last_activity_at: string | null;
+  }> = memberships?.map(m => {
     const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
     return {
       org_id: m.org_id,
       org_name: org?.name || 'Без названия',
       logo_url: org?.logo_url || null,
-      role: m.role
+      role: m.role,
+      last_activity_at: null // Will be filled later
     };
   }) || []
 
@@ -129,7 +136,8 @@ export default async function OrganizationsPage() {
             org_id: orgData.id,
             org_name: orgData.name || 'Без названия',
             logo_url: orgData.logo_url || null,
-            role: 'member'
+            role: 'member',
+            last_activity_at: null // Will be filled later when we fetch activities
           });
         }
         
@@ -150,6 +158,41 @@ export default async function OrganizationsPage() {
         }
       }
     }
+  }
+
+  // ⚡ Получаем дату последней активности для каждой организации
+  if (organizations.length > 0) {
+    const orgIds = organizations.map(o => o.org_id);
+    
+    // Запрос на получение последней активности для каждой организации
+    const { data: lastActivities } = await adminSupabase
+      .from('activity_events')
+      .select('org_id, created_at')
+      .in('org_id', orgIds)
+      .order('created_at', { ascending: false });
+    
+    // Создаём map org_id -> last_activity_at (берём первую, т.к. отсортировано desc)
+    const activityMap = new Map<string, string>();
+    for (const activity of lastActivities || []) {
+      if (!activityMap.has(activity.org_id)) {
+        activityMap.set(activity.org_id, activity.created_at);
+      }
+    }
+    
+    // Заполняем last_activity_at для каждой организации
+    organizations = organizations.map(org => ({
+      ...org,
+      last_activity_at: activityMap.get(org.org_id) || null
+    }));
+    
+    // Сортируем по последней активности (от новых к старым)
+    // Организации без активности идут в конец
+    organizations.sort((a, b) => {
+      if (!a.last_activity_at && !b.last_activity_at) return 0;
+      if (!a.last_activity_at) return 1;
+      if (!b.last_activity_at) return -1;
+      return new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime();
+    });
   }
 
   logger.debug({ 
