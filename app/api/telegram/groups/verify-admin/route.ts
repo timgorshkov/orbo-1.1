@@ -124,12 +124,11 @@ export async function POST(request: Request) {
         const { data: newGroup, error: groupError } = await supabaseService
           .from('telegram_groups')
           .insert({
-            org_id: orgId,
+            // org_id removed in migration 071 - use org_telegram_groups
             tg_chat_id: parseInt(chatId),
             title: chatInfo.result.title,
-            invite_link: chatInfo.result.invite_link || null,
+            // invite_link removed in migration 071
             bot_status: 'connected',
-            // Legacy verification fields removed in migration 080
             member_count: chatInfo.result.member_count || 0,
             created_at: new Date().toISOString()
           })
@@ -150,8 +149,7 @@ export async function POST(request: Request) {
           .from('telegram_groups')
           .update({
             title: chatInfo.result.title,
-            invite_link: chatInfo.result.invite_link || null,
-            // Legacy verification fields removed in migration 080
+            // invite_link removed in migration 071
             member_count: chatInfo.result.member_count || 0
           })
           .eq('id', existingGroup.id)

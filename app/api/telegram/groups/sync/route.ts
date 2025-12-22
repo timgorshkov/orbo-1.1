@@ -241,9 +241,8 @@ export async function POST(request: Request) {
             .upsert({
               tg_chat_id: chatId,
               title: chatDetails.result.title,
-              invite_link: chatDetails.result.invite_link || null,
               bot_status: 'connected',
-              // Legacy verification fields removed in migration 080
+              // invite_link removed in migration 071
               member_count: chatDetails.result.member_count || 0,
               last_sync_at: new Date().toISOString()
             }, { 
@@ -282,7 +281,6 @@ export async function POST(request: Request) {
             groupRecord = upsertedGroup || {
               tg_chat_id: chatId,
               title: chatDetails.result.title,
-              invite_link: chatDetails.result.invite_link || null,
               bot_status: 'connected',
               member_count: chatDetails.result.member_count || 0
             };
@@ -291,9 +289,8 @@ export async function POST(request: Request) {
       } else {
         const updatePatch: Record<string, any> = {
           title: chatDetails.result.title,
-          invite_link: chatDetails.result.invite_link || null,
           bot_status: 'connected',
-          // Legacy verification fields removed in migration 080
+          // invite_link removed in migration 071
           member_count: chatDetails.result.member_count || 0
         };
 
@@ -336,7 +333,7 @@ export async function POST(request: Request) {
             .upsert({
               tg_chat_id: chatId,
               tg_user_id: activeAccount.telegram_user_id,
-              user_telegram_account_id: activeAccount.id,
+              // user_telegram_account_id removed in migration 071
               is_owner: isOwner,
               is_admin: isAdmin,
               can_manage_chat: member.can_manage_chat || false,

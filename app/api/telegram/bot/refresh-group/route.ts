@@ -81,14 +81,7 @@ export async function POST(req: NextRequest) {
       bot_status: isAdmin ? 'connected' : 'pending',
       last_sync_at: new Date().toISOString()
     }
-    
-    // Если бот админ, можем получить ссылку-приглашение
-    if (isAdmin) {
-      const inviteLink = await telegramService.createChatInviteLink(group.tg_chat_id)
-      if (inviteLink?.result?.invite_link) {
-        updateData.invite_link = inviteLink.result.invite_link
-      }
-    }
+    // invite_link removed in migration 071
     
     // Обновляем данные в БД
     const { error: updateError } = await supabase

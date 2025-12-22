@@ -486,7 +486,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           // Получаем данные старой группы
           const { data: oldGroup } = await supabaseServiceRole
             .from('telegram_groups')
-            .select('title, bot_status, member_count, invite_link')
+            .select('title, bot_status, member_count')
             .eq('tg_chat_id', String(oldChatId))
             .maybeSingle();
           
@@ -507,7 +507,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 title: oldGroup.title,
                 bot_status: oldGroup.bot_status,
                 member_count: oldGroup.member_count,
-                invite_link: oldGroup.invite_link,
+                // invite_link removed in migration 071
                 migrated_from: String(oldChatId),
                 last_sync_at: new Date().toISOString()
               });
