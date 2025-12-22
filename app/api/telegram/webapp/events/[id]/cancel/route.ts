@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { validateTelegramWebAppData } from '@/lib/telegram/webAppAuth';
+import { validateInitData, getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -11,18 +11,25 @@ export async function POST(
   
   try {
     // Get Telegram initData from header
-    const initData = request.headers.get('X-Telegram-Init-Data');
+    const initDataString = request.headers.get('X-Telegram-Init-Data');
     
-    if (!initData) {
+    if (!initDataString) {
       return NextResponse.json({ error: 'Telegram auth required' }, { status: 401 });
     }
     
     // Validate Telegram WebApp data
-    const telegramUser = validateTelegramWebAppData(initData);
+    const botToken = getEventBotToken();
+    if (!botToken) {
+      logger.error({ event_id: eventId }, 'Event bot token not configured');
+      return NextResponse.json({ error: 'Service unavailable' }, { status: 500 });
+    }
     
-    if (!telegramUser) {
+    const initData = validateInitData(initDataString, botToken);
+    if (!initData?.user) {
       return NextResponse.json({ error: 'Invalid Telegram auth' }, { status: 401 });
     }
+    
+    const telegramUser = initData.user;
     
     logger.info({
       event_id: eventId,
