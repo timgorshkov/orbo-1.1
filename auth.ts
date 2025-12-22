@@ -258,10 +258,18 @@ export const authConfig: NextAuthConfig = {
       }, 'User signed in via OAuth');
       
       // Ensure CRM record exists (non-blocking)
-      if (user.id && user.email) {
-        import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
-          ensureCrmRecord(user.id!, user.email!, user.name).catch(() => {});
-        }).catch(() => {});
+      // IMPORTANT: Use Supabase user ID, not NextAuth ID
+      if (user.email) {
+        const adminSupabase = getSupabaseAdmin();
+        adminSupabase.rpc('get_user_id_by_email', { p_email: user.email })
+          .then(({ data: supabaseUserId }) => {
+            if (supabaseUserId) {
+              import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
+                ensureCrmRecord(supabaseUserId, user.email!, user.name).catch(() => {});
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
       }
     },
 
