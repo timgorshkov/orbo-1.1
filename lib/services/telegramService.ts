@@ -8,18 +8,27 @@ const logger = createServiceLogger('TelegramService');
 export class TelegramService {
   private apiBase = 'https://api.telegram.org/bot';
   private token: string;
-  private botType: 'main' | 'notifications';
+  private botType: 'main' | 'notifications' | 'event';
 
-  constructor(botType: 'main' | 'notifications' = 'main') {
+  constructor(botType: 'main' | 'notifications' | 'event' = 'main') {
     this.botType = botType;
     
     // Выбираем токен в зависимости от типа бота
-    const token = botType === 'main' 
-      ? process.env.TELEGRAM_BOT_TOKEN 
-      : process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
+    let token: string | undefined;
+    switch (botType) {
+      case 'main':
+        token = process.env.TELEGRAM_BOT_TOKEN;
+        break;
+      case 'notifications':
+        token = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
+        break;
+      case 'event':
+        token = process.env.TELEGRAM_EVENT_BOT_TOKEN;
+        break;
+    }
       
     if (!token) {
-      throw new Error(`${botType === 'main' ? 'TELEGRAM_BOT_TOKEN' : 'TELEGRAM_NOTIFICATIONS_BOT_TOKEN'} not provided`);
+      throw new Error(`Token not provided for bot type: ${botType}`);
     }
     
     this.token = token;

@@ -69,7 +69,8 @@ export async function POST(
     }
 
     // Попробуем все доступные боты — пользователь мог взаимодействовать с любым из них
-    const botTypes: Array<'main' | 'notifications'> = ['main', 'notifications'];
+    // event-бот используется для MiniApp регистрации на мероприятия
+    const botTypes: Array<'main' | 'notifications' | 'event'> = ['main', 'notifications', 'event'];
     let photosResponse: any = null;
     let workingBotType: string | null = null;
     let telegramService: TelegramService | null = null;
