@@ -592,5 +592,239 @@ export async function onTelegramLinked(
   }
 }
 
+/**
+ * Handle qualification step update - update deal description
+ * Called when user completes qualification steps
+ */
+export async function onQualificationUpdated(
+  userId: string,
+  email: string,
+  responses: Record<string, any>,
+  isComplete: boolean
+): Promise<void> {
+  const weeek = getWeeekService();
+  
+  if (!weeek.isConfigured()) {
+    return;
+  }
+
+  try {
+    const supabase = getSupabaseAdmin();
+    
+    // Check if we have a CRM record for this user
+    const { data: syncLog } = await supabase
+      .from('crm_sync_log')
+      .select('weeek_contact_id, weeek_deal_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    let contactId = syncLog?.weeek_contact_id;
+    let dealId = syncLog?.weeek_deal_id;
+
+    // If no deal exists, create contact and deal first
+    if (!dealId) {
+      logger.info({ userId, email }, 'No CRM deal found, creating during qualification');
+      
+      // Create contact
+      contactId = await weeek.createContact({ email });
+      if (!contactId) {
+        logger.error({ userId, email }, 'Failed to create Weeek contact during qualification');
+        return;
+      }
+
+      // Create deal
+      const dealTitle = email;
+      dealId = await weeek.createDeal({
+        title: dealTitle,
+        contactId,
+        description: `Регистрация: ${new Date().toLocaleString('ru-RU')}`,
+      });
+
+      if (!dealId) {
+        logger.error({ userId, email }, 'Failed to create Weeek deal during qualification');
+        return;
+      }
+
+      // Save mapping
+      await supabase
+        .from('crm_sync_log')
+        .upsert({
+          user_id: userId,
+          weeek_contact_id: contactId,
+          weeek_deal_id: dealId,
+          synced_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id'
+        });
+    }
+
+    // Format qualification data for deal description
+    const descriptionParts: string[] = [];
+    
+    // Step 1: Role and community type
+    if (responses.role) {
+      const roleLabels: Record<string, string> = {
+        owner: 'Владелец сообщества',
+        admin: 'Администратор',
+        project_manager: 'Менеджер проектов',
+        event_organizer: 'Организатор мероприятий',
+        hr: 'HR',
+        other: 'Другое',
+      };
+      descriptionParts.push(`👤 Роль: ${roleLabels[responses.role] || responses.role}`);
+    }
+    
+    if (responses.community_type) {
+      const typeLabels: Record<string, string> = {
+        professional: 'Профессиональное',
+        hobby: 'Клуб по интересам',
+        education: 'Образование',
+        client_chats: 'Клиентские чаты',
+        business_club: 'Бизнес-клуб',
+        internal: 'Внутренние коммуникации',
+        other: 'Другое',
+      };
+      descriptionParts.push(`🏢 Тип: ${typeLabels[responses.community_type] || responses.community_type}`);
+    }
+    
+    // Step 2: Scale and pain points
+    if (responses.groups_count) {
+      descriptionParts.push(`📊 Групп: ${responses.groups_count}`);
+    }
+    
+    if (responses.pain_points && Array.isArray(responses.pain_points) && responses.pain_points.length > 0) {
+      const painLabels: Record<string, string> = {
+        missing_messages: 'Пропуск сообщений',
+        inactive_tracking: 'Отслеживание неактивных',
+        event_registration: 'Регистрация на события',
+        access_management: 'Управление доступом',
+        no_crm: 'Нет CRM',
+        scattered_tools: 'Разрозненные инструменты',
+        fear_of_blocking: 'Страх блокировок',
+      };
+      const pains = responses.pain_points.map((p: string) => painLabels[p] || p).join(', ');
+      descriptionParts.push(`🎯 Боли: ${pains}`);
+    }
+    
+    if (isComplete) {
+      descriptionParts.push(`\n✅ Квалификация завершена: ${new Date().toLocaleString('ru-RU')}`);
+    }
+
+    const description = descriptionParts.length > 0 
+      ? descriptionParts.join('\n')
+      : `Регистрация: ${new Date().toLocaleString('ru-RU')}`;
+
+    // Update deal
+    await weeek.updateDeal(dealId, { description });
+
+    // Update sync log
+    await supabase
+      .from('crm_sync_log')
+      .update({
+        qualification_responses: responses,
+        synced_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+
+    logger.info({ userId, dealId, isComplete }, 'Updated Weeek deal with qualification data');
+
+  } catch (error) {
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      userId 
+    }, 'Error updating Weeek deal with qualification');
+  }
+}
+
+/**
+ * Ensure user has CRM record (create if not exists)
+ * Call this on first authenticated page load
+ */
+export async function ensureCrmRecord(
+  userId: string,
+  email: string,
+  name?: string | null
+): Promise<void> {
+  const weeek = getWeeekService();
+  
+  if (!weeek.isConfigured()) {
+    logger.debug({ userId }, 'Weeek not configured, skipping CRM sync');
+    return;
+  }
+
+  try {
+    const supabase = getSupabaseAdmin();
+    
+    // Check if we already have a CRM record for this user
+    const { data: existingSync } = await supabase
+      .from('crm_sync_log')
+      .select('weeek_deal_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingSync?.weeek_deal_id) {
+      logger.debug({ userId }, 'User already has CRM record');
+      return;
+    }
+
+    logger.info({ userId, email }, 'Creating CRM record for user');
+
+    // Parse name into first/last
+    let firstName: string | undefined;
+    let lastName: string | undefined;
+    if (name) {
+      const parts = name.trim().split(/\s+/);
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ') || undefined;
+    }
+
+    // Create contact
+    const contactId = await weeek.createContact({
+      email,
+      firstName,
+      lastName,
+    });
+
+    if (!contactId) {
+      logger.error({ userId, email }, 'Failed to create Weeek contact');
+      return;
+    }
+
+    // Create deal
+    const dealTitle = name ? `${name} (${email})` : email;
+    const dealId = await weeek.createDeal({
+      title: dealTitle,
+      contactId,
+      description: `Регистрация: ${new Date().toLocaleString('ru-RU')}`,
+    });
+
+    if (!dealId) {
+      logger.error({ userId, email, contactId }, 'Failed to create Weeek deal');
+      return;
+    }
+
+    // Save mapping to database
+    await supabase
+      .from('crm_sync_log')
+      .upsert({
+        user_id: userId,
+        weeek_contact_id: contactId,
+        weeek_deal_id: dealId,
+        synced_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id'
+      });
+
+    logger.info({ userId, email, contactId, dealId }, 'User synced to Weeek CRM');
+
+  } catch (error) {
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      userId,
+      email 
+    }, 'Error ensuring CRM record');
+  }
+}
+
 export { WeeekService };
 

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.crm_sync_log (
     org_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL,
     org_name TEXT,
     telegram_username TEXT,
+    qualification_responses JSONB,
     
     -- Timestamps
     synced_at TIMESTAMPTZ DEFAULT NOW(),

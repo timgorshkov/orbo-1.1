@@ -100,11 +100,6 @@ export async function GET(request: NextRequest) {
       
       userId = newUser.user.id
       logger.info({ email, user_id: userId }, 'Created new user')
-      
-      // Sync to CRM (non-blocking)
-      import('@/lib/services/weeekService').then(({ onUserRegistration }) => {
-        onUserRegistration(userId!, email).catch(() => {});
-      }).catch(() => {});
     }
     
     // 4. Проверяем что userId определён
@@ -189,7 +184,12 @@ export async function GET(request: NextRequest) {
       // Continue anyway
     }
     
-    // 9. Редиректим на целевой URL
+    // 9. Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
+      ensureCrmRecord(userId!, email).catch(() => {});
+    }).catch(() => {});
+    
+    // 10. Редиректим на целевой URL
     const finalRedirectUrl = authToken.redirect_url || '/orgs'
     
     logger.info({ 

@@ -119,6 +119,11 @@ export async function POST(request: NextRequest) {
       responseKeys: Object.keys(responses),
     }, 'Qualification saved');
 
+    // Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ onQualificationUpdated }) => {
+      onQualificationUpdated(user.id, user.email || '', responses, complete).catch(() => {});
+    }).catch(() => {});
+
     return NextResponse.json({
       success: true,
       qualification: data,
@@ -195,6 +200,11 @@ export async function PATCH(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Sync to CRM (non-blocking)
+    import('@/lib/services/weeekService').then(({ onQualificationUpdated }) => {
+      onQualificationUpdated(user.id, user.email || '', mergedResponses, !!data?.completed_at).catch(() => {});
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,
