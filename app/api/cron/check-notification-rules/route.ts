@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  logger.info({}, '🔔 Notification rules check started');
+  logger.debug({}, 'Notification rules check started');
 
   try {
     const startTime = Date.now();

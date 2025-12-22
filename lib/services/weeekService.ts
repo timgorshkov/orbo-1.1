@@ -196,7 +196,7 @@ class WeeekService {
       // Sort by order and get the first one
       const sorted = result.data.statuses.sort((a, b) => a.order - b.order);
       this.defaultStatusId = sorted[0].id;
-      logger.info({ statusId: this.defaultStatusId }, 'Found first stage ID');
+      logger.debug({ statusId: this.defaultStatusId }, 'Found first stage ID');
       return this.defaultStatusId;
     }
 
@@ -252,7 +252,7 @@ class WeeekService {
     );
 
     if (result.success && result.data?.contact?.id) {
-      logger.info({ 
+      logger.debug({ 
         contactId: result.data.contact.id,
         email: params.email 
       }, 'Created Weeek contact');
@@ -264,14 +264,10 @@ class WeeekService {
 
   /**
    * Update existing contact
-   * Note: Weeek API requires firstName even for updates
-   */
-  /**
-   * Update existing contact
    * API: PUT /crm/contacts/{id}
    * @see https://developers.weeek.net/api/contacts#update-a-contact
    * 
-   * Using middleName for Telegram username since links doesn't work
+   * Note: Using middleName for Telegram username since links doesn't work
    */
   async updateContact(contactId: string, params: UpdateContactParams, existingFirstName?: string): Promise<boolean> {
     const updateData: any = {
@@ -294,7 +290,7 @@ class WeeekService {
     );
 
     if (result.success) {
-      logger.info({ contactId, telegramUsername: params.telegramUsername }, 'Updated Weeek contact');
+      logger.debug({ contactId, telegramUsername: params.telegramUsername }, 'Updated Weeek contact');
       return true;
     }
 
@@ -333,7 +329,7 @@ class WeeekService {
     );
 
     if (result.success && result.data?.deal?.id) {
-      logger.info({ 
+      logger.debug({ 
         dealId: result.data.deal.id,
         title: params.title 
       }, 'Created Weeek deal');
@@ -377,7 +373,7 @@ class WeeekService {
     );
 
     if (result.success) {
-      logger.info({ dealId, title: params.title?.substring(0, 50) }, 'Updated Weeek deal');
+      logger.debug({ dealId, title: params.title?.substring(0, 50) }, 'Updated Weeek deal');
       return true;
     }
 
@@ -686,7 +682,7 @@ export async function onQualificationUpdated(
 
     // If no deal exists, create contact and deal first
     if (!dealId) {
-      logger.info({ userId, email }, 'No CRM deal found, creating during qualification');
+      logger.debug({ userId, email }, 'No CRM deal found, creating during qualification');
       
       // Create contact
       contactId = await weeek.createContact({ email });
@@ -724,7 +720,7 @@ export async function onQualificationUpdated(
           onConflict: 'user_id'
         });
         
-      logger.info({ userId, dealId, isComplete }, 'Created Weeek deal with qualification in title');
+      logger.debug({ userId, dealId, isComplete }, 'Created Weeek deal with qualification in title');
       return;
     }
 
@@ -737,7 +733,7 @@ export async function onQualificationUpdated(
       })
       .eq('user_id', userId);
 
-    logger.info({ userId, dealId, isComplete }, 'Saved qualification data to sync log');
+    logger.debug({ userId, dealId, isComplete }, 'Saved qualification data to sync log');
 
   } catch (error) {
     logger.error({ 
@@ -795,7 +791,7 @@ export async function ensureCrmRecord(
       return;
     }
 
-    logger.info({ userId, email }, 'Creating CRM record for user');
+    logger.debug({ userId, email }, 'Creating CRM record for user');
 
     // Parse name into first/last
     let firstName: string | undefined;

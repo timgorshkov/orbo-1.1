@@ -901,7 +901,7 @@ export async function processAllNotificationRules(): Promise<{
     }
   }
   
-  logger.info({
+  logger.debug({
     processed: rules.length,
     triggered: triggeredCount,
     total_ai_cost_usd: totalAiCost

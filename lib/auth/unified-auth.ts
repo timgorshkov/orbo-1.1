@@ -48,7 +48,7 @@ async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Pr
       .rpc('get_user_id_by_email', { p_email: email });
     
     if (!rpcError && foundUserId) {
-      logger.info({ email, supabase_user_id: foundUserId }, 'Found Supabase user via RPC');
+      logger.debug({ email, supabase_user_id: foundUserId }, 'Found Supabase user via RPC');
       return foundUserId;
     }
     
@@ -64,7 +64,7 @@ async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Pr
     try {
       const { data: userData, error: userError } = await adminSupabase.auth.admin.getUserById(nextAuthId);
       if (!userError && userData?.user) {
-        logger.info({ email, supabase_user_id: userData.user.id }, 'Found Supabase user by ID');
+        logger.debug({ email, supabase_user_id: userData.user.id }, 'Found Supabase user by ID');
         return userData.user.id;
       }
     } catch (e) {

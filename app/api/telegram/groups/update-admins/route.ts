@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
     
-    logger.info({ org_id: orgId }, 'Updating admin rights for org');
+    logger.debug({ org_id: orgId }, 'Updating admin rights for org');
     
     const user = await getUnifiedUser();
 
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     }
     
     if (!accounts || accounts.length === 0) {
-      logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
+      logger.debug({ user_id: user.id }, 'No verified Telegram accounts found');
       return NextResponse.json({ 
         message: 'No verified Telegram accounts found for this user',
         updated: 0,
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     // All groups must be linked via org_telegram_groups table
     
     if (groups.length === 0) {
-      logger.info({ org_id: orgId }, 'No Telegram groups found for org');
+      logger.debug({ org_id: orgId }, 'No Telegram groups found for org');
       return NextResponse.json({ 
         message: 'No Telegram groups found for this organization',
         updated: 0,

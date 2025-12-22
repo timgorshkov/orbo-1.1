@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       }));
 
     const duration = Date.now() - startTime;
-    log.info({
+    log.debug({
       userId: session.user.id,
       provider: session.provider,
       orgCount: organizations.length,

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    logger.info({ 
+    logger.debug({ 
       user_id: user.id,
       org_id: orgId,
       email: user.email
@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
       organization: organization || null
     };
 
-    logger.info({ 
+    logger.debug({ 
       user_id: user.id,
       org_id: orgId,
       is_shadow_profile: isShadowProfile,

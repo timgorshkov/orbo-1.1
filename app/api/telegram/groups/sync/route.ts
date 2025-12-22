@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     // Выбираем аккаунт для текущей организации или первый доступный
     const activeAccount = telegramAccount || telegramAccounts[0];
     
-    logger.info({ 
+    logger.debug({ 
       account_id: activeAccount.id,
       telegram_user_id: activeAccount.telegram_user_id,
       org_id: orgId
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     const telegramService = new TelegramService('main');
     const tgUserId = activeAccount.telegram_user_id;
     
-    logger.info({ user_id: user.id, telegram_user_id: tgUserId, org_id: orgId }, 'Starting sync');
+    logger.debug({ user_id: user.id, telegram_user_id: tgUserId, org_id: orgId }, 'Starting sync');
 
     try {
       // НОВАЯ ЛОГИКА: Получаем ВСЕ группы из БД, где бот подключен
