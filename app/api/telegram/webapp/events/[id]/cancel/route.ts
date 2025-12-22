@@ -88,8 +88,7 @@ export async function POST(
     const { error: updateError } = await adminSupabase
       .from('event_registrations')
       .update({
-        status: 'cancelled',
-        updated_at: new Date().toISOString()
+        status: 'cancelled'
       })
       .eq('id', registration.id);
     
