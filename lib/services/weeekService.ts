@@ -62,27 +62,41 @@ interface WeeekApiResponse<T> {
 }
 
 class WeeekService {
-  private apiToken: string;
-  private funnelId: string;
   private defaultStatusId: string | null = null;
+  private configWarningLogged = false;
 
-  constructor() {
-    this.apiToken = process.env.WEEEK_API_TOKEN || '';
-    this.funnelId = process.env.WEEEK_FUNNEL_ID || '';
-    
-    if (!this.apiToken) {
-      logger.warn({}, 'WEEEK_API_TOKEN not set - CRM integration disabled');
-    }
-    if (!this.funnelId) {
-      logger.warn({}, 'WEEEK_FUNNEL_ID not set - CRM integration disabled');
-    }
+  /**
+   * Get API token (read fresh from env each time)
+   */
+  private get apiToken(): string {
+    return process.env.WEEEK_API_TOKEN || '';
+  }
+
+  /**
+   * Get funnel ID (read fresh from env each time)
+   */
+  private get funnelId(): string {
+    return process.env.WEEEK_FUNNEL_ID || '';
   }
 
   /**
    * Check if Weeek integration is configured
    */
   isConfigured(): boolean {
-    return !!(this.apiToken && this.funnelId);
+    const configured = !!(this.apiToken && this.funnelId);
+    
+    // Log warning once per service instance
+    if (!configured && !this.configWarningLogged) {
+      if (!this.apiToken) {
+        logger.warn({}, 'WEEEK_API_TOKEN not set - CRM integration disabled');
+      }
+      if (!this.funnelId) {
+        logger.warn({}, 'WEEEK_FUNNEL_ID not set - CRM integration disabled');
+      }
+      this.configWarningLogged = true;
+    }
+    
+    return configured;
   }
 
   /**
@@ -346,14 +360,12 @@ class WeeekService {
   }
 }
 
-// Singleton instance
-let weeekServiceInstance: WeeekService | null = null;
-
+/**
+ * Get Weeek service instance
+ * Creates new instance each time to ensure fresh env vars are read
+ */
 export function getWeeekService(): WeeekService {
-  if (!weeekServiceInstance) {
-    weeekServiceInstance = new WeeekService();
-  }
-  return weeekServiceInstance;
+  return new WeeekService();
 }
 
 // ==========================================
