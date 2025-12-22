@@ -51,23 +51,44 @@ export async function GET(
     }
 
     // Also get shadow admins (Telegram admins without linked accounts)
-    const { data: shadowAdmins } = await adminSupabase
-      .from('telegram_group_admins')
-      .select(`
-        tg_user_id,
-        tg_chat_id,
-        username,
-        first_name,
-        last_name,
-        custom_title,
-        is_owner,
-        is_admin,
-        telegram_groups!inner(title),
-        org_telegram_groups!inner(org_id)
-      `)
-      .eq('org_telegram_groups.org_id', orgId)
-      .eq('is_admin', true)
-      .gt('expires_at', new Date().toISOString())
+    // Step 1: Get all chat IDs for this org
+    const { data: orgGroups } = await adminSupabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
+      .eq('org_id', orgId)
+    
+    const orgChatIds = (orgGroups || []).map(g => g.tg_chat_id)
+    
+    // Step 2: Get admins for these chats
+    let shadowAdmins: any[] = []
+    if (orgChatIds.length > 0) {
+      const { data: admins, error: adminsError } = await adminSupabase
+        .from('telegram_group_admins')
+        .select(`
+          tg_user_id,
+          tg_chat_id,
+          username,
+          first_name,
+          last_name,
+          custom_title,
+          is_owner,
+          is_admin,
+          telegram_groups(title)
+        `)
+        .in('tg_chat_id', orgChatIds)
+        .eq('is_admin', true)
+        .gt('expires_at', new Date().toISOString())
+      
+      if (adminsError) {
+        logger.warn({ error: adminsError.message }, 'Error fetching shadow admins')
+      }
+      shadowAdmins = admins || []
+    }
+    
+    logger.debug({ 
+      org_chat_ids: orgChatIds.length,
+      shadow_admins_raw: shadowAdmins.length 
+    }, 'Shadow admins query result')
 
     // Get tg_user_ids that already have memberships (to exclude from shadow list)
     const linkedTgUserIds = new Set(
