@@ -242,9 +242,10 @@ export default function OrganizationsTable({
                 Отмена
               </Button>
               <Button
-                variant={confirmDialog.action === 'archive' ? 'destructive' : 'default'}
+                variant="default"
                 onClick={confirmAction}
                 disabled={loadingId !== null}
+                className={confirmDialog.action === 'archive' ? 'bg-red-600 hover:bg-red-700' : ''}
               >
                 {loadingId !== null ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
