@@ -34,11 +34,13 @@ export async function POST(request: NextRequest) {
     const cookieStore = await cookies()
     const allCookies = cookieStore.getAll()
     
-    // Find all Supabase auth cookies
+    // Find all auth cookies (Supabase + NextAuth)
     const supabaseCookies = allCookies.filter(c => 
       c.name.includes('auth-token') || 
       c.name.startsWith('sb-') ||
-      c.name.includes('supabase')
+      c.name.includes('supabase') ||
+      c.name.includes('authjs') ||  // NextAuth cookies
+      c.name.includes('next-auth')
     )
     
     logger.debug({ 

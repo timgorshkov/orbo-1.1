@@ -83,7 +83,9 @@ export async function GET(
       if (adminsError) {
         logger.warn({ error: adminsError.message }, 'Error fetching shadow admins')
       }
-      shadowAdmins = admins || []
+      // Filter out bots (orbo_community_bot, etc.)
+      const BOT_USER_IDS = [8355772450] // orbo_community_bot
+      shadowAdmins = (admins || []).filter(a => !BOT_USER_IDS.includes(a.tg_user_id))
     }
     
     // Step 3: Get participant info for these admins (for name/username)
@@ -222,7 +224,9 @@ export async function GET(
         metadata: {
           shadow_profile: true,
           is_owner_in_groups: shadowAdmin.is_owner_in_groups
-        }
+        },
+        // Hint for UI - how to become a full admin
+        activation_hint: 'Для получения полного доступа администратору нужно написать боту @orbo_assist_bot и пройти верификацию Telegram-аккаунта'
       })
     }
 

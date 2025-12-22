@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import Link from 'next/link'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
+import { LogoutButton } from '@/components/auth/logout-button'
 
 export const dynamic = 'force-dynamic';
 
@@ -371,6 +372,16 @@ export default async function OrganizationsPage() {
             <span className="text-lg">+</span>
             <span>Создать новое пространство</span>
           </Link>
+        </div>
+
+        {/* Разделитель и кнопка выхода */}
+        <div className="mt-12 pt-8 border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">
+              {user.email}
+            </p>
+            <LogoutButton />
+          </div>
         </div>
       </div>
     </div>
