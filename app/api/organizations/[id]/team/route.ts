@@ -64,7 +64,7 @@ export async function GET(
       chatTitles.set(g.tg_chat_id, title)
     }
     
-    // Step 2: Get admins for these chats (without join to telegram_groups)
+    // Step 2: Get admins for these chats
     let shadowAdmins: any[] = []
     if (orgChatIds.length > 0) {
       const { data: admins, error: adminsError } = await adminSupabase
@@ -72,9 +72,6 @@ export async function GET(
         .select(`
           tg_user_id,
           tg_chat_id,
-          username,
-          first_name,
-          last_name,
           custom_title,
           is_owner,
           is_admin
@@ -87,6 +84,28 @@ export async function GET(
         logger.warn({ error: adminsError.message }, 'Error fetching shadow admins')
       }
       shadowAdmins = admins || []
+    }
+    
+    // Step 3: Get participant info for these admins (for name/username)
+    const adminTgUserIds = Array.from(new Set(shadowAdmins.map(a => a.tg_user_id)))
+    const participantInfo = new Map<number, { full_name: string | null, username: string | null }>()
+    
+    if (adminTgUserIds.length > 0) {
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('tg_user_id, full_name, username')
+        .eq('org_id', orgId)
+        .in('tg_user_id', adminTgUserIds)
+        .is('merged_into', null)
+      
+      for (const p of participants || []) {
+        if (p.tg_user_id) {
+          participantInfo.set(p.tg_user_id, { 
+            full_name: p.full_name, 
+            username: p.username 
+          })
+        }
+      }
     }
     
     logger.debug({ 
@@ -109,12 +128,14 @@ export async function GET(
       // Skip if already has a linked account
       if (linkedTgUserIds.has(tgUserId)) continue
       
+      // Get participant info for name/username
+      const pInfo = participantInfo.get(admin.tg_user_id)
+      
       if (!shadowAdminsMap.has(tgUserId)) {
         shadowAdminsMap.set(tgUserId, {
           tg_user_id: admin.tg_user_id,
-          username: admin.username,
-          first_name: admin.first_name,
-          last_name: admin.last_name,
+          username: pInfo?.username || null,
+          full_name: pInfo?.full_name || null,
           is_owner_in_groups: admin.is_owner,
           groups: []
         })
@@ -180,9 +201,9 @@ export async function GET(
 
     // Add shadow admins to the team
     for (const [tgUserId, shadowAdmin] of Array.from(shadowAdminsMap.entries())) {
-      const fullName = [shadowAdmin.first_name, shadowAdmin.last_name]
-        .filter(Boolean)
-        .join(' ') || shadowAdmin.username || `Telegram ${tgUserId}`
+      const fullName = shadowAdmin.full_name 
+        || shadowAdmin.username 
+        || `Telegram ${tgUserId}`
       
       teamWithGroups.push({
         user_id: null, // No linked account
