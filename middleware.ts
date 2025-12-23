@@ -27,10 +27,14 @@ function getPublicBaseUrl(request: NextRequest): string {
 function isWebsiteDomain(request: NextRequest): boolean {
   const host = request.headers.get('host') || request.headers.get('x-forwarded-host') || ''
   
-  // Website domains: orbo.ru, www.orbo.ru, localhost:3001 (for dev)
-  // App domains: my.orbo.ru, localhost:3000 (for dev)
+  // Extract hostname without port
+  const hostname = host.split(':')[0]
+  
+  // Website domains: exactly orbo.ru or www.orbo.ru
+  // App domains: my.orbo.ru, app.orbo.ru, etc.
+  // IMPORTANT: Use exact match to avoid my.orbo.ru matching orbo.ru
   const websiteDomains = ['orbo.ru', 'www.orbo.ru']
-  const isWebsite = websiteDomains.some(domain => host.includes(domain))
+  const isWebsite = websiteDomains.includes(hostname)
   
   // Also check for explicit website port in development
   if (host.includes('localhost:3001')) {

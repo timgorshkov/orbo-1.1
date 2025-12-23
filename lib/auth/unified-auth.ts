@@ -141,7 +141,7 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
     try {
       const lookupPromise = lookupSupabaseUserByEmail(userEmail, nextAuthSession.user.id);
       const timeoutPromise = new Promise<string | null>((_, reject) => 
-        setTimeout(() => reject(new Error('User lookup timeout')), 3000)
+        setTimeout(() => reject(new Error('User lookup timeout')), 5000) // Увеличен до 5 секунд
       );
       
       const supabaseUserId = await Promise.race([lookupPromise, timeoutPromise]);
@@ -149,8 +149,19 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
       if (supabaseUserId) {
         userId = supabaseUserId;
         userIdCache.set(userEmail, { userId, timestamp: Date.now() });
+      } else if (nextAuthSession.user.id) {
+        // Кэшируем NextAuth ID как fallback, чтобы не делать повторные запросы
+        userId = nextAuthSession.user.id;
+        userIdCache.set(userEmail, { userId, timestamp: Date.now() });
+        logger.debug({ email: userEmail, nextauth_id: userId }, 'Cached NextAuth ID as fallback');
       }
     } catch (error) {
+      // При таймауте или ошибке - кэшируем NextAuth ID чтобы не повторять медленные запросы
+      if (nextAuthSession.user.id) {
+        userId = nextAuthSession.user.id;
+        // Кэшируем на более короткий срок (1 минута) при ошибке, чтобы повторить позже
+        userIdCache.set(userEmail, { userId, timestamp: Date.now() - (CACHE_TTL_MS - 60000) });
+      }
       logger.warn({
         error: error instanceof Error ? error.message : String(error),
         email: userEmail,
