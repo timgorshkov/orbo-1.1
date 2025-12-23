@@ -32,7 +32,7 @@ const supabaseServiceRole = createClient(
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { webhook: 'main' });
-  logger.info('Webhook received');
+  logger.debug('Webhook received');
   
   // Проверяем секретный токен
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET!
@@ -705,9 +705,9 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       }, 'Non-text update');
     }
     
-    // Итоговый лог
+    // Итоговый лог (debug уровень - слишком частые)
     const durationMs = Date.now() - startTime;
-    logger.info({ 
+    logger.debug({ 
       update_id: updateId,
       event_type: body.message?.chat?.type || 'event',
       duration_ms: durationMs,

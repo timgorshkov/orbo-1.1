@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { webhook: 'notifications' });
-  logger.info('Webhook received');
+  logger.debug('Webhook received');
   
   // Проверяем секретный токен
   const secret = process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET
