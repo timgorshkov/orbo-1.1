@@ -73,6 +73,14 @@
 }
 
 /* --------------------------------------------------------------------------
+   Base Styles - Prevent horizontal overflow on mobile
+   -------------------------------------------------------------------------- */
+.website-root {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
    Orb Background Component (WebGL via OGL)
    Note: Orb is rendered via WebGL canvas, these are container styles only
    -------------------------------------------------------------------------- */
@@ -171,6 +179,48 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  color: var(--website-text);
+}
+
+/* Mobile menu dropdown */
+.website-header__mobile-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: var(--website-space-lg);
+  z-index: 999;
+}
+
+.website-header__mobile-menu nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--website-space-sm);
+}
+
+.website-header__mobile-menu nav a {
+  display: block;
+  padding: var(--website-space-md) var(--website-space-lg);
+  font-size: var(--website-font-size-base);
+  font-weight: 500;
+  color: var(--website-text);
+  text-decoration: none;
+  border-radius: var(--website-radius-md);
+  transition: background 0.2s;
+}
+
+.website-header__mobile-menu nav a:hover {
+  background: var(--website-bg-alt);
+}
+
+.website-header__mobile-menu .website-header__cta {
+  margin-top: var(--website-space-sm);
+  text-align: center;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {
@@ -180,6 +230,14 @@
   
   .website-header__menu-btn {
     display: flex;
+  }
+  
+  .website-header__mobile-menu {
+    display: block;
+  }
+  
+  .website-header__container {
+    padding: 0 var(--website-space-lg);
   }
 }
 
@@ -205,7 +263,8 @@
 
 .website-footer__links {
   display: flex;
-  gap: var(--website-space-xl);
+  flex-wrap: wrap;
+  gap: var(--website-space-md) var(--website-space-xl);
 }
 
 .website-footer__links a {
@@ -213,6 +272,7 @@
   color: var(--website-text-muted);
   text-decoration: none !important;
   transition: color var(--website-transition-fast);
+  white-space: nowrap;
 }
 
 .website-footer__links a:hover {
@@ -222,6 +282,28 @@
 .website-footer__copy {
   font-size: var(--website-font-size-sm);
   color: var(--website-text-light);
+}
+
+@media (max-width: 768px) {
+  .website-footer {
+    padding: var(--website-space-2xl) 0;
+  }
+  
+  .website-footer__container {
+    flex-direction: column;
+    gap: var(--website-space-lg);
+    text-align: center;
+    padding: 0 var(--website-space-lg);
+  }
+  
+  .website-footer__links {
+    justify-content: center;
+    gap: var(--website-space-sm) var(--website-space-lg);
+  }
+  
+  .website-footer__links a {
+    font-size: var(--website-font-size-xs);
+  }
 }
 
 /* --------------------------------------------------------------------------
