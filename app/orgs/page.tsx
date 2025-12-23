@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { LogoutButton } from '@/components/auth/logout-button'
+import { isSuperadmin } from '@/lib/server/superadminGuard'
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export default async function OrganizationsPage() {
   const adminSupabase = createAdminServer();
 
   // ⚡ ОПТИМИЗАЦИЯ: Выполняем все начальные запросы параллельно
-  const [qualificationResult, membershipsResult, telegramAccountsResult] = await Promise.all([
+  const [qualificationResult, membershipsResult, telegramAccountsResult, userIsSuperadmin] = await Promise.all([
     // Проверяем квалификацию
     adminSupabase
       .from('user_qualification_responses')
@@ -61,7 +62,10 @@ export default async function OrganizationsPage() {
     adminSupabase
       .from('user_telegram_accounts')
       .select('org_id, telegram_user_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id),
+    
+    // Проверяем суперадмина
+    isSuperadmin()
   ]);
 
   const { data: qualification } = qualificationResult;
@@ -232,7 +236,17 @@ export default async function OrganizationsPage() {
                 <p className="text-xs text-gray-500">Текущий аккаунт:</p>
                 <p className="text-sm text-gray-700">{user.email}</p>
               </div>
-              <LogoutButton variant="text" showIcon={false} />
+              <div className="flex items-center gap-4">
+                {userIsSuperadmin && (
+                  <Link 
+                    href="/superadmin" 
+                    className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                  >
+                    ⚙️ Суперадминка
+                  </Link>
+                )}
+                <LogoutButton variant="text" showIcon={false} />
+              </div>
             </div>
             <p className="mt-3 text-xs text-gray-500">
               Чтобы зайти под другим email или зарегистрироваться заново, сначала выйдите из текущего аккаунта.
@@ -393,7 +407,17 @@ export default async function OrganizationsPage() {
             <p className="text-sm text-gray-500">
               {user.email}
             </p>
-            <LogoutButton />
+            <div className="flex items-center gap-4">
+              {userIsSuperadmin && (
+                <Link 
+                  href="/superadmin" 
+                  className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                >
+                  ⚙️ Суперадминка
+                </Link>
+              )}
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </div>
