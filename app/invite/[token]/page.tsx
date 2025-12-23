@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, CheckCircle, XCircle, Clock, Mail, Building2 } from 'lucide-react'
+import { Loader2, CheckCircle, XCircle, Clock, Mail, Building2, LogOut, AlertTriangle } from 'lucide-react'
 
 interface InvitationData {
   id: string
@@ -25,10 +25,13 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [accepting, setAccepting] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [invitation, setInvitation] = useState<InvitationData | null>(null)
   const [success, setSuccess] = useState(false)
   const [needsAuth, setNeedsAuth] = useState(false)
+  const [wrongEmail, setWrongEmail] = useState(false)
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
     fetchInvitation()
@@ -40,7 +43,14 @@ export default function InvitePage({ params }: { params: { token: string } }) {
       const data = await res.json()
 
       if (!res.ok) {
-        if (data.needsAuth) {
+        if (res.status === 403 && data.needsAuth && data.invitation) {
+          // User is logged in but with wrong email
+          setWrongEmail(true)
+          setInvitation(data.invitation)
+          // Extract current user email from error message if available
+          // Try to get current user info
+          fetchCurrentUser()
+        } else if (data.needsAuth) {
           setNeedsAuth(true)
           setInvitation(data.invitation)
         } else {
@@ -55,6 +65,18 @@ export default function InvitePage({ params }: { params: { token: string } }) {
     } catch (err) {
       setError('Ошибка загрузки приглашения')
       setLoading(false)
+    }
+  }
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/user/me')
+      if (res.ok) {
+        const data = await res.json()
+        setCurrentUserEmail(data.email)
+      }
+    } catch {
+      // Ignore
     }
   }
 
@@ -89,7 +111,22 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   const goToLogin = () => {
     // Store the invite token to process after login
     sessionStorage.setItem('pendingInviteToken', params.token)
-    router.push('/login')
+    router.push('/signin')
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      // Logout from all providers (Supabase + NextAuth)
+      await fetch('/api/auth/logout', { method: 'POST' })
+      // Store the invite token to process after re-login
+      sessionStorage.setItem('pendingInviteToken', params.token)
+      // Redirect to signin
+      window.location.href = '/signin'
+    } catch (err) {
+      setLoggingOut(false)
+      setError('Ошибка выхода из аккаунта')
+    }
   }
 
   if (loading) {
@@ -136,8 +173,77 @@ export default function InvitePage({ params }: { params: { token: string } }) {
             <p className="text-gray-600 mb-6">
               {error}
             </p>
-            <Button onClick={() => router.push('/login')}>
+            <Button onClick={() => router.push('/signin')}>
               Войти в аккаунт
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // User is logged in but with wrong email
+  if (wrongEmail && invitation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center">
+              <AlertTriangle className="h-8 w-8 text-amber-600" />
+            </div>
+            <CardTitle>Неверный аккаунт</CardTitle>
+            <CardDescription>
+              Вы вошли под другим email
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <Building2 className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Организация</p>
+                  <p className="font-medium">{invitation.organization.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Email приглашения</p>
+                  <p className="font-medium text-green-600">{invitation.email}</p>
+                </div>
+              </div>
+              {currentUserEmail && (
+                <div className="flex items-center gap-3">
+                  <LogOut className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Вы вошли как</p>
+                    <p className="font-medium text-red-600">{currentUserEmail}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              Чтобы принять приглашение, необходимо выйти из текущего аккаунта 
+              и войти с email <strong>{invitation.email}</strong>
+            </div>
+
+            <Button 
+              onClick={handleLogout} 
+              className="w-full"
+              disabled={loggingOut}
+            >
+              {loggingOut ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Выход...
+                </>
+              ) : (
+                <>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Выйти и войти с другим email
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
