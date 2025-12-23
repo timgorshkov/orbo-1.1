@@ -4,7 +4,7 @@ import {
   Users, Building2, GraduationCap, BarChart3, Bell, Calendar, 
   UserCircle, ArrowRight, Bot, MessageSquare, Ticket 
 } from 'lucide-react';
-import { Header, Footer, BrowserFrame } from '@/components/website';
+import { Header, Footer, BrowserFrame, ProductFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'Продукт',
@@ -14,22 +14,34 @@ export const metadata: Metadata = {
 export default function ProductPage() {
   return (
     <>
-      <Header />
+      <Header transparent />
       
-      {/* Hero */}
-      <section className="website-section" style={{ paddingTop: 'calc(80px + 4rem)' }}>
-        <div className="website-container">
-          <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Платформа</span>
-            <h1 className="section-header__title" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>
-              Orbo — Платформа для управления<br />Telegram-сообществами
-            </h1>
-            <p className="section-header__subtitle" style={{ maxWidth: '600px', margin: '1rem auto 0' }}>
-              Понимайте свою аудиторию, автоматизируйте рутину, развивайте сообщество
-            </p>
+      {/* Hero with Floating Cards */}
+      <section className="hero-floating" style={{ minHeight: '60vh' }}>
+        <ProductFloatingCards />
+        
+        <div className="hero-floating__content">
+          <span className="hero-floating__eyebrow">Платформа</span>
+          <h1 className="hero-floating__title">
+            Orbo — CRM для<br />сообществ
+          </h1>
+          <p className="hero-floating__subtitle">
+            Понимайте аудиторию, автоматизируйте рутину, развивайте сообщество
+          </p>
+          <div className="hero-floating__actions">
+            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+              Начать бесплатно
+            </Link>
+            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
+              Записаться на демо
+            </Link>
           </div>
-          
-          {/* Product Overview Screenshot */}
+        </div>
+      </section>
+      
+      {/* Product Screenshot */}
+      <section className="website-section" style={{ paddingTop: 0 }}>
+        <div className="website-container">
           <BrowserFrame 
             src="/2.product-overview.png" 
             alt="Обзор платформы Orbo — дашборд и аналитика"

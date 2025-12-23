@@ -98,6 +98,11 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
+.website-header--solid {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
 .website-header__container {
   max-width: var(--website-container-max);
   margin: 0 auto;
@@ -963,5 +968,352 @@
   
   .phone-frame__screen {
     border-radius: 20px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Floating Cards Animation System
+   -------------------------------------------------------------------------- */
+
+/* Hero with floating cards */
+.hero-floating {
+  position: relative;
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(80px + 3rem) var(--website-space-lg) var(--website-space-3xl);
+  overflow: hidden;
+}
+
+.hero-floating__content {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  max-width: 700px;
+}
+
+.hero-floating__eyebrow {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(147, 51, 234, 0.1));
+  border-radius: 9999px;
+  font-size: var(--website-font-size-sm);
+  font-weight: 500;
+  color: var(--website-primary);
+  margin-bottom: var(--website-space-lg);
+}
+
+.hero-floating__title {
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--website-text);
+  margin-bottom: var(--website-space-lg);
+}
+
+.hero-floating__subtitle {
+  font-size: var(--website-font-size-lg);
+  color: var(--website-text-muted);
+  max-width: 550px;
+  margin: 0 auto var(--website-space-xl);
+  line-height: 1.6;
+}
+
+.hero-floating__actions {
+  display: flex;
+  gap: var(--website-space-md);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Floating cards container */
+.floating-cards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Individual floating card */
+.floating-card {
+  position: absolute;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  padding: 12px 16px;
+  font-size: 13px;
+  white-space: nowrap;
+  opacity: 0;
+  animation: floatIn 0.6s ease-out forwards, float 6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Animation keyframes */
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1deg);
+  }
+}
+
+@keyframes floatAlt {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-1deg);
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(0.5deg);
+  }
+}
+
+/* Float animation variations */
+.floating-card--alt {
+  animation: floatIn 0.6s ease-out forwards, floatAlt 7s ease-in-out infinite;
+}
+
+.floating-card--slow {
+  animation: floatIn 0.6s ease-out forwards, floatSlow 8s ease-in-out infinite;
+}
+
+/* Delay variations */
+.floating-card--delay-1 { animation-delay: 0.1s, 0.1s; }
+.floating-card--delay-2 { animation-delay: 0.2s, 0.2s; }
+.floating-card--delay-3 { animation-delay: 0.3s, 0.3s; }
+.floating-card--delay-4 { animation-delay: 0.4s, 0.4s; }
+.floating-card--delay-5 { animation-delay: 0.5s, 0.5s; }
+
+/* Card styles */
+.floating-card--profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.floating-card__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.floating-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.floating-card__name {
+  font-weight: 600;
+  color: var(--website-text);
+}
+
+.floating-card__meta {
+  font-size: 11px;
+  color: var(--website-text-muted);
+}
+
+/* Tag style */
+.floating-card--tag {
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 9999px;
+}
+
+.floating-card--tag-purple {
+  background: linear-gradient(135deg, #faf5ff, #f3e8ff);
+  border: 1px solid #e9d5ff;
+  color: #7c3aed;
+}
+
+.floating-card--tag-green {
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+
+/* Alert/notification style */
+.floating-card--alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.floating-card--alert-red {
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border: 1px solid #fecaca;
+}
+
+.floating-card--alert-yellow {
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid #fde68a;
+}
+
+.floating-card--alert-blue {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 1px solid #bfdbfe;
+}
+
+.floating-card__icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.floating-card__icon--red { color: #dc2626; }
+.floating-card__icon--yellow { color: #d97706; }
+.floating-card__icon--blue { color: #2563eb; }
+.floating-card__icon--green { color: #16a34a; }
+
+/* Event card style */
+.floating-card--event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.floating-card__date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+  padding: 8px 10px;
+  border-radius: 8px;
+  min-width: 44px;
+}
+
+.floating-card__date-day {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.floating-card__date-month {
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.floating-card__event-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.floating-card__event-title {
+  font-weight: 600;
+  color: var(--website-text);
+  font-size: 14px;
+}
+
+.floating-card__event-meta {
+  font-size: 11px;
+  color: var(--website-text-muted);
+}
+
+/* Stat card */
+.floating-card--stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.floating-card__stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--website-primary);
+}
+
+.floating-card__stat-label {
+  font-size: 12px;
+  color: var(--website-text-muted);
+}
+
+/* Status badge */
+.floating-card--status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-weight: 500;
+}
+
+.floating-card__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.floating-card__status-dot--green { background: #22c55e; }
+.floating-card__status-dot--yellow { background: #f59e0b; }
+.floating-card__status-dot--red { background: #ef4444; }
+
+/* Positions - Left side */
+.floating-card--pos-tl { top: 15%; left: 5%; }
+.floating-card--pos-ml { top: 40%; left: 3%; }
+.floating-card--pos-bl { top: 65%; left: 8%; }
+
+/* Positions - Right side */
+.floating-card--pos-tr { top: 18%; right: 5%; }
+.floating-card--pos-mr { top: 45%; right: 3%; }
+.floating-card--pos-br { top: 70%; right: 6%; }
+
+/* Hide on mobile, show reduced on tablet */
+@media (max-width: 1024px) {
+  .floating-card--pos-ml,
+  .floating-card--pos-mr {
+    display: none;
+  }
+  
+  .floating-card--pos-tl { left: 2%; }
+  .floating-card--pos-tr { right: 2%; }
+  .floating-card--pos-bl { left: 2%; }
+  .floating-card--pos-br { right: 2%; }
+}
+
+@media (max-width: 768px) {
+  .floating-cards {
+    display: none;
+  }
+  
+  .hero-floating {
+    min-height: auto;
+    padding-bottom: var(--website-space-2xl);
   }
 }

@@ -5,7 +5,7 @@ import {
   CreditCard, Send, Smartphone, CalendarCheck, CheckCircle2, 
   XCircle, AlertCircle, ArrowRight, Bot 
 } from 'lucide-react';
-import { Header, Footer, BrowserFrame, PhoneFrame } from '@/components/website';
+import { Header, Footer, BrowserFrame, PhoneFrame, EventsFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'События и регистрации',
@@ -15,19 +15,27 @@ export const metadata: Metadata = {
 export default function EventsPage() {
   return (
     <>
-      <Header />
+      <Header transparent />
       
-      {/* Hero */}
-      <section className="website-section" style={{ paddingTop: 'calc(80px + 4rem)' }}>
-        <div className="website-container">
-          <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Возможности</span>
-            <h1 className="section-header__title" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>
-              События и регистрации
-            </h1>
-            <p className="section-header__subtitle" style={{ maxWidth: '600px', margin: '1rem auto 0' }}>
-              Организуйте мероприятия профессионально: от анонса до сбора оплат
-            </p>
+      {/* Hero with Floating Cards */}
+      <section className="hero-floating">
+        <EventsFloatingCards />
+        
+        <div className="hero-floating__content">
+          <span className="hero-floating__eyebrow">События</span>
+          <h1 className="hero-floating__title">
+            Мероприятия<br />без хаоса
+          </h1>
+          <p className="hero-floating__subtitle">
+            Регистрация, оплата и напоминания — всё прямо в Telegram
+          </p>
+          <div className="hero-floating__actions">
+            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+              Начать бесплатно
+            </Link>
+            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
+              Записаться на демо
+            </Link>
           </div>
         </div>
       </section>

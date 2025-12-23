@@ -5,7 +5,7 @@ import {
   TrendingDown, Settings, Filter, Zap, Shield, 
   ArrowRight, Building2, Users 
 } from 'lucide-react';
-import { Header, Footer, BrowserFrame, PhoneFrame } from '@/components/website';
+import { Header, Footer, BrowserFrame, PhoneFrame, NotificationsFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'Группы и уведомления',
@@ -15,19 +15,27 @@ export const metadata: Metadata = {
 export default function NotificationsPage() {
   return (
     <>
-      <Header />
+      <Header transparent />
       
-      {/* Hero */}
-      <section className="website-section" style={{ paddingTop: 'calc(80px + 4rem)' }}>
-        <div className="website-container">
-          <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Возможности</span>
-            <h1 className="section-header__title" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>
-              Группы и уведомления
-            </h1>
-            <p className="section-header__subtitle" style={{ maxWidth: '600px', margin: '1rem auto 0' }}>
-              AI-мониторинг рабочих групп: негатив, неотвеченные вопросы, SLA
-            </p>
+      {/* Hero with Floating Cards */}
+      <section className="hero-floating">
+        <NotificationsFloatingCards />
+        
+        <div className="hero-floating__content">
+          <span className="hero-floating__eyebrow">Уведомления</span>
+          <h1 className="hero-floating__title">
+            Не пропускайте<br />важное
+          </h1>
+          <p className="hero-floating__subtitle">
+            AI-мониторинг рабочих групп: негатив, неотвеченные вопросы, контроль SLA
+          </p>
+          <div className="hero-floating__actions">
+            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+              Начать бесплатно
+            </Link>
+            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
+              Записаться на демо
+            </Link>
           </div>
         </div>
       </section>

@@ -22,7 +22,7 @@ export function Header({ transparent = true }: HeaderProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const headerClass = `website-header ${isScrolled ? 'website-header--scrolled' : ''}`;
+  const headerClass = `website-header ${isScrolled ? 'website-header--scrolled' : ''} ${!transparent && !isScrolled ? 'website-header--solid' : ''}`;
 
   return (
     <header className={headerClass}>

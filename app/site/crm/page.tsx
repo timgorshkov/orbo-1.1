@@ -5,7 +5,7 @@ import {
   Upload, Download, Filter, ArrowRight, Users, 
   Sparkles, Database 
 } from 'lucide-react';
-import { Header, Footer, BrowserFrame } from '@/components/website';
+import { Header, Footer, BrowserFrame, CRMFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'CRM участников',
@@ -15,19 +15,27 @@ export const metadata: Metadata = {
 export default function CRMPage() {
   return (
     <>
-      <Header />
+      <Header transparent />
       
-      {/* Hero */}
-      <section className="website-section" style={{ paddingTop: 'calc(80px + 4rem)' }}>
-        <div className="website-container">
-          <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Возможности</span>
-            <h1 className="section-header__title" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>
-              CRM участников
-            </h1>
-            <p className="section-header__subtitle" style={{ maxWidth: '600px', margin: '1rem auto 0' }}>
-              Профили с AI-анализом интересов. Импорт истории из Telegram и WhatsApp
-            </p>
+      {/* Hero with Floating Cards */}
+      <section className="hero-floating">
+        <CRMFloatingCards />
+        
+        <div className="hero-floating__content">
+          <span className="hero-floating__eyebrow">CRM</span>
+          <h1 className="hero-floating__title">
+            Знайте своих<br />участников
+          </h1>
+          <p className="hero-floating__subtitle">
+            Профили с AI-анализом интересов. Импорт истории из Telegram и WhatsApp
+          </p>
+          <div className="hero-floating__actions">
+            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+              Начать бесплатно
+            </Link>
+            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
+              Записаться на демо
+            </Link>
           </div>
         </div>
       </section>
