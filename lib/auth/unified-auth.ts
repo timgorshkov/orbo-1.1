@@ -39,21 +39,33 @@ function getAdminSupabase() {
  */
 async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Promise<string | null> {
   const adminSupabase = getAdminSupabase();
+  const startTime = Date.now();
   
   logger.debug({ email, nextauth_id: nextAuthId }, 'Looking up Supabase user');
   
   // Метод 1: Используем RPC функцию (самый быстрый и надежный)
   try {
+    const rpcStart = Date.now();
     const { data: foundUserId, error: rpcError } = await adminSupabase
       .rpc('get_user_id_by_email', { p_email: email });
+    const rpcDuration = Date.now() - rpcStart;
     
     if (!rpcError && foundUserId) {
-      logger.debug({ email, supabase_user_id: foundUserId }, 'Found Supabase user via RPC');
+      logger.debug({ 
+        email, 
+        supabase_user_id: foundUserId,
+        rpc_duration_ms: rpcDuration,
+        total_duration_ms: Date.now() - startTime
+      }, 'Found Supabase user via RPC');
       return foundUserId;
     }
     
     if (rpcError) {
-      logger.debug({ error: rpcError.message, email }, 'RPC failed, function may not exist');
+      logger.debug({ 
+        error: rpcError.message, 
+        email,
+        rpc_duration_ms: rpcDuration 
+      }, 'RPC failed, function may not exist');
     }
   } catch (e) {
     logger.debug({ error: e instanceof Error ? e.message : String(e) }, 'RPC call failed');
@@ -62,9 +74,17 @@ async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Pr
   // Метод 2: Fallback - проверяем по NextAuth ID (на случай если уже создан)
   if (nextAuthId) {
     try {
+      const adminStart = Date.now();
       const { data: userData, error: userError } = await adminSupabase.auth.admin.getUserById(nextAuthId);
+      const adminDuration = Date.now() - adminStart;
+      
       if (!userError && userData?.user) {
-        logger.debug({ email, supabase_user_id: userData.user.id }, 'Found Supabase user by ID');
+        logger.debug({ 
+          email, 
+          supabase_user_id: userData.user.id,
+          admin_lookup_duration_ms: adminDuration,
+          total_duration_ms: Date.now() - startTime
+        }, 'Found Supabase user by ID');
         return userData.user.id;
       }
     } catch (e) {
@@ -72,7 +92,10 @@ async function lookupSupabaseUserByEmail(email: string, nextAuthId?: string): Pr
     }
   }
   
-  logger.debug({ email }, 'No Supabase user found');
+  logger.debug({ 
+    email, 
+    total_duration_ms: Date.now() - startTime 
+  }, 'No Supabase user found');
   return null;
 }
 
@@ -110,16 +133,26 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 минут
  * Extracted for reuse and to avoid duplicate code
  */
 async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cookies>>): Promise<UnifiedSession | null> {
+  const startTime = Date.now();
+  
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let nextAuthSession: any = null;
   try {
+    const authStart = Date.now();
     const authResult = await nextAuth();
+    const authDuration = Date.now() - authStart;
+    
     if (authResult && typeof authResult === 'object' && 'user' in authResult) {
       nextAuthSession = authResult;
+    }
+    
+    if (authDuration > 500) {
+      logger.warn({ auth_duration_ms: authDuration }, 'NextAuth auth() slow');
     }
   } catch (authError) {
     logger.warn({
       error: authError instanceof Error ? authError.message : String(authError),
+      duration_ms: Date.now() - startTime
     }, 'NextAuth auth() failed');
     return null;
   }
@@ -130,14 +163,17 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
   
   const userEmail = nextAuthSession.user.email.toLowerCase();
   let userId = nextAuthSession.user.id || '';
+  let cacheHit = false;
   
   // Проверяем кэш для быстрого ответа
   const cached = userIdCache.get(userEmail);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     userId = cached.userId;
+    cacheHit = true;
     logger.debug({ email: userEmail, cached_user_id: userId }, 'Using cached Supabase user ID');
   } else {
     // Ищем существующего Supabase пользователя по email (с таймаутом)
+    const lookupStart = Date.now();
     try {
       const lookupPromise = lookupSupabaseUserByEmail(userEmail, nextAuthSession.user.id);
       const timeoutPromise = new Promise<string | null>((_, reject) => 
@@ -145,10 +181,16 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
       );
       
       const supabaseUserId = await Promise.race([lookupPromise, timeoutPromise]);
+      const lookupDuration = Date.now() - lookupStart;
       
       if (supabaseUserId) {
         userId = supabaseUserId;
         userIdCache.set(userEmail, { userId, timestamp: Date.now() });
+        logger.debug({ 
+          email: userEmail, 
+          user_id: userId,
+          lookup_duration_ms: lookupDuration 
+        }, 'User lookup completed');
       } else if (nextAuthSession.user.id) {
         // Кэшируем NextAuth ID как fallback, чтобы не делать повторные запросы
         userId = nextAuthSession.user.id;
@@ -156,6 +198,7 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
         logger.debug({ email: userEmail, nextauth_id: userId }, 'Cached NextAuth ID as fallback');
       }
     } catch (error) {
+      const lookupDuration = Date.now() - lookupStart;
       // При таймауте или ошибке - кэшируем NextAuth ID чтобы не повторять медленные запросы
       if (nextAuthSession.user.id) {
         userId = nextAuthSession.user.id;
@@ -165,8 +208,18 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
       logger.warn({
         error: error instanceof Error ? error.message : String(error),
         email: userEmail,
+        lookup_duration_ms: lookupDuration
       }, 'User lookup failed or timed out, using NextAuth ID');
     }
+  }
+  
+  const totalDuration = Date.now() - startTime;
+  if (totalDuration > 1000) {
+    logger.warn({
+      email: userEmail,
+      total_duration_ms: totalDuration,
+      cache_hit: cacheHit
+    }, 'NextAuth session check slow');
   }
   
   return {
@@ -189,6 +242,8 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
  * ⚡ ОПТИМИЗАЦИЯ: Проверяем cookies сначала, чтобы избежать лишних сетевых вызовов
  */
 export async function getUnifiedSession(): Promise<UnifiedSession | null> {
+  const startTime = Date.now();
+  
   try {
     const cookieStore = await cookies();
     
@@ -206,7 +261,16 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     
     // Если есть только NextAuth cookies - сразу проверяем NextAuth (пропускаем Supabase)
     if (!hasSupabaseCookies && hasNextAuthCookies) {
-      return await checkNextAuthSession(cookieStore);
+      const result = await checkNextAuthSession(cookieStore);
+      const totalDuration = Date.now() - startTime;
+      if (totalDuration > 1000) {
+        logger.warn({ 
+          total_duration_ms: totalDuration,
+          provider: 'nextauth',
+          user_id: result?.user?.id
+        }, 'getUnifiedSession slow (NextAuth only)');
+      }
+      return result;
     }
     
     // 1. Check Supabase session (primary)
@@ -230,11 +294,26 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
 
     // Используем getUser() вместо getSession() для безопасной верификации
     // getUser() проверяет токен на сервере Supabase Auth
+    const supabaseStart = Date.now();
     const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
+    const supabaseDuration = Date.now() - supabaseStart;
+    
+    if (supabaseDuration > 500) {
+      logger.warn({ supabase_getUser_duration_ms: supabaseDuration }, 'Supabase getUser slow');
+    }
     
     if (supabaseUser && !userError) {
       // Получаем session только для access_token (если нужен)
       const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      
+      const totalDuration = Date.now() - startTime;
+      if (totalDuration > 1000) {
+        logger.warn({ 
+          total_duration_ms: totalDuration,
+          supabase_auth_duration_ms: supabaseDuration,
+          provider: 'supabase'
+        }, 'getUnifiedSession slow (Supabase)');
+      }
       
       return {
         user: {
@@ -255,7 +334,16 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
 
     // 2. Check NextAuth session (fallback) - только если есть cookie
     if (hasNextAuthCookies) {
-      return await checkNextAuthSession(cookieStore);
+      const result = await checkNextAuthSession(cookieStore);
+      const totalDuration = Date.now() - startTime;
+      if (totalDuration > 1000) {
+        logger.warn({ 
+          total_duration_ms: totalDuration,
+          supabase_failed_duration_ms: supabaseDuration,
+          provider: 'nextauth_fallback'
+        }, 'getUnifiedSession slow (Supabase failed, NextAuth fallback)');
+      }
+      return result;
     }
 
     return null;
@@ -266,7 +354,10 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
       // Expected during Next.js static generation - silently return null
       return null;
     }
-    logger.error({ error: errorMessage }, 'Error getting unified session');
+    logger.error({ 
+      error: errorMessage,
+      duration_ms: Date.now() - startTime 
+    }, 'Error getting unified session');
     return null;
   }
 }

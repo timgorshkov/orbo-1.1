@@ -7,10 +7,17 @@ type OrgRole = 'owner' | 'admin' | 'editor' | 'member' | 'viewer';
 
 export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) {
   const logger = createServiceLogger('requireOrgAccess');
+  const startTime = Date.now();
   
   // Check auth via unified auth (supports both Supabase and NextAuth)
+  const authStart = Date.now();
   const user = await getUnifiedUser()
-  if (!user) throw new Error('Unauthorized')
+  const authDuration = Date.now() - authStart;
+  
+  if (!user) {
+    logger.warn({ org_id: orgId, auth_duration_ms: authDuration }, 'User not authenticated');
+    throw new Error('Unauthorized')
+  }
 
   const adminSupabase = createAdminServer()
 
@@ -24,23 +31,54 @@ export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) 
   })
 
   // Проверяем членство в org напрямую
-  let role: OrgRole | null = null
-
+  const membershipStart = Date.now();
   const { data: membership, error: membershipError } = await adminSupabase
     .from('memberships')
     .select('role')
     .eq('org_id', orgId)
     .eq('user_id', user.id)
     .maybeSingle()
+  const membershipDuration = Date.now() - membershipStart;
 
+  const totalDuration = Date.now() - startTime;
+  
   if (membershipError || !membership) {
+    logger.warn({
+      org_id: orgId,
+      user_id: user.id,
+      user_email: user.email,
+      user_provider: user.provider,
+      error: membershipError?.message,
+      auth_duration_ms: authDuration,
+      membership_query_duration_ms: membershipDuration,
+      total_duration_ms: totalDuration
+    }, 'Access denied - no membership found');
     throw new Error('Forbidden')
   }
 
-  role = membership.role as OrgRole
+  const role = membership.role as OrgRole
 
   if (allowedRoles && !allowedRoles.includes(role)) {
+    logger.warn({
+      org_id: orgId,
+      user_id: user.id,
+      user_role: role,
+      allowed_roles: allowedRoles,
+      total_duration_ms: totalDuration
+    }, 'Access denied - insufficient role');
     throw new Error('Forbidden')
+  }
+
+  // Логируем только медленные запросы
+  if (totalDuration > 500) {
+    logger.warn({
+      org_id: orgId,
+      user_id: user.id,
+      role,
+      auth_duration_ms: authDuration,
+      membership_query_duration_ms: membershipDuration,
+      total_duration_ms: totalDuration
+    }, 'Slow org access check');
   }
 
   return { supabase: adminSupabase, user, role }
