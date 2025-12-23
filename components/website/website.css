@@ -796,6 +796,12 @@
   max-width: 100%;
 }
 
+/* Remove margin when inside grid layout */
+.content-screenshot-row .browser-frame,
+.screenshot-grid .browser-frame {
+  margin: 0;
+}
+
 .browser-frame__header {
   display: flex;
   align-items: center;
@@ -914,10 +920,12 @@
 
 .content-screenshot-row--narrow-img {
   grid-template-columns: 1fr 400px;
+  align-items: start;
 }
 
 .content-screenshot-row--narrow-phone {
   grid-template-columns: 1fr 320px;
+  align-items: start;
 }
 
 .screenshot-center {
