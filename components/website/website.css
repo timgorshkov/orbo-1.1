@@ -1047,18 +1047,18 @@
   font-size: 13px;
   white-space: nowrap;
   opacity: 0;
-  animation: floatIn 0.6s ease-out forwards, float 6s ease-in-out infinite;
+  animation: floatIn 2.5s ease-out forwards, float 6s ease-in-out infinite;
   will-change: transform, opacity;
 }
 
 /* Animation keyframes */
 @keyframes floatIn {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(20px) scale(0.9);
+    transform: translateY(30px) scale(0.92);
   }
-  to {
-    opacity: 1;
+  100% {
+    opacity: 0.88;
     transform: translateY(0) scale(1);
   }
 }
@@ -1092,19 +1092,19 @@
 
 /* Float animation variations */
 .floating-card--alt {
-  animation: floatIn 0.6s ease-out forwards, floatAlt 7s ease-in-out infinite;
+  animation: floatIn 2.5s ease-out forwards, floatAlt 7s ease-in-out infinite;
 }
 
 .floating-card--slow {
-  animation: floatIn 0.6s ease-out forwards, floatSlow 8s ease-in-out infinite;
+  animation: floatIn 2.5s ease-out forwards, floatSlow 8s ease-in-out infinite;
 }
 
-/* Delay variations */
-.floating-card--delay-1 { animation-delay: 0.1s, 0.1s; }
-.floating-card--delay-2 { animation-delay: 0.2s, 0.2s; }
-.floating-card--delay-3 { animation-delay: 0.3s, 0.3s; }
-.floating-card--delay-4 { animation-delay: 0.4s, 0.4s; }
-.floating-card--delay-5 { animation-delay: 0.5s, 0.5s; }
+/* Delay variations — staggered over ~10 seconds */
+.floating-card--delay-1 { animation-delay: 0.5s, 0.5s; }
+.floating-card--delay-2 { animation-delay: 2s, 2s; }
+.floating-card--delay-3 { animation-delay: 4s, 4s; }
+.floating-card--delay-4 { animation-delay: 6s, 6s; }
+.floating-card--delay-5 { animation-delay: 8s, 8s; }
 
 /* Card styles */
 .floating-card--profile {

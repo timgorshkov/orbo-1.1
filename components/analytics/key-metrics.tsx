@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface KeyMetricsData {
+  total_participants: number;
   current_participants: number;
   current_messages: number;
   current_engagement_rate: number;
@@ -103,7 +104,7 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
     );
   }
 
-  const participantsChange = calculateChange(data.current_participants, data.previous_participants);
+  const activeParticipantsChange = calculateChange(data.current_participants, data.previous_participants);
   const messagesChange = calculateChange(data.current_messages, data.previous_messages);
   const engagementChange = data.current_engagement_rate - data.previous_engagement_rate;
   const repliesChange = calculateChange(data.current_replies, data.previous_replies);
@@ -112,13 +113,21 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
 
   const metrics = [
     {
-      label: 'Число участников',
-      current: data.current_participants,
-      change: participantsChange,
+      label: 'Всего участников',
+      current: data.total_participants,
+      change: null, // Общее число не имеет изменения за период
       format: (val: number) => val.toString(),
+      noChange: true,
     },
     {
-      label: 'Число сообщений',
+      label: 'Активных',
+      current: data.current_participants,
+      change: activeParticipantsChange,
+      format: (val: number) => val.toString(),
+      subtitle: `из ${data.total_participants}`,
+    },
+    {
+      label: 'Сообщений',
       current: data.current_messages,
       change: messagesChange,
       format: (val: number) => val.toString(),
@@ -131,23 +140,16 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
       isPercentage: true,
     },
     {
-      label: 'Ответы',
+      label: 'Ответов',
       current: data.current_replies,
       change: repliesChange,
       format: (val: number) => val.toString(),
     },
     {
-      label: 'Реакции',
+      label: 'Реакций',
       current: data.current_reactions,
       change: reactionsChange,
       format: (val: number) => val.toString(),
-    },
-    {
-      label: 'Доля ответов',
-      current: data.current_reply_ratio,
-      change: replyRatioChange,
-      format: (val: number) => `${val.toFixed(1)}%`,
-      isPercentage: true,
     },
   ];
 
@@ -158,26 +160,33 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
         <span className="text-xs text-gray-500">За {periodDays} дней</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {metrics.map((metric, index) => (
           <div 
             key={index} 
-            className="p-4 rounded-lg bg-gray-50 border border-gray-200"
+            className="p-3 rounded-lg bg-gray-50 border border-gray-200"
           >
-            <p className="text-sm text-gray-600 mb-2">{metric.label}</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-semibold">
-                {metric.format(metric.current)}
-              </p>
-              <div className={`flex items-center gap-1 text-sm font-medium ${getChangeColor(metric.change)}`}>
-                {getChangeIcon(metric.change)}
-                <span>
-                  {metric.isPercentage 
-                    ? `${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}%`
-                    : formatChange(metric.change)
-                  }
-                </span>
+            <p className="text-xs text-gray-500 mb-1">{metric.label}</p>
+            <div className="flex items-end justify-between gap-2">
+              <div>
+                <p className="text-xl font-semibold">
+                  {metric.format(metric.current)}
+                </p>
+                {metric.subtitle && (
+                  <p className="text-xs text-gray-400">{metric.subtitle}</p>
+                )}
               </div>
+              {!metric.noChange && metric.change !== null && (
+                <div className={`flex items-center gap-0.5 text-xs font-medium ${getChangeColor(metric.change)}`}>
+                  {getChangeIcon(metric.change)}
+                  <span>
+                    {metric.isPercentage 
+                      ? `${metric.change > 0 ? '+' : ''}${metric.change.toFixed(1)}%`
+                      : formatChange(metric.change)
+                    }
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}

@@ -169,11 +169,14 @@ export async function GET(
     }
 
     // Get total participants count in organization for engagement calculation
+    // Исключаем ботов, объединённых дубликатов и архивированных участников
     const { count: totalMembersInOrg } = await adminSupabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
-      .neq('source', 'bot');
+      .neq('source', 'bot')
+      .is('merged_into', null)
+      .neq('participant_status', 'excluded');
 
     // Calculate date ranges
     const now = new Date();
@@ -192,6 +195,9 @@ export async function GET(
     ]);
 
     const data = {
+      // Общее число участников в организации (для отображения)
+      total_participants: totalMembersInOrg || 0,
+      // Активные участники за период (кто писал сообщения)
       current_participants: current.participants,
       current_messages: current.messages,
       current_engagement_rate: current.engagement_rate,
