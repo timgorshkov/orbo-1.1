@@ -118,8 +118,9 @@
 }
 
 .website-header__logo-img {
-  height: 32px;
+  height: 40px;
   width: auto;
+  object-fit: contain;
 }
 
 .website-header__nav {
@@ -147,7 +148,7 @@
   font-size: var(--website-font-size-sm);
   font-weight: 600;
   color: white !important;
-  background: var(--website-primary);
+  background: linear-gradient(135deg, #2563eb 0%, #9333ea 100%);
   border-radius: var(--website-radius-full);
   text-decoration: none !important;
   transition: background var(--website-transition-fast), transform var(--website-transition-fast);
@@ -299,14 +300,20 @@
 
 .btn-pill--primary {
   color: white;
-  background: var(--website-primary);
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+  background: linear-gradient(135deg, #2563eb 0%, #9333ea 100%);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
 }
 
 .btn-pill--primary:hover {
-  background: var(--website-primary-dark);
+  background: linear-gradient(135deg, #1d4ed8 0%, #7e22ce 100%);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+/* Small button size */
+.btn-pill--sm {
+  padding: var(--website-space-sm) var(--website-space-lg);
+  font-size: var(--website-font-size-sm);
 }
 
 .btn-pill--ghost {
@@ -361,6 +368,12 @@
   z-index: 10;
   padding-bottom: var(--website-space-3xl);
   text-align: center;
+}
+
+/* Inline variant - inside hero content */
+.messengers-section--inline {
+  margin-top: var(--website-space-2xl);
+  padding-bottom: 0;
 }
 
 .messengers-section__label {
@@ -633,7 +646,7 @@
    -------------------------------------------------------------------------- */
 .cta-section {
   padding: var(--website-space-4xl) 0;
-  background: linear-gradient(135deg, var(--website-primary), var(--website-primary-dark));
+  background: linear-gradient(135deg, #2563eb 0%, #9333ea 100%);
   text-align: center;
 }
 

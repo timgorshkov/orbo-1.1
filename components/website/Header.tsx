@@ -31,18 +31,20 @@ export function Header({ transparent = true }: HeaderProps) {
           <Image 
             src="/orbo-logo-2-no-bg.png" 
             alt="Orbo" 
-            width={32} 
-            height={32}
+            width={120} 
+            height={40}
             className="website-header__logo-img"
+            priority
           />
-          <span>Orbo</span>
         </Link>
 
         {/* Desktop Navigation */}
         <nav className="website-header__nav">
           <Link href="/product">Продукт</Link>
-          <Link href="/journal">Журнал</Link>
-          <Link href="https://my.orbo.ru/signup" className="website-header__cta">
+          <Link href="/crm">CRM</Link>
+          <Link href="/notifications">Уведомления</Link>
+          <Link href="/events">События</Link>
+          <Link href="https://my.orbo.ru/signin" className="website-header__cta">
             Войти
           </Link>
         </nav>
@@ -64,11 +66,17 @@ export function Header({ transparent = true }: HeaderProps) {
             <Link href="/product" onClick={() => setIsMobileMenuOpen(false)}>
               Продукт
             </Link>
-            <Link href="/journal" onClick={() => setIsMobileMenuOpen(false)}>
-              Журнал
+            <Link href="/crm" onClick={() => setIsMobileMenuOpen(false)}>
+              CRM
+            </Link>
+            <Link href="/notifications" onClick={() => setIsMobileMenuOpen(false)}>
+              Уведомления
+            </Link>
+            <Link href="/events" onClick={() => setIsMobileMenuOpen(false)}>
+              События
             </Link>
             <Link 
-              href="https://my.orbo.ru/signup" 
+              href="https://my.orbo.ru/signin" 
               className="website-header__cta"
               onClick={() => setIsMobileMenuOpen(false)}
             >

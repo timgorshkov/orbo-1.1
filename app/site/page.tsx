@@ -1,4 +1,4 @@
-import { Sparkles, Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
+import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
 import { Header, Footer, Orb } from '@/components/website';
 import Link from 'next/link';
 
@@ -15,9 +15,11 @@ const WhatsAppLogo = () => (
   </svg>
 );
 
-const VKLogo = () => (
+// Max messenger logo (simplified)
+const MaxLogo = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.408 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.864-.525-2.05-1.727-1.033-1-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.575c0 .424-.135.678-1.253.678-1.846 0-3.896-1.118-5.335-3.202C4.624 10.857 4.03 8.57 4.03 8.096c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.78.677.847 2.455 2.27 4.607 2.862 4.607.22 0 .322-.102.322-.66V9.721c-.068-1.186-.695-1.287-.695-1.71 0-.203.17-.407.44-.407h2.744c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.406 2.15-3.574 2.15-3.574.119-.254.322-.491.763-.491h1.744c.525 0 .644.27.525.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.203 1.253.745.847 1.32 1.558 1.473 2.05.17.49-.085.744-.576.744z"/>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+    <path d="M8 11.5l2.5 2.5L16 8.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
@@ -28,14 +30,9 @@ export default function HomePage() {
       
       {/* ========== HERO с ORB эффектом ========== */}
       <section className="hero-orb-section">
-        <Orb hue={260} forceHoverState />
+        <Orb hue={0} hoverIntensity={0.11} rotateOnHover forceHoverState={false} />
         
         <div className="hero-orb-section__content">
-          <span className="hero-orb-section__badge">
-            <Sparkles size={16} />
-            AI-аналитика сообществ
-          </span>
-          
           <h1 className="hero-orb-section__title">
             CRM для групп и сообществ<br />в мессенджерах
           </h1>
@@ -45,27 +42,27 @@ export default function HomePage() {
           </p>
           
           <div className="hero-orb-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--sm">
               Начать бесплатно
             </Link>
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost">
+            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost btn-pill--sm">
               Записаться на демо
             </Link>
           </div>
-        </div>
-        
-        {/* Поддерживаемые мессенджеры */}
-        <div className="messengers-section">
-          <span className="messengers-section__label">Поддерживаемые мессенджеры</span>
-          <div className="messengers-section__logos">
-            <div className="messenger-logo" title="Telegram">
-              <TelegramLogo />
-            </div>
-            <div className="messenger-logo" title="WhatsApp">
-              <WhatsAppLogo />
-            </div>
-            <div className="messenger-logo" title="VK Мессенджер / Max">
-              <VKLogo />
+          
+          {/* Поддерживаемые мессенджеры - внутри контента, выше */}
+          <div className="messengers-section messengers-section--inline">
+            <span className="messengers-section__label">Поддерживаемые мессенджеры</span>
+            <div className="messengers-section__logos">
+              <div className="messenger-logo" title="Telegram">
+                <TelegramLogo />
+              </div>
+              <div className="messenger-logo" title="WhatsApp">
+                <WhatsAppLogo />
+              </div>
+              <div className="messenger-logo" title="Max">
+                <MaxLogo />
+              </div>
             </div>
           </div>
         </div>
