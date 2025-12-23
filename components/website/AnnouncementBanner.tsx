@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, X, ArrowRight } from 'lucide-react';
 
@@ -21,6 +21,25 @@ export function AnnouncementBanner({
 }: AnnouncementBannerProps) {
   const [isVisible, setIsVisible] = useState(true);
 
+  // Update parent class when visibility changes (fallback for browsers without :has())
+  useEffect(() => {
+    const parent = document.querySelector('.website-root');
+    if (parent) {
+      if (isVisible) {
+        parent.classList.add('has-announcement');
+      } else {
+        parent.classList.remove('has-announcement');
+      }
+    }
+    return () => {
+      // Cleanup on unmount
+      const parent = document.querySelector('.website-root');
+      if (parent) {
+        parent.classList.remove('has-announcement');
+      }
+    };
+  }, [isVisible]);
+
   if (!isVisible) return null;
 
   const handleClose = () => {
@@ -37,16 +56,16 @@ export function AnnouncementBanner({
           {linkText}
           <ArrowRight size={14} />
         </Link>
+        {closable && (
+          <button 
+            onClick={handleClose}
+            className="announcement-banner__close"
+            aria-label="Закрыть"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
-      {closable && (
-        <button 
-          onClick={handleClose}
-          className="announcement-banner__close"
-          aria-label="Закрыть"
-        >
-          <X size={16} />
-        </button>
-      )}
     </div>
   );
 }

@@ -24,10 +24,10 @@ const MaxLogo = () => (
 
 export default function HomePage() {
   return (
-    <div className="has-announcement">
+    <>
       <AnnouncementBanner 
-        message="WhatsApp блокируют в России. Сохраните участников и переписку в Orbo"
-        linkText="Как мигрировать"
+        message="WhatsApp блокируют — сохраните участников в Orbo"
+        linkText="Подробнее"
         linkHref="/whatsapp-migration"
       />
       <Header />
@@ -251,6 +251,6 @@ export default function HomePage() {
       </section>
 
       <Footer />
-    </div>
+    </>
   );
 }

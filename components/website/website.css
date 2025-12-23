@@ -1482,23 +1482,57 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* When banner is present, shift header down */
+/* When banner is present, shift header down - use :has() for auto-detection */
+.website-root:has(.announcement-banner) .website-header {
+  top: 36px;
+}
+
+/* Fallback for browsers without :has() support */
 .has-announcement .website-header {
   top: 36px;
 }
 
 @media (max-width: 768px) {
   .announcement-banner {
-    padding: var(--website-space-sm);
-    font-size: var(--website-font-size-xs);
+    padding: var(--website-space-xs) var(--website-space-sm);
+    font-size: 11px;
+    line-height: 1.3;
   }
   
   .announcement-banner__content {
-    gap: var(--website-space-xs);
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+  
+  .announcement-banner__text {
+    flex: 1;
+    min-width: 0;
+    /* Truncate long text on mobile */
+  }
+  
+  .announcement-banner__icon {
+    display: none; /* Hide icon on mobile to save space */
+  }
+  
+  .announcement-banner__link {
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  
+  .announcement-banner__close {
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+    padding: 4px;
+    margin-left: auto;
+  }
+  
+  .website-root:has(.announcement-banner) .website-header {
+    top: 32px;
   }
   
   .has-announcement .website-header {
-    top: 48px;
+    top: 32px;
   }
 }
 
