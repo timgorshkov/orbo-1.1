@@ -201,7 +201,7 @@ export default async function OrganizationsPage() {
     organizations_count: organizations.length
   }, 'User organizations loaded');
 
-  // Если организаций нет - предлагаем создать
+  // Если организаций нет - предлагаем создать или выйти
   if (organizations.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -224,6 +224,19 @@ export default async function OrganizationsPage() {
                 <strong>Совет:</strong> После создания пространства вы сможете привязать свой Telegram-аккаунт и добавить группы в настройках.
               </p>
             </div>
+          </div>
+          {/* Информация о текущем аккаунте и кнопка выхода */}
+          <div className="mt-8 pt-6 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500">Текущий аккаунт:</p>
+                <p className="text-sm text-gray-700">{user.email}</p>
+              </div>
+              <LogoutButton variant="text" showIcon={false} />
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Чтобы зайти под другим email или зарегистрироваться заново, сначала выйдите из текущего аккаунта.
+            </p>
           </div>
         </div>
       </div>
