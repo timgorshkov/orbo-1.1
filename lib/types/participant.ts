@@ -51,6 +51,9 @@ export interface ParticipantRecord {
   source?: string | null;
   status?: string | null;
   notes?: string | null;
+  // participant_status enum: 'participant' | 'event_attendee' | 'candidate' | 'excluded'
+  participant_status?: string | null;
+  deleted_at?: string | null;
   // Computed dates based on actual activity (for WhatsApp imports)
   real_join_date?: string | null;
   real_last_activity?: string | null;

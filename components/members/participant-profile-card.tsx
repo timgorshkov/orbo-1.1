@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
-import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity } from 'lucide-react'
+import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity, Archive, RotateCcw, AlertTriangle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import PhotoUploadModal from './photo-upload-modal'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
@@ -42,6 +42,10 @@ export default function ParticipantProfileCard({
   const [error, setError] = useState<string | null>(null)
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState(participant.photo_url)
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
+  const [archivePending, setArchivePending] = useState(false)
+  
+  const isArchived = participant.participant_status === 'excluded'
   
   // ✅ Синхронизируем currentPhotoUrl с participant.photo_url при изменении
   useEffect(() => {
@@ -192,10 +196,99 @@ export default function ParticipantProfileCard({
     })
   }
 
+  const handleArchive = async () => {
+    setArchivePending(true)
+    setError(null)
+    
+    try {
+      const response = await fetch(`/api/participants/${detail.requestedParticipantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId,
+          action: 'archive'
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Не удалось архивировать участника')
+      }
+
+      // Обновляем статус в локальном состоянии
+      if (onDetailUpdate) {
+        onDetailUpdate({
+          ...detail,
+          participant: {
+            ...detail.participant,
+            participant_status: 'excluded',
+            deleted_at: new Date().toISOString()
+          }
+        })
+      }
+      
+      setArchiveConfirmOpen(false)
+    } catch (err: any) {
+      setError(err.message || 'Не удалось архивировать участника')
+    } finally {
+      setArchivePending(false)
+    }
+  }
+
+  const handleRestore = async () => {
+    setArchivePending(true)
+    setError(null)
+    
+    try {
+      const response = await fetch(`/api/participants/${detail.requestedParticipantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId,
+          action: 'restore'
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Не удалось восстановить участника')
+      }
+
+      const data = await response.json()
+      
+      // Обновляем данные из ответа
+      if (data?.detail && onDetailUpdate) {
+        onDetailUpdate(data.detail)
+      } else if (onDetailUpdate) {
+        onDetailUpdate({
+          ...detail,
+          participant: {
+            ...detail.participant,
+            participant_status: 'participant',
+            deleted_at: null
+          }
+        })
+      }
+    } catch (err: any) {
+      setError(err.message || 'Не удалось восстановить участника')
+    } finally {
+      setArchivePending(false)
+    }
+  }
+
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${isArchived ? 'opacity-75' : ''}`}>
       {/* Header with photo */}
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-32"></div>
+      <div className={`h-32 ${isArchived ? 'bg-gradient-to-r from-gray-400 to-gray-500' : 'bg-gradient-to-r from-blue-500 to-purple-600'}`}>
+        {isArchived && (
+          <div className="flex h-full items-center justify-center">
+            <Badge variant="outline" className="border-white/50 bg-white/20 text-white text-sm px-3 py-1">
+              <Archive className="h-4 w-4 mr-2" />
+              В архиве
+            </Badge>
+          </div>
+        )}
+      </div>
       
       <CardContent className="relative pt-20 pb-6">
         {/* Profile Photo */}
@@ -224,17 +317,78 @@ export default function ParticipantProfileCard({
           )}
         </div>
 
-        {/* Edit Button */}
+        {/* Action Buttons */}
         {canEdit && !editing && (
-          <div className="absolute top-6 right-6">
-            <Button
-              size={'sm' as const}
-              onClick={() => setEditing(true)}
-              className="gap-2"
-            >
-              <Edit2 className="h-4 w-4" />
-              Редактировать
-            </Button>
+          <div className="absolute top-6 right-6 flex gap-2">
+            {isArchived ? (
+              <Button
+                size={'sm' as const}
+                variant="outline"
+                onClick={handleRestore}
+                disabled={archivePending}
+                className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
+              >
+                <RotateCcw className="h-4 w-4" />
+                {archivePending ? 'Восстановление…' : 'Восстановить'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size={'sm' as const}
+                  onClick={() => setEditing(true)}
+                  className="gap-2"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Редактировать
+                </Button>
+                {isAdmin && (
+                  <Button
+                    size={'sm' as const}
+                    variant="outline"
+                    onClick={() => setArchiveConfirmOpen(true)}
+                    className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                    title="Архивировать участника"
+                  >
+                    <Archive className="h-4 w-4" />
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Archive Confirmation Dialog */}
+        {archiveConfirmOpen && (
+          <div className="absolute top-6 right-6 z-10 w-80 rounded-lg border border-orange-200 bg-white p-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-900">Архивировать участника?</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Участник будет скрыт из списков, но все данные сохранятся. Вы сможете восстановить его позже.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    size={'sm' as const}
+                    variant="outline"
+                    onClick={() => setArchiveConfirmOpen(false)}
+                    disabled={archivePending}
+                  >
+                    Отмена
+                  </Button>
+                  <Button
+                    size={'sm' as const}
+                    onClick={handleArchive}
+                    disabled={archivePending}
+                    className="bg-orange-600 hover:bg-orange-700"
+                  >
+                    {archivePending ? 'Архивирование…' : 'Архивировать'}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

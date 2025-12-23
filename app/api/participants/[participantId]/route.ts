@@ -193,6 +193,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
         return handleRemoveTrait(adminClient, orgId, participantId, payload, logger);
       case 'mergeDuplicates':
         return handleMergeParticipants(adminClient, user.id, orgId, participantId, payload, logger);
+      case 'archive':
+        return handleArchiveParticipant(adminClient, user.id, orgId, participantId, logger);
+      case 'restore':
+        return handleRestoreParticipant(adminClient, user.id, orgId, participantId, logger);
       default:
         return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
     }
@@ -627,5 +631,166 @@ async function mergeIntoTarget(
     detail, 
     merged_into: targetCanonical,
     merge_result: mergeResult || null
+  });
+}
+
+/**
+ * Архивирование участника
+ * Устанавливает participant_status = 'excluded' и deleted_at = NOW()
+ * Участник перестаёт отображаться в списках, но данные сохраняются
+ */
+async function handleArchiveParticipant(
+  supabase: SupabaseClient,
+  actorId: string,
+  orgId: string,
+  participantId: string,
+  logger?: ReturnType<typeof createAPILogger>
+): Promise<NextResponse> {
+  // Получаем участника
+  const { data: participant, error: fetchError } = await supabase
+    .from('participants')
+    .select('id, full_name, participant_status, merged_into')
+    .eq('org_id', orgId)
+    .eq('id', participantId)
+    .maybeSingle();
+
+  if (fetchError || !participant) {
+    if (logger) {
+      logger.error({ error: fetchError?.message, participant_id: participantId }, 'Participant not found for archive');
+    }
+    return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+  }
+
+  // Проверяем, не архивирован ли уже
+  if (participant.participant_status === 'excluded') {
+    return NextResponse.json({ error: 'Participant is already archived' }, { status: 400 });
+  }
+
+  const canonicalId = participant.merged_into || participant.id;
+
+  // Обновляем статус
+  const { error: updateError } = await supabase
+    .from('participants')
+    .update({
+      participant_status: 'excluded',
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', canonicalId);
+
+  if (updateError) {
+    if (logger) {
+      logger.error({ error: updateError.message, participant_id: participantId }, 'Error archiving participant');
+    }
+    return NextResponse.json({ error: 'Failed to archive participant' }, { status: 500 });
+  }
+
+  // Логируем действие администратора
+  await logAdminAction({
+    orgId,
+    userId: actorId,
+    action: AdminActions.DELETE_PARTICIPANT, // Используем существующий action для аудита
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: canonicalId,
+    metadata: {
+      participant_name: participant.full_name,
+      action_type: 'archive',
+      previous_status: participant.participant_status
+    }
+  });
+
+  if (logger) {
+    logger.info({ 
+      participant_id: canonicalId, 
+      participant_name: participant.full_name 
+    }, 'Participant archived');
+  }
+
+  return NextResponse.json({ 
+    success: true, 
+    message: 'Participant archived successfully',
+    participant_id: canonicalId
+  });
+}
+
+/**
+ * Восстановление участника из архива
+ * Возвращает participant_status к 'participant' и очищает deleted_at
+ */
+async function handleRestoreParticipant(
+  supabase: SupabaseClient,
+  actorId: string,
+  orgId: string,
+  participantId: string,
+  logger?: ReturnType<typeof createAPILogger>
+): Promise<NextResponse> {
+  // Получаем участника
+  const { data: participant, error: fetchError } = await supabase
+    .from('participants')
+    .select('id, full_name, participant_status, merged_into')
+    .eq('org_id', orgId)
+    .eq('id', participantId)
+    .maybeSingle();
+
+  if (fetchError || !participant) {
+    if (logger) {
+      logger.error({ error: fetchError?.message, participant_id: participantId }, 'Participant not found for restore');
+    }
+    return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+  }
+
+  // Проверяем, архивирован ли участник
+  if (participant.participant_status !== 'excluded') {
+    return NextResponse.json({ error: 'Participant is not archived' }, { status: 400 });
+  }
+
+  const canonicalId = participant.merged_into || participant.id;
+
+  // Восстанавливаем статус
+  const { error: updateError } = await supabase
+    .from('participants')
+    .update({
+      participant_status: 'participant',
+      deleted_at: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', canonicalId);
+
+  if (updateError) {
+    if (logger) {
+      logger.error({ error: updateError.message, participant_id: participantId }, 'Error restoring participant');
+    }
+    return NextResponse.json({ error: 'Failed to restore participant' }, { status: 500 });
+  }
+
+  // Логируем действие администратора
+  await logAdminAction({
+    orgId,
+    userId: actorId,
+    action: AdminActions.UPDATE_PARTICIPANT,
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: canonicalId,
+    metadata: {
+      participant_name: participant.full_name,
+      action_type: 'restore',
+      previous_status: 'excluded'
+    }
+  });
+
+  if (logger) {
+    logger.info({ 
+      participant_id: canonicalId, 
+      participant_name: participant.full_name 
+    }, 'Participant restored from archive');
+  }
+
+  // Получаем обновлённые данные участника
+  const detail = await getParticipantDetail(orgId, canonicalId);
+
+  return NextResponse.json({ 
+    success: true, 
+    message: 'Participant restored successfully',
+    participant_id: canonicalId,
+    detail
   });
 }

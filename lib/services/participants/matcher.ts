@@ -121,9 +121,10 @@ export class ParticipantMatcher {
 
       const query = supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into, participant_status')
         .eq('org_id', intent.orgId)
-        .is('merged_into', null); // Исключаем уже объединенных участников
+        .is('merged_into', null) // Исключаем уже объединенных участников
+        .neq('participant_status', 'excluded'); // Исключаем архивированных участников
 
       if (filters.length > 0) {
         query.or(filters.join(','));
@@ -151,9 +152,10 @@ export class ParticipantMatcher {
 
       const { data: fuzzyMatches } = (await supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into')
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into, participant_status')
         .eq('org_id', intent.orgId)
         .is('merged_into', null) // Исключаем уже объединенных участников
+        .neq('participant_status', 'excluded') // Исключаем архивированных участников
         .or(nameFilters.join(','))) as PostgrestSingleResponse<any[]>;
 
       logger.debug({ count: fuzzyMatches?.length || 0 }, 'Fuzzy matches found');
