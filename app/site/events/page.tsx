@@ -118,7 +118,7 @@ export default function EventsPage() {
         </div>
       </section>
 
-      {/* Registration Form */}
+      {/* Registration Form with MiniApp Screenshot */}
       <section className="website-section website-section--alt">
         <div className="website-container">
           <div className="section-header section-header--center">
@@ -127,7 +127,7 @@ export default function EventsPage() {
             <p className="section-header__subtitle">Собирайте нужные данные от участников</p>
           </div>
           
-          <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+          <div className="content-screenshot-row content-screenshot-row--narrow-phone">
             <div className="audience-card">
               <p className="audience-card__text">
                 Настройте обязательность каждого поля:
@@ -147,6 +147,16 @@ export default function EventsPage() {
               <p className="audience-card__text" style={{ marginTop: '1rem', marginBottom: 0 }}>
                 Данные автоматически подтягиваются из Telegram-профиля — минимум ввода для участников.
               </p>
+            </div>
+            
+            {/* MiniApp Screenshot */}
+            <div className="screenshot-center">
+              <PhoneFrame 
+                src="/5.2event-miniapp.png" 
+                alt="Telegram MiniApp для регистрации на событие"
+                width={375}
+                height={812}
+              />
             </div>
           </div>
         </div>
@@ -248,16 +258,6 @@ export default function EventsPage() {
                 Участники могут добавить событие в свой календарь или подписаться на календарь организации.
               </p>
             </div>
-          </div>
-          
-          {/* MiniApp Screenshot */}
-          <div className="screenshot-center" style={{ marginTop: '2rem' }}>
-            <PhoneFrame 
-              src="/5.2event-miniapp.png" 
-              alt="Telegram MiniApp для регистрации на событие"
-              width={375}
-              height={812}
-            />
           </div>
         </div>
       </section>

@@ -99,19 +99,10 @@ export default function CRMPage() {
               <p className="feature-card__text">Добавляйте свои теги и комментарии</p>
             </div>
           </div>
-          
-          {/* Profile Screenshot */}
-          <BrowserFrame 
-            src="/3.1profile.png" 
-            alt="Профиль участника с AI-анализом интересов"
-            url="my.orbo.ru/participants/profile"
-            width={900}
-            height={950}
-          />
         </div>
       </section>
 
-      {/* AI Analysis */}
+      {/* AI Analysis with Profile Screenshot */}
       <section className="website-section website-section--alt">
         <div className="website-container">
           <div className="section-header section-header--center">
@@ -122,7 +113,7 @@ export default function CRMPage() {
             </p>
           </div>
           
-          <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+          <div className="content-screenshot-row content-screenshot-row--narrow-img">
             <div className="audience-card">
               <h4 className="audience-card__title">Что определяет AI</h4>
               <div style={{ marginTop: '1rem' }}>
@@ -148,6 +139,15 @@ export default function CRMPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Profile Screenshot */}
+            <BrowserFrame 
+              src="/3.1profile.png" 
+              alt="Профиль участника с AI-анализом интересов"
+              url="my.orbo.ru/participants/profile"
+              width={856}
+              height={950}
+            />
           </div>
         </div>
       </section>

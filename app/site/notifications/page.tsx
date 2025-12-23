@@ -125,8 +125,8 @@ export default function NotificationsPage() {
             </div>
           </div>
           
-          {/* Screenshots: Settings + Telegram Chat */}
-          <div className="screenshot-grid screenshot-grid--2col" style={{ alignItems: 'start' }}>
+          {/* Screenshots: Settings (2/3) + Telegram Chat (1/3) */}
+          <div className="screenshot-grid screenshot-grid--2-1">
             <BrowserFrame 
               src="/4.1notifications.png" 
               alt="Настройка уведомлений в Orbo"
