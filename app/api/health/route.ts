@@ -28,15 +28,38 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
       response_time_ms: responseTime
     })
-  } catch (error) {
+  } catch (error: unknown) {
+    // Handle different error types (Error instance, Supabase error object, unknown)
+    let errorMessage = 'Unknown error';
+    let errorCode: string | undefined;
+    let errorDetails: string | undefined;
+    let errorStack: string | undefined;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorStack = error.stack;
+    } else if (error && typeof error === 'object') {
+      // Supabase errors are plain objects with message, code, details
+      const errObj = error as Record<string, unknown>;
+      errorMessage = String(errObj.message || errObj.error || JSON.stringify(error));
+      errorCode = errObj.code ? String(errObj.code) : undefined;
+      errorDetails = errObj.details ? String(errObj.details) : undefined;
+    } else if (error) {
+      errorMessage = String(error);
+    }
+    
     logger.error({ 
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
+      error: errorMessage,
+      error_code: errorCode,
+      error_details: errorDetails,
+      stack: errorStack,
+      response_time_ms: Date.now() - startTime
     }, 'Health check failed');
     
     return NextResponse.json({
       status: 'unhealthy',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
+      code: errorCode,
       timestamp: new Date().toISOString()
     }, { status: 500 })
   }
