@@ -4,4 +4,5 @@ export { Header } from './Header';
 export { Footer } from './Footer';
 export { BrowserFrame } from './BrowserFrame';
 export { PhoneFrame } from './PhoneFrame';
+export { AnnouncementBanner } from './AnnouncementBanner';
 export { ProductFloatingCards, CRMFloatingCards, NotificationsFloatingCards, EventsFloatingCards } from './FloatingCards';

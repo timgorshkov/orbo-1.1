@@ -1,5 +1,5 @@
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
-import { Header, Footer, Orb, BrowserFrame } from '@/components/website';
+import { Header, Footer, Orb, BrowserFrame, AnnouncementBanner } from '@/components/website';
 import Link from 'next/link';
 
 // Messenger logo SVGs
@@ -24,7 +24,12 @@ const MaxLogo = () => (
 
 export default function HomePage() {
   return (
-    <>
+    <div className="has-announcement">
+      <AnnouncementBanner 
+        message="WhatsApp блокируют в России. Сохраните участников и переписку в Orbo"
+        linkText="Как мигрировать"
+        linkHref="/whatsapp-migration"
+      />
       <Header />
       
       {/* ========== HERO с ORB эффектом ========== */}
@@ -246,6 +251,6 @@ export default function HomePage() {
       </section>
 
       <Footer />
-    </>
+    </div>
   );
 }

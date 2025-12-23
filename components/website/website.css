@@ -154,6 +154,20 @@
   color: var(--website-text);
 }
 
+.website-header__nav-highlight {
+  color: #f59e0b !important;
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  padding: var(--website-space-xs) var(--website-space-sm) !important;
+  border-radius: var(--website-radius-md);
+  transition: all 0.2s ease !important;
+}
+
+.website-header__nav-highlight:hover {
+  background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%);
+  transform: translateY(-1px);
+}
+
 .website-header__cta {
   display: inline-flex;
   align-items: center;
@@ -1397,5 +1411,514 @@
   .hero-floating {
     min-height: auto;
     padding-bottom: var(--website-space-2xl);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Announcement Banner (Top of page)
+   -------------------------------------------------------------------------- */
+.announcement-banner {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  color: white;
+  padding: var(--website-space-sm) var(--website-space-lg);
+  text-align: center;
+  font-size: var(--website-font-size-sm);
+  font-weight: 500;
+  position: relative;
+  z-index: 101;
+}
+
+.announcement-banner a {
+  color: white;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.announcement-banner a:hover {
+  text-decoration: none;
+}
+
+.announcement-banner__content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--website-space-sm);
+  flex-wrap: wrap;
+}
+
+.announcement-banner__icon {
+  flex-shrink: 0;
+}
+
+.announcement-banner__text {
+  line-height: 1.4;
+}
+
+.announcement-banner__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.announcement-banner__close {
+  position: absolute;
+  right: var(--website-space-md);
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: white;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: var(--website-space-xs);
+  border-radius: var(--website-radius-sm);
+  transition: opacity 0.2s;
+}
+
+.announcement-banner__close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* When banner is present, shift header down */
+.has-announcement .website-header {
+  top: 36px;
+}
+
+@media (max-width: 768px) {
+  .announcement-banner {
+    padding: var(--website-space-sm);
+    font-size: var(--website-font-size-xs);
+  }
+  
+  .announcement-banner__content {
+    gap: var(--website-space-xs);
+  }
+  
+  .has-announcement .website-header {
+    top: 48px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   WhatsApp Migration Page Styles
+   -------------------------------------------------------------------------- */
+.migration-hero {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%);
+  padding: calc(100px + var(--website-space-3xl)) var(--website-space-xl) var(--website-space-3xl);
+  text-align: center;
+}
+
+.migration-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--website-space-sm);
+  background: #ef4444;
+  color: white;
+  padding: var(--website-space-sm) var(--website-space-lg);
+  border-radius: var(--website-radius-full);
+  font-size: var(--website-font-size-sm);
+  font-weight: 600;
+  margin-bottom: var(--website-space-xl);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.migration-hero__title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 700;
+  color: var(--website-text);
+  margin: 0 0 var(--website-space-lg);
+  line-height: 1.1;
+}
+
+.migration-hero__subtitle {
+  font-size: var(--website-font-size-lg);
+  color: var(--website-text-muted);
+  max-width: 700px;
+  margin: 0 auto var(--website-space-2xl);
+  line-height: 1.6;
+}
+
+.migration-hero__actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--website-space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--website-space-2xl);
+}
+
+.migration-hero__messengers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--website-space-lg);
+  flex-wrap: wrap;
+}
+
+.migration-hero__from,
+.migration-hero__to-item {
+  display: flex;
+  align-items: center;
+  gap: var(--website-space-sm);
+  font-weight: 500;
+  color: var(--website-text);
+}
+
+.migration-hero__from svg,
+.migration-hero__to-item svg {
+  width: 32px;
+  height: 32px;
+}
+
+.migration-hero__from .whatsapp-logo {
+  color: #25d366;
+}
+
+.migration-hero__to-item .telegram-logo {
+  color: #0088cc;
+}
+
+.migration-hero__to-item .max-logo {
+  stroke-width: 3;
+  color: #6366f1;
+}
+
+.migration-hero__arrow {
+  color: var(--website-text-muted);
+}
+
+.migration-hero__to {
+  display: flex;
+  align-items: center;
+  gap: var(--website-space-md);
+}
+
+.migration-hero__or {
+  color: var(--website-text-light);
+  font-size: var(--website-font-size-sm);
+}
+
+/* Migration Risks */
+.migration-risks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--website-space-lg);
+}
+
+.migration-risk {
+  background: white;
+  border-radius: var(--website-radius-lg);
+  padding: var(--website-space-xl);
+  text-align: center;
+}
+
+.migration-risk--danger {
+  border: 2px solid #fecaca;
+  background: #fef2f2;
+}
+
+.migration-risk__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--website-space-md);
+}
+
+.migration-risk h3 {
+  font-size: var(--website-font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--website-space-sm);
+  color: var(--website-text);
+}
+
+.migration-risk p {
+  font-size: var(--website-font-size-sm);
+  color: var(--website-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Migration Benefits */
+.migration-benefits {
+  display: grid;
+  gap: var(--website-space-lg);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.migration-benefit {
+  display: flex;
+  gap: var(--website-space-lg);
+  align-items: flex-start;
+}
+
+.migration-benefit__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.migration-benefit__icon--green {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.migration-benefit__content h3 {
+  font-size: var(--website-font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--website-space-xs);
+  color: var(--website-text);
+}
+
+.migration-benefit__content p {
+  font-size: var(--website-font-size-base);
+  color: var(--website-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Migration Steps */
+.migration-steps {
+  display: grid;
+  gap: var(--website-space-2xl);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.migration-step {
+  display: flex;
+  gap: var(--website-space-xl);
+  align-items: flex-start;
+}
+
+.migration-step__number {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--website-primary) 0%, #6366f1 100%);
+  color: white;
+  font-size: var(--website-font-size-xl);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.migration-step__content {
+  flex: 1;
+}
+
+.migration-step__title {
+  font-size: var(--website-font-size-xl);
+  font-weight: 600;
+  margin: 0 0 var(--website-space-md);
+  color: var(--website-text);
+}
+
+.migration-step__instructions {
+  font-size: var(--website-font-size-base);
+  color: var(--website-text-muted);
+  line-height: 1.7;
+}
+
+.migration-step__instructions ol,
+.migration-step__instructions ul {
+  margin: var(--website-space-sm) 0;
+  padding-left: var(--website-space-xl);
+}
+
+.migration-step__instructions li {
+  margin-bottom: var(--website-space-xs);
+}
+
+.migration-step__instructions a {
+  color: var(--website-primary);
+  text-decoration: none;
+}
+
+.migration-step__instructions a:hover {
+  text-decoration: underline;
+}
+
+.migration-step__tip {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--website-radius-md);
+  padding: var(--website-space-md);
+  margin-top: var(--website-space-md);
+  font-size: var(--website-font-size-sm);
+}
+
+.migration-step__screenshot-placeholder {
+  background: #f1f5f9;
+  border: 2px dashed #cbd5e1;
+  border-radius: var(--website-radius-lg);
+  padding: var(--website-space-2xl);
+  text-align: center;
+  color: var(--website-text-light);
+  margin-top: var(--website-space-lg);
+  font-size: var(--website-font-size-sm);
+}
+
+/* Two phone screenshots side by side */
+.migration-step__screenshots {
+  display: flex;
+  gap: var(--website-space-lg);
+  margin-top: var(--website-space-lg);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.migration-step__screenshots .phone-frame {
+  max-width: 280px;
+  margin: 0;
+}
+
+/* Browser frames in steps */
+.migration-step__content .browser-frame {
+  margin-top: var(--website-space-lg);
+}
+
+.migration-step__content .browser-frame + .browser-frame {
+  margin-top: var(--website-space-md);
+}
+
+/* Migration Urgency Box */
+.migration-urgency {
+  display: flex;
+  gap: var(--website-space-xl);
+  align-items: flex-start;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-radius: var(--website-radius-xl);
+  padding: var(--website-space-2xl);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.migration-urgency__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.migration-urgency__content h2 {
+  font-size: var(--website-font-size-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--website-space-md);
+  color: var(--website-text);
+}
+
+.migration-urgency__content ul {
+  margin: 0 0 var(--website-space-lg);
+  padding-left: var(--website-space-xl);
+}
+
+.migration-urgency__content li {
+  margin-bottom: var(--website-space-sm);
+  color: var(--website-text-muted);
+  line-height: 1.5;
+}
+
+.migration-urgency__cta-text {
+  font-weight: 600;
+  color: var(--website-text);
+  margin: 0;
+}
+
+/* Migration FAQ */
+.migration-faq {
+  display: grid;
+  gap: var(--website-space-lg);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.migration-faq__item {
+  background: white;
+  border-radius: var(--website-radius-lg);
+  padding: var(--website-space-xl);
+  box-shadow: var(--website-shadow-sm);
+}
+
+.migration-faq__item h3 {
+  font-size: var(--website-font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--website-space-sm);
+  color: var(--website-text);
+}
+
+.migration-faq__item p {
+  font-size: var(--website-font-size-base);
+  color: var(--website-text-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Responsive for migration page */
+@media (max-width: 768px) {
+  .migration-hero {
+    padding: calc(80px + var(--website-space-2xl)) var(--website-space-lg) var(--website-space-2xl);
+  }
+  
+  .migration-hero__messengers {
+    flex-direction: column;
+    gap: var(--website-space-md);
+  }
+  
+  .migration-hero__arrow {
+    transform: rotate(90deg);
+  }
+  
+  .migration-hero__to {
+    flex-direction: column;
+    gap: var(--website-space-sm);
+  }
+  
+  .migration-step {
+    flex-direction: column;
+    gap: var(--website-space-md);
+  }
+  
+  .migration-step__number {
+    width: 40px;
+    height: 40px;
+    font-size: var(--website-font-size-lg);
+  }
+  
+  .migration-urgency {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .migration-urgency__icon {
+    margin: 0 auto;
+  }
+  
+  .migration-urgency__content ul {
+    text-align: left;
   }
 }
