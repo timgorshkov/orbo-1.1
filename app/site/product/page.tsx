@@ -4,7 +4,7 @@ import {
   Users, Building2, GraduationCap, BarChart3, Bell, Calendar, 
   UserCircle, ArrowRight, Bot, MessageSquare, Ticket 
 } from 'lucide-react';
-import { Header, Footer } from '@/components/website';
+import { Header, Footer, BrowserFrame } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'Продукт',
@@ -28,6 +28,15 @@ export default function ProductPage() {
               Понимайте свою аудиторию, автоматизируйте рутину, развивайте сообщество
             </p>
           </div>
+          
+          {/* Product Overview Screenshot */}
+          <BrowserFrame 
+            src="/2.product-overview.png" 
+            alt="Обзор платформы Orbo — дашборд и аналитика"
+            url="my.orbo.ru"
+            width={1200}
+            height={700}
+          />
         </div>
       </section>
 

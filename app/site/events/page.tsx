@@ -5,7 +5,7 @@ import {
   CreditCard, Send, Smartphone, CalendarCheck, CheckCircle2, 
   XCircle, AlertCircle, ArrowRight, Bot 
 } from 'lucide-react';
-import { Header, Footer } from '@/components/website';
+import { Header, Footer, BrowserFrame, PhoneFrame } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'События и регистрации',
@@ -107,17 +107,14 @@ export default function EventsPage() {
             </div>
           </div>
           
-          {/* Screenshot placeholder */}
-          <div style={{ 
-            marginTop: '2rem', 
-            padding: '3rem', 
-            background: 'var(--website-bg-alt)', 
-            borderRadius: 'var(--website-radius-xl)',
-            textAlign: 'center',
-            color: 'var(--website-text-muted)'
-          }}>
-            [Скриншот: Форма создания события]
-          </div>
+          {/* Event Page Screenshot */}
+          <BrowserFrame 
+            src="/5.1event.png" 
+            alt="Страница события в Orbo"
+            url="my.orbo.ru/events/event-id"
+            width={1200}
+            height={700}
+          />
         </div>
       </section>
 
@@ -252,6 +249,37 @@ export default function EventsPage() {
               </p>
             </div>
           </div>
+          
+          {/* MiniApp Screenshot */}
+          <div className="screenshot-center" style={{ marginTop: '2rem' }}>
+            <PhoneFrame 
+              src="/5.2event-miniapp.png" 
+              alt="Telegram MiniApp для регистрации на событие"
+              width={375}
+              height={812}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Payments Section */}
+      <section className="website-section">
+        <div className="website-container">
+          <div className="section-header section-header--center">
+            <span className="section-header__eyebrow">Оплаты</span>
+            <h2 className="section-header__title">Управление платежами</h2>
+            <p className="section-header__subtitle">
+              Отслеживайте статусы оплат и собирайте деньги профессионально
+            </p>
+          </div>
+          
+          <BrowserFrame 
+            src="/5.3payments.png" 
+            alt="Список участников и оплат события"
+            url="my.orbo.ru/events/payments"
+            width={1200}
+            height={550}
+          />
         </div>
       </section>
 

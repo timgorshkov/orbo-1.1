@@ -5,7 +5,7 @@ import {
   Upload, Download, Filter, ArrowRight, Users, 
   Sparkles, Database 
 } from 'lucide-react';
-import { Header, Footer } from '@/components/website';
+import { Header, Footer, BrowserFrame } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'CRM участников',
@@ -100,17 +100,14 @@ export default function CRMPage() {
             </div>
           </div>
           
-          {/* Screenshot placeholder */}
-          <div style={{ 
-            marginTop: '2rem', 
-            padding: '3rem', 
-            background: 'var(--website-bg-alt)', 
-            borderRadius: 'var(--website-radius-xl)',
-            textAlign: 'center',
-            color: 'var(--website-text-muted)'
-          }}>
-            [Скриншот: Профиль участника с AI-обогащением]
-          </div>
+          {/* Profile Screenshot */}
+          <BrowserFrame 
+            src="/3.1profile.png" 
+            alt="Профиль участника с AI-анализом интересов"
+            url="my.orbo.ru/participants/profile"
+            width={900}
+            height={950}
+          />
         </div>
       </section>
 
@@ -223,6 +220,15 @@ export default function CRMPage() {
               </p>
             </div>
           </div>
+          
+          {/* Participants List Screenshot */}
+          <BrowserFrame 
+            src="/3.2participants.png" 
+            alt="Список участников с фильтрами"
+            url="my.orbo.ru/participants"
+            width={1200}
+            height={700}
+          />
         </div>
       </section>
 

@@ -1,5 +1,5 @@
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
-import { Header, Footer, Orb } from '@/components/website';
+import { Header, Footer, Orb, BrowserFrame } from '@/components/website';
 import Link from 'next/link';
 
 // Messenger logo SVGs
@@ -127,6 +127,15 @@ export default function HomePage() {
               </ul>
             </div>
           </div>
+          
+          {/* Dashboard Screenshot */}
+          <BrowserFrame 
+            src="/1.main-obzorny.png" 
+            alt="Дашборд Orbo — аналитика сообщества"
+            url="my.orbo.ru/dashboard"
+            width={1200}
+            height={692}
+          />
         </div>
       </section>
 

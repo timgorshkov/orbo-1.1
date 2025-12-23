@@ -5,7 +5,7 @@ import {
   TrendingDown, Settings, Filter, Zap, Shield, 
   ArrowRight, Building2, Users 
 } from 'lucide-react';
-import { Header, Footer } from '@/components/website';
+import { Header, Footer, BrowserFrame, PhoneFrame } from '@/components/website';
 
 export const metadata: Metadata = {
   title: 'Группы и уведомления',
@@ -122,6 +122,25 @@ export default function NotificationsPage() {
               <p className="feature-card__text">
                 В группе не было сообщений N дней — проект «заглох»
               </p>
+            </div>
+          </div>
+          
+          {/* Screenshots: Settings + Telegram Chat */}
+          <div className="screenshot-grid screenshot-grid--2col" style={{ alignItems: 'start' }}>
+            <BrowserFrame 
+              src="/4.1notifications.png" 
+              alt="Настройка уведомлений в Orbo"
+              url="my.orbo.ru/notifications"
+              width={900}
+              height={520}
+            />
+            <div className="screenshot-center">
+              <PhoneFrame 
+                src="/4.2notifications.png" 
+                alt="AI-уведомления в Telegram"
+                width={375}
+                height={750}
+              />
             </div>
           </div>
         </div>
