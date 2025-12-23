@@ -6,15 +6,20 @@ export const metadata: Metadata = {
     default: 'Orbo — CRM для групп и сообществ в мессенджерах',
     template: '%s | Orbo'
   },
-  description: 'AI-аналитика сообществ, управление событиями, уведомления о негативе и неответах. Telegram, WhatsApp, VK. Всё в одном месте.',
-  keywords: ['telegram crm', 'crm для сообществ', 'аналитика telegram', 'управление группами', 'события telegram', 'whatsapp crm'],
+  description: 'CRM для Telegram, WhatsApp и Max. AI-аналитика участников, события с регистрацией и оплатой, уведомления о негативе и неответах.',
+  keywords: ['telegram crm', 'crm для сообществ', 'аналитика telegram', 'управление группами', 'события telegram', 'whatsapp crm', 'max messenger'],
   openGraph: {
     type: 'website',
     locale: 'ru_RU',
     url: 'https://orbo.ru',
     title: 'Orbo — CRM для групп и сообществ в мессенджерах',
-    description: 'AI-аналитика сообществ, управление событиями, уведомления о негативе и неответах.',
+    description: 'CRM для Telegram, WhatsApp и Max. AI-аналитика участников, события с регистрацией и оплатой, уведомления о негативе.',
     siteName: 'Orbo',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Orbo — CRM для групп и сообществ в мессенджерах',
+    description: 'CRM для Telegram, WhatsApp и Max. AI-аналитика участников, события с регистрацией и оплатой, уведомления о негативе.',
   },
 };
 

@@ -68,7 +68,7 @@ export default function SignIn() {
       if (!response.ok) {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
-        setMessage('✉️ Мы отправили ссылку для входа на ваш email. Проверьте почту!')
+        setMessage('Мы отправили ссылку для входа на ваш email. Проверьте почту!')
       }
     } catch (error) {
       logger.error({
@@ -125,36 +125,36 @@ export default function SignIn() {
             priority
           />
           <h2 className="text-3xl font-bold">
-            Управление Telegram-сообществом в одном месте
+            CRM для групп и сообществ в мессенджерах
           </h2>
           <ul className="space-y-4 text-lg">
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>CRM участников с профилями и поиском</span>
+              <span>AI-профили участников с интересами и запросами</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>База знаний как в Notion</span>
+              <span>События с регистрацией и сбором оплат</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>События с QR-чекином</span>
+              <span>Уведомления о негативе и неответах</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Дашборд активности и удержания</span>
+              <span>Аналитика активности и удержания</span>
             </li>
           </ul>
           <p className="text-blue-100 text-sm mt-8">
-            Freemium до 50 участников. Без миграций существующих чатов.
+            Telegram, WhatsApp, Max — всё в одном месте
           </p>
         </div>
       </div>
@@ -174,10 +174,7 @@ export default function SignIn() {
           </div>
 
           <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Вход в Orbo</h1>
-            <p className="text-sm text-gray-600 mb-6">
-              Выберите удобный способ входа
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Вход в Orbo</h1>
             
             {/* OAuth Buttons */}
             <div className="space-y-3 mb-6">
@@ -248,9 +245,6 @@ export default function SignIn() {
             
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                  Email
-                </label>
                 <Input 
                   id="email"
                   type="email"
@@ -267,14 +261,14 @@ export default function SignIn() {
                 className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
                 disabled={loading}
               >
-                {loading ? 'Отправка...' : '✉️ Получить ссылку для входа'}
+                {loading ? 'Отправка...' : 'Получить ссылку для входа'}
               </Button>
               
               {message && (
                 <div className={`p-3 rounded-lg text-sm ${
                   message.includes('Ошибка')
                     ? 'bg-red-50 text-red-600 border border-red-200' 
-                    : message.includes('✉️')
+                    : message.includes('отправили')
                     ? 'bg-green-50 text-green-700 border border-green-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>

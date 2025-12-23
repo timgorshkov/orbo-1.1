@@ -35,7 +35,7 @@ export default function SignUp() {
       if (!response.ok) {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
-        setMessage('✉️ Отлично! Мы отправили ссылку для подтверждения на ваш email.')
+        setMessage('Отлично! Мы отправили ссылку для подтверждения на ваш email.')
       }
     } catch (error) {
       logger.error({
@@ -87,38 +87,38 @@ export default function SignUp() {
             className="mb-8"
           />
           <h2 className="text-3xl font-bold">
-            Управление Telegram-сообществом в одном месте
+            CRM для групп и сообществ в мессенджерах
           </h2>
           <ul className="space-y-4 text-lg">
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span><strong>AI-конструктор приложений:</strong> доска объявлений, карта проблем, события — за 5 минут</span>
+              <span>AI-профили участников с интересами и запросами</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span><strong>Instant user base:</strong> подключили группу → все участники сразу используют</span>
+              <span>События с регистрацией и сбором оплат</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>CRM участников с профилями и детальной аналитикой</span>
+              <span>Уведомления о негативе и неответах</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>База знаний и события с QR-чекином</span>
+              <span>Аналитика активности и удержания</span>
             </li>
           </ul>
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-4 mt-8">
-            <p className="text-lg font-semibold">🎉 Freemium до 50 участников</p>
+            <p className="text-lg font-semibold">Freemium до 50 участников</p>
             <p className="text-blue-100 text-sm mt-1">
-              Без миграций существующих чатов. Начните за минуты.
+              Telegram, WhatsApp, Max — всё в одном месте
             </p>
           </div>
         </div>
@@ -142,7 +142,7 @@ export default function SignUp() {
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Начните бесплатно</h1>
               <p className="text-sm text-gray-600">
-                Создайте аккаунт и подключите первое сообщество за 2 минуты
+                Создайте аккаунт и подключите первую группу за 2 минуты
               </p>
             </div>
             
@@ -215,9 +215,6 @@ export default function SignUp() {
             
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                  Рабочий email
-                </label>
                 <Input 
                   id="email"
                   type="email"
@@ -237,14 +234,14 @@ export default function SignUp() {
                 className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
                 disabled={loading}
               >
-                {loading ? 'Отправка...' : '🚀 Зарегистрироваться бесплатно'}
+                {loading ? 'Отправка...' : 'Зарегистрироваться бесплатно'}
               </Button>
               
               {message && (
                 <div className={`p-3 rounded-lg text-sm ${
                   message.includes('Ошибка')
                     ? 'bg-red-50 text-red-600 border border-red-200' 
-                    : message.includes('✉️')
+                    : message.includes('Отлично')
                     ? 'bg-green-50 text-green-700 border border-green-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}>
@@ -253,7 +250,10 @@ export default function SignUp() {
               )}
 
               <p className="text-xs text-gray-500 text-center pt-2">
-                Регистрируясь, вы соглашаетесь с условиями использования Orbo
+                Регистрируясь, вы соглашаетесь с{' '}
+                <Link href="https://orbo.ru/terms" className="text-gray-500 hover:text-gray-700">
+                  условиями использования
+                </Link>
               </p>
             </form>
           </div>

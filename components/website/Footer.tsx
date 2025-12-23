@@ -11,6 +11,7 @@ export function Footer() {
           <Link href="/crm">CRM</Link>
           <Link href="/notifications">Уведомления</Link>
           <Link href="/events">События</Link>
+          <Link href="/terms">Условия использования</Link>
         </nav>
         <p className="website-footer__copy">
           © {currentYear} Команда Orbo

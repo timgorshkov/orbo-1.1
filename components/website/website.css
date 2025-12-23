@@ -701,3 +701,82 @@
     font-size: var(--website-font-size-3xl);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Terms Page
+   -------------------------------------------------------------------------- */
+.terms-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding-bottom: var(--website-space-4xl);
+}
+
+.terms-content h1 {
+  font-size: var(--website-font-size-4xl);
+  font-weight: 700;
+  color: var(--website-text);
+  margin-bottom: var(--website-space-2xl);
+}
+
+.terms-content h2 {
+  font-size: var(--website-font-size-2xl);
+  font-weight: 600;
+  color: var(--website-text);
+  margin-top: var(--website-space-3xl);
+  margin-bottom: var(--website-space-lg);
+}
+
+.terms-content h3 {
+  font-size: var(--website-font-size-xl);
+  font-weight: 600;
+  color: var(--website-text);
+  margin-top: var(--website-space-2xl);
+  margin-bottom: var(--website-space-md);
+}
+
+.terms-content p {
+  font-size: var(--website-font-size-base);
+  line-height: 1.7;
+  color: var(--website-text-muted);
+  margin-bottom: var(--website-space-md);
+}
+
+.terms-content ul {
+  margin: var(--website-space-md) 0;
+  padding-left: var(--website-space-xl);
+}
+
+.terms-content ul li {
+  font-size: var(--website-font-size-base);
+  line-height: 1.7;
+  color: var(--website-text-muted);
+  margin-bottom: var(--website-space-sm);
+}
+
+.terms-content a {
+  color: var(--website-primary);
+  text-decoration: none;
+}
+
+.terms-content a:hover {
+  text-decoration: underline;
+}
+
+.terms-important {
+  background: var(--website-bg-alt);
+  border-left: 4px solid var(--website-primary);
+  padding: var(--website-space-lg);
+  margin-bottom: var(--website-space-2xl);
+  border-radius: var(--website-radius-md);
+}
+
+.terms-requisites {
+  background: var(--website-bg-alt);
+  padding: var(--website-space-lg);
+  border-radius: var(--website-radius-md);
+  margin-top: var(--website-space-lg);
+}
+
+.terms-requisites p {
+  margin-bottom: var(--website-space-xs);
+}
