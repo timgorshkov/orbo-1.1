@@ -161,7 +161,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    logger.info({ group_id: groupId, org_id: orgId, user_id: user.id }, 'Adding group to org');
+    logger.info({ 
+      group_id: groupId, 
+      org_id: orgId, 
+      user_id: user.id,
+      user_email: user.email,
+      action: 'EXPLICIT_ADD_GROUP_TO_ORG'
+    }, 'User explicitly adding group to organization');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();

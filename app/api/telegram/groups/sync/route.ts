@@ -78,7 +78,14 @@ export async function POST(request: Request) {
     const telegramService = new TelegramService('main');
     const tgUserId = activeAccount.telegram_user_id;
     
-    logger.debug({ user_id: user.id, telegram_user_id: tgUserId, org_id: orgId }, 'Starting sync');
+    logger.info({ 
+      user_id: user.id, 
+      user_email: user.email,
+      telegram_user_id: tgUserId, 
+      org_id: orgId,
+      account_org_id: activeAccount.org_id,
+      using_cross_org_account: activeAccount.org_id !== orgId
+    }, 'Starting Telegram groups sync');
 
     try {
       // НОВАЯ ЛОГИКА: Получаем ВСЕ группы из БД, где бот подключен
@@ -307,28 +314,34 @@ export async function POST(request: Request) {
         }
       }
 
-      try {
-        await supabaseService
-          .from('org_telegram_groups')
-          .insert({
-            org_id: orgId,
-            tg_chat_id: chatId,
-            created_by: user.id
-          });
-      } catch (mappingError: any) {
-        if (mappingError?.code === '23505') {
-          // already linked
-        } else if (mappingError?.code === '42P01') {
-          logger.warn({ chat_id: chatId }, 'Mapping table missing during sync');
-        } else {
-          logger.error({ 
-            chat_id: chatId,
-            error: mappingError.message
-          }, 'Error creating org mapping');
-        }
-      }
+      // ⚠️ ИСПРАВЛЕНО: НЕ добавляем группы автоматически в org_telegram_groups
+      // Группы должны добавляться явно через /api/telegram/groups/add-to-org
+      // Раньше здесь был автоматический insert, который добавлял ВСЕ группы пользователя
+      // во ВСЕ организации, что вызывало баг с "чужими" группами
+      
+      // Проверяем, привязана ли группа к текущей организации (для логирования)
+      const { data: existingMapping } = await supabaseService
+        .from('org_telegram_groups')
+        .select('org_id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', chatId)
+        .maybeSingle();
+      
+      const isLinkedToCurrentOrg = !!existingMapping;
+      
+      logger.info({
+        chat_id: chatId,
+        title: chatDetails.result.title,
+        org_id: orgId,
+        tg_user_id: activeAccount.telegram_user_id,
+        is_admin: isAdmin,
+        is_owner: isOwner,
+        is_linked_to_org: isLinkedToCurrentOrg,
+        action: 'sync_admin_rights_only'
+      }, 'Syncing admin rights for group (not auto-adding to org)');
 
-          const { error: adminError } = await supabaseService
+      // Обновляем только права админа (это корректно)
+      const { error: adminError } = await supabaseService
             .from('telegram_group_admins')
             .upsert({
               tg_chat_id: chatId,
@@ -366,6 +379,19 @@ export async function POST(request: Request) {
       
       const orgGroups = await getOrgTelegramGroups(orgId);
 
+      // Подсчитываем статистику для логов
+      const syncStats = {
+        total_groups_checked: allGroups?.length || 0,
+        groups_where_user_is_admin: availableGroups.length,
+        groups_linked_to_org: orgGroups.length,
+        user_id: user.id,
+        user_email: user.email,
+        org_id: orgId,
+        telegram_user_id: tgUserId
+      };
+      
+      logger.info(syncStats, 'Telegram groups sync completed');
+
       // Log admin action
       await logAdminAction({
         orgId,
@@ -374,14 +400,20 @@ export async function POST(request: Request) {
         resourceType: ResourceTypes.TELEGRAM_GROUP,
         metadata: {
           groups_count: orgGroups.length,
-          groups: orgGroups.slice(0, 5).map((g: any) => g.title)
+          groups: orgGroups.slice(0, 5).map((g: any) => g.title),
+          sync_stats: syncStats
         }
       });
 
       return NextResponse.json({
         success: true,
-        message: `Synced ${orgGroups.length} groups for org ${orgId}`,
-        groups: orgGroups
+        message: `Synced admin rights. ${orgGroups.length} groups linked to org.`,
+        groups: orgGroups,
+        stats: {
+          checked: allGroups?.length || 0,
+          admin_in: availableGroups.length,
+          linked: orgGroups.length
+        }
       });
     } catch (telegramError: any) {
       await logErrorToDatabase({
