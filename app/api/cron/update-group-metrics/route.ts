@@ -32,8 +32,6 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    logger.info('Starting group metrics update');
-    
     const today = new Date().toISOString().split('T')[0];
     
     // Get all active org-group mappings
@@ -48,7 +46,8 @@ export async function GET(request: NextRequest) {
     }
     
     if (!mappings || mappings.length === 0) {
-      logger.info('No active group mappings found');
+      // Логируем только при отсутствии групп (редкое событие)
+      logger.debug('No active group mappings found');
       return NextResponse.json({ ok: true, updated: 0 });
     }
     
@@ -68,11 +67,6 @@ export async function GET(request: NextRequest) {
     
     // Convert Set to Array for iteration
     const chatIdArray = Array.from(uniqueChatIds);
-    
-    logger.info({ 
-      unique_chats: chatIdArray.length,
-      total_mappings: mappings.length
-    }, 'Found unique chat IDs');
     
     let updated = 0;
     let errors = 0;
@@ -179,12 +173,23 @@ export async function GET(request: NextRequest) {
     }
     
     const duration = Date.now() - startTime;
-    logger.info({ 
+    
+    // Логируем как info только при ошибках или медленном выполнении (>30s)
+    // Иначе логируем как debug чтобы не засорять логи
+    const logData = { 
       updated, 
       errors, 
       unique_chats: chatIdArray.length,
       duration_ms: duration 
-    }, 'Group metrics update completed');
+    };
+    
+    if (errors > 0) {
+      logger.warn(logData, 'Group metrics update completed with errors');
+    } else if (duration > 30000) {
+      logger.warn(logData, 'Group metrics update slow (>30s)');
+    } else {
+      logger.debug(logData, 'Group metrics update completed');
+    }
     
     return NextResponse.json({ 
       ok: true, 
