@@ -104,7 +104,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
       lastName: user.last_name,
       fullName: [user.first_name, user.last_name].filter(Boolean).join(' '),
       isBot: user.is_bot,
-      rawData: user,
+      rawData: user as unknown as Record<string, unknown>,
     };
   }
 
@@ -116,7 +116,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
       description: chat.description,
       photoUrl: undefined, // Требует отдельного запроса
       inviteLink: chat.invite_link,
-      rawData: chat,
+      rawData: chat as unknown as Record<string, unknown>,
     };
   }
 
@@ -127,7 +127,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
       customTitle: member.custom_title,
       canDeleteMessages: member.can_delete_messages,
       canManageMembers: member.can_restrict_members,
-      rawData: member,
+      rawData: member as unknown as Record<string, unknown>,
     };
   }
 
@@ -139,7 +139,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
       text: msg.text,
       replyToMessageId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
       timestamp: new Date(msg.date * 1000),
-      rawData: msg,
+      rawData: msg as unknown as Record<string, unknown>,
     };
   }
 

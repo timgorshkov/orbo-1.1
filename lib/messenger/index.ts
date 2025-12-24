@@ -29,7 +29,8 @@
 export * from './types';
 
 // Адаптер (интерфейс и базовый класс)
-export { MessengerAdapter, BaseMessengerAdapter } from './adapter';
+export type { MessengerAdapter } from './adapter';
+export { BaseMessengerAdapter } from './adapter';
 
 // Фабрика
 export {
