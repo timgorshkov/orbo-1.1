@@ -60,69 +60,88 @@ export async function GET(
       importId, 
       orgId: importData.org_id, 
       limit, 
-      offset 
+      offset,
+      dateRangeStart: importData.date_range_start,
+      dateRangeEnd: importData.date_range_end
     }, 'Fetching WhatsApp messages');
     
-    // WhatsApp messages have tg_chat_id = 0 and are linked via org_id
+    // WhatsApp messages are stored in activity_events with tg_chat_id = 0 and meta.source = 'whatsapp'
     // We filter by date range of the import
     let query = adminSupabase
-      .from('participant_messages')
-      .select(`
-        id,
-        message_text,
-        sent_at,
-        participant_id,
-        tg_user_id,
-        has_media,
-        media_type,
-        participants!participant_messages_participant_id_fkey (
-          id,
-          full_name,
-          username,
-          phone,
-          photo_url
-        )
-      `)
+      .from('activity_events')
+      .select('id, meta, chars_count, created_at')
       .eq('org_id', importData.org_id)
-      .eq('tg_chat_id', 0); // WhatsApp messages have tg_chat_id = 0
+      .eq('tg_chat_id', 0)
+      .eq('event_type', 'message')
+      .contains('meta', { source: 'whatsapp' });
     
     // Filter by import date range
     if (importData.date_range_start) {
-      query = query.gte('sent_at', importData.date_range_start);
+      query = query.gte('created_at', importData.date_range_start);
     }
     if (importData.date_range_end) {
-      query = query.lte('sent_at', importData.date_range_end);
+      // Add a day buffer to include messages on the end date
+      const endDate = new Date(importData.date_range_end);
+      endDate.setDate(endDate.getDate() + 1);
+      query = query.lt('created_at', endDate.toISOString());
+    }
+    
+    // Filter by group name if available
+    if (importData.group_name) {
+      query = query.contains('meta', { group_name: importData.group_name });
     }
     
     // Order and paginate
-    const { data: messages, error: messagesError, count } = await query
-      .order('sent_at', { ascending: false })
+    const { data: events, error: eventsError } = await query
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     
-    if (messagesError) {
-      logger.error({ error: messagesError.message }, 'Error fetching messages');
+    if (eventsError) {
+      logger.error({ error: eventsError.message }, 'Error fetching messages');
       return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
     }
     
-    // Transform to cleaner format
-    const formattedMessages = (messages || []).map(msg => ({
-      id: msg.id,
-      text: msg.message_text,
-      sentAt: msg.sent_at,
-      hasMedia: msg.has_media,
-      mediaType: msg.media_type,
-      sender: msg.participants ? {
-        id: (msg.participants as any).id,
-        name: (msg.participants as any).full_name || (msg.participants as any).phone || 'Неизвестный',
-        phone: (msg.participants as any).phone,
-        photoUrl: (msg.participants as any).photo_url,
-      } : {
-        id: null,
-        name: 'Неизвестный',
-        phone: null,
-        photoUrl: null,
+    // Get participant IDs from events to fetch names
+    const participantIds = Array.from(new Set(
+      (events || [])
+        .map(e => e.meta?.participant_id)
+        .filter(Boolean)
+    ));
+    
+    // Fetch participants
+    let participantsMap: Record<string, any> = {};
+    if (participantIds.length > 0) {
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, phone, photo_url')
+        .in('id', participantIds);
+      
+      if (participants) {
+        participantsMap = Object.fromEntries(
+          participants.map(p => [p.id, p])
+        );
       }
-    }));
+    }
+    
+    // Transform to cleaner format
+    const formattedMessages = (events || []).map(event => {
+      const meta = event.meta || {};
+      const participant = participantsMap[meta.participant_id];
+      
+      return {
+        id: event.id,
+        text: meta.text || null,
+        sentAt: event.created_at,
+        hasMedia: false, // WhatsApp imports don't include media
+        mediaType: null,
+        sender: {
+          id: meta.participant_id || null,
+          name: participant?.full_name || meta.original_sender || 'Неизвестный',
+          phone: participant?.phone || null,
+          photoUrl: participant?.photo_url || null,
+        }
+      };
+    });
     
     return NextResponse.json({
       messages: formattedMessages,

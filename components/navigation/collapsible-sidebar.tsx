@@ -26,6 +26,12 @@ import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
+interface WhatsAppGroup {
+  id: string
+  group_name: string | null
+  messages_imported: number
+}
+
 interface CollapsibleSidebarProps {
   orgId: string
   orgName: string
@@ -62,6 +68,7 @@ export default function CollapsibleSidebar({
   const [showOrgDropdown, setShowOrgDropdown] = useState(false)
   const [showMenuDropdown, setShowMenuDropdown] = useState(false)
   const [showTelegramDropdown, setShowTelegramDropdown] = useState(false)
+  const [whatsappGroups, setWhatsappGroups] = useState<WhatsAppGroup[]>([])
 
   // Сохраняем состояние свёрнутости в localStorage
   useEffect(() => {
@@ -70,6 +77,25 @@ export default function CollapsibleSidebar({
       setIsCollapsed(saved === 'true')
     }
   }, [orgId])
+  
+  // Загружаем WhatsApp группы, отмеченные для показа в меню
+  useEffect(() => {
+    async function loadWhatsAppGroups() {
+      try {
+        const res = await fetch(`/api/whatsapp/menu-groups?orgId=${orgId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setWhatsappGroups(data.groups || [])
+        }
+      } catch (error) {
+        console.error('Failed to load WhatsApp groups:', error)
+      }
+    }
+    
+    if (isAdmin && adminMode) {
+      loadWhatsAppGroups()
+    }
+  }, [orgId, isAdmin, adminMode])
 
   const toggleSidebar = () => {
     const newState = !isCollapsed
@@ -250,6 +276,23 @@ export default function CollapsibleSidebar({
                           <div className="px-4 py-2 text-sm text-gray-500 italic">
                             Нет подключенных групп
                           </div>
+                        )}
+                        
+                        {/* WhatsApp группы */}
+                        {whatsappGroups.length > 0 && (
+                          <>
+                            <div className="px-4 py-1 text-xs text-gray-400 font-medium mt-2">WhatsApp</div>
+                            {whatsappGroups.map((group) => (
+                              <Link
+                                key={`wa-${group.id}`}
+                                href={`/p/${orgId}/telegram/whatsapp/${group.id}`}
+                                className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                                onClick={() => setShowMenuDropdown(false)}
+                              >
+                                💬 {group.group_name || 'WhatsApp чат'}
+                              </Link>
+                            ))}
+                          </>
                         )}
                       </div>
                     )}
@@ -454,6 +497,31 @@ export default function CollapsibleSidebar({
               <div className="px-3 py-2 text-sm text-gray-500 italic">
                 Нет подключенных групп
               </div>
+            )}
+            
+            {/* WhatsApp группы */}
+            {whatsappGroups.length > 0 && (
+              <>
+                <div className="px-3 py-2 mt-2">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    WhatsApp
+                  </div>
+                </div>
+                {whatsappGroups.map((group) => (
+                  <Link
+                    key={`wa-${group.id}`}
+                    href={`/p/${orgId}/telegram/whatsapp/${group.id}`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      pathname === `/p/${orgId}/telegram/whatsapp/${group.id}`
+                        ? 'bg-green-50 text-green-600'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="text-sm flex-shrink-0">💬</span>
+                    <span className="truncate">{group.group_name || 'WhatsApp чат'}</span>
+                  </Link>
+                ))}
+              </>
             )}
           </div>
         )}
