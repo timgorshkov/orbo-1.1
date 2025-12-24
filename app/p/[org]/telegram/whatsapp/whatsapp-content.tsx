@@ -160,7 +160,11 @@ export default function WhatsAppContent({
           ) : (
             <div className="divide-y divide-neutral-100">
               {imports.map((imp) => (
-                <div key={imp.id} className="py-4 first:pt-0 last:pb-0">
+                <Link 
+                  key={imp.id} 
+                  href={`/p/${orgId}/telegram/whatsapp/${imp.id}`}
+                  className="block py-4 first:pt-0 last:pb-0 hover:bg-neutral-50 -mx-4 px-4 rounded-lg transition-colors"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -205,11 +209,14 @@ export default function WhatsAppContent({
                       </div>
                     </div>
                     
-                    <div className="text-right text-xs text-neutral-400 flex-shrink-0">
-                      {formatDate(imp.created_at)}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-neutral-400">
+                        {formatDate(imp.created_at)}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-neutral-300" />
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

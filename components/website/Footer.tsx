@@ -12,6 +12,7 @@ export function Footer() {
           <Link href="/notifications">Уведомления</Link>
           <Link href="/events">События</Link>
           <Link href="/terms">Условия использования</Link>
+          <Link href="/privacy">Политика конфиденциальности</Link>
         </nav>
         <p className="website-footer__copy">
           © {currentYear} Команда Orbo

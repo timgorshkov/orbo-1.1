@@ -26,6 +26,7 @@ export default function HomePage() {
   return (
     <>
       <AnnouncementBanner 
+        id="whatsapp-2024"
         message="WhatsApp блокируют — сохраните участников в Orbo"
         linkText="Подробнее"
         linkHref="/whatsapp-migration"

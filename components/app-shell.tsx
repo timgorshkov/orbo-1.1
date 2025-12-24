@@ -3,12 +3,19 @@ import Link from 'next/link'
 import { ReactNode, useEffect, useState } from 'react'
 import clsx from 'clsx'
 import TelegramGroupsNav from './telegram-groups-nav'
+import WhatsAppGroupsNav from './whatsapp-groups-nav'
 import OrganizationSwitcher from './organization-switcher'
 
 type NavItem = {
   href: string;
   label: string;
   icon?: string;
+}
+
+interface WhatsAppGroup {
+  id: string;
+  group_name: string | null;
+  messages_imported: number;
 }
 
 export default function AppShell({ 
@@ -25,6 +32,7 @@ export default function AppShell({
   orgName?: string;
 }) {
   const [groups, setGroups] = useState<any[]>(telegramGroups ?? []);
+  const [whatsappGroups, setWhatsappGroups] = useState<WhatsAppGroup[]>([]);
   const [orgDisplayName, setOrgDisplayName] = useState(orgName || '');
 
   useEffect(() => {
@@ -87,6 +95,23 @@ export default function AppShell({
       }
     }
 
+    async function loadWhatsAppGroups() {
+      try {
+        const res = await fetch(`/api/whatsapp/menu-groups?orgId=${orgId}`);
+        if (!isMounted) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setWhatsappGroups(data.groups || []);
+          }
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('Failed to load WhatsApp groups:', error);
+        }
+      }
+    }
+
     // Если телеграм-группы и название не передали, грузим
     if (!telegramGroups || telegramGroups.length === 0) {
       loadGroups();
@@ -97,6 +122,9 @@ export default function AppShell({
     } else {
       loadOrgName();
     }
+
+    // Load WhatsApp groups
+    loadWhatsAppGroups();
 
     return () => {
       isMounted = false;
@@ -142,6 +170,13 @@ export default function AppShell({
               groups={groups} 
               orgId={orgId} 
               currentPath={currentPath} 
+            />
+            
+            {/* WhatsApp группы (если включены в меню) */}
+            <WhatsAppGroupsNav
+              groups={whatsappGroups}
+              orgId={orgId}
+              currentPath={currentPath}
             />
           </div>
           
