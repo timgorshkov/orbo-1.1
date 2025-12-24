@@ -91,13 +91,13 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       
       try {
         const timestamp = new Date().getTime()
-        logger.debug({ 
+        logger.info({ 
           org: params.org,
           attempt: attempts
         }, 'Fetching available groups');
         const res = await fetch(`/api/telegram/groups/for-user?orgId=${params.org}&includeExisting=true&skipAutoAssign=true&t=${timestamp}`, {
-          // Увеличиваем таймаут для запроса
-          signal: AbortSignal.timeout(10000) // 10 секунд таймаут
+          // Увеличиваем таймаут для запроса - Supabase медленный
+          signal: AbortSignal.timeout(20000) // 20 секунд таймаут
         })
         
         // Если компонент был размонтирован во время запроса, прерываем обработку
@@ -158,12 +158,25 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         // Если компонент был размонтирован во время запроса, прерываем обработку
         if (!isMounted) return;
         
+        // Определяем тип ошибки для лучшего UX
+        let errorMessage = e.message || 'Failed to fetch available groups';
+        let isTimeout = false;
+        
+        if (e.name === 'TimeoutError' || e.message?.includes('timeout') || e.message?.includes('signal')) {
+          isTimeout = true;
+          errorMessage = 'Сервер не ответил вовремя. Пожалуйста, обновите страницу или попробуйте позже.';
+        } else if (e.message?.includes('502') || e.message?.includes('503')) {
+          errorMessage = 'Сервер временно недоступен. Попробуйте обновить страницу через несколько секунд.';
+        }
+        
         logger.error({ 
           error: e.message,
-          stack: e.stack,
+          error_name: e.name,
+          is_timeout: isTimeout,
+          attempt: attempts,
           org: params.org
         }, 'Error fetching available groups');
-        setError(e.message || 'Failed to fetch available groups')
+        setError(errorMessage)
       } finally {
         requestInProgress = false;
         if (isMounted) {

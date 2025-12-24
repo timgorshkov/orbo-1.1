@@ -25,7 +25,15 @@ function safeErrorJson(error: any): string {
 }
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
   const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/for-user' });
+  
+  // Helper for timing
+  const timings: Record<string, number> = {};
+  const track = (label: string, start: number) => {
+    timings[label] = Date.now() - start;
+  };
+  
   try {
     // Получаем параметры запроса
     const url = new URL(request.url);
@@ -37,11 +45,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
     
+    logger.info({ org_id: orgId }, 'Starting groups for-user request');
+    
     // Получаем текущего пользователя через unified auth
+    const authStart = Date.now();
     const user = await getUnifiedUser();
+    track('auth', authStart);
     
     if (!user) {
-      logger.error({}, 'Auth error');
+      logger.error({ timings }, 'Auth error - no user');
       return NextResponse.json({ 
         error: 'Unauthorized', 
         groups: [],
@@ -49,21 +61,31 @@ export async function GET(request: Request) {
       }, { status: 401 });
     }
     
-    logger.info({ user_id: user.id, org_id: orgId }, 'Fetching groups for user');
+    logger.info({ 
+      user_id: user.id, 
+      org_id: orgId,
+      auth_duration_ms: timings.auth
+    }, 'User authenticated, fetching groups');
     
     // Используем сервисную роль для обхода RLS политик
     const supabaseService = createAdminServer();
     
     try {
       // Получаем все верифицированные Telegram аккаунты пользователя (не только для текущей организации)
+      const accountsStart = Date.now();
       const { data: telegramAccounts, error: accountsError } = await supabaseService
         .from('user_telegram_accounts')
         .select('*')
         .eq('user_id', user.id)
         .eq('is_verified', true);
+      track('accounts_query', accountsStart);
         
       if (accountsError) {
-        logger.error({ error: accountsError.message, user_id: user.id }, 'Error fetching Telegram accounts');
+        logger.error({ 
+          error: accountsError.message, 
+          user_id: user.id,
+          timings 
+        }, 'Error fetching Telegram accounts');
         return NextResponse.json({
           error: 'Failed to fetch Telegram accounts',
           details: 'Could not retrieve verified Telegram accounts',
@@ -73,7 +95,11 @@ export async function GET(request: Request) {
       }
       
       if (!telegramAccounts || telegramAccounts.length === 0) {
-        logger.info({ user_id: user.id }, 'No verified Telegram accounts found');
+        logger.info({ 
+          user_id: user.id,
+          total_duration_ms: Date.now() - startTime,
+          timings 
+        }, 'No verified Telegram accounts found');
         return NextResponse.json({ 
           groups: [],
           availableGroups: [],
@@ -81,7 +107,11 @@ export async function GET(request: Request) {
         });
       }
       
-      logger.debug({ accounts_count: telegramAccounts.length, user_id: user.id }, 'Found verified Telegram accounts');
+      logger.debug({ 
+        accounts_count: telegramAccounts.length, 
+        user_id: user.id,
+        accounts_query_ms: timings.accounts_query
+      }, 'Found verified Telegram accounts');
       
       // Ищем аккаунт для текущей организации
       const telegramAccount = telegramAccounts.find(account => account.org_id === orgId);
@@ -97,7 +127,7 @@ export async function GET(request: Request) {
       logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
       
       try {
-        logger.debug({ tg_user_id: activeAccount.telegram_user_id }, 'Querying telegram_group_admins');
+        const adminRightsStart = Date.now();
         
         // Получаем записи из telegram_group_admins
         const { data: adminRights, error: adminRightsError } = await supabaseService
@@ -105,9 +135,14 @@ export async function GET(request: Request) {
           .select('*')
           .eq('tg_user_id', activeAccount.telegram_user_id)
           .eq('is_admin', true);
+        track('admin_rights_query', adminRightsStart);
           
         if (adminRightsError) {
-          logger.error({ error: adminRightsError.message, tg_user_id: activeAccount.telegram_user_id }, 'Error fetching admin rights');
+          logger.error({ 
+            error: adminRightsError.message, 
+            tg_user_id: activeAccount.telegram_user_id,
+            timings 
+          }, 'Error fetching admin rights');
           return NextResponse.json({ 
             error: 'Failed to fetch admin rights',
             details: 'Database error when retrieving admin rights',
@@ -116,7 +151,11 @@ export async function GET(request: Request) {
           }, { status: 500 });
         }
         
-        logger.debug({ admin_rights_count: adminRights?.length || 0, tg_user_id: activeAccount.telegram_user_id }, 'Found admin rights records');
+        logger.debug({ 
+          admin_rights_count: adminRights?.length || 0, 
+          tg_user_id: activeAccount.telegram_user_id,
+          admin_rights_query_ms: timings.admin_rights_query
+        }, 'Found admin rights records');
         
         // ✅ ИСПРАВЛЕНО: Показываем только группы, где пользователь ДЕЙСТВИТЕЛЬНО админ
         if (!adminRights || adminRights.length === 0) {
@@ -315,6 +354,39 @@ export async function GET(request: Request) {
           adminRightsMap.set(String(right.tg_chat_id), right);
         });
 
+        // ✅ ОПТИМИЗАЦИЯ: Получаем количество участников для ВСЕХ групп одним запросом
+        const memberCountsStart = Date.now();
+        const memberCountsMap = new Map<string, number>();
+        
+        try {
+          const allChatIdsForCount = Array.from(groupByChatId.keys()).map(id => {
+            const num = Number(id);
+            return Number.isNaN(num) ? null : num;
+          }).filter((id): id is number => id !== null);
+          
+          if (allChatIdsForCount.length > 0) {
+            // Используем RPC или aggregated query вместо count для каждой группы
+            const { data: memberCounts, error: countError } = await supabaseService
+              .from('participant_groups')
+              .select('tg_group_id')
+              .in('tg_group_id', allChatIdsForCount)
+              .eq('is_active', true);
+            
+            if (!countError && memberCounts) {
+              // Считаем количество записей для каждой группы
+              memberCounts.forEach(row => {
+                const key = String(row.tg_group_id);
+                memberCountsMap.set(key, (memberCountsMap.get(key) || 0) + 1);
+              });
+            }
+          }
+        } catch (countError) {
+          logger.warn({ 
+            error: countError instanceof Error ? countError.message : String(countError)
+          }, 'Error batch counting members, will use group.member_count');
+        }
+        track('member_counts', memberCountsStart);
+
         const availableGroups = [] as any[];
         const existingGroups = [] as any[];
 
@@ -335,24 +407,8 @@ export async function GET(request: Request) {
           const isLinkedToOrg = mappedOrgIds.has(orgId);
           const botHasAdminRights = groupAny.bot_status === 'connected' || groupAny.bot_status === 'active';
 
-          // Считаем реальное количество участников с учётом объединений
-          let actualMemberCount = groupAny.member_count || 0;
-          try {
-            const { count: memberCount } = await supabaseService
-              .from('participant_groups')
-              .select('*', { count: 'exact', head: true })
-              .eq('tg_group_id', groupAny.tg_chat_id)
-              .eq('is_active', true);
-            
-            if (memberCount !== null) {
-              actualMemberCount = memberCount;
-            }
-          } catch (countError) {
-            logger.error({ 
-              tg_chat_id: groupAny.tg_chat_id,
-              error: countError instanceof Error ? countError.message : String(countError)
-            }, 'Error counting members for group');
-          }
+          // ✅ Используем предварительно загруженные counts или fallback на group.member_count
+          const actualMemberCount = memberCountsMap.get(chatKey) || groupAny.member_count || 0;
 
           // ✅ Проверяем, есть ли подтвержденные права админа
           const hasAdminRights = !!right;
@@ -402,15 +458,29 @@ export async function GET(request: Request) {
           }
         }
 
-        logger.info({ 
+        const totalDuration = Date.now() - startTime;
+        
+        // Log with severity based on duration
+        const logData = {
           existing_groups_count: existingGroups.length,
-          available_groups_count: availableGroups.length
-        }, 'Returning groups');
+          available_groups_count: availableGroups.length,
+          total_duration_ms: totalDuration,
+          timings
+        };
+        
+        if (totalDuration > 5000) {
+          logger.error(logData, 'CRITICAL: Groups for-user extremely slow (>5s)');
+        } else if (totalDuration > 3000) {
+          logger.warn(logData, 'Groups for-user slow (>3s)');
+        } else {
+          logger.info(logData, 'Returning groups');
+        }
 
         return NextResponse.json({
           groups: includeExisting ? [...existingGroups, ...availableGroups] : existingGroups,
           availableGroups,
-          message: `Found ${existingGroups.length} groups for org ${orgId} and ${availableGroups.length} available groups`
+          message: `Found ${existingGroups.length} groups for org ${orgId} and ${availableGroups.length} available groups`,
+          _debug: { duration_ms: totalDuration }
         });
       } catch (adminGroupsError: any) {
         logger.error({ 
