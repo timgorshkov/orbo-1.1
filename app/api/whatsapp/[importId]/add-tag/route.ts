@@ -171,20 +171,22 @@ export async function POST(
     }, 'Found participants to tag');
     
     // Add tag to each participant (upsert to avoid duplicates)
-    const tagMappings = participantIds.map(id => ({
+    // Table is participant_tag_assignments (not participant_tags_mapping!)
+    const tagAssignments = participantIds.map(id => ({
       participant_id: id,
       tag_id: tagId,
+      assigned_by: user.id,
     }));
     
     // Process in batches of 100 to avoid payload limits
     let totalAdded = 0;
     const BATCH_SIZE = 100;
     
-    for (let i = 0; i < tagMappings.length; i += BATCH_SIZE) {
-      const batch = tagMappings.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < tagAssignments.length; i += BATCH_SIZE) {
+      const batch = tagAssignments.slice(i, i + BATCH_SIZE);
       
       const { data: upsertResult, error: upsertError } = await adminSupabase
-        .from('participant_tags_mapping')
+        .from('participant_tag_assignments')
         .upsert(batch, { 
           onConflict: 'participant_id,tag_id',
           ignoreDuplicates: true 
