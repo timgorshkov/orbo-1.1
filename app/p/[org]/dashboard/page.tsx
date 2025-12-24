@@ -78,38 +78,60 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
     redirect('/orgs')
   }
 
-  // Получаем данные дашборда через API
+  // Получаем данные дашборда через API (с таймаутом)
   const cookieStore = await cookies()
   const cookieHeader = cookieStore.toString()
   
   const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/dashboard/${orgId}`
   
   let dashboardData
+  const fetchStart = Date.now()
   try {
+    // ⚡ Добавляем таймаут 10 секунд, чтобы страница не зависала
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    
     const dashboardRes = await fetch(dashboardUrl, { 
       cache: 'no-store',
       headers: {
         'Cookie': cookieHeader
-      }
+      },
+      signal: controller.signal
     })
+    
+    clearTimeout(timeoutId)
+    const fetchDuration = Date.now() - fetchStart
+    
+    if (fetchDuration > 3000) {
+      logger.warn({ 
+        org_id: orgId,
+        fetch_duration_ms: fetchDuration
+      }, 'Dashboard API fetch slow');
+    }
     
     if (!dashboardRes.ok) {
       const errorText = await dashboardRes.text();
       logger.error({ 
         org_id: orgId,
         status: dashboardRes.status,
-        error_text: errorText.substring(0, 200)
+        error_text: errorText.substring(0, 200),
+        fetch_duration_ms: fetchDuration
       }, 'Error fetching dashboard data');
       throw new Error('Failed to fetch dashboard data')
     }
 
     dashboardData = await dashboardRes.json()
   } catch (error) {
+    const fetchDuration = Date.now() - fetchStart
+    const isTimeout = error instanceof Error && error.name === 'AbortError'
+    
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      is_timeout: isTimeout,
+      fetch_duration_ms: fetchDuration,
       org_id: orgId
-    }, 'Dashboard fetch error');
+    }, isTimeout ? 'Dashboard fetch timeout' : 'Dashboard fetch error');
+    
     // Fallback data
     dashboardData = {
       isOnboarding: false,
