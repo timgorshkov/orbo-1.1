@@ -33,10 +33,10 @@ export async function POST(
     
     const adminSupabase = createAdminServer();
     
-    // Get import details
+    // Get import details (including created_at/completed_at for participant linking)
     const { data: importData, error: importError } = await adminSupabase
       .from('whatsapp_imports')
-      .select('id, org_id, group_name, date_range_start, date_range_end')
+      .select('id, org_id, group_name, date_range_start, date_range_end, created_at, completed_at')
       .eq('id', importId)
       .single();
     
@@ -78,10 +78,12 @@ export async function POST(
       dateRangeEnd: importData.date_range_end
     }, 'Adding tag to WhatsApp import participants');
     
-    // Strategy 1: Find participants via activity_events (most reliable)
-    // WhatsApp messages are stored in activity_events with meta.source='whatsapp'
-    let participantIds: string[] = [];
+    // We use multiple strategies to find ALL participants from this import
+    // and COMBINE results (not fallback) to ensure complete coverage
+    const participantIdSet = new Set<string>();
     
+    // Strategy 1: Find participants via activity_events (for message senders)
+    // WhatsApp messages are stored in activity_events with meta.source='whatsapp'
     let eventsQuery = adminSupabase
       .from('activity_events')
       .select('meta')
@@ -111,38 +113,113 @@ export async function POST(
       logger.error({ error: eventsError.message }, 'Error fetching events for participant IDs');
     } else if (events && events.length > 0) {
       // Extract unique participant IDs from events
-      const idsFromEvents = events
-        .map(e => e.meta?.participant_id)
-        .filter(Boolean);
-      participantIds = Array.from(new Set(idsFromEvents));
+      events.forEach(e => {
+        if (e.meta?.participant_id) {
+          participantIdSet.add(e.meta.participant_id);
+        }
+      });
       
       logger.info({ 
         eventsCount: events.length,
-        uniqueParticipantIds: participantIds.length
+        uniqueFromEvents: participantIdSet.size
       }, 'Found participant IDs from events');
     }
     
-    // Strategy 2: Fallback to source-based query if events didn't work
-    if (participantIds.length === 0) {
-      logger.info({}, 'No participants from events, trying source-based query');
+    // Strategy 2: ALSO find participants by source (for participants without messages)
+    // Some participants may have been imported but never sent messages
+    // Use import's created_at/completed_at to filter (NOT date_range which is message dates!)
+    const importTime = importData.completed_at || importData.created_at;
+    
+    logger.info({ importTime }, 'Also checking source-based participants');
+    
+    let sourceQuery = adminSupabase
+      .from('participants')
+      .select('id, source, created_at, custom_attributes')
+      .eq('org_id', importData.org_id)
+      .or('source.eq.whatsapp_import,source.eq.whatsapp');
+    
+    // Filter by import time to avoid picking up participants from OTHER imports
+    // Participants are created at the moment of import, within a few minutes window
+    if (importTime) {
+      const importDate = new Date(importTime);
+      // Window: 1 hour before import completed to 1 hour after
+      const windowStart = new Date(importDate.getTime() - 60 * 60 * 1000); // 1 hour before
+      const windowEnd = new Date(importDate.getTime() + 60 * 60 * 1000); // 1 hour after
+      sourceQuery = sourceQuery
+        .gte('created_at', windowStart.toISOString())
+        .lte('created_at', windowEnd.toISOString());
       
-      const { data: sourceParticipants, error: sourceError } = await adminSupabase
-        .from('participants')
-        .select('id, source')
-        .eq('org_id', importData.org_id)
-        .or('source.eq.whatsapp_import,source.eq.whatsapp');
-      
-      if (sourceError) {
-        logger.error({ error: sourceError.message }, 'Error fetching participants by source');
-      } else if (sourceParticipants) {
-        participantIds = sourceParticipants.map(p => p.id);
-        logger.info({ count: participantIds.length }, 'Found participants by source');
-      }
+      logger.debug({ 
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString()
+      }, 'Source query time window');
     }
     
+    const { data: sourceParticipants, error: sourceError } = await sourceQuery;
+    
+    if (sourceError) {
+      logger.error({ error: sourceError.message }, 'Error fetching participants by source');
+    } else if (sourceParticipants) {
+      const beforeCount = participantIdSet.size;
+      
+      // Filter participants whose import_date matches our import window
+      let matchingParticipants = sourceParticipants;
+      if (importTime) {
+        const importDate = new Date(importTime);
+        const windowStart = new Date(importDate.getTime() - 60 * 60 * 1000);
+        const windowEnd = new Date(importDate.getTime() + 60 * 60 * 1000);
+        
+        matchingParticipants = sourceParticipants.filter(p => {
+          // Check custom_attributes.import_date if available
+          const importDateAttr = p.custom_attributes?.import_date;
+          if (importDateAttr) {
+            const attrDate = new Date(importDateAttr);
+            return attrDate >= windowStart && attrDate <= windowEnd;
+          }
+          // Fallback to created_at
+          const createdAt = new Date(p.created_at);
+          return createdAt >= windowStart && createdAt <= windowEnd;
+        });
+      }
+      
+      matchingParticipants.forEach(p => participantIdSet.add(p.id));
+      const addedFromSource = participantIdSet.size - beforeCount;
+      
+      logger.info({ 
+        sourceParticipantsFound: sourceParticipants.length,
+        matchingToImportWindow: matchingParticipants.length,
+        newParticipantsAdded: addedFromSource,
+        totalNow: participantIdSet.size
+      }, 'Found additional participants by source');
+    }
+    
+    // Strategy 3: Check if there's a whatsapp_import_participants linking table
+    // (in case this import tracks participants directly)
+    const { data: importParticipants, error: importParticipantsError } = await adminSupabase
+      .from('whatsapp_import_participants')
+      .select('participant_id')
+      .eq('import_id', importId);
+    
+    if (!importParticipantsError && importParticipants && importParticipants.length > 0) {
+      const beforeCount = participantIdSet.size;
+      importParticipants.forEach(p => participantIdSet.add(p.participant_id));
+      const addedFromImport = participantIdSet.size - beforeCount;
+      
+      logger.info({ 
+        importParticipantsFound: importParticipants.length,
+        newParticipantsAdded: addedFromImport,
+        totalNow: participantIdSet.size
+      }, 'Found additional participants from import link table');
+    }
+    
+    const participantIds = Array.from(participantIdSet);
+    
     logger.info({ 
-      totalParticipantsFound: participantIds.length
-    }, 'Participants query result');
+      totalParticipantsFound: participantIds.length,
+      fromEvents: events?.length || 0,
+      fromSource: sourceParticipants?.length || 0,
+      fromImportLink: importParticipants?.length || 0
+    }, 'Combined participants from all strategies');
     
     if (participantIds.length === 0) {
       logger.warn({ 
