@@ -96,6 +96,7 @@ export async function getHomePageData(
     }
 
     // 2. Get current participant info
+    // First try: via user_telegram_accounts
     const { data: userTelegramAccount } = await supabase
       .from('user_telegram_accounts')
       .select('telegram_user_id')
@@ -104,6 +105,7 @@ export async function getHomePageData(
       .maybeSingle()
 
     let participant = null
+    
     if (userTelegramAccount?.telegram_user_id) {
       const { data: foundParticipant } = await supabase
         .from('participants')
@@ -115,12 +117,29 @@ export async function getHomePageData(
       
       participant = foundParticipant
     }
+    
+    // Second try: via user_id directly (for OAuth users with linked participant)
+    if (!participant) {
+      const { data: userParticipant } = await supabase
+        .from('participants')
+        .select('*')
+        .eq('org_id', orgId)
+        .eq('user_id', userId)
+        .is('merged_into', null)
+        .maybeSingle()
+      
+      participant = userParticipant
+    }
 
     if (!participant) {
-      logger.error({ 
+      // This is normal for admins who joined via OAuth without Telegram
+      // Or for users who haven't linked their Telegram account yet
+      logger.info({ 
         org_id: orgId,
-        user_id: userId
-      }, 'Participant not found for user');
+        user_id: userId,
+        has_telegram_account: !!userTelegramAccount,
+        telegram_user_id: userTelegramAccount?.telegram_user_id
+      }, 'No participant record for user - likely an OAuth admin or unlinked account');
       return null
     }
 
