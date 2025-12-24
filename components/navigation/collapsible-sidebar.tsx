@@ -261,38 +261,33 @@ export default function CollapsibleSidebar({
                     </button>
                     {showTelegramDropdown && (
                       <div className="pl-6">
-                        {telegramGroups.length > 0 ? (
-                          telegramGroups.map((group: any) => (
-                            <Link
-                              key={group.id}
-                              href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
-                              className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-                              onClick={() => setShowMenuDropdown(false)}
-                            >
-                              {group.title}
-                            </Link>
-                          ))
-                        ) : (
-                          <div className="px-4 py-2 text-sm text-gray-500 italic">
-                            Нет подключенных групп
-                          </div>
-                        )}
-                        
-                        {/* WhatsApp группы */}
-                        {whatsappGroups.length > 0 && (
+                        {telegramGroups.length > 0 || whatsappGroups.length > 0 ? (
                           <>
-                            <div className="px-4 py-1 text-xs text-gray-400 font-medium mt-2">WhatsApp</div>
+                            {telegramGroups.map((group: any) => (
+                              <Link
+                                key={group.id}
+                                href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
+                                className="block px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                                onClick={() => setShowMenuDropdown(false)}
+                              >
+                                {group.title}
+                              </Link>
+                            ))}
                             {whatsappGroups.map((group) => (
                               <Link
                                 key={`wa-${group.id}`}
                                 href={`/p/${orgId}/telegram/whatsapp/${group.id}`}
-                                className="block px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                                className="block px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
                                 onClick={() => setShowMenuDropdown(false)}
                               >
-                                💬 {group.group_name || 'WhatsApp чат'}
+                                {group.group_name || 'WhatsApp чат'}
                               </Link>
                             ))}
                           </>
+                        ) : (
+                          <div className="px-4 py-1.5 text-sm text-gray-500 italic">
+                            Нет подключенных групп
+                          </div>
                         )}
                       </div>
                     )}
@@ -478,50 +473,42 @@ export default function CollapsibleSidebar({
                 <Settings className="h-4 w-4 text-gray-500" />
               </Link>
             </div>
-            {telegramGroups.length > 0 ? (
-              telegramGroups.map((group: any) => (
-                <Link
-                  key={group.id}
-                  href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <MessageCircle className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{group.title}</span>
-                </Link>
-              ))
-            ) : (
-              <div className="px-3 py-2 text-sm text-gray-500 italic">
-                Нет подключенных групп
-              </div>
-            )}
-            
-            {/* WhatsApp группы */}
-            {whatsappGroups.length > 0 && (
+            {/* Объединённый список всех групп (Telegram + WhatsApp) */}
+            {telegramGroups.length > 0 || whatsappGroups.length > 0 ? (
               <>
-                <div className="px-3 py-2 mt-2">
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    WhatsApp
-                  </div>
-                </div>
+                {telegramGroups.map((group: any) => (
+                  <Link
+                    key={group.id}
+                    href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{group.title}</span>
+                  </Link>
+                ))}
                 {whatsappGroups.map((group) => (
                   <Link
                     key={`wa-${group.id}`}
                     href={`/p/${orgId}/telegram/whatsapp/${group.id}`}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                       pathname === `/p/${orgId}/telegram/whatsapp/${group.id}`
-                        ? 'bg-green-50 text-green-600'
+                        ? 'bg-blue-50 text-blue-600'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    <span className="text-sm flex-shrink-0">💬</span>
+                    <MessageCircle className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate">{group.group_name || 'WhatsApp чат'}</span>
                   </Link>
                 ))}
               </>
+            ) : (
+              <div className="px-3 py-1.5 text-sm text-gray-500 italic">
+                Нет подключенных групп
+              </div>
             )}
           </div>
         )}
