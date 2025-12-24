@@ -170,20 +170,30 @@ export async function GET(request: Request) {
         // Собираем chat_id только из admin rights (где пользователь реально админ)
         const rawChatIds = (adminRights || []).map(right => String(right.tg_chat_id));
         
-        // 🔄 Резолвим миграции: проверяем, не были ли некоторые группы мигрированы
+        // 🔄 ОПТИМИЗАЦИЯ: Резолвим миграции ПАРАЛЛЕЛЬНО, не последовательно!
+        const migrationResolveStart = Date.now();
         const allChatIds = new Set<string>();
-        for (const chatId of rawChatIds) {
-          // Проверяем, была ли группа мигрирована
-          const { data: resolved } = await supabaseService
-            .rpc('resolve_telegram_chat_id', { p_chat_id: chatId });
-          
-          allChatIds.add(resolved || chatId);
-        }
+        
+        // Запускаем все RPC вызовы параллельно
+        const resolvePromises = rawChatIds.map(async (chatId) => {
+          try {
+            const { data: resolved } = await supabaseService
+              .rpc('resolve_telegram_chat_id', { p_chat_id: chatId });
+            return resolved || chatId;
+          } catch {
+            return chatId; // Fallback to original on error
+          }
+        });
+        
+        const resolvedChatIds = await Promise.all(resolvePromises);
+        resolvedChatIds.forEach(id => allChatIds.add(id));
+        track('migration_resolve', migrationResolveStart);
         
         logger.debug({ 
           raw_chat_ids: rawChatIds, 
           resolved_chat_ids: Array.from(allChatIds), 
-          chat_ids_count: allChatIds.size 
+          chat_ids_count: allChatIds.size,
+          migration_resolve_ms: timings.migration_resolve
         }, 'Chat IDs to fetch (after migration resolution)');
         
         // Получаем группы и их связи с организациями
