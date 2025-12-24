@@ -36,7 +36,7 @@ export async function POST(
     // Get import details
     const { data: importData, error: importError } = await adminSupabase
       .from('whatsapp_imports')
-      .select('id, org_id, date_range_start, date_range_end')
+      .select('id, org_id, group_name, date_range_start, date_range_end')
       .eq('id', importId)
       .single();
     
@@ -68,74 +68,169 @@ export async function POST(
       return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
     }
     
-    logger.info({ importId, tagId, orgId: importData.org_id }, 'Adding tag to WhatsApp import participants');
+    logger.info({ 
+      importId, 
+      tagId, 
+      tagName: tag.name,
+      orgId: importData.org_id,
+      groupName: importData.group_name,
+      dateRangeStart: importData.date_range_start,
+      dateRangeEnd: importData.date_range_end
+    }, 'Adding tag to WhatsApp import participants');
     
-    // Get participants from this import (WhatsApp source, within date range)
-    let query = adminSupabase
-      .from('participants')
-      .select('id')
+    // Strategy 1: Find participants via activity_events (most reliable)
+    // WhatsApp messages are stored in activity_events with meta.source='whatsapp'
+    let participantIds: string[] = [];
+    
+    let eventsQuery = adminSupabase
+      .from('activity_events')
+      .select('meta')
       .eq('org_id', importData.org_id)
-      .eq('source', 'whatsapp');
+      .eq('tg_chat_id', 0)
+      .eq('event_type', 'message')
+      .contains('meta', { source: 'whatsapp' });
     
-    // Filter by creation time if we have date range
+    // Filter by date range
     if (importData.date_range_start) {
-      query = query.gte('created_at', importData.date_range_start);
+      eventsQuery = eventsQuery.gte('created_at', importData.date_range_start);
     }
     if (importData.date_range_end) {
-      // Add a day to include participants created on the end date
       const endDate = new Date(importData.date_range_end);
       endDate.setDate(endDate.getDate() + 1);
-      query = query.lte('created_at', endDate.toISOString());
+      eventsQuery = eventsQuery.lt('created_at', endDate.toISOString());
     }
     
-    const { data: participants, error: participantsError } = await query;
-    
-    if (participantsError) {
-      logger.error({ error: participantsError.message }, 'Error fetching participants');
-      return NextResponse.json({ error: 'Failed to fetch participants' }, { status: 500 });
+    // Filter by group name if available
+    if (importData.group_name) {
+      eventsQuery = eventsQuery.contains('meta', { group_name: importData.group_name });
     }
     
-    if (!participants || participants.length === 0) {
+    const { data: events, error: eventsError } = await eventsQuery;
+    
+    if (eventsError) {
+      logger.error({ error: eventsError.message }, 'Error fetching events for participant IDs');
+    } else if (events && events.length > 0) {
+      // Extract unique participant IDs from events
+      const idsFromEvents = events
+        .map(e => e.meta?.participant_id)
+        .filter(Boolean);
+      participantIds = Array.from(new Set(idsFromEvents));
+      
+      logger.info({ 
+        eventsCount: events.length,
+        uniqueParticipantIds: participantIds.length
+      }, 'Found participant IDs from events');
+    }
+    
+    // Strategy 2: Fallback to source-based query if events didn't work
+    if (participantIds.length === 0) {
+      logger.info({}, 'No participants from events, trying source-based query');
+      
+      const { data: sourceParticipants, error: sourceError } = await adminSupabase
+        .from('participants')
+        .select('id, source')
+        .eq('org_id', importData.org_id)
+        .or('source.eq.whatsapp_import,source.eq.whatsapp');
+      
+      if (sourceError) {
+        logger.error({ error: sourceError.message }, 'Error fetching participants by source');
+      } else if (sourceParticipants) {
+        participantIds = sourceParticipants.map(p => p.id);
+        logger.info({ count: participantIds.length }, 'Found participants by source');
+      }
+    }
+    
+    logger.info({ 
+      totalParticipantsFound: participantIds.length
+    }, 'Participants query result');
+    
+    if (participantIds.length === 0) {
+      logger.warn({ 
+        importId,
+        orgId: importData.org_id,
+        groupName: importData.group_name
+      }, 'No participants found for this import');
+      
       return NextResponse.json({ 
-        success: true, 
+        success: false, 
         added: 0,
-        message: 'No participants found for this import'
+        tagName: tag.name,
+        error: 'Не найдено участников для этого импорта'
       });
     }
     
+    // Get full participant data for logging
+    const { data: participants } = await adminSupabase
+      .from('participants')
+      .select('id, full_name')
+      .in('id', participantIds.slice(0, 100)); // Limit for logging
+    
+    logger.info({ 
+      sampleParticipants: participants?.slice(0, 5).map(p => ({ id: p.id, name: p.full_name })),
+      totalCount: participantIds.length 
+    }, 'Found participants to tag');
+    
     // Add tag to each participant (upsert to avoid duplicates)
-    const tagMappings = participants.map(p => ({
-      participant_id: p.id,
+    const tagMappings = participantIds.map(id => ({
+      participant_id: id,
       tag_id: tagId,
     }));
     
-    const { error: upsertError } = await adminSupabase
-      .from('participant_tags_mapping')
-      .upsert(tagMappings, { 
-        onConflict: 'participant_id,tag_id',
-        ignoreDuplicates: true 
-      });
+    // Process in batches of 100 to avoid payload limits
+    let totalAdded = 0;
+    const BATCH_SIZE = 100;
     
-    if (upsertError) {
-      logger.error({ error: upsertError.message }, 'Error adding tags');
-      return NextResponse.json({ error: 'Failed to add tags' }, { status: 500 });
+    for (let i = 0; i < tagMappings.length; i += BATCH_SIZE) {
+      const batch = tagMappings.slice(i, i + BATCH_SIZE);
+      
+      const { data: upsertResult, error: upsertError } = await adminSupabase
+        .from('participant_tags_mapping')
+        .upsert(batch, { 
+          onConflict: 'participant_id,tag_id',
+          ignoreDuplicates: true 
+        })
+        .select();
+      
+      if (upsertError) {
+        logger.error({ 
+          error: upsertError.message,
+          errorCode: upsertError.code,
+          errorDetails: upsertError.details,
+          tagId,
+          batchNumber: Math.floor(i / BATCH_SIZE) + 1,
+          batchSize: batch.length
+        }, 'Error adding tags batch');
+        // Continue with other batches
+      } else {
+        totalAdded += upsertResult?.length || batch.length;
+        logger.debug({ 
+          batchNumber: Math.floor(i / BATCH_SIZE) + 1,
+          batchAdded: upsertResult?.length || batch.length 
+        }, 'Tag batch processed');
+      }
     }
     
     // Update the import's default tag
-    await adminSupabase
+    const { error: updateImportError } = await adminSupabase
       .from('whatsapp_imports')
       .update({ default_tag_id: tagId })
       .eq('id', importId);
     
+    if (updateImportError) {
+      logger.warn({ error: updateImportError.message }, 'Failed to update import default_tag_id');
+    }
+    
     logger.info({ 
       importId, 
       tagId, 
-      participantsCount: participants.length 
+      tagName: tag.name,
+      participantsRequested: participantIds.length,
+      participantsAdded: totalAdded
     }, 'Successfully added tag to participants');
     
     return NextResponse.json({ 
       success: true, 
-      added: participants.length,
+      added: totalAdded,
       tagName: tag.name
     });
   } catch (error) {

@@ -121,10 +121,14 @@ export default function WhatsAppGroupDetail({
       
       const data = await res.json()
       
-      if (res.ok) {
+      if (res.ok && data.success && data.added > 0) {
         setTagResult({ success: true, count: data.added, message: data.tagName })
-      } else {
+      } else if (data.error) {
         setTagResult({ success: false, message: data.error })
+      } else if (data.added === 0) {
+        setTagResult({ success: false, message: 'Не найдено участников для добавления тега' })
+      } else {
+        setTagResult({ success: false, message: 'Неизвестная ошибка' })
       }
     } catch (error) {
       setTagResult({ success: false, message: 'Ошибка соединения' })
