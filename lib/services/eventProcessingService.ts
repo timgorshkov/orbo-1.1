@@ -1572,11 +1572,11 @@ export class EventProcessingService {
           messageCount = count || 0;
         }
       } catch (error) {
-        this.logger.error({ 
+        this.logger.warn({ 
           org_id: orgId,
           chat_id: chatId,
           error: error instanceof Error ? error.message : String(error)
-        }, 'Exception counting messages');
+        }, 'Transient error counting messages');
       }
       
       // Получаем количество ответов за сегодня
@@ -1602,11 +1602,11 @@ export class EventProcessingService {
           replyCount = count || 0;
         }
       } catch (error) {
-        this.logger.error({ 
+        this.logger.warn({ 
           org_id: orgId,
           chat_id: chatId,
           error: error instanceof Error ? error.message : String(error)
-        }, 'Exception counting replies');
+        }, 'Transient error counting replies');
       }
       
       // Получаем количество присоединений за сегодня
@@ -1631,11 +1631,11 @@ export class EventProcessingService {
           joinCount = count || 0;
         }
       } catch (error) {
-        this.logger.error({ 
+        this.logger.warn({ 
           org_id: orgId,
           chat_id: chatId,
           error: error instanceof Error ? error.message : String(error)
-        }, 'Exception counting joins');
+        }, 'Transient error counting joins');
       }
       
       // Получаем количество выходов за сегодня
@@ -1660,11 +1660,11 @@ export class EventProcessingService {
           leaveCount = count || 0;
         }
       } catch (error) {
-        this.logger.error({ 
+        this.logger.warn({ 
           org_id: orgId,
           chat_id: chatId,
           error: error instanceof Error ? error.message : String(error)
-        }, 'Exception counting leaves');
+        }, 'Transient error counting leaves');
       }
       
       // Получаем количество уникальных пользователей за сегодня (DAU)
@@ -1689,11 +1689,13 @@ export class EventProcessingService {
           dau = uniqueUsers ? new Set(uniqueUsers.map(u => u.tg_user_id)).size : 0;
         }
       } catch (error) {
-        this.logger.error({ 
+        // Network errors are transient - log as warn, not error
+        // DAU defaults to 0 which is acceptable
+        this.logger.warn({ 
           org_id: orgId,
           chat_id: chatId,
           error: error instanceof Error ? error.message : String(error)
-        }, 'Exception counting DAU');
+        }, 'Transient error counting DAU');
       }
       
       // Вычисляем reply ratio
