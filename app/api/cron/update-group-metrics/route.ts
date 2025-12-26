@@ -174,21 +174,30 @@ export async function GET(request: NextRequest) {
     
     const duration = Date.now() - startTime;
     
-    // Логируем как info только при ошибках или медленном выполнении (>30s)
+    // Логируем как warn при ошибках или медленном выполнении (>30s)
     // Иначе логируем как debug чтобы не засорять логи
-    const logData = { 
-      updated, 
-      errors, 
-      unique_chats: chatIdArray.length,
-      duration_ms: duration 
-    };
-    
     if (errors > 0) {
-      logger.warn(logData, 'Group metrics update completed with errors');
+      logger.warn({ 
+        updated, 
+        errors, 
+        unique_chats: chatIdArray.length,
+        duration_ms: duration,
+        avg_per_chat_ms: Math.round(duration / chatIdArray.length)
+      }, `Group metrics: ${errors} errors in ${Math.round(duration/1000)}s`);
     } else if (duration > 30000) {
-      logger.warn(logData, 'Group metrics update slow (>30s)');
+      logger.warn({ 
+        updated, 
+        errors, 
+        unique_chats: chatIdArray.length,
+        duration_ms: duration,
+        avg_per_chat_ms: Math.round(duration / chatIdArray.length)
+      }, `Group metrics slow: ${Math.round(duration/1000)}s for ${chatIdArray.length} chats`);
     } else {
-      logger.debug(logData, 'Group metrics update completed');
+      logger.debug({ 
+        updated, 
+        unique_chats: chatIdArray.length,
+        duration_ms: duration 
+      }, 'Group metrics update completed');
     }
     
     return NextResponse.json({ 
