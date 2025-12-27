@@ -3,6 +3,12 @@ import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+// Server-side deduplication cache (simple in-memory, cleared periodically)
+const recentMetricIds = new Set<string>();
+let lastCleanup = Date.now();
+const CLEANUP_INTERVAL = 60000; // 1 minute
+const MAX_CACHED_IDS = 1000;
+
 interface VitalsPayload {
   name: string;
   value: number;
@@ -28,6 +34,19 @@ export async function POST(req: NextRequest) {
     const payload: VitalsPayload = await req.json();
     
     const { name, value, rating, level, pathname, id, timestamp } = payload;
+    
+    // Server-side deduplication
+    const now = Date.now();
+    if (now - lastCleanup > CLEANUP_INTERVAL || recentMetricIds.size > MAX_CACHED_IDS) {
+      recentMetricIds.clear();
+      lastCleanup = now;
+    }
+    
+    // Skip if already received this metric ID
+    if (recentMetricIds.has(id)) {
+      return NextResponse.json({ ok: true, deduplicated: true });
+    }
+    recentMetricIds.add(id);
     
     // Логируем в зависимости от уровня
     const logData = {

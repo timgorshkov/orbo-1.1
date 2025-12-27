@@ -146,7 +146,8 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
       nextAuthSession = authResult;
     }
     
-    if (authDuration > 500) {
+    // Threshold raised to 1s to reduce noise from cold starts (warm is ~100ms)
+    if (authDuration > 1000) {
       logger.warn({ auth_duration_ms: authDuration }, 'NextAuth auth() slow');
     }
   } catch (authError) {
@@ -298,7 +299,8 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
     const supabaseDuration = Date.now() - supabaseStart;
     
-    if (supabaseDuration > 500) {
+    // Threshold raised to 1s to reduce noise from cold starts (warm is ~100ms)
+    if (supabaseDuration > 1000) {
       logger.warn({ supabase_getUser_duration_ms: supabaseDuration }, 'Supabase getUser slow');
     }
     

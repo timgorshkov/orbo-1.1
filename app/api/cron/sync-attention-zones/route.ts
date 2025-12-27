@@ -4,6 +4,35 @@ import { createAPILogger } from '@/lib/logger';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// Helper: retry wrapper for transient failures
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: { retries?: number; delay?: number; logger?: any } = {}
+): Promise<T> {
+  const { retries = 2, delay = 1000, logger } = options;
+  let lastError: Error | undefined;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isTransient = error.message?.includes('fetch failed') ||
+                         error.message?.includes('timeout') ||
+                         error.message?.includes('Timeout');
+      
+      if (!isTransient || attempt === retries) {
+        throw error;
+      }
+      
+      logger?.debug({ attempt: attempt + 1, error: error.message }, 'Retry after transient failure');
+      await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+    }
+  }
+  
+  throw lastError;
+}
+
 /**
  * POST /api/cron/sync-attention-zones
  * Синхронизирует attention_zone_items с данными о молчунах и неактивных новичках
@@ -26,16 +55,19 @@ export async function POST(request: NextRequest) {
   }
 
   const startTime = Date.now();
-  logger.info({}, '🔄 Starting attention zones sync');
+  logger.debug({}, '🔄 Starting attention zones sync');
 
   try {
     const adminSupabase = createAdminServer();
     
-    // Получаем все организации с подключёнными группами
-    const { data: orgsWithGroups, error: orgsError } = await adminSupabase
-      .from('org_telegram_groups')
-      .select('org_id')
-      .not('org_id', 'is', null);
+    // Получаем все организации с подключёнными группами (with retry)
+    const { data: orgsWithGroups, error: orgsError } = await withRetry(
+      () => adminSupabase
+        .from('org_telegram_groups')
+        .select('org_id')
+        .not('org_id', 'is', null),
+      { logger }
+    );
     
     if (orgsError) {
       logger.error({ error: orgsError.message }, 'Error fetching organizations');
@@ -44,7 +76,7 @@ export async function POST(request: NextRequest) {
     
     // Уникальные org_id
     const orgIds = Array.from(new Set(orgsWithGroups?.map(o => o.org_id) || []));
-    logger.info({ org_count: orgIds.length }, 'Found organizations to sync');
+    logger.debug({ org_count: orgIds.length }, 'Found organizations to sync');
     
     let totalChurning = 0;
     let totalNewcomers = 0;
@@ -159,12 +191,16 @@ export async function POST(request: NextRequest) {
     
     const duration = Date.now() - startTime;
     
-    logger.info({
+    // Only log info if we actually updated something, otherwise debug
+    const hasUpdates = totalChurning > 0 || totalNewcomers > 0;
+    const logMethod = hasUpdates ? logger.info.bind(logger) : logger.debug.bind(logger);
+    
+    logMethod({
       orgs_processed: totalUpdated,
       churning_items: totalChurning,
       newcomer_items: totalNewcomers,
       duration_ms: duration,
-    }, '✅ Attention zones sync completed');
+    }, hasUpdates ? '✅ Attention zones sync completed with updates' : 'Attention zones sync completed (no changes)');
     
     return NextResponse.json({
       success: true,

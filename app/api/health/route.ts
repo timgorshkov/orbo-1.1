@@ -5,62 +5,96 @@ import { createAPILogger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 // Note: Removed 'edge' runtime for Docker standalone compatibility
 
+// Helper function to check DB with timeout
+async function checkDatabase(timeoutMs: number = 5000): Promise<{ ok: boolean; latency: number; error?: string }> {
+  const start = Date.now();
+  
+  try {
+    const supabase = await createClientServer();
+    
+    // Use AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .select('id')
+        .limit(1)
+        .abortSignal(controller.signal);
+      
+      clearTimeout(timeoutId);
+      
+      if (error) {
+        return { ok: false, latency: Date.now() - start, error: error.message };
+      }
+      
+      return { ok: true, latency: Date.now() - start };
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      return { ok: false, latency: Date.now() - start, error: fetchError.message };
+    }
+  } catch (error: any) {
+    return { ok: false, latency: Date.now() - start, error: error.message };
+  }
+}
+
 export async function GET(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/health' });
-  const startTime = Date.now()
-  try {
-    // Проверка подключения к Supabase
-    const supabase = await createClientServer()
-    const { data, error } = await supabase.from('organizations').select('count').limit(1)
-    
-    if (error) {
-      throw error
-    }
-    
-    const endTime = Date.now()
-    const responseTime = endTime - startTime
-    
-    // Возвращаем статус системы
+  const startTime = Date.now();
+  
+  // Try DB check with retry (2 attempts, 3s timeout each)
+  let dbResult = await checkDatabase(3000);
+  
+  if (!dbResult.ok) {
+    // Retry once on failure (cold start recovery)
+    dbResult = await checkDatabase(5000);
+  }
+  
+  const totalTime = Date.now() - startTime;
+  
+  // App is always "alive" - DB status is separate
+  if (dbResult.ok) {
     return NextResponse.json({
       status: 'healthy',
       database: 'connected',
       version: process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0',
       timestamp: new Date().toISOString(),
-      response_time_ms: responseTime
-    })
-  } catch (error: unknown) {
-    // Handle different error types (Error instance, Supabase error object, unknown)
-    let errorMessage = 'Unknown error';
-    let errorCode: string | undefined;
-    let errorDetails: string | undefined;
-    let errorStack: string | undefined;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      errorStack = error.stack;
-    } else if (error && typeof error === 'object') {
-      // Supabase errors are plain objects with message, code, details
-      const errObj = error as Record<string, unknown>;
-      errorMessage = String(errObj.message || errObj.error || JSON.stringify(error));
-      errorCode = errObj.code ? String(errObj.code) : undefined;
-      errorDetails = errObj.details ? String(errObj.details) : undefined;
-    } else if (error) {
-      errorMessage = String(error);
-    }
-    
-    logger.error({ 
-      error: errorMessage,
-      error_code: errorCode,
-      error_details: errorDetails,
-      stack: errorStack,
-      response_time_ms: Date.now() - startTime
-    }, 'Health check failed');
-    
-    return NextResponse.json({
-      status: 'unhealthy',
-      error: errorMessage,
-      code: errorCode,
-      timestamp: new Date().toISOString()
-    }, { status: 500 })
+      response_time_ms: totalTime,
+      db_latency_ms: dbResult.latency
+    });
   }
+  
+  // DB is down but app is alive - return degraded status
+  // Use warn level, not error, for transient DB issues
+  const isTimeout = dbResult.error?.includes('timeout') || 
+                    dbResult.error?.includes('Timeout') ||
+                    dbResult.error?.includes('abort') ||
+                    dbResult.error?.includes('fetch failed');
+  
+  if (isTimeout) {
+    logger.warn({ 
+      error: dbResult.error,
+      db_latency_ms: dbResult.latency,
+      response_time_ms: totalTime
+    }, 'Health check: DB timeout (transient)');
+  } else {
+    logger.error({ 
+      error: dbResult.error,
+      db_latency_ms: dbResult.latency,
+      response_time_ms: totalTime
+    }, 'Health check: DB error');
+  }
+  
+  // Return 200 with degraded status instead of 500
+  // This prevents Docker/k8s from killing the container on transient DB issues
+  return NextResponse.json({
+    status: 'degraded',
+    database: 'disconnected',
+    database_error: dbResult.error,
+    version: process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0',
+    timestamp: new Date().toISOString(),
+    response_time_ms: totalTime,
+    db_latency_ms: dbResult.latency
+  });
 }

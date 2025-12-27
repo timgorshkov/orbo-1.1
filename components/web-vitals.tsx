@@ -2,6 +2,7 @@
 
 import { useReportWebVitals } from 'next/web-vitals';
 import { usePathname } from 'next/navigation';
+import { useRef, useEffect } from 'react';
 
 /**
  * Web Vitals компонент для мониторинга производительности клиентских страниц
@@ -20,7 +21,16 @@ import { usePathname } from 'next/navigation';
  * - CLS > 0.3 = warn, > 0.5 = critical (цель < 0.1)
  * - TTFB > 2s = warn, > 8s = critical (цель < 0.8s)
  * - INP > 1s = warn, > 5s = critical (цель < 200ms)
+ * 
+ * Deduplication: Each metric ID is only sent once to prevent spam
  */
+
+// Global set to track already-sent metric IDs (persists across re-renders)
+const sentMetricIds = new Set<string>();
+// Rate limiting: max 10 metrics per second
+let lastSendTime = 0;
+let sendCount = 0;
+const MAX_SENDS_PER_SECOND = 10;
 
 // Обычные пороги
 const THRESHOLDS = {
@@ -67,6 +77,30 @@ export function WebVitals() {
 
   useReportWebVitals((metric) => {
     const { name, value, id, rating } = metric;
+    
+    // Deduplication: skip if already sent
+    if (sentMetricIds.has(id)) {
+      return;
+    }
+    
+    // Rate limiting: prevent spam
+    const now = Date.now();
+    if (now - lastSendTime > 1000) {
+      sendCount = 0;
+      lastSendTime = now;
+    }
+    if (sendCount >= MAX_SENDS_PER_SECOND) {
+      return;
+    }
+    
+    // Mark as sent
+    sentMetricIds.add(id);
+    sendCount++;
+    
+    // Cleanup old IDs after 1 minute to prevent memory leak
+    if (sentMetricIds.size > 100) {
+      sentMetricIds.clear();
+    }
     
     // Выбираем пороги в зависимости от страницы
     const thresholds = isHeavyPage(pathname) ? HEAVY_PAGE_THRESHOLDS : THRESHOLDS;
