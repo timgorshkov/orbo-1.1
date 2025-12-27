@@ -61,13 +61,20 @@ export async function POST(request: NextRequest) {
     const adminSupabase = createAdminServer();
     
     // Получаем все организации с подключёнными группами (with retry)
-    const { data: orgsWithGroups, error: orgsError } = await withRetry(
-      () => adminSupabase
-        .from('org_telegram_groups')
-        .select('org_id')
-        .not('org_id', 'is', null),
+    const result = await withRetry(
+      async () => {
+        const response = await adminSupabase
+          .from('org_telegram_groups')
+          .select('org_id')
+          .not('org_id', 'is', null);
+        return response;
+      },
       { logger }
     );
+    const { data: orgsWithGroups, error: orgsError } = result as { 
+      data: { org_id: string }[] | null; 
+      error: any; 
+    };
     
     if (orgsError) {
       logger.error({ error: orgsError.message }, 'Error fetching organizations');
