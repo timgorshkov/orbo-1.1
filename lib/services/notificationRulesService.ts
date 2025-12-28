@@ -688,8 +688,8 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           });
           
           triggered = true;
-          // Only log when notification is actually triggered
-          logger.info({ 
+          // Only log when notification is actually triggered (debug level to reduce noise)
+          logger.debug({ 
             rule_name: rule.name,
             chat: groupTitle, 
             severity: analysis.severity,
@@ -776,7 +776,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           });
           
           triggered = true;
-          logger.info({
+          logger.debug({
             rule_name: rule.name,
             chat: groupTitle,
             author: question.author,
@@ -842,7 +842,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         });
         
         triggered = true;
-        logger.info({
+        logger.debug({
           rule_name: rule.name,
           chat: groupTitle,
           inactive_hours: Math.floor(hoursInactive),
