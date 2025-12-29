@@ -122,6 +122,7 @@ async function logNotification(params: {
   sentToUserIds?: string[];
   aiCostUsd?: number;
   errorMessage?: string;
+  lastActivityAt?: string; // For inactivity notifications: track when last activity was
 }): Promise<{ success: boolean }> {
   try {
     // Use upsert with ON CONFLICT DO NOTHING to prevent duplicates
@@ -138,6 +139,7 @@ async function logNotification(params: {
         ai_cost_usd: params.aiCostUsd || null,
         error_message: params.errorMessage || null,
         processed_at: new Date().toISOString(),
+        last_activity_at: params.lastActivityAt || null,
       },
       {
         onConflict: 'rule_id,dedup_hash',
@@ -542,14 +544,19 @@ _${rule.name}_`;
 
 _${rule.name}_`;
 
-    case 'group_inactive':
+    case 'group_inactive': {
+      // Generate link to the group even without message_id
+      const groupLink = groupChatId ? getTelegramMessageLink(groupChatId, undefined) : null;
+      const inactivityLinkText = groupLink ? `\n\n[Открыть группу в Telegram →](${groupLink})` : '';
+      
       return `💤 *Неактивность в «${groupDisplay}»*
 
 В группе нет сообщений уже *${context.inactive_hours || '?'} часов*.
 
-Последнее сообщение: ${context.last_message_at || 'неизвестно'}
+Последнее сообщение: ${context.last_message_at || 'неизвестно'}${inactivityLinkText}
 
 _${rule.name}_`;
+    }
 
     default:
       return `🔔 *Уведомление от Orbo*\n\n${JSON.stringify(context)}`;
@@ -814,12 +821,38 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           group_title: groupTitle,
           last_message_at: lastMessageTime.toLocaleString('ru'),
           inactive_hours: Math.floor(hoursInactive),
+          // Store the actual last message timestamp for dedup
+          last_message_timestamp: lastMessage.created_at,
         };
         
         const dedupHash = generateDedupHash(rule.id, triggerContext);
         
-        if (await isDuplicate(rule.id, dedupHash, 12)) {
-          continue;
+        // For inactivity: check if we already notified about THIS period of inactivity
+        // by checking if last_activity_at matches the current last message time
+        const { data: existingNotif } = await supabaseAdmin
+          .from('notification_logs')
+          .select('id, last_activity_at')
+          .eq('rule_id', rule.id)
+          .eq('rule_type', 'group_inactive')
+          .eq('notification_status', 'sent')
+          .contains('trigger_context', { group_id: chatId })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        // Skip if we already notified about this inactivity period (no new messages since)
+        if (existingNotif?.last_activity_at) {
+          const lastNotifiedActivity = new Date(existingNotif.last_activity_at);
+          // If last message is the same or older than when we notified, skip
+          if (lastMessageTime <= lastNotifiedActivity) {
+            logger.debug({ 
+              rule_id: rule.id, 
+              chat_id: chatId,
+              last_message: lastMessageTime.toISOString(),
+              last_notified: lastNotifiedActivity.toISOString()
+            }, '⏭️ Skipping inactivity notification - no new activity since last notification');
+            continue;
+          }
         }
         
         const recipients = await getRecipients(rule);
@@ -839,6 +872,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           status: sentCount > 0 ? 'sent' : 'failed',
           dedupHash,
           sentToUserIds: recipients.map(r => String(r.tgUserId)),
+          lastActivityAt: lastMessage.created_at, // Track when the last activity was
         });
         
         triggered = true;
@@ -865,20 +899,42 @@ export async function processAllNotificationRules(): Promise<{
   triggered: number;
   totalAiCost: number;
 }> {
-  // Get all enabled rules
+  // Get ALL rules to verify which are enabled/disabled
+  const { data: allRules, error: allError } = await supabaseAdmin
+    .from('notification_rules')
+    .select('id, name, is_enabled, rule_type');
+  
+  if (allError) {
+    logger.error({ error: allError.message }, 'Error fetching all rules');
+  } else {
+    // Log which rules are paused for debugging
+    const pausedRules = allRules?.filter(r => !r.is_enabled) || [];
+    if (pausedRules.length > 0) {
+      logger.debug({ 
+        paused_rules: pausedRules.map(r => ({ id: r.id, name: r.name, type: r.rule_type }))
+      }, 'Skipping paused rules');
+    }
+  }
+  
+  // Get only enabled rules for processing
   const { data: rules, error } = await supabaseAdmin
     .from('notification_rules')
     .select('*')
     .eq('is_enabled', true);
   
   if (error) {
-    logger.error({ error: error.message }, 'Error fetching rules');
+    logger.error({ error: error.message }, 'Error fetching enabled rules');
     return { processed: 0, triggered: 0, totalAiCost: 0 };
   }
   
   if (!rules || rules.length === 0) {
+    logger.debug({}, 'No enabled notification rules to process');
     return { processed: 0, triggered: 0, totalAiCost: 0 };
   }
+  
+  logger.debug({
+    enabled_rules: rules.map(r => ({ id: r.id, name: r.name, type: r.rule_type }))
+  }, 'Processing enabled rules');
   
   let triggeredCount = 0;
   let totalAiCost = 0;

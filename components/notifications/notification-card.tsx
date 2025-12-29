@@ -61,10 +61,10 @@ const NOTIFICATION_CONFIG: Record<string, {
   group_inactive: {
     icon: <Clock className="h-5 w-5" />,
     label: 'Неактивность группы',
-    borderColor: 'border-l-gray-500',
-    bgColor: 'bg-gray-50',
-    iconColor: 'text-gray-500',
-    hint: 'Группа неактивна',
+    borderColor: 'border-l-yellow-500',
+    bgColor: 'bg-yellow-50',
+    iconColor: 'text-yellow-600',
+    hint: 'В группе нет сообщений',
   },
   churning_participant: {
     icon: <UserMinus className="h-5 w-5" />,

@@ -438,7 +438,7 @@ export default function NotificationRulesContent() {
                           <span className="sr-only">Открыть меню</span>
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuContent align="end" className="w-48 bg-white border shadow-md z-50">
                         <DropdownMenuItem 
                           onSelect={() => handleEditRule(rule)}
                         >
