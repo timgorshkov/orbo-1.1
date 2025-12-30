@@ -122,7 +122,6 @@ async function logNotification(params: {
   sentToUserIds?: string[];
   aiCostUsd?: number;
   errorMessage?: string;
-  lastActivityAt?: string; // For inactivity notifications: track when last activity was
 }): Promise<{ success: boolean }> {
   try {
     // Use upsert with ON CONFLICT DO NOTHING to prevent duplicates
@@ -139,7 +138,6 @@ async function logNotification(params: {
         ai_cost_usd: params.aiCostUsd || null,
         error_message: params.errorMessage || null,
         processed_at: new Date().toISOString(),
-        last_activity_at: params.lastActivityAt || null,
       },
       {
         onConflict: 'rule_id,dedup_hash',
@@ -811,9 +809,65 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         if (!lastMessage) continue;
         
         const lastMessageTime = new Date(lastMessage.created_at);
+        const lastMessageTimestamp = lastMessage.created_at; // ISO string for exact comparison
         const hoursInactive = (Date.now() - lastMessageTime.getTime()) / (1000 * 60 * 60);
         
+        // Not inactive yet - skip
         if (hoursInactive < timeoutHours) continue;
+        
+        // ===== CRITICAL FIX: Check if we already notified about THIS inactivity period =====
+        // Look for the most recent notification for this group
+        // We check if the last_message_timestamp matches - if yes, we already notified
+        const { data: recentGroupNotifs } = await supabaseAdmin
+          .from('notification_logs')
+          .select('id, trigger_context, created_at')
+          .eq('rule_id', rule.id)
+          .eq('rule_type', 'group_inactive')
+          .eq('notification_status', 'sent')
+          .order('created_at', { ascending: false })
+          .limit(50); // Check more notifications to find ones for this group
+        
+        // Find notifications for THIS specific group
+        const notifsForThisGroup = (recentGroupNotifs || []).filter(notif => {
+          const ctx = notif.trigger_context as Record<string, unknown>;
+          return ctx?.group_id === chatId;
+        });
+        
+        if (notifsForThisGroup.length > 0) {
+          const mostRecentNotif = notifsForThisGroup[0];
+          const prevContext = mostRecentNotif.trigger_context as Record<string, unknown>;
+          const prevLastMessageTimestamp = prevContext.last_message_timestamp;
+          
+          // Case 1: New format - has last_message_timestamp
+          if (prevLastMessageTimestamp) {
+            if (prevLastMessageTimestamp === lastMessageTimestamp) {
+              logger.debug({ 
+                rule_id: rule.id, 
+                chat_id: chatId,
+                group_title: groupTitle,
+                last_message: lastMessageTimestamp,
+              }, '⏭️ Skipping - already notified about this inactivity period (same timestamp)');
+              continue;
+            }
+            // Different timestamp = there was new activity, now inactive again - OK to notify
+          } else {
+            // Case 2: Old format - doesn't have last_message_timestamp
+            // Compare the human-readable last_message_at string as fallback
+            const prevLastMessageAt = prevContext.last_message_at as string;
+            const currentLastMessageAt = lastMessageTime.toLocaleString('ru');
+            
+            if (prevLastMessageAt === currentLastMessageAt) {
+              logger.debug({ 
+                rule_id: rule.id, 
+                chat_id: chatId,
+                group_title: groupTitle,
+                last_message_at: currentLastMessageAt,
+              }, '⏭️ Skipping - already notified about this inactivity period (same last_message_at)');
+              continue;
+            }
+            // Different last_message_at = there was new activity, now inactive again - OK to notify
+          }
+        }
         
         const triggerContext = {
           type: 'group_inactive',
@@ -821,38 +875,23 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           group_title: groupTitle,
           last_message_at: lastMessageTime.toLocaleString('ru'),
           inactive_hours: Math.floor(hoursInactive),
-          // Store the actual last message timestamp for dedup
-          last_message_timestamp: lastMessage.created_at,
+          // CRITICAL: Store the exact timestamp of the last message
+          // This is used to detect if we already notified about this inactivity period
+          last_message_timestamp: lastMessageTimestamp,
         };
         
-        const dedupHash = generateDedupHash(rule.id, triggerContext);
+        // Use a dedup hash that includes the last message timestamp
+        // This ensures we only notify ONCE per inactivity period
+        const inactivityDedupHash = `inactivity_${rule.id}_${chatId}_${lastMessageTimestamp}`;
         
-        // For inactivity: check if we already notified about THIS period of inactivity
-        // by checking if last_activity_at matches the current last message time
-        const { data: existingNotif } = await supabaseAdmin
-          .from('notification_logs')
-          .select('id, last_activity_at')
-          .eq('rule_id', rule.id)
-          .eq('rule_type', 'group_inactive')
-          .eq('notification_status', 'sent')
-          .contains('trigger_context', { group_id: chatId })
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        // Skip if we already notified about this inactivity period (no new messages since)
-        if (existingNotif?.last_activity_at) {
-          const lastNotifiedActivity = new Date(existingNotif.last_activity_at);
-          // If last message is the same or older than when we notified, skip
-          if (lastMessageTime <= lastNotifiedActivity) {
-            logger.debug({ 
-              rule_id: rule.id, 
-              chat_id: chatId,
-              last_message: lastMessageTime.toISOString(),
-              last_notified: lastNotifiedActivity.toISOString()
-            }, '⏭️ Skipping inactivity notification - no new activity since last notification');
-            continue;
-          }
+        // Final check with dedup hash (belt and suspenders)
+        if (await isDuplicate(rule.id, inactivityDedupHash, 720)) { // 720 hours = 30 days
+          logger.debug({ 
+            rule_id: rule.id, 
+            chat_id: chatId,
+            dedup_hash: inactivityDedupHash
+          }, '⏭️ Skipping - duplicate check failed');
+          continue;
         }
         
         const recipients = await getRecipients(rule);
@@ -870,19 +909,19 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           ruleType: rule.rule_type,
           triggerContext,
           status: sentCount > 0 ? 'sent' : 'failed',
-          dedupHash,
+          dedupHash: inactivityDedupHash,
           sentToUserIds: recipients.map(r => String(r.tgUserId)),
-          lastActivityAt: lastMessage.created_at, // Track when the last activity was
         });
         
         triggered = true;
-        logger.debug({
+        logger.info({
           rule_name: rule.name,
           chat: groupTitle,
           inactive_hours: Math.floor(hoursInactive),
           telegram_sent: sentCount,
-          saved_to_db: logResult.success
-        }, '💤 Group inactivity notification');
+          saved_to_db: logResult.success,
+          dedup_hash: inactivityDedupHash
+        }, '💤 Group inactivity notification SENT (one-time until new activity)');
         break;
       }
     }
