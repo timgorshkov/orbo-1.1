@@ -286,6 +286,18 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   }
 
   /**
+   * AbortSignal для отмены запроса (совместимость с Supabase API)
+   * Примечание: pg не поддерживает отмену запросов через AbortSignal напрямую,
+   * но мы сохраняем сигнал для логики тайм-аута в вызывающем коде
+   */
+  abortSignal(signal: AbortSignal): QueryBuilder<T> {
+    // pg не поддерживает AbortSignal напрямую
+    // Сохраняем для совместимости, проверяем при выполнении
+    (this as any)._abortSignal = signal;
+    return this;
+  }
+
+  /**
    * Собирает SQL запрос
    */
   private buildQuery(): { sql: string; values: any[] } {

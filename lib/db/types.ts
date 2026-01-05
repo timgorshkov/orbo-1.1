@@ -73,6 +73,7 @@ export interface QueryBuilder<T = any> {
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): QueryBuilder<T>;
   limit(count: number): QueryBuilder<T>;
   range(from: number, to: number): QueryBuilder<T>;
+  abortSignal(signal: AbortSignal): QueryBuilder<T>;
   
   // Результат
   single(): Promise<DbResult<T>>;

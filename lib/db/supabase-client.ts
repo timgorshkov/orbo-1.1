@@ -136,6 +136,11 @@ class SupabaseQueryBuilder<T = any> implements QueryBuilder<T> {
     return this;
   }
 
+  abortSignal(signal: AbortSignal): QueryBuilder<T> {
+    this.query = this.query.abortSignal(signal);
+    return this;
+  }
+
   async single(): Promise<DbResult<T>> {
     const result = await this.query.single();
     return this.transformResult(result);
