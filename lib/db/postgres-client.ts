@@ -248,7 +248,12 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   }
 
   not(column: string, operator: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `NOT ("${column}" ${operator} ${this.nextParam()})`, values: [value] });
+    // Специальная обработка для IS NULL / IS NOT NULL
+    if (operator.toLowerCase() === 'is' && value === null) {
+      this.conditions.push({ sql: `"${column}" IS NOT NULL`, values: [] });
+    } else {
+      this.conditions.push({ sql: `NOT ("${column}" ${operator} ${this.nextParam()})`, values: [value] });
+    }
     return this;
   }
 
