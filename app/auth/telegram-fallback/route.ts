@@ -128,9 +128,24 @@ export async function GET(request: NextRequest) {
     
     const userId = telegramAccounts.user_id
     
-    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
+    let userData;
+    try {
+      const result = await supabaseAdmin.auth.admin.getUserById(userId);
+      userData = result.data;
+    } catch (fetchError) {
+      const isTransient = fetchError instanceof Error && 
+        (fetchError.message?.includes('fetch failed') || fetchError.message?.includes('timeout'));
+      if (isTransient) {
+        logger.warn({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
+          'Transient error fetching user');
+      } else {
+        logger.error({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
+          'Error fetching user');
+      }
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
+    }
     if (!userData?.user) {
-      logger.error({ user_id: userId }, 'Error fetching user');
+      logger.error({ user_id: userId }, 'User not found');
       return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
@@ -163,7 +178,7 @@ export async function GET(request: NextRequest) {
       finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
     }
     
-    console.log('[Telegram Auth Fallback] Setting session via SSR cookies')
+    logger.debug({}, 'Setting session via SSR cookies')
     
     // ✅ Используем @supabase/ssr для правильной установки cookies в Next.js App Router
     const { createServerClient } = await import('@supabase/ssr')

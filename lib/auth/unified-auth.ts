@@ -215,7 +215,8 @@ async function checkNextAuthSession(cookieStore: Awaited<ReturnType<typeof cooki
   }
   
   const totalDuration = Date.now() - startTime;
-  if (totalDuration > 1000) {
+  // Raised threshold to 2s to reduce noise from remote Supabase latency
+  if (totalDuration > 2000) {
     logger.warn({
       email: userEmail,
       total_duration_ms: totalDuration,
@@ -264,7 +265,8 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     if (!hasSupabaseCookies && hasNextAuthCookies) {
       const result = await checkNextAuthSession(cookieStore);
       const totalDuration = Date.now() - startTime;
-      if (totalDuration > 1000) {
+      // Raised threshold to 2s to reduce noise from remote Supabase latency
+      if (totalDuration > 2000) {
         logger.warn({ 
           total_duration_ms: totalDuration,
           provider: 'nextauth',
@@ -299,8 +301,8 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     const { data: { user: supabaseUser }, error: userError } = await supabase.auth.getUser();
     const supabaseDuration = Date.now() - supabaseStart;
     
-    // Threshold raised to 1s to reduce noise from cold starts (warm is ~100ms)
-    if (supabaseDuration > 1000) {
+    // Threshold raised to 2s to reduce noise from remote Supabase latency
+    if (supabaseDuration > 2000) {
       logger.warn({ supabase_getUser_duration_ms: supabaseDuration }, 'Supabase getUser slow');
     }
     
@@ -309,7 +311,8 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
       const { data: { session: supabaseSession } } = await supabase.auth.getSession();
       
       const totalDuration = Date.now() - startTime;
-      if (totalDuration > 1000) {
+      // Raised threshold to 2s to reduce noise from remote Supabase latency
+      if (totalDuration > 2000) {
         logger.warn({ 
           total_duration_ms: totalDuration,
           supabase_auth_duration_ms: supabaseDuration,
@@ -338,7 +341,8 @@ export async function getUnifiedSession(): Promise<UnifiedSession | null> {
     if (hasNextAuthCookies) {
       const result = await checkNextAuthSession(cookieStore);
       const totalDuration = Date.now() - startTime;
-      if (totalDuration > 1000) {
+      // Raised threshold to 2s to reduce noise from remote Supabase latency
+      if (totalDuration > 2000) {
         logger.warn({ 
           total_duration_ms: totalDuration,
           supabase_failed_duration_ms: supabaseDuration,

@@ -37,11 +37,21 @@ export async function generateMetadata({
     
     const logger = createServiceLogger('CommunityHubPage');
     if (error) {
-      logger.error({
-        error: error.message,
-        error_code: error.code,
-        org_id: orgId
-      }, 'Error fetching org for OG metadata');
+      // Downgrade to warn for transient network errors
+      const isTransient = error.message?.includes('fetch failed') || error.message?.includes('502');
+      if (isTransient) {
+        logger.warn({
+          error: error.message,
+          org_id: orgId,
+          transient: true
+        }, 'Error fetching org for OG metadata (transient)');
+      } else {
+        logger.error({
+          error: error.message,
+          error_code: error.code,
+          org_id: orgId
+        }, 'Error fetching org for OG metadata');
+      }
     }
     
     if (org) {
@@ -59,11 +69,22 @@ export async function generateMetadata({
     }
   } catch (error) {
     const logger = createServiceLogger('CommunityHubPage');
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      org_id: orgId
-    }, 'Exception generating OG metadata');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // Downgrade to warn for transient network errors
+    const isTransient = errorMessage?.includes('fetch failed') || errorMessage?.includes('502');
+    if (isTransient) {
+      logger.warn({
+        error: errorMessage,
+        org_id: orgId,
+        transient: true
+      }, 'Exception generating OG metadata (transient)');
+    } else {
+      logger.error({
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        org_id: orgId
+      }, 'Exception generating OG metadata');
+    }
   }
   
   // Ensure absolute URL for OG image

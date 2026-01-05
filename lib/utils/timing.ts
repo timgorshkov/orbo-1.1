@@ -40,7 +40,7 @@ export class RequestTiming {
     const end = this.marks.get(endMark);
     
     if (start === undefined || end === undefined) {
-      console.warn(`[Timing] Missing marks for measure "${name}": start=${startMark}, end=${endMark}`);
+      // Silent fail - don't pollute logs with timing issues
       return 0;
     }
     

@@ -167,14 +167,29 @@ export async function GET(request: NextRequest) {
     }, 'User found');
     
     // 4. Получаем email пользователя
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId)
+    let userData;
+    try {
+      const result = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+      userData = result.data;
+    } catch (fetchError) {
+      const isTransient = fetchError instanceof Error && 
+        (fetchError.message?.includes('fetch failed') || fetchError.message?.includes('timeout'));
+      if (isTransient) {
+        logger.warn({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
+          'Transient error fetching user');
+      } else {
+        logger.error({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
+          'Error fetching user');
+      }
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
+    }
     
-    if (userError || !userData?.user) {
-      logger.error({ 
-        error: userError?.message,
-        user_id: userId
-      }, 'Error fetching user');
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
+    if (!userData?.user) {
+      logger.error({ user_id: userId }, 'User not found');
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
     }
     
     const userEmail = userData.user.email

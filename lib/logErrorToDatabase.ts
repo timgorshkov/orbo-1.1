@@ -83,18 +83,38 @@ export async function logErrorToDatabase(options: LogErrorOptions): Promise<void
     if (error) {
       // If logging to database fails, log to console (fallback)
       const logger = createServiceLogger('logErrorToDatabase');
-      logger.error({ 
-        error: error.message,
-        error_code: error.code,
-        fingerprint
-      }, 'Failed to log error to database');
+      // Downgrade to warn for transient network errors
+      const isTransient = error.message?.includes('fetch failed') || error.message?.includes('502');
+      if (isTransient) {
+        logger.warn({ 
+          error: error.message,
+          fingerprint,
+          transient: true
+        }, 'Failed to log error to database (transient)');
+      } else {
+        logger.error({ 
+          error: error.message,
+          error_code: error.code,
+          fingerprint
+        }, 'Failed to log error to database');
+      }
     }
   } catch (err) {
     // Silent fail - don't throw errors from error logging
     const logger = createServiceLogger('logErrorToDatabase');
-    logger.error({ 
-      error: err instanceof Error ? err.message : String(err)
-    }, 'Exception while logging error');
+    const errMessage = err instanceof Error ? err.message : String(err);
+    // Downgrade to warn for transient network errors
+    const isTransient = errMessage?.includes('fetch failed') || errMessage?.includes('502');
+    if (isTransient) {
+      logger.warn({ 
+        error: errMessage,
+        transient: true
+      }, 'Exception while logging error (transient)');
+    } else {
+      logger.error({ 
+        error: errMessage
+      }, 'Exception while logging error');
+    }
   }
 }
 

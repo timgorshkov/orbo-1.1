@@ -348,7 +348,13 @@ async function getRecentMessages(
       .limit(limit);
     
     if (error) {
-      logger.error({ error: error.message, chat_id: chatId }, 'Query error from participant_messages');
+      // Downgrade to warn for transient network errors (502, fetch failed, etc.)
+      const isTransient = error.message?.includes('fetch failed') || error.message?.includes('502');
+      if (isTransient) {
+        logger.warn({ error: error.message, chat_id: chatId, transient: true }, 'Query error from participant_messages (transient)');
+      } else {
+        logger.error({ error: error.message, chat_id: chatId }, 'Query error from participant_messages');
+      }
       
       // Fallback to activity_events if participant_messages fails
       const { data: activityData, error: activityError } = await supabaseAdmin
@@ -368,7 +374,13 @@ async function getRecentMessages(
         .limit(limit);
       
       if (activityError) {
-        logger.error({ error: activityError.message, chat_id: chatId }, 'Fallback query error');
+        // Downgrade to warn for transient network errors
+        const isTransient = activityError.message?.includes('fetch failed') || activityError.message?.includes('502');
+        if (isTransient) {
+          logger.warn({ error: activityError.message, chat_id: chatId, transient: true }, 'Fallback query error (transient)');
+        } else {
+          logger.error({ error: activityError.message, chat_id: chatId }, 'Fallback query error');
+        }
         return [];
       }
       

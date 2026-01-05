@@ -69,8 +69,8 @@ export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) 
     throw new Error('Forbidden')
   }
 
-  // Логируем только медленные запросы
-  if (totalDuration > 500) {
+  // Логируем только медленные запросы (raised to 2s to reduce noise from remote Supabase)
+  if (totalDuration > 2000) {
     logger.warn({
       org_id: orgId,
       user_id: user.id,
