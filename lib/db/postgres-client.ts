@@ -51,8 +51,15 @@ async function getPool() {
   await initPg();
   
   if (!poolInstance) {
+    // Используем DATABASE_URL_POSTGRES если указан, иначе DATABASE_URL
+    const connectionString = process.env.DATABASE_URL_POSTGRES || process.env.DATABASE_URL;
+    
+    if (!connectionString) {
+      throw new Error('DATABASE_URL or DATABASE_URL_POSTGRES must be set');
+    }
+    
     poolInstance = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: parseInt(process.env.DATABASE_POOL_SIZE || '20'),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
