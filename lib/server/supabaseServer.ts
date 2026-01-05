@@ -1,24 +1,141 @@
 /**
- * Supabase Server Utilities
+ * Supabase Server Utilities - Hybrid Mode
  * 
- * ⚠️ DEPRECATED: Этот файл сохранён для обратной совместимости.
- * Используйте новые абстракции:
- * - import { createServerDb, createAdminDb } from '@/lib/db'
- * - import { createServerAuth } from '@/lib/auth'
- * - import { createStorage } from '@/lib/storage'
+ * Этот файл создаёт "гибридный" клиент:
+ * - .from() и .rpc() направляются на локальный PostgreSQL (когда DB_PROVIDER=postgres)
+ * - .auth и .storage продолжают использовать Supabase
+ * 
+ * Это позволяет мигрировать БД без изменения существующего кода.
  */
 
 import { createServerClient } from "@supabase/ssr"
-import { cookies, headers } from "next/headers"
-import { createClient } from '@supabase/supabase-js'
+import { cookies } from "next/headers"
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { getDbProvider } from '@/lib/db'
+import { getPostgresClient } from '@/lib/db/postgres-client'
+import { createServiceLogger } from '@/lib/logger'
+
+const logger = createServiceLogger('SupabaseServer');
+
+// Кэш для PostgreSQL клиента
+let pgClient: any = null;
+
+function getOrCreatePgClient() {
+  if (!pgClient) {
+    pgClient = getPostgresClient();
+  }
+  return pgClient;
+}
 
 /**
- * @deprecated Используйте createServerDb() из '@/lib/db' для работы с БД
- * или getSupabaseClient() если нужен доступ к auth/storage напрямую
+ * Создаёт Proxy-обёртку вокруг Supabase клиента,
+ * которая перенаправляет DB операции на PostgreSQL
+ */
+function createHybridClient(supabaseClient: SupabaseClient): SupabaseClient {
+  const provider = getDbProvider();
+  
+  // Если провайдер не postgres, возвращаем оригинальный клиент
+  if (provider !== 'postgres') {
+    return supabaseClient;
+  }
+  
+  const pg = getOrCreatePgClient();
+  
+  return new Proxy(supabaseClient, {
+    get(target, prop: string | symbol) {
+      // Перенаправляем .from() на PostgreSQL
+      if (prop === 'from') {
+        return (table: string) => {
+          logger.debug({ table, provider: 'postgres' }, 'DB query routed to PostgreSQL');
+          return pg.from(table);
+        };
+      }
+      
+      // Перенаправляем .rpc() на PostgreSQL
+      if (prop === 'rpc') {
+        return (fn: string, params?: Record<string, any>) => {
+          logger.debug({ function: fn, provider: 'postgres' }, 'RPC call routed to PostgreSQL');
+          return pg.rpc(fn, params);
+        };
+      }
+      
+      // Все остальные методы (auth, storage, channel, etc.) идут в Supabase
+      const value = (target as any)[prop];
+      
+      // Если это функция, привязываем контекст
+      if (typeof value === 'function') {
+        return value.bind(target);
+      }
+      
+      return value;
+    }
+  }) as SupabaseClient;
+}
+
+/**
+ * Создаёт серверный клиент с cookies для аутентификации
+ * 
+ * DB операции идут на PostgreSQL (если DB_PROVIDER=postgres)
+ * Auth операции идут на Supabase
  */
 export async function createClientServer() {
   const cookieStore = await cookies()
-  const hdrs = await headers()
+  
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: name => cookieStore.get(name)?.value,
+        set: (name, value, opts) => {
+          try {
+            cookieStore.set({ name, value, ...opts })
+          } catch (error) {
+            // Silently ignore in Server Components
+          }
+        },
+        remove: (name, opts) => {
+          try {
+            cookieStore.set({ name, value: "", ...opts })
+          } catch (error) {
+            // Silently ignore in Server Components
+          }
+        },
+      }
+    }
+  )
+  
+  return createHybridClient(supabase);
+}
+
+/**
+ * Создаёт админский клиент (bypass RLS)
+ * 
+ * DB операции идут на PostgreSQL (если DB_PROVIDER=postgres)
+ * Auth/Storage операции идут на Supabase
+ */
+export function createAdminServer() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
+  
+  return createHybridClient(supabase);
+}
+
+// ============================================
+// Хелперы для прямого доступа к Supabase
+// (когда нужен именно Supabase, а не абстракция)
+// ============================================
+
+/**
+ * Получить оригинальный Supabase клиент (без Proxy)
+ * Используйте для Supabase-специфичных операций: realtime, storage, etc.
+ */
+export async function getSupabaseClient() {
+  const cookieStore = await cookies()
+  
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -45,30 +162,12 @@ export async function createClientServer() {
 }
 
 /**
- * @deprecated Используйте createAdminDb() из '@/lib/db' для работы с БД
- * или getSupabaseAdminClient() если нужен доступ к auth/storage напрямую
+ * Получить оригинальный Supabase Admin клиент (без Proxy)
  */
-export function createAdminServer() {
+export function getSupabaseAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   )
-}
-
-// ============================================
-// Реэкспорт новых абстракций для постепенной миграции
-// ============================================
-
-// DB abstractions - импортируйте напрямую из '@/lib/db'
-// Auth abstractions - импортируйте напрямую из '@/lib/auth'  
-// Storage abstractions - импортируйте напрямую из '@/lib/storage'
-
-// Хелперы для прямого доступа к Supabase (когда нужен auth/storage)
-export function getSupabaseClient() {
-  return createClientServer();
-}
-
-export function getSupabaseAdminClient() {
-  return createAdminServer();
 }
