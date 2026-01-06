@@ -5,7 +5,8 @@
  * - .from() и .rpc() направляются на локальный PostgreSQL (когда DB_PROVIDER=postgres)
  * - .auth и .storage продолжают использовать Supabase
  * 
- * Это позволяет мигрировать БД без изменения существующего кода.
+ * Все JOIN-запросы переписаны на простые запросы + JS join,
+ * поэтому fallback на Supabase больше не нужен.
  */
 
 import { createServerClient } from "@supabase/ssr"
@@ -13,9 +14,6 @@ import { cookies } from "next/headers"
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { getDbProvider } from '@/lib/db'
 import { getPostgresClient } from '@/lib/db/postgres-client'
-import { createServiceLogger } from '@/lib/logger'
-
-const logger = createServiceLogger('SupabaseServer');
 
 // Кэш для PostgreSQL клиента
 let pgClient: any = null;
@@ -25,81 +23,6 @@ function getOrCreatePgClient() {
     pgClient = getPostgresClient();
   }
   return pgClient;
-}
-
-/**
- * Проверяет, содержит ли select-строка JOIN синтаксис
- */
-function hasJoinSyntax(columns?: string): boolean {
-  if (!columns) return false;
-  return columns.includes('(') || columns.includes('!inner') || columns.includes('!left');
-}
-
-/**
- * Создаёт smart wrapper для QueryBuilder, который:
- * - Перехватывает .select() с JOIN синтаксисом
- * - Направляет простые запросы на PostgreSQL
- * - Направляет сложные запросы (с JOIN) на Supabase
- */
-function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: SupabaseClient) {
-  // Отслеживаем какой провайдер использовать
-  let providerDecided = false;
-  let useSupabase = false;
-  
-  const getBuilder = () => {
-    if (useSupabase) {
-      return supabaseClient.from(table);
-    }
-    return pgClient.from(table);
-  };
-  
-  // Создаём цепочку вызовов, которая решает провайдер при .select()
-  const chainProxy = (currentBuilder: any): any => {
-    return new Proxy(currentBuilder, {
-      get(target: any, prop: string | symbol) {
-        // Перехватываем .select() для определения провайдера
-        if (prop === 'select' && !providerDecided) {
-          return (columns?: string, options?: any) => {
-            providerDecided = true;
-            
-            if (hasJoinSyntax(columns)) {
-              useSupabase = true;
-              logger.debug({ table, provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
-              const newBuilder = supabaseClient.from(table).select(columns, options);
-              return chainProxy(newBuilder);
-            }
-            
-            // Простые запросы идут на PostgreSQL (не логируем для уменьшения шума)
-            const newBuilder = pgClient.from(table).select(columns, options);
-            return chainProxy(newBuilder);
-          };
-        }
-        
-        const value = target[prop];
-        
-        // Если это then/catch - возвращаем как есть (конец цепочки)
-        if (prop === 'then' || prop === 'catch' || prop === 'finally') {
-          return value?.bind?.(target);
-        }
-        
-        if (typeof value === 'function') {
-          return (...args: any[]) => {
-            const result = value.apply(target, args);
-            // Продолжаем проксировать для цепочки методов
-            if (result && typeof result === 'object') {
-              return chainProxy(result);
-            }
-            return result;
-          };
-        }
-        
-        return value;
-      }
-    });
-  };
-  
-  // Возвращаем начальный прокси на pgBuilder (будет заменён после select)
-  return chainProxy(pgClient.from(table));
 }
 
 /**
@@ -118,17 +41,16 @@ function createHybridClient(supabaseClient: SupabaseClient): SupabaseClient {
   
   return new Proxy(supabaseClient, {
     get(target, prop: string | symbol) {
-      // Перенаправляем .from() через smart wrapper
+      // Все .from() запросы идут на PostgreSQL
       if (prop === 'from') {
         return (table: string) => {
-          return createSmartQueryBuilder(table, pg, supabaseClient);
+          return pg.from(table);
         };
       }
       
-      // Перенаправляем .rpc() на PostgreSQL
+      // Все .rpc() вызовы идут на PostgreSQL
       if (prop === 'rpc') {
         return (fn: string, params?: Record<string, any>) => {
-          logger.debug({ function: fn, provider: 'postgres' }, 'RPC call routed to PostgreSQL');
           return pg.rpc(fn, params);
         };
       }
