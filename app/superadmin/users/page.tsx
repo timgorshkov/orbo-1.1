@@ -3,30 +3,34 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import UsersTable from '@/components/superadmin/users-table'
 import { createServiceLogger } from '@/lib/logger'
 
-const logger = createServiceLogger('SuperadminUsers');
+const logger = createServiceLogger('SuperadminUsers')
 
 export default async function SuperadminUsersPage() {
   await requireSuperadmin()
   
   const supabase = createAdminServer()
   
-  // Получаем пользователей с email (владельцы и админы организаций)
+  // Получаем memberships (простой запрос без JOIN)
   const { data: memberships } = await supabase
     .from('memberships')
-    .select(`
-      user_id,
-      role,
-      org_id,
-      organizations (
-        name
-      )
-    `)
+    .select('user_id, role, org_id')
     .in('role', ['owner', 'admin'])
+  
+  if (!memberships || memberships.length === 0) {
+    return (
+      <div>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Пользователи</h2>
+          <p className="text-gray-600 mt-1">Нет пользователей</p>
+        </div>
+      </div>
+    )
+  }
   
   // Группируем по user_id
   const userMap = new Map<string, any>()
   
-  for (const membership of memberships || []) {
+  for (const membership of memberships) {
     if (!userMap.has(membership.user_id)) {
       userMap.set(membership.user_id, {
         user_id: membership.user_id,
@@ -46,129 +50,86 @@ export default async function SuperadminUsersPage() {
     userData.total_orgs++
   }
   
-  // Получаем данные пользователей из auth.users
   const userIds = Array.from(userMap.keys())
   
-  // Получаем email напрямую из auth.users (используем raw query через admin клиент)
-  // PostgreSQL подзапрос для получения данных из auth схемы
-  const { data: authUsersData, error: authError } = await supabase
-    .rpc('get_users_by_ids', { user_ids: userIds })
+  // Получаем данные пользователей из локальной таблицы users
+  const { data: usersData } = await supabase
+    .from('users')
+    .select('id, email, name, email_verified, image, created_at')
+    .in('id', userIds)
   
-  logger.debug({ 
-    auth_users_count: authUsersData?.length || 0,
-    error: authError?.message
-  }, 'Auth users from RPC');
+  const usersMap = new Map((usersData || []).map(u => [u.id, u]))
   
-  // Создаем Map для быстрого доступа к auth данным
-  const authUsersMap = new Map(
-    (authUsersData || []).map((u: any) => [u.id, u])
-  )
-  
-  // Получаем данные из user_telegram_accounts
-  const { data: allTgAccounts, error: allTgError } = await supabase
+  // Получаем telegram аккаунты
+  const { data: telegramAccounts } = await supabase
     .from('user_telegram_accounts')
-    .select('user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified, org_id')
+    .select('user_id, telegram_user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified')
     .in('user_id', userIds)
   
-  logger.debug({ 
-    tg_accounts_count: allTgAccounts?.length || 0,
-    user_ids_count: userIds.length,
-    error: allTgError?.message
-  }, 'TG accounts fetched');
+  // Получаем уникальные telegram_user_id для поиска групп
+  const tgUserIds = Array.from(new Set(
+    (telegramAccounts || []).map(acc => acc.telegram_user_id).filter(Boolean)
+  ))
   
-  // Группируем по user_id
-  const userDataMap = new Map<string, any>()
+  // Получаем группы где пользователь админ
+  const { data: groupAdmins } = tgUserIds.length > 0
+    ? await supabase
+        .from('telegram_group_admins')
+        .select('tg_user_id, tg_chat_id')
+        .in('tg_user_id', tgUserIds)
+    : { data: [] }
   
-  userIds.forEach(userId => {
-    const authUser: any = authUsersMap.get(userId)
-    const tgAccount = allTgAccounts?.find((acc: any) => acc.user_id === userId)
+  // Получаем информацию о группах с ботом
+  const chatIds = Array.from(new Set((groupAdmins || []).map(ga => ga.tg_chat_id).filter(Boolean)))
+  const { data: groups } = chatIds.length > 0
+    ? await supabase
+        .from('telegram_groups')
+        .select('tg_chat_id, bot_status')
+        .in('tg_chat_id', chatIds)
+        .eq('bot_status', 'connected')
+    : { data: [] }
+  
+  const groupsWithBotSet = new Set((groups || []).map(g => g.tg_chat_id))
+  
+  // Форматируем данные
+  const formattedUsers = Array.from(userMap.entries()).map(([userId, userData]) => {
+    const user = usersMap.get(userId)
+    const tgAccounts = (telegramAccounts || []).filter(acc => acc.user_id === userId)
+    const tgAccount = tgAccounts[0]
+    
+    const tgUserIdsForUser = tgAccounts.map(acc => acc.telegram_user_id).filter(Boolean)
+    const groupsAsAdmin = (groupAdmins || []).filter(ga => 
+      tgUserIdsForUser.includes(ga.tg_user_id) && 
+      groupsWithBotSet.has(ga.tg_chat_id)
+    )
     
     const fullName = tgAccount 
       ? ([tgAccount.telegram_first_name, tgAccount.telegram_last_name]
           .filter(Boolean)
           .join(' ') || tgAccount.telegram_username || 'Не указано')
-      : (authUser?.raw_user_meta_data?.full_name || authUser?.email?.split('@')[0] || 'Не указано')
+      : (user?.name || user?.email?.split('@')[0] || 'Не указано')
     
-    const displayName = tgAccount?.telegram_username 
+    const telegramDisplayName = tgAccount?.telegram_username 
       ? `@${tgAccount.telegram_username}`
-      : fullName
-    
-    userDataMap.set(userId, {
-      full_name: fullName,
-      telegram_display_name: tgAccount ? displayName : null,
-      email: authUser?.email || 'N/A',
-      email_confirmed: !!authUser?.email_confirmed_at,
-      last_sign_in_at: authUser?.last_sign_in_at || null,
-    })
-  })
-  
-  // Получаем telegram аккаунты
-  const { data: telegramAccounts, error: tgError } = await supabase
-    .from('user_telegram_accounts')
-    .select('user_id, telegram_user_id, is_verified, org_id')
-    .in('user_id', userIds)
-  
-  logger.debug({ 
-    telegram_accounts_count: telegramAccounts?.length,
-    error: tgError?.message
-  }, 'Telegram accounts');
-  
-  // Получаем уникальные telegram_user_id для поиска групп
-  const tgUserIds = Array.from(new Set(telegramAccounts?.map(acc => acc.telegram_user_id).filter(Boolean)))
-  
-  logger.debug({ unique_tg_user_ids_count: tgUserIds.length }, 'Unique TG user IDs');
-  
-  // Получаем группы где эти пользователи админы (через tg_chat_id)
-  const { data: groupAdmins, error: groupAdminsError } = await supabase
-    .from('telegram_group_admins')
-    .select('tg_user_id, is_owner, tg_chat_id')
-    .in('tg_user_id', tgUserIds)
-  
-  // Получаем информацию о группах
-  const chatIds = Array.from(new Set(groupAdmins?.map((ga: any) => ga.tg_chat_id).filter(Boolean)))
-  const { data: groups } = await supabase
-    .from('telegram_groups')
-    .select('tg_chat_id, bot_status')
-    .in('tg_chat_id', chatIds)
-  
-  const groupsMap = new Map(groups?.map(g => [g.tg_chat_id, g]) || [])
-  const enrichedGroupAdmins = groupAdmins?.map((ga: any) => ({
-    ...ga,
-    telegram_groups: groupsMap.get(ga.tg_chat_id)
-  }))
-  
-  logger.debug({ 
-    group_admins_count: enrichedGroupAdmins?.length,
-    error: groupAdminsError?.message
-  }, 'Group admins');
-  
-  // Форматируем данные
-  const formattedUsers = Array.from(userMap.entries()).map(([userId, userData]) => {
-    const userInfo = userDataMap.get(userId)
-    const tgAccounts = telegramAccounts?.filter(acc => acc.user_id === userId) || []
-    const tgUserIds = tgAccounts.map(acc => acc.telegram_user_id).filter(Boolean)
-    const groupsAsAdmin = enrichedGroupAdmins?.filter((ga: any) => 
-      tgUserIds.includes(ga.tg_user_id) && 
-      ga.telegram_groups?.bot_status === 'connected'
-    ) || []
+      : (tgAccount ? fullName : null)
     
     return {
       user_id: userId,
-      full_name: userInfo?.full_name || 'Не указано',
-      email: userInfo?.email || 'N/A',
-      email_confirmed: userInfo?.email_confirmed || false,
+      full_name: fullName,
+      email: user?.email || 'N/A',
+      email_confirmed: !!user?.email_verified,
       telegram_verified: tgAccounts.some(acc => acc.is_verified),
-      telegram_display_name: userInfo?.telegram_display_name || null,
+      telegram_display_name: telegramDisplayName,
       owner_orgs_count: userData.owner_orgs.length,
       admin_orgs_count: userData.admin_orgs.length,
       total_orgs_count: userData.total_orgs,
       groups_with_bot_count: groupsAsAdmin.length,
-      last_sign_in_at: userInfo?.last_sign_in_at,
-      created_at: undefined
+      last_sign_in_at: undefined,
+      created_at: user?.created_at
     }
   }).sort((a, b) => {
-    const dateA = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : 0
-    const dateB = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : 0
+    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
     return dateB - dateA
   })
   
@@ -177,7 +138,7 @@ export default async function SuperadminUsersPage() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Пользователи</h2>
         <p className="text-gray-600 mt-1">
-          Владельцы и админы с авторизацией по email
+          Пользователи с организациями ({formattedUsers.length} всего)
         </p>
       </div>
       
@@ -185,4 +146,3 @@ export default async function SuperadminUsersPage() {
     </div>
   )
 }
-

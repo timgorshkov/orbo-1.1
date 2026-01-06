@@ -7,55 +7,77 @@ export default async function SuperadminOrganizationsPage() {
   
   const supabase = createAdminServer()
   
-  // Получаем организации с метриками
+  // Получаем организации (простой запрос без JOIN)
   const { data: organizations } = await supabase
     .from('organizations')
-    .select(`
-      id,
-      name,
-      created_at,
-      status,
-      archived_at,
-      user_telegram_accounts (
-        is_verified,
-        telegram_username,
-        telegram_first_name,
-        telegram_last_name
-      ),
-      org_telegram_groups (
-        telegram_groups (
-          id,
-          bot_status
-        )
-      ),
-      participants (
-        id
-      ),
-      material_pages (
-        id
-      ),
-      events (
-        id
-      )
-    `)
+    .select('id, name, created_at, status, archived_at')
     .order('created_at', { ascending: false })
   
-  // Форматируем данные
-  const formattedOrgs = (organizations || []).map(org => {
-    const verifiedAccount = org.user_telegram_accounts?.find((acc: any) => acc.is_verified)
-    
-    // Формируем отображаемое имя: username или first_name + last_name
-    let telegramDisplayName = null
-    if (verifiedAccount) {
-      if (verifiedAccount.telegram_username) {
-        telegramDisplayName = `@${verifiedAccount.telegram_username}`
-      } else {
-        const fullName = [verifiedAccount.telegram_first_name, verifiedAccount.telegram_last_name]
-          .filter(Boolean)
-          .join(' ')
-        telegramDisplayName = fullName || 'Верифицирован'
-      }
+  if (!organizations || organizations.length === 0) {
+    return (
+      <div>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Организации</h2>
+          <p className="text-gray-600 mt-1">Нет организаций</p>
+        </div>
+      </div>
+    )
+  }
+  
+  const orgIds = organizations.map(o => o.id)
+  
+  // Параллельно получаем связанные данные
+  const [
+    { data: orgGroups },
+    { data: participants },
+    { data: materialPages },
+    { data: events }
+  ] = await Promise.all([
+    supabase.from('org_telegram_groups').select('org_id, tg_chat_id').in('org_id', orgIds),
+    supabase.from('participants').select('id, org_id').in('org_id', orgIds),
+    supabase.from('material_pages').select('id, org_id').in('org_id', orgIds),
+    supabase.from('events').select('id, org_id').in('org_id', orgIds)
+  ])
+  
+  // Получаем telegram_groups для подсчёта bot_status
+  const chatIds = Array.from(new Set(orgGroups?.map(g => g.tg_chat_id) || []))
+  const { data: telegramGroups } = chatIds.length > 0 
+    ? await supabase.from('telegram_groups').select('id, tg_chat_id, bot_status').in('tg_chat_id', chatIds)
+    : { data: [] }
+  
+  // Создаём маппинги
+  const groupsMap = new Map<string, { count: number, withBot: number }>()
+  for (const og of orgGroups || []) {
+    if (!groupsMap.has(og.org_id)) {
+      groupsMap.set(og.org_id, { count: 0, withBot: 0 })
     }
+    const entry = groupsMap.get(og.org_id)!
+    entry.count++
+    
+    const tg = telegramGroups?.find(t => t.tg_chat_id === og.tg_chat_id)
+    if (tg?.bot_status === 'connected') {
+      entry.withBot++
+    }
+  }
+  
+  const participantsMap = new Map<string, number>()
+  for (const p of participants || []) {
+    participantsMap.set(p.org_id, (participantsMap.get(p.org_id) || 0) + 1)
+  }
+  
+  const materialsMap = new Map<string, number>()
+  for (const m of materialPages || []) {
+    materialsMap.set(m.org_id, (materialsMap.get(m.org_id) || 0) + 1)
+  }
+  
+  const eventsMap = new Map<string, number>()
+  for (const e of events || []) {
+    eventsMap.set(e.org_id, (eventsMap.get(e.org_id) || 0) + 1)
+  }
+  
+  // Форматируем данные
+  const formattedOrgs = organizations.map(org => {
+    const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
     
     return {
       id: org.id,
@@ -63,16 +85,14 @@ export default async function SuperadminOrganizationsPage() {
       created_at: org.created_at,
       status: org.status || 'active',
       archived_at: org.archived_at,
-      has_telegram: (org.user_telegram_accounts?.length || 0) > 0,
-      telegram_verified: !!verifiedAccount,
-      telegram_username: telegramDisplayName,
-      groups_count: org.org_telegram_groups?.length || 0,
-      groups_with_bot: org.org_telegram_groups?.filter((g: any) => 
-        g.telegram_groups?.bot_status === 'connected'
-      ).length || 0,
-      participants_count: org.participants?.length || 0,
-      materials_count: org.material_pages?.length || 0,
-      events_count: org.events?.length || 0
+      has_telegram: false,
+      telegram_verified: false,
+      telegram_username: null,
+      groups_count: groups.count,
+      groups_with_bot: groups.withBot,
+      participants_count: participantsMap.get(org.id) || 0,
+      materials_count: materialsMap.get(org.id) || 0,
+      events_count: eventsMap.get(org.id) || 0
     }
   })
   
@@ -85,7 +105,7 @@ export default async function SuperadminOrganizationsPage() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Организации</h2>
         <p className="text-gray-600 mt-1">
-          Все организации платформы с метриками
+          Все организации платформы с метриками ({formattedOrgs.length} всего)
         </p>
       </div>
       
@@ -96,4 +116,3 @@ export default async function SuperadminOrganizationsPage() {
     </div>
   )
 }
-
