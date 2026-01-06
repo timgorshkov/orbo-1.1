@@ -28,71 +28,78 @@ function getOrCreatePgClient() {
 }
 
 /**
+ * Проверяет, содержит ли select-строка JOIN синтаксис
+ */
+function hasJoinSyntax(columns?: string): boolean {
+  if (!columns) return false;
+  return columns.includes('(') || columns.includes('!inner') || columns.includes('!left');
+}
+
+/**
  * Создаёт smart wrapper для QueryBuilder, который:
  * - Перехватывает .select() с JOIN синтаксисом
  * - Направляет простые запросы на PostgreSQL
  * - Направляет сложные запросы (с JOIN) на Supabase
  */
 function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: SupabaseClient) {
-  const pgBuilder = pgClient.from(table);
-  const supabaseBuilder = supabaseClient.from(table);
-  
+  // Отслеживаем какой провайдер использовать
+  let providerDecided = false;
   let useSupabase = false;
-  let currentBuilder = pgBuilder;
   
-  // Создаём Proxy для отслеживания .select() с joins
-  return new Proxy(pgBuilder, {
-    get(target: any, prop: string | symbol) {
-      // Перехватываем .select() чтобы проверить на joins
-      if (prop === 'select') {
-        return (columns?: string, options?: any) => {
-          // Проверяем есть ли JOIN синтаксис (скобки или !inner)
-          if (columns && (columns.includes('(') || columns.includes('!inner') || columns.includes('!left'))) {
-            useSupabase = true;
-            currentBuilder = supabaseBuilder.select(columns, options);
-            logger.debug({ table, columns, provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
-            return createForwardingProxy(currentBuilder);
-          }
-          
-          // Простой select - используем PostgreSQL
-          currentBuilder = pgBuilder.select(columns, options);
-          return createForwardingProxy(currentBuilder);
-        };
-      }
-      
-      // Для всех остальных методов - используем текущий builder
-      const value = target[prop];
-      if (typeof value === 'function') {
-        return (...args: any[]) => {
-          const result = value.apply(target, args);
-          return createForwardingProxy(result);
-        };
-      }
-      return value;
+  const getBuilder = () => {
+    if (useSupabase) {
+      return supabaseClient.from(table);
     }
-  });
-}
-
-/**
- * Создаёт простой proxy для пробрасывания вызовов
- */
-function createForwardingProxy(builder: any) {
-  return new Proxy(builder, {
-    get(target: any, prop: string | symbol) {
-      const value = target[prop];
-      if (typeof value === 'function') {
-        return (...args: any[]) => {
-          const result = value.apply(target, args);
-          // Если результат - объект с методами, продолжаем проксировать
-          if (result && typeof result === 'object' && !result.then) {
-            return createForwardingProxy(result);
-          }
-          return result;
-        };
+    return pgClient.from(table);
+  };
+  
+  // Создаём цепочку вызовов, которая решает провайдер при .select()
+  const chainProxy = (currentBuilder: any): any => {
+    return new Proxy(currentBuilder, {
+      get(target: any, prop: string | symbol) {
+        // Перехватываем .select() для определения провайдера
+        if (prop === 'select' && !providerDecided) {
+          return (columns?: string, options?: any) => {
+            providerDecided = true;
+            
+            if (hasJoinSyntax(columns)) {
+              useSupabase = true;
+              logger.debug({ table, columns: columns?.substring(0, 100), provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
+              const newBuilder = supabaseClient.from(table).select(columns, options);
+              return chainProxy(newBuilder);
+            }
+            
+            logger.debug({ table, provider: 'postgres' }, 'Simple query routed to PostgreSQL');
+            const newBuilder = pgClient.from(table).select(columns, options);
+            return chainProxy(newBuilder);
+          };
+        }
+        
+        const value = target[prop];
+        
+        // Если это then/catch - возвращаем как есть (конец цепочки)
+        if (prop === 'then' || prop === 'catch' || prop === 'finally') {
+          return value?.bind?.(target);
+        }
+        
+        if (typeof value === 'function') {
+          return (...args: any[]) => {
+            const result = value.apply(target, args);
+            // Продолжаем проксировать для цепочки методов
+            if (result && typeof result === 'object') {
+              return chainProxy(result);
+            }
+            return result;
+          };
+        }
+        
+        return value;
       }
-      return value;
-    }
-  });
+    });
+  };
+  
+  // Возвращаем начальный прокси на pgBuilder (будет заменён после select)
+  return chainProxy(pgClient.from(table));
 }
 
 /**
