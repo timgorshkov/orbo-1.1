@@ -411,14 +411,18 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
           return `(${columns.map(() => this.nextParam()).join(', ')})`;
         }).join(', ');
         
+        // onConflict может быть одной колонкой или списком через запятую
         const conflictTarget = this.upsertOptions.onConflict || 'id';
+        const conflictColumns = conflictTarget.split(',').map(c => c.trim());
+        const conflictColumnsFormatted = conflictColumns.map(c => `"${c}"`).join(', ');
+        
         const updateSet = columns
-          .filter(c => c !== conflictTarget)
+          .filter(c => !conflictColumns.includes(c))
           .map(c => `"${c}" = EXCLUDED."${c}"`)
           .join(', ');
         
         sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings}`;
-        sql += ` ON CONFLICT ("${conflictTarget}") DO UPDATE SET ${updateSet}`;
+        sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO UPDATE SET ${updateSet}`;
         sql += ' RETURNING *';
         break;
       }
