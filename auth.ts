@@ -124,13 +124,35 @@ export const authConfig: NextAuthConfig = {
       return true
     },
 
-    async jwt({ token, user, account, profile }) {
-      // При первом входе сохраняем данные пользователя в токен
-      if (user) {
-        token.id = user.id
+    async jwt({ token, user, account, profile, trigger }) {
+      // При первом входе ищем пользователя в БД по email
+      if (user && user.email) {
+        // Получаем user_id из нашей БД
+        const db = (await import('@/lib/server/supabaseServer')).createAdminServer()
+        const { data: dbUser } = await db
+          .from('users')
+          .select('id, name, image')
+          .eq('email', user.email.toLowerCase())
+          .single()
+        
+        if (dbUser) {
+          // Используем ID из БД, а не из OAuth провайдера
+          token.id = dbUser.id
+          token.sub = dbUser.id
+          token.name = dbUser.name || user.name
+          token.picture = dbUser.image || user.image
+          logger.debug({ 
+            oauth_id: user.id, 
+            db_id: dbUser.id, 
+            email: user.email 
+          }, 'Using database user ID instead of OAuth ID')
+        } else {
+          // Fallback на OAuth ID если пользователя нет в БД
+          token.id = user.id
+          token.name = user.name
+          token.picture = user.image
+        }
         token.email = user.email
-        token.name = user.name
-        token.picture = user.image
       }
 
       if (account) {
