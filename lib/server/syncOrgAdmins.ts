@@ -82,16 +82,16 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
       return { isAdmin: false, groups: [] }
     }
     
-    let groups: Array<{ id: string; title: string }> = [];
+    let groups: Array<{ id: number; title: string }> = [];
     if (adminStatus && adminStatus.length > 0) {
-      const chatIds = adminStatus.map(s => s.tg_chat_id);
+      const chatIds = adminStatus.map((s: any) => s.tg_chat_id);
       const { data: telegramGroups } = await adminSupabase
         .from('telegram_groups')
         .select('id, title, tg_chat_id')
         .in('tg_chat_id', chatIds);
       
-      groups = (telegramGroups || []).map(g => ({
-        id: g.id,
+      groups = (telegramGroups || []).map((g: any) => ({
+        id: Number(g.id),
         title: g.title
       }));
     }
