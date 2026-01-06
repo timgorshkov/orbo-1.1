@@ -28,6 +28,74 @@ function getOrCreatePgClient() {
 }
 
 /**
+ * Создаёт smart wrapper для QueryBuilder, который:
+ * - Перехватывает .select() с JOIN синтаксисом
+ * - Направляет простые запросы на PostgreSQL
+ * - Направляет сложные запросы (с JOIN) на Supabase
+ */
+function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: SupabaseClient) {
+  const pgBuilder = pgClient.from(table);
+  const supabaseBuilder = supabaseClient.from(table);
+  
+  let useSupabase = false;
+  let currentBuilder = pgBuilder;
+  
+  // Создаём Proxy для отслеживания .select() с joins
+  return new Proxy(pgBuilder, {
+    get(target: any, prop: string | symbol) {
+      // Перехватываем .select() чтобы проверить на joins
+      if (prop === 'select') {
+        return (columns?: string, options?: any) => {
+          // Проверяем есть ли JOIN синтаксис (скобки или !inner)
+          if (columns && (columns.includes('(') || columns.includes('!inner') || columns.includes('!left'))) {
+            useSupabase = true;
+            currentBuilder = supabaseBuilder.select(columns, options);
+            logger.debug({ table, columns, provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
+            return createForwardingProxy(currentBuilder);
+          }
+          
+          // Простой select - используем PostgreSQL
+          currentBuilder = pgBuilder.select(columns, options);
+          return createForwardingProxy(currentBuilder);
+        };
+      }
+      
+      // Для всех остальных методов - используем текущий builder
+      const value = target[prop];
+      if (typeof value === 'function') {
+        return (...args: any[]) => {
+          const result = value.apply(target, args);
+          return createForwardingProxy(result);
+        };
+      }
+      return value;
+    }
+  });
+}
+
+/**
+ * Создаёт простой proxy для пробрасывания вызовов
+ */
+function createForwardingProxy(builder: any) {
+  return new Proxy(builder, {
+    get(target: any, prop: string | symbol) {
+      const value = target[prop];
+      if (typeof value === 'function') {
+        return (...args: any[]) => {
+          const result = value.apply(target, args);
+          // Если результат - объект с методами, продолжаем проксировать
+          if (result && typeof result === 'object' && !result.then) {
+            return createForwardingProxy(result);
+          }
+          return result;
+        };
+      }
+      return value;
+    }
+  });
+}
+
+/**
  * Создаёт Proxy-обёртку вокруг Supabase клиента,
  * которая перенаправляет DB операции на PostgreSQL
  */
@@ -43,11 +111,10 @@ function createHybridClient(supabaseClient: SupabaseClient): SupabaseClient {
   
   return new Proxy(supabaseClient, {
     get(target, prop: string | symbol) {
-      // Перенаправляем .from() на PostgreSQL
+      // Перенаправляем .from() через smart wrapper
       if (prop === 'from') {
         return (table: string) => {
-          logger.debug({ table, provider: 'postgres' }, 'DB query routed to PostgreSQL');
-          return pg.from(table);
+          return createSmartQueryBuilder(table, pg, supabaseClient);
         };
       }
       
