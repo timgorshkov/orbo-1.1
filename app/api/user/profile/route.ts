@@ -41,22 +41,14 @@ export async function GET(request: NextRequest) {
     const adminSupabase = createAdminServer();
 
     // 1. Данные пользователя из auth
-    // Для OAuth пользователей (Google, Yandex) email считается подтверждённым
-    // (провайдер OAuth уже верифицировал email)
-    const isOAuthUser = user.provider === 'nextauth';
-    const emailConfirmed = isOAuthUser 
-      ? true  // OAuth users have verified emails by definition
-      : !!user.raw?.supabase?.email_confirmed_at;
-    
+    // Для OAuth и email пользователей email считается подтверждённым
     const authUser = {
       id: user.id,
       email: user.email,
-      email_confirmed: emailConfirmed,
-      email_confirmed_at: isOAuthUser 
-        ? user.raw?.nextauth?.createdAt || new Date().toISOString()
-        : user.raw?.supabase?.email_confirmed_at,
-      metadata: user.raw?.supabase?.user_metadata || user.raw?.nextauth || {},
-      created_at: user.raw?.supabase?.created_at || user.raw?.nextauth?.createdAt
+      email_confirmed: true,  // All auth methods verify email
+      email_confirmed_at: new Date().toISOString(),
+      metadata: user.raw?.nextauth || {},
+      created_at: user.raw?.nextauth?.createdAt || new Date().toISOString()
     };
 
     // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно

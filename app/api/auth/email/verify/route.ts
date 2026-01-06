@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
-import { createServerClient } from '@supabase/ssr'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { cookies } from 'next/headers'
 import { createAPILogger } from '@/lib/logger'
+import { signIn } from '@/auth'
 
-// Для DB операций используем hybrid клиент (PostgreSQL)
 const supabaseAdmin = createAdminServer()
-// Для Auth операций используем оригинальный Supabase клиент
-const supabaseAuth = getSupabaseAdminClient()
 
 /**
  * Верификация magic link и создание сессии
@@ -15,8 +12,8 @@ const supabaseAuth = getSupabaseAdminClient()
  * GET /api/auth/email/verify?token=xxx
  * 
  * 1. Проверяет токен в БД
- * 2. Находит или создаёт пользователя в Supabase
- * 3. Создаёт сессию и устанавливает cookies
+ * 2. Находит или создаёт пользователя
+ * 3. Создаёт сессию через NextAuth
  * 4. Редиректит на redirectUrl
  */
 export async function GET(request: NextRequest) {
@@ -59,167 +56,69 @@ export async function GET(request: NextRequest) {
     const email = authToken.email
     logger.info({ email, token_id: authToken.id }, 'Valid token, processing auth')
     
-    // 3. Находим или создаём пользователя в Supabase
-    let userId: string | null = null
-    
-    // Пробуем найти существующего пользователя
-    const { data: existingUser } = await supabaseAdmin.rpc('get_user_id_by_email', { 
-      p_email: email 
-    })
-    
-    if (existingUser) {
-      userId = existingUser
-      logger.info({ email, user_id: userId }, 'Found existing user')
-      
-      // Обновляем email_confirmed_at для существующих пользователей (клик по magic link подтверждает email)
-      const { error: updateError } = await supabaseAuth.auth.admin.updateUserById(existingUser, {
-        email_confirm: true
-      })
-      
-      if (updateError) {
-        logger.warn({ error: updateError.message, user_id: existingUser }, 'Failed to update email_confirmed_at')
-      } else {
-        logger.debug({ user_id: existingUser }, 'Updated email confirmation for magic link user')
-      }
-    } else {
-      // Создаём нового пользователя
-      const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
-      const { data: newUser, error: createError } = await supabaseAuth.auth.admin.createUser({
-        email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: {
-          auth_provider: 'email_magic_link'
-        }
-      })
-      
-      if (createError || !newUser.user) {
-        logger.error({ error: createError?.message, email }, 'Failed to create user')
-        return NextResponse.redirect(new URL('/signin?error=user_create_failed', baseUrl))
-      }
-      
-      userId = newUser.user.id
-      logger.info({ email, user_id: userId }, 'Created new user')
-    }
-    
-    // 4. Проверяем что userId определён
-    if (!userId) {
-      logger.error({ email }, 'User ID is null after lookup/create')
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
-    }
-    
-    // 5. Создаём сессию через временный пароль
-    let userData;
-    try {
-      const result = await supabaseAuth.auth.admin.getUserById(userId);
-      userData = result.data;
-    } catch (fetchError) {
-      const isTransient = fetchError instanceof Error && 
-        (fetchError.message?.includes('fetch failed') || fetchError.message?.includes('timeout'));
-      if (isTransient) {
-        logger.warn({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
-          'Transient error fetching user');
-      } else {
-        logger.error({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
-          'Failed to fetch user');
-      }
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
-    }
-    if (!userData?.user) {
-      logger.error({ user_id: userId }, 'User not found')
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
-    }
-    
-    // 6. Устанавливаем временный пароль и логинимся
-    const tempPassword = `temp_email_${Math.random().toString(36).slice(2)}_${Date.now()}`
-    await supabaseAuth.auth.admin.updateUserById(userId, { password: tempPassword })
-    
-    const { data: sessionData, error: sessionError } = await supabaseAuth.auth.signInWithPassword({
-      email: userData.user.email!,
-      password: tempPassword
-    })
-    
-    if (sessionError || !sessionData?.session) {
-      logger.error({ 
-        error: sessionError?.message,
-        user_id: userId
-      }, 'Failed to create session')
-      return NextResponse.redirect(new URL('/signin?error=session_error', baseUrl))
-    }
-    
-    // 7. Помечаем токен как использованный
+    // 3. Помечаем токен как использованный
     await supabaseAdmin
       .from('email_auth_tokens')
       .update({ 
         is_used: true, 
-        used_at: new Date().toISOString(),
-        user_id: userId
+        used_at: new Date().toISOString()
       })
       .eq('id', authToken.id)
     
-    // 8. Устанавливаем session cookies через @supabase/ssr
-    const cookieStore = await cookies()
+    // 4. Находим или создаём пользователя в локальной БД
+    let { data: user } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .single()
     
-    const supabaseSSR = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-          set(name: string, value: string, options: any) {
-            try {
-              cookieStore.set({ name, value, ...options })
-            } catch (error) {
-              // Ignore errors (may happen after response is sent)
-            }
-          },
-          remove(name: string, options: any) {
-            try {
-              cookieStore.set({ name, value: '', ...options })
-            } catch (error) {
-              // Ignore errors
-            }
-          },
-        },
+    if (!user) {
+      // Создаём нового пользователя
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          email: email.toLowerCase(),
+          email_verified: new Date().toISOString(),
+        })
+        .select()
+        .single()
+      
+      if (createError) {
+        logger.error({ error: createError.message, email }, 'Failed to create user')
+        return NextResponse.redirect(new URL('/signin?error=user_create_failed', baseUrl))
       }
-    )
-    
-    const { error: setSessionError } = await supabaseSSR.auth.setSession({
-      access_token: sessionData.session.access_token,
-      refresh_token: sessionData.session.refresh_token
-    })
-    
-    if (setSessionError) {
-      logger.error({ 
-        error: setSessionError.message,
-        user_id: userId
-      }, 'Error setting session cookies')
-      // Continue anyway
+      
+      user = newUser
+      logger.info({ email, user_id: user.id }, 'Created new user via email')
+    } else {
+      // Обновляем email_verified
+      await supabaseAdmin
+        .from('users')
+        .update({ 
+          email_verified: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        
+      logger.info({ email, user_id: user.id }, 'User signed in via email')
     }
     
-    // 9. Sync to CRM (non-blocking)
-    import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
-      ensureCrmRecord(userId!, email).catch(() => {});
-    }).catch(() => {});
-    
-    // 10. Редиректим на целевой URL
+    // 5. Создаём сессию через NextAuth signIn
+    // Используем redirect напрямую через signIn
     const finalRedirectUrl = authToken.redirect_url || '/orgs'
     
     logger.info({ 
-      user_id: userId,
+      user_id: user.id,
       email,
       redirect_url: finalRedirectUrl
     }, 'Email auth successful')
     
-    // Возвращаем HTML с meta refresh для надёжной установки cookies
+    // 6. Возвращаем HTML страницу с автосабмитом формы для NextAuth
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0;url=${finalRedirectUrl}">
   <title>Вход в Orbo...</title>
   <style>
     body {
@@ -259,6 +158,7 @@ export async function GET(request: NextRequest) {
       opacity: 0.8;
       margin-top: 8px;
     }
+    form { display: none; }
   </style>
 </head>
 <body>
@@ -267,10 +167,24 @@ export async function GET(request: NextRequest) {
     <div class="message">Добро пожаловать в Orbo!</div>
     <div class="sub-message">Переход в личный кабинет...</div>
   </div>
+  <form id="authForm" method="POST" action="/api/auth/callback/email-token">
+    <input type="hidden" name="email" value="${email}" />
+    <input type="hidden" name="token" value="${token}" />
+    <input type="hidden" name="callbackUrl" value="${finalRedirectUrl}" />
+    <input type="hidden" name="csrfToken" value="" />
+  </form>
   <script>
-    setTimeout(() => {
-      window.location.href = '${finalRedirectUrl}';
-    }, 100);
+    // Получаем CSRF токен и сабмитим форму
+    fetch('/api/auth/csrf')
+      .then(r => r.json())
+      .then(data => {
+        document.querySelector('input[name="csrfToken"]').value = data.csrfToken;
+        document.getElementById('authForm').submit();
+      })
+      .catch(() => {
+        // Если не удалось получить CSRF, просто редиректим
+        window.location.href = '${finalRedirectUrl}';
+      });
   </script>
 </body>
 </html>
@@ -292,4 +206,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/signin?error=verification_failed', baseUrl))
   }
 }
-
