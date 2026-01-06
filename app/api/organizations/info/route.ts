@@ -16,8 +16,6 @@ export async function GET(request: Request) {
     }
 
     const supabase = createAdminServer();
-      auth: { persistSession: false },
-    });
 
     const { data, error } = await supabase
       .from('organizations')
