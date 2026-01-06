@@ -16,20 +16,7 @@ export async function GET(
     // Find the invitation
     const { data: invitation, error: inviteError } = await adminSupabase
       .from('invitations')
-      .select(`
-        id,
-        email,
-        role,
-        status,
-        expires_at,
-        created_at,
-        invited_by,
-        org_id,
-        organizations!inner (
-          id,
-          name
-        )
-      `)
+      .select('id, email, role, status, expires_at, created_at, invited_by, org_id')
       .eq('token', token)
       .single()
 
@@ -74,9 +61,12 @@ export async function GET(
     const user = await getUnifiedUser()
     
     // Format organization data
-    const org = Array.isArray(invitation.organizations) 
-      ? invitation.organizations[0] 
-      : invitation.organizations
+    // Получаем данные организации
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', invitation.org_id)
+      .single()
 
     const invitationData = {
       id: invitation.id,

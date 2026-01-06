@@ -173,23 +173,7 @@ export async function getHomePageData(
     // 3. Get upcoming events (3 max)
     const { data: upcomingEvents } = await supabase
       .from('events')
-      .select(`
-        id,
-        title,
-        description,
-        cover_image_url,
-        event_date,
-        start_time,
-        event_type,
-        location_info,
-        capacity,
-        event_registrations!event_registrations_event_id_fkey(
-          id,
-          status,
-          participant_id,
-          participants!inner(merged_into)
-        )
-      `)
+      .select('id, title, description, cover_image_url, event_date, start_time, event_type, location_info, capacity')
       .eq('org_id', orgId)
       .eq('status', 'published')
       .gte('event_date', now.toISOString().split('T')[0])
@@ -197,11 +181,41 @@ export async function getHomePageData(
       .order('start_time', { ascending: true })
       .limit(3)
 
+    // Получаем регистрации для всех событий
+    const eventIds = upcomingEvents?.map(e => e.id) || [];
+    let registrationsMap = new Map<string, any[]>();
+    
+    if (eventIds.length > 0) {
+      const { data: registrations } = await supabase
+        .from('event_registrations')
+        .select('event_id, id, status, participant_id')
+        .in('event_id', eventIds)
+        .eq('status', 'registered');
+      
+      // Получаем участников для проверки merged_into
+      const participantIds = registrations?.map(r => r.participant_id).filter(Boolean) || [];
+      const { data: participants } = await supabase
+        .from('participants')
+        .select('id, merged_into')
+        .in('id', participantIds)
+        .is('merged_into', null);
+      
+      const validParticipantIds = new Set(participants?.map(p => p.id) || []);
+      
+      // Группируем регистрации по event_id
+      registrations?.forEach(reg => {
+        if (validParticipantIds.has(reg.participant_id)) {
+          if (!registrationsMap.has(reg.event_id)) {
+            registrationsMap.set(reg.event_id, []);
+          }
+          registrationsMap.get(reg.event_id)!.push(reg);
+        }
+      });
+    }
+
     // Process events and calculate registration counts
     const processedEvents = (upcomingEvents || []).map((event: any) => {
-      const registrations = (event.event_registrations || []).filter(
-        (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
-      )
+      const registrations = registrationsMap.get(event.id) || [];
       
       return {
         id: event.id,
@@ -218,21 +232,31 @@ export async function getHomePageData(
     })
 
     // 4. Get my event registrations
-    const { data: myRegistrations } = await supabase
+    const { data: myRegRaw } = await supabase
       .from('event_registrations')
-      .select(`
-        registered_at,
-        events!inner(
-          id,
-          title,
-          event_date,
-          start_time
-        )
-      `)
+      .select('registered_at, event_id')
       .eq('participant_id', participant.id)
       .eq('status', 'registered')
-      .gte('events.event_date', now.toISOString().split('T')[0])
-      .order('events.event_date', { ascending: true })
+    
+    // Получаем события для регистраций
+    let myRegistrations: any[] = [];
+    if (myRegRaw && myRegRaw.length > 0) {
+      const regEventIds = myRegRaw.map(r => r.event_id);
+      const { data: eventsData } = await supabase
+        .from('events')
+        .select('id, title, event_date, start_time')
+        .in('id', regEventIds)
+        .gte('event_date', now.toISOString().split('T')[0])
+        .order('event_date', { ascending: true });
+      
+      const eventsMap = new Map(eventsData?.map(e => [e.id, e]) || []);
+      myRegistrations = myRegRaw
+        .filter(r => eventsMap.has(r.event_id))
+        .map(r => ({
+          registered_at: r.registered_at,
+          events: eventsMap.get(r.event_id)
+        }));
+    }
 
     const processedRegistrations = (myRegistrations || []).map((reg: any) => {
       const eventDate = new Date(reg.events.event_date)
