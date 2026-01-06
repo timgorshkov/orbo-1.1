@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 })
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const supabase = createAdminServer()
 
     const participantsMap = new Map<number, ParticipantAggregate>()
     const usernameToUserId = new Map<string, number>()

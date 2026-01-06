@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import Link from 'next/link'
 import { createClientLogger } from '@/lib/logger'
+import { ymGoal } from '@/components/analytics/YandexMetrika'
 
 // Компонент для обработки ошибок из URL (требует Suspense)
 function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
@@ -49,10 +50,17 @@ export default function SignIn() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
+  // Track signin page view
+  useEffect(() => {
+    ymGoal('signin_page_view');
+  }, []);
+
   // Редирект на /orgs если пользователь уже авторизован
   useEffect(() => {
     if (status === 'authenticated' && session) {
       logger.info({ email: session.user?.email }, 'User already authenticated, redirecting to /orgs');
+      // Track successful authentication (returning user)
+      ymGoal('auth_success', { returning: true });
       router.replace('/orgs');
     }
   }, [status, session, router, logger]);
@@ -109,6 +117,8 @@ export default function SignIn() {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
         setMessage('Мы отправили ссылку для входа на ваш email. Проверьте почту!')
+        // Track successful email signin request
+        ymGoal('signin_email_sent', { method: 'email' });
       }
     } catch (error) {
       logger.error({
@@ -129,6 +139,9 @@ export default function SignIn() {
   async function signInWithOAuth(provider: 'google' | 'yandex') {
     setOauthLoading(provider)
     setMessage(null)
+    
+    // Track OAuth signin attempt
+    ymGoal('signin_oauth_start', { provider });
     
     try {
       // NextAuth.js signIn - редиректит на провайдера

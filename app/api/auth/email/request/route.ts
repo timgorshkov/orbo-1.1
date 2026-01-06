@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import crypto from 'crypto'
 import { createAPILogger } from '@/lib/logger'
 import { sendEmail } from '@/lib/services/email'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabaseAdmin = createAdminServer()
 
 /**
  * Запрос magic link для авторизации по email

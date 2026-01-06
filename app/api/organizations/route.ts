@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 
@@ -11,10 +11,7 @@ export async function POST(req: NextRequest) {
     const { name } = await req.json()
     
     // Используем сервисную роль для обхода RLS
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabase = createAdminServer()
 
     // Используем unified auth для поддержки Supabase и NextAuth пользователей
     const session = await getUnifiedSession();

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createAPILogger } from '@/lib/logger'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Для DB операций используем hybrid клиент (PostgreSQL)
+const supabaseAdmin = createAdminServer()
+// Для Auth операций используем оригинальный Supabase клиент
+const supabaseAuth = getSupabaseAdminClient()
 
 /**
  * Верификация magic link и создание сессии
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
       logger.info({ email, user_id: userId }, 'Found existing user')
       
       // Обновляем email_confirmed_at для существующих пользователей (клик по magic link подтверждает email)
-      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existingUser, {
+      const { error: updateError } = await supabaseAuth.auth.admin.updateUserById(existingUser, {
         email_confirm: true
       })
       
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     } else {
       // Создаём нового пользователя
       const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: newUser, error: createError } = await supabaseAuth.auth.admin.createUser({
         email,
         password: tempPassword,
         email_confirm: true,
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     // 5. Создаём сессию через временный пароль
     let userData;
     try {
-      const result = await supabaseAdmin.auth.admin.getUserById(userId);
+      const result = await supabaseAuth.auth.admin.getUserById(userId);
       userData = result.data;
     } catch (fetchError) {
       const isTransient = fetchError instanceof Error && 
@@ -132,9 +132,9 @@ export async function GET(request: NextRequest) {
     
     // 6. Устанавливаем временный пароль и логинимся
     const tempPassword = `temp_email_${Math.random().toString(36).slice(2)}_${Date.now()}`
-    await supabaseAdmin.auth.admin.updateUserById(userId, { password: tempPassword })
+    await supabaseAuth.auth.admin.updateUserById(userId, { password: tempPassword })
     
-    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: sessionData, error: sessionError } = await supabaseAuth.auth.signInWithPassword({
       email: userData.user.email!,
       password: tempPassword
     })

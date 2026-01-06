@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 });
     }
     
-    const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseService = createAdminServer();
     
     // Получаем верифицированные аккаунты текущего пользователя (не ограничиваем по org_id)
     logger.debug({ user_id: user.id }, 'Fetching verified Telegram accounts');

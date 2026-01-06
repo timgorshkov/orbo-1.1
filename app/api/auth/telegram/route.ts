@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+// Для DB операций используем hybrid клиент (PostgreSQL)
+const supabaseAdmin = createAdminServer()
+// Для Auth операций используем оригинальный Supabase клиент  
+const supabaseAuth = getSupabaseAdminClient()
 
 /**
  * Проверка подлинности данных от Telegram Login Widget
@@ -129,7 +123,7 @@ export async function POST(req: NextRequest) {
       const email = `tg${tgUserId}@telegram.user`
       const password = crypto.randomBytes(32).toString('hex')
 
-      const { data: newUser, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: newUser, error: signUpError } = await supabaseAuth.auth.admin.createUser({
         email,
         password,
         email_confirm: true, // автоматически подтверждаем
@@ -347,7 +341,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Создаём сессию для пользователя
-    const { data: session, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
+    const { data: session, error: sessionError } = await supabaseAuth.auth.admin.generateLink({
       type: 'magiclink',
       email: `tg${tgUserId}@telegram.user`,
       options: {

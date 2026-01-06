@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import Link from 'next/link'
 import { createClientLogger } from '@/lib/logger'
+import { ymGoal } from '@/components/analytics/YandexMetrika'
 
 export default function SignUp() {
   const [email, setEmail] = useState('')
@@ -16,6 +17,11 @@ export default function SignUp() {
   const logger = createClientLogger('SignUp');
   const router = useRouter();
   const { data: session, status } = useSession();
+  
+  // Track signup page view
+  useEffect(() => {
+    ymGoal('signup_page_view');
+  }, []);
 
   // Редирект на /orgs если пользователь уже авторизован
   useEffect(() => {
@@ -77,6 +83,8 @@ export default function SignUp() {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
         setMessage('Отлично! Мы отправили ссылку для подтверждения на ваш email.')
+        // Track successful email signup request
+        ymGoal('signup_email_sent', { method: 'email' });
       }
     } catch (error) {
       logger.error({
@@ -97,6 +105,9 @@ export default function SignUp() {
   async function signInWithOAuth(provider: 'google' | 'yandex') {
     setOauthLoading(provider)
     setMessage(null)
+    
+    // Track OAuth signup attempt
+    ymGoal('signup_oauth_start', { provider });
     
     try {
       // NextAuth.js signIn - редиректит на провайдера

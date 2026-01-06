@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { WebVitals } from '@/components/web-vitals';
 import { SessionProvider } from '@/components/providers/session-provider';
+import { YandexMetrika } from '@/components/analytics/YandexMetrika';
 
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
@@ -79,6 +80,7 @@ export default function RootLayout({
           {children}
         </SessionProvider>
         <WebVitals />
+        <YandexMetrika />
       </body>
   </html>
   );

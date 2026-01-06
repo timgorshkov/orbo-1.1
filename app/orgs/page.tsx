@@ -5,6 +5,7 @@ import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { LogoutButton } from '@/components/auth/logout-button'
 import { isSuperadmin } from '@/lib/server/superadminGuard'
+import { OrgsPageTracker } from '@/components/analytics/OrgsPageTracker'
 
 export const dynamic = 'force-dynamic';
 
@@ -209,6 +210,9 @@ export default async function OrganizationsPage() {
   if (organizations.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        {/* Analytics tracker for empty state */}
+        <OrgsPageTracker organizationsCount={0} hasAdminOrgs={false} />
+        
         <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
           <h1 className="mb-4 text-2xl font-bold text-gray-900">
             Добро пожаловать!
@@ -291,6 +295,12 @@ export default async function OrganizationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
+      {/* Analytics tracker */}
+      <OrgsPageTracker 
+        organizationsCount={organizations.length} 
+        hasAdminOrgs={adminOrgs.length > 0} 
+      />
+      
       <div className="mx-auto max-w-3xl px-4">
         <h1 className="mb-2 text-3xl font-bold text-gray-900">
           Выберите пространство

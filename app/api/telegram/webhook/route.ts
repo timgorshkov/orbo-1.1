@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
-import { createClient } from '@supabase/supabase-js'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createEventProcessingService } from '@/lib/services/eventProcessingService'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
@@ -19,16 +18,15 @@ const USE_OPTIMIZED_PROCESSING = process.env.USE_OPTIMIZED_WEBHOOK === 'true';
 
 export const dynamic = 'force-dynamic';
 
-// Создаем глобальный клиент Supabase с сервисной ролью для обхода RLS
-const supabaseServiceRole = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
+// Ленивая инициализация админского клиента (теперь через createAdminServer)
+let _supabaseServiceRole: ReturnType<typeof createAdminServer> | null = null;
+function getSupabaseServiceRole() {
+  if (!_supabaseServiceRole) {
+    _supabaseServiceRole = createAdminServer();
   }
-);
+  return _supabaseServiceRole;
+}
+const supabaseServiceRole = getSupabaseServiceRole();
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { webhook: 'main' });

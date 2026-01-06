@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { QualificationForm } from '@/components/onboarding/qualification-form';
 import { ArrowRight, MessageSquare, Calendar, BarChart3 } from 'lucide-react';
+import { ymGoal } from '@/components/analytics/YandexMetrika';
 
 interface WelcomeContentProps {
   qualificationCompleted: boolean;
@@ -22,10 +23,23 @@ export function WelcomeContent({
   const router = useRouter();
   const [showQualification, setShowQualification] = useState(!initialCompleted);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
+  
+  // Track welcome page view (successful registration)
+  useEffect(() => {
+    ymGoal('welcome_page_view');
+    // This is a key conversion - user successfully authenticated and landed on welcome
+    ymGoal('auth_success', { new_user: !initialCompleted });
+  }, [initialCompleted]);
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
     setQualificationDone(true);
     setShowQualification(false);
+    
+    // Track qualification completion
+    ymGoal('qualification_completed', { 
+      use_case: responses.use_case,
+      group_size: responses.group_size
+    });
     
     // Если у пользователя есть организации — редирект на /orgs
     if (hasOrganizations) {
@@ -35,6 +49,9 @@ export function WelcomeContent({
 
   const handleSkip = () => {
     setShowQualification(false);
+    
+    // Track qualification skip
+    ymGoal('qualification_skipped');
     
     // Если у пользователя есть организации — редирект на /orgs
     if (hasOrganizations) {

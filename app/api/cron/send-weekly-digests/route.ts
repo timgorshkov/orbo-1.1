@@ -8,21 +8,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';
 import { formatDigestForTelegram } from '@/lib/templates/weeklyDigest';
 import { sendDigestBatch } from '@/lib/services/telegramNotificationService';
 import { createCronLogger } from '@/lib/logger';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 export const dynamic = 'force-dynamic';
 
