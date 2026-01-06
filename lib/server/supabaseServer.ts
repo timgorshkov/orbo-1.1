@@ -42,8 +42,6 @@ function hasJoinSyntax(columns?: string): boolean {
  * - Направляет сложные запросы (с JOIN) на Supabase
  */
 function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: SupabaseClient) {
-  logger.info({ table }, 'Creating smart query builder for table');
-  
   // Отслеживаем какой провайдер использовать
   let providerDecided = false;
   let useSupabase = false;
@@ -63,16 +61,15 @@ function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: S
         if (prop === 'select' && !providerDecided) {
           return (columns?: string, options?: any) => {
             providerDecided = true;
-            logger.info({ table, columns: columns?.substring(0, 200), hasJoin: hasJoinSyntax(columns) }, 'Select called');
             
             if (hasJoinSyntax(columns)) {
               useSupabase = true;
-              logger.info({ table, columns: columns?.substring(0, 100), provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
+              logger.debug({ table, provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
               const newBuilder = supabaseClient.from(table).select(columns, options);
               return chainProxy(newBuilder);
             }
             
-            logger.info({ table, provider: 'postgres' }, 'Simple query routed to PostgreSQL');
+            // Простые запросы идут на PostgreSQL (не логируем для уменьшения шума)
             const newBuilder = pgClient.from(table).select(columns, options);
             return chainProxy(newBuilder);
           };
