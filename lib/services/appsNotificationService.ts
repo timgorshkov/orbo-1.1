@@ -117,8 +117,8 @@ export async function notifyItemApproved(itemId: string): Promise<{
 
     // Extract data from JSONB
     const itemData = item.data as any;
-    const app = (item.app_collections as any).apps;
-    const org = app.organizations;
+    const appInfo = (item.app_collections as any).apps;
+    const orgInfo = appInfo.organizations;
     const creator = item.participants as any;
 
     // Build message
@@ -131,9 +131,9 @@ export async function notifyItemApproved(itemId: string): Promise<{
 
     // Public URL for item
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-    const itemUrl = `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}/items/${item.id}`;
+    const itemUrl = `${baseUrl}/p/${orgInfo.slug}/apps/${(item.app_collections as any).app_id}/items/${item.id}`;
 
-    let message = `${app.icon || '📦'} <b>${title}</b>\n\n`;
+    let message = `${appInfo.icon || '📦'} <b>${title}</b>\n\n`;
     
     if (description) {
       message += `${description.slice(0, 300)}${description.length > 300 ? '...' : ''}\n\n`;
@@ -176,8 +176,8 @@ export async function notifyItemApproved(itemId: string): Promise<{
         ],
         [
           {
-            text: `📱 Все объявления в ${app.name}`,
-            url: `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
+            text: `📱 Все объявления в ${appInfo.name}`,
+            url: `${baseUrl}/p/${orgInfo.slug}/apps/${(item.app_collections as any).app_id}`,
           },
         ],
       ],
@@ -327,8 +327,8 @@ export async function notifyItemRejected(
 
     // Extract data
     const itemData = item.data as any;
-    const app = (item.app_collections as any).apps;
-    const org = app.organizations;
+    const appInfo2 = (item.app_collections as any).apps;
+    const orgInfo2 = appInfo2.organizations;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
 
     const title = itemData.title || 'Без названия';
@@ -336,7 +336,7 @@ export async function notifyItemRejected(
     // Build message
     let message = `❌ <b>Объявление отклонено</b>\n\n`;
     message += `📌 <b>${title}</b>\n`;
-    message += `📱 Приложение: ${app.name}\n\n`;
+    message += `📱 Приложение: ${appInfo2.name}\n\n`;
 
     if (rejectionReason) {
       message += `<b>Причина:</b>\n${rejectionReason}\n\n`;
@@ -351,7 +351,7 @@ export async function notifyItemRejected(
         [
           {
             text: '📱 Перейти в приложение',
-            url: `${baseUrl}/p/${org.slug}/apps/${(item.app_collections as any).app_id}`,
+            url: `${baseUrl}/p/${orgInfo2.slug}/apps/${(item.app_collections as any).app_id}`,
           },
         ],
       ],
