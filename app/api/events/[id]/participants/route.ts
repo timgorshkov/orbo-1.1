@@ -351,7 +351,6 @@ export async function GET(
         participants: participantsMap.get(r.participant_id)
       }));
     }
-      .order('registered_at', { ascending: true })
 
     if (regError) {
       logger.error({ error: regError.message, event_id: eventId }, 'Error fetching participants');

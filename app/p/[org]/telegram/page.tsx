@@ -44,8 +44,7 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
         .in('tg_chat_id', chatIds);
       
       error = groupsError;
-      groups = (telegramGroups || []) as TelegramGroup[]
-        .sort((a, b) => (a.id || 0) - (b.id || 0)) as TelegramGroup[]
+      groups = ((telegramGroups || []) as TelegramGroup[]).sort((a, b) => (a.id || 0) - (b.id || 0))
     }
     
     if (error) {
