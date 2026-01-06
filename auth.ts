@@ -79,14 +79,32 @@ if (hasYandexCredentials) {
             Authorization: `OAuth ${tokens.access_token}`,
           },
         })
-        return response.json()
+        const data = await response.json()
+        // Логируем для дебага
+        logger.debug({ 
+          yandex_profile: data,
+          has_default_email: !!data.default_email,
+          has_emails: !!data.emails,
+        }, 'Yandex userinfo response')
+        return data
       },
     },
     profile(profile: any) {
+      // Извлекаем email из различных полей Yandex API
+      const email = profile.default_email || profile.emails?.[0] || `${profile.login}@yandex.ru`
+      
+      logger.debug({ 
+        yandex_id: profile.id,
+        login: profile.login,
+        default_email: profile.default_email,
+        emails: profile.emails,
+        extracted_email: email,
+      }, 'Yandex profile mapping')
+      
       return {
         id: profile.id,
         name: profile.display_name || profile.real_name || profile.login,
-        email: profile.default_email || profile.emails?.[0],
+        email: email,
         image: profile.default_avatar_id 
           ? `https://avatars.yandex.net/get-yapic/${profile.default_avatar_id}/islands-200`
           : null,
@@ -118,41 +136,64 @@ export const authConfig: NextAuthConfig = {
       logger.info({
         user_id: user.id,
         email: user.email,
+        user_name: user.name,
         provider: account?.provider,
+        profile_id: (profile as any)?.id,
+        profile_email: (profile as any)?.email || (profile as any)?.default_email,
       }, 'Sign-in attempt')
 
       return true
     },
 
     async jwt({ token, user, account, profile, trigger }) {
-      // При первом входе ищем пользователя в БД по email
-      if (user && user.email) {
-        // Получаем user_id из нашей БД
+      // При первом входе ищем пользователя в БД
+      if (user) {
         const db = (await import('@/lib/server/supabaseServer')).createAdminServer()
-        const { data: dbUser } = await db
-          .from('users')
-          .select('id, name, image')
-          .eq('email', user.email.toLowerCase())
-          .single()
+        let dbUser = null
+        
+        // Сначала пробуем найти по email
+        if (user.email) {
+          const { data } = await db
+            .from('users')
+            .select('id, email, name, image')
+            .eq('email', user.email.toLowerCase())
+            .single()
+          dbUser = data
+        }
+        
+        // Если не нашли по email, ищем по user.id (может быть UUID из adapter)
+        if (!dbUser && user.id) {
+          const { data } = await db
+            .from('users')
+            .select('id, email, name, image')
+            .eq('id', user.id)
+            .single()
+          dbUser = data
+        }
         
         if (dbUser) {
-          // Используем ID из БД, а не из OAuth провайдера
+          // Используем данные из БД
           token.id = dbUser.id
           token.sub = dbUser.id
+          token.email = dbUser.email
           token.name = dbUser.name || user.name
           token.picture = dbUser.image || user.image
           logger.debug({ 
             oauth_id: user.id, 
             db_id: dbUser.id, 
-            email: user.email 
-          }, 'Using database user ID instead of OAuth ID')
+            email: dbUser.email 
+          }, 'Using database user data')
         } else {
-          // Fallback на OAuth ID если пользователя нет в БД
+          // Fallback на данные из OAuth
           token.id = user.id
+          token.email = user.email
           token.name = user.name
           token.picture = user.image
+          logger.warn({ 
+            user_id: user.id, 
+            email: user.email 
+          }, 'User not found in database, using OAuth data')
         }
-        token.email = user.email
       }
 
       if (account) {
@@ -178,9 +219,16 @@ export const authConfig: NextAuthConfig = {
     },
 
     async redirect({ url, baseUrl }) {
+      logger.debug({ url, baseUrl }, 'Redirect callback')
+      
       // Если url начинается с baseUrl или это относительный путь - разрешаем
       if (url.startsWith(baseUrl)) return url
       if (url.startsWith('/')) return `${baseUrl}${url}`
+      
+      // Проверяем что не редиректим на сам signin (избегаем петли)
+      if (url.includes('/signin') || url.includes('/api/auth')) {
+        return `${baseUrl}/orgs`
+      }
       
       // По умолчанию редиректим на /orgs
       return `${baseUrl}/orgs`

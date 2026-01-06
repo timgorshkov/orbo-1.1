@@ -16,12 +16,41 @@ export function PostgresAdapter(): Adapter {
 
   return {
     async createUser(user) {
-      logger.debug({ email: user.email }, 'Creating user')
+      logger.debug({ email: user.email, name: user.name }, 'Creating user')
+      
+      // Сначала проверяем - может пользователь уже существует
+      if (user.email) {
+        const { data: existingUser } = await db
+          .from('users')
+          .select('*')
+          .eq('email', user.email.toLowerCase())
+          .single()
+        
+        if (existingUser) {
+          logger.info({ user_id: existingUser.id, email: existingUser.email }, 'User already exists, returning existing')
+          
+          // Обновляем данные если нужно
+          if (user.name && !existingUser.name) {
+            await db.from('users').update({ name: user.name, updated_at: new Date().toISOString() }).eq('id', existingUser.id)
+          }
+          if (user.image && !existingUser.image) {
+            await db.from('users').update({ image: user.image, updated_at: new Date().toISOString() }).eq('id', existingUser.id)
+          }
+          
+          return {
+            id: existingUser.id,
+            email: existingUser.email!,
+            name: existingUser.name || user.name,
+            emailVerified: existingUser.email_verified ? new Date(existingUser.email_verified) : null,
+            image: existingUser.image || user.image,
+          }
+        }
+      }
       
       const { data, error } = await db
         .from('users')
         .insert({
-          email: user.email,
+          email: user.email?.toLowerCase(),
           name: user.name,
           email_verified: user.emailVerified?.toISOString(),
           image: user.image,
