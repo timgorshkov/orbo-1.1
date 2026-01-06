@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем данные организаций
-    const orgIds = [...new Set(eventsRaw.map(e => e.org_id))];
+    const orgIds = Array.from(new Set(eventsRaw.map(e => e.org_id)));
     const { data: orgs } = await adminSupabase
       .from('organizations')
       .select('id, name')
