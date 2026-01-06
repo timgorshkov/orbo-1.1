@@ -258,11 +258,60 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   }
 
   or(filters: string): QueryBuilder<T> {
-    // Упрощённая реализация - парсинг Supabase-стиля фильтров
-    // Пример: "status.eq.active,status.eq.pending"
-    const logger = createServiceLogger('PostgresQueryBuilder');
-    logger.warn({ filters }, 'or() filter requires manual SQL conversion for complex cases');
-    this.conditions.push({ column: '', operator: 'RAW', values: [], raw: `(${filters.replace(/\./g, ' ')})` });
+    // Парсим Supabase-стиль фильтров
+    // Пример: "status.is.null,status.eq.active" -> (status IS NULL OR status = 'active')
+    const parts = filters.split(',');
+    const sqlParts: string[] = [];
+    const orValues: any[] = [];
+    
+    for (const part of parts) {
+      const segments = part.trim().split('.');
+      if (segments.length >= 2) {
+        const column = segments[0];
+        const op = segments[1];
+        const value = segments.slice(2).join('.');
+        
+        if (op === 'is' && value === 'null') {
+          sqlParts.push(`"${column}" IS NULL`);
+        } else if (op === 'is' && value === 'not.null') {
+          sqlParts.push(`"${column}" IS NOT NULL`);
+        } else if (op === 'eq') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" = $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'neq') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" != $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'gt') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" > $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'lt') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" < $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'gte') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" >= $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'lte') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" <= $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'like') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" LIKE $${this.paramCounter + orValues.length - 1}`);
+        } else if (op === 'ilike') {
+          orValues.push(value);
+          sqlParts.push(`"${column}" ILIKE $${this.paramCounter + orValues.length - 1}`);
+        }
+      }
+    }
+    
+    if (sqlParts.length > 0) {
+      this.conditions.push({ 
+        column: '', 
+        operator: 'RAW', 
+        values: orValues, 
+        raw: `(${sqlParts.join(' OR ')})` 
+      });
+    }
+    
     return this;
   }
 

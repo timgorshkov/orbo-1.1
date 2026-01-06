@@ -40,6 +40,8 @@ if (hasGoogleCredentials) {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Разрешаем связывать OAuth с существующими пользователями по email
+      allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           prompt: 'select_account',
@@ -57,6 +59,8 @@ if (hasYandexCredentials) {
     id: 'yandex',
     name: 'Yandex',
     type: 'oauth' as const,
+    // Разрешаем связывать OAuth с существующими пользователями по email
+    allowDangerousEmailAccountLinking: true,
     authorization: {
       url: 'https://oauth.yandex.ru/authorize',
       params: {
@@ -102,11 +106,6 @@ export const authConfig: NextAuthConfig = {
 
   // Важно для Docker: доверять host заголовкам
   trustHost: true,
-  
-  // Разрешаем связывать OAuth аккаунты с существующими пользователями по email
-  // Это безопасно, т.к. OAuth провайдеры верифицируют email
-  // @ts-ignore - allowDangerousEmailAccountLinking is valid NextAuth option
-  allowDangerousEmailAccountLinking: true,
 
   pages: {
     signIn: '/signin',
