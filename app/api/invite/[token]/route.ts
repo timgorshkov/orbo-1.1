@@ -62,7 +62,7 @@ export async function GET(
     
     // Format organization data
     // Получаем данные организации
-    const { data: org } = await supabase
+    const { data: org } = await adminSupabase
       .from('organizations')
       .select('id, name')
       .eq('id', invitation.org_id)
