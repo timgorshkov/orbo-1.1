@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { createClientBrowser } from '@/lib/client/supabaseClient'
+// Removed: createClientBrowser - using API instead
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,59 +27,30 @@ export default function CreateOrganization() {
       }
 
       try {
-        const supabase = createClientBrowser()
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser()
-        
-        // Check if user is authenticated via either provider
-        const isAuthenticated = !!supabaseUser || nextAuthStatus === 'authenticated'
-        
-        if (!isAuthenticated) {
+        // Check if user is authenticated
+        if (nextAuthStatus !== 'authenticated') {
           router.push('/signin')
           return
         }
 
-        // For NextAuth users, we need to fetch org count via API since we can't 
-        // query Supabase directly with their session
-        if (!supabaseUser && nextAuthSession?.user?.email) {
-          // Use API to get org count for NextAuth users
-          try {
-            const response = await fetch('/api/user/organizations')
-            if (response.ok) {
-              const data = await response.json()
-              const count = data.organizations?.length || 0
-              setOrgCount(count)
-              setIsFirstOrg(count === 0)
-              if (count === 0) {
-                setName('Моё сообщество')
-              }
+        // Fetch org count via API
+        try {
+          const response = await fetch('/api/user/organizations')
+          if (response.ok) {
+            const data = await response.json()
+            const count = data.organizations?.length || 0
+            setOrgCount(count)
+            setIsFirstOrg(count === 0)
+            if (count === 0) {
+              setName('Моё сообщество')
             }
-          } catch (apiErr) {
-            // Fallback: assume first org if we can't get count
-            setOrgCount(0)
-            setIsFirstOrg(true)
-            setName('Моё сообщество')
           }
-          setLoading(false)
-          return
+        } catch (apiErr) {
+          // Fallback: assume first org if we can't get count
+          setOrgCount(0)
+          setIsFirstOrg(true)
+          setName('Моё сообщество')
         }
-
-        // For Supabase users, query directly
-        if (supabaseUser) {
-          const { data: memberships } = await supabase
-            .from('memberships')
-            .select('org_id')
-            .eq('user_id', supabaseUser.id)
-
-          const count = memberships?.length || 0
-          setOrgCount(count)
-          setIsFirstOrg(count === 0)
-
-          // Pre-fill name for first organization
-          if (count === 0) {
-            setName('Моё сообщество')
-          }
-        }
-
         setLoading(false)
       } catch (err) {
         const logger = createClientLogger('CreateOrganization');
@@ -100,13 +71,8 @@ export default function CreateOrganization() {
     setError(null)
     
     try {
-      const supabase = createClientBrowser()
-      
-      // Get current user (check both Supabase and NextAuth)
-      const { data: { user: supabaseUser } } = await supabase.auth.getUser()
-      const isAuthenticated = !!supabaseUser || nextAuthStatus === 'authenticated'
-      
-      if (!isAuthenticated) {
+      // Check if user is authenticated
+      if (nextAuthStatus !== 'authenticated') {
         throw new Error('Вы не авторизованы')
       }
 
