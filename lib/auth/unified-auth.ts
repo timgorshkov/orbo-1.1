@@ -19,18 +19,15 @@
 
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdminClient } from '@/lib/server/supabaseServer';
 import { auth as nextAuth } from '@/auth';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('UnifiedAuth');
 
-// Создаём admin client для поиска пользователей по email
+// Создаём admin client для Supabase Auth операций
 function getAdminSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  return getSupabaseAdminClient();
 }
 
 /**
