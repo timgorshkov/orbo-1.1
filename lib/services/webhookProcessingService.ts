@@ -7,17 +7,13 @@
  * Portable: Uses standard PostgreSQL functions that work with any PG client.
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('WebhookProcessor');
 
-// Global service role client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+// Hybrid клиент (PostgreSQL для DB)
+const supabaseAdmin = createAdminServer();
 
 export interface WebhookMessageData {
   orgId: string;

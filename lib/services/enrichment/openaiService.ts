@@ -11,22 +11,14 @@
  * AUTO-LOGS all API calls to openai_api_logs table
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { openai } from '../openaiClient';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('OpenAI');
 
 // Supabase admin client for logging
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 /**
  * Log OpenAI API call to database

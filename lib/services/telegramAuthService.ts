@@ -3,22 +3,13 @@
  * Сервис для верификации кодов авторизации Telegram
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdminClient } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('TelegramAuth');
 
-// Supabase admin client для auth операций
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+// Supabase admin client для auth операций (используем оригинальный клиент)
+const supabaseAdmin = getSupabaseAdminClient();
 
 // Helper для прямых HTTP запросов к Supabase REST API с timeout
 async function supabaseFetch(endpoint: string, options: RequestInit = {}) {

@@ -7,19 +7,11 @@
  * Cost: ~$0.002-0.003 per digest (2 OpenAI calls)
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { openai } from './openaiClient';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 const logger = createServiceLogger('WeeklyDigestService');
 

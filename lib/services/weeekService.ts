@@ -407,12 +407,9 @@ export function getWeeekService(): WeeekService {
 // High-level integration functions
 // ==========================================
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 
-const getSupabaseAdmin = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const getSupabaseAdmin = () => createAdminServer();
 
 /**
  * Handle new user registration - create contact and deal

@@ -8,19 +8,13 @@
  * All API calls are logged to openai_api_logs with feature='notifications'
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { openai } from './openaiClient';
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('AINotificationAnalysis');
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: { persistSession: false }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 // Cost calculation for gpt-4o-mini
 const COST_PER_1M_INPUT = 0.15;  // $0.15 per 1M input tokens

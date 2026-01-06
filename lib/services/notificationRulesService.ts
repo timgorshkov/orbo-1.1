@@ -10,7 +10,7 @@
  * - Handle deduplication
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { sendSystemNotification } from './telegramNotificationService';
 import { analyzeNegativeContent, analyzeUnansweredQuestions } from './aiNotificationAnalysis';
@@ -18,13 +18,7 @@ import crypto from 'crypto';
 
 const logger = createServiceLogger('NotificationRules');
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: { persistSession: false }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 interface NotificationRule {
   id: string;

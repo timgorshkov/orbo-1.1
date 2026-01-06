@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from './logger';
 
 // Re-export descriptions for backwards compatibility in server-side code
@@ -9,26 +9,12 @@ export {
   getResourceDescription 
 } from './auditActionDescriptions';
 
-// Lazy initialization of Supabase admin client to avoid issues during module loading
-let _supabaseAdmin: SupabaseClient | null = null;
+// Lazy initialization of admin client
+let _supabaseAdmin: ReturnType<typeof createAdminServer> | null = null;
 
-function getSupabaseAdmin(): SupabaseClient | null {
+function getSupabaseAdmin() {
   if (!_supabaseAdmin) {
-    // Only create client when actually needed (server-side only)
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!url || !key) {
-      const logger = createServiceLogger('logAdminAction');
-      logger.error({}, 'Missing Supabase credentials');
-      return null;
-    }
-    
-    _supabaseAdmin = createClient(url, key, {
-      auth: {
-        persistSession: false
-      }
-    });
+    _supabaseAdmin = createAdminServer();
   }
   return _supabaseAdmin;
 }

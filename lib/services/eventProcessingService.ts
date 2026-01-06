@@ -1,7 +1,6 @@
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChatMemberUpdate } from './telegramService';
 import { createTelegramService } from './telegramService';
-import { createClient } from '@supabase/supabase-js';
 import { createServiceLogger } from '@/lib/logger';
 
 /**
@@ -31,16 +30,8 @@ export class EventProcessingService {
   }
   
   constructor() {
-    // Создаем клиент Supabase с сервисной ролью для обхода RLS
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          persistSession: false
-        }
-      }
-    );
+    // Используем hybrid клиент (PostgreSQL для DB, Supabase для Auth)
+    this.supabase = createAdminServer();
     
     // Создаем logger для сервиса
     this.logger = createServiceLogger('EventProcessing');
