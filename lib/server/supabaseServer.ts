@@ -64,12 +64,12 @@ function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: S
             
             if (hasJoinSyntax(columns)) {
               useSupabase = true;
-              logger.debug({ table, columns: columns?.substring(0, 100), provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
+              logger.info({ table, columns: columns?.substring(0, 100), provider: 'supabase' }, 'Complex query with JOINs routed to Supabase');
               const newBuilder = supabaseClient.from(table).select(columns, options);
               return chainProxy(newBuilder);
             }
             
-            logger.debug({ table, provider: 'postgres' }, 'Simple query routed to PostgreSQL');
+            logger.info({ table, provider: 'postgres' }, 'Simple query routed to PostgreSQL');
             const newBuilder = pgClient.from(table).select(columns, options);
             return chainProxy(newBuilder);
           };
