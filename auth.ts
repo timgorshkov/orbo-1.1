@@ -147,12 +147,12 @@ export const authConfig: NextAuthConfig = {
 
     async jwt({ token, user, account, profile, trigger }) {
       // При первом входе ищем пользователя в БД
-      if (user) {
+      if (user || account) {
         const db = (await import('@/lib/server/supabaseServer')).createAdminServer()
         let dbUser = null
         
-        // Сначала пробуем найти по email
-        if (user.email) {
+        // 1. Пробуем найти по email
+        if (user?.email) {
           const { data } = await db
             .from('users')
             .select('id, email, name, image')
@@ -161,14 +161,42 @@ export const authConfig: NextAuthConfig = {
           dbUser = data
         }
         
-        // Если не нашли по email, ищем по user.id (может быть UUID из adapter)
-        if (!dbUser && user.id) {
-          const { data } = await db
-            .from('users')
-            .select('id, email, name, image')
-            .eq('id', user.id)
+        // 2. Если не нашли по email, ищем по user.id (UUID из adapter)
+        if (!dbUser && user?.id) {
+          // Проверяем что это похоже на UUID (36 символов с дефисами)
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.id)
+          if (isUUID) {
+            const { data } = await db
+              .from('users')
+              .select('id, email, name, image')
+              .eq('id', user.id)
+              .single()
+            dbUser = data
+          }
+        }
+        
+        // 3. Если всё ещё не нашли, ищем через accounts table по provider
+        if (!dbUser && account) {
+          const { data: accountData } = await db
+            .from('accounts')
+            .select('user_id')
+            .eq('provider', account.provider)
+            .eq('provider_account_id', account.providerAccountId)
             .single()
-          dbUser = data
+          
+          if (accountData?.user_id) {
+            const { data } = await db
+              .from('users')
+              .select('id, email, name, image')
+              .eq('id', accountData.user_id)
+              .single()
+            dbUser = data
+            logger.debug({ 
+              provider: account.provider, 
+              provider_account_id: account.providerAccountId,
+              user_id: accountData.user_id 
+            }, 'Found user via accounts table')
+          }
         }
         
         if (dbUser) {
@@ -176,14 +204,14 @@ export const authConfig: NextAuthConfig = {
           token.id = dbUser.id
           token.sub = dbUser.id
           token.email = dbUser.email
-          token.name = dbUser.name || user.name
-          token.picture = dbUser.image || user.image
+          token.name = dbUser.name || user?.name
+          token.picture = dbUser.image || user?.image
           logger.debug({ 
-            oauth_id: user.id, 
+            oauth_id: user?.id, 
             db_id: dbUser.id, 
             email: dbUser.email 
           }, 'Using database user data')
-        } else {
+        } else if (user) {
           // Fallback на данные из OAuth
           token.id = user.id
           token.email = user.email
@@ -191,7 +219,8 @@ export const authConfig: NextAuthConfig = {
           token.picture = user.image
           logger.warn({ 
             user_id: user.id, 
-            email: user.email 
+            email: user.email,
+            provider: account?.provider
           }, 'User not found in database, using OAuth data')
         }
       }
