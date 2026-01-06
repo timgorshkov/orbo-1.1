@@ -35,17 +35,17 @@ async function copyGroupParticipantsToOrg(
   }
 
   // Получаем данные участников
-  const participantIds = groupLinks.map(link => link.participant_id);
+  const participantIds = groupLinks.map((link: { participant_id: string }) => link.participant_id);
   const { data: participantsData } = await supabase
     .from('participants')
     .select('id, tg_user_id, full_name, username, phone, email, photo_url, source, participant_status, custom_attributes, bio')
     .in('id', participantIds);
 
-  const participantsMap = new Map(participantsData?.map(p => [p.id, p]) || []);
-  const groupParticipants = groupLinks.map(link => ({
+  const participantsMap = new Map(participantsData?.map((p: any) => [p.id, p]) || []);
+  const groupParticipants = groupLinks.map((link: { participant_id: string }) => ({
     participant_id: link.participant_id,
     participants: participantsMap.get(link.participant_id) || null
-  })).filter(gp => gp.participants !== null);
+  })).filter((gp: any) => gp.participants !== null);
 
   logger.info({ tg_chat_id: tgChatId, participants_count: groupParticipants.length }, '[CopyParticipants] Found participants');
 
