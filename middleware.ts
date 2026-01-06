@@ -1,9 +1,6 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServiceLogger } from '@/lib/logger'
-// НЕ импортируем auth() - вызов вызывает UntrustedHost ошибку в Docker
-// Проверяем NextAuth сессию через наличие session cookie
 
 /**
  * Get the public base URL for redirects
@@ -66,6 +63,19 @@ function getWebsiteInternalPath(pathname: string): string {
   return `/site${pathname}`
 }
 
+/**
+ * Check if user has NextAuth session cookie
+ */
+function hasAuthSession(request: NextRequest): boolean {
+  const authCookieNames = [
+    'authjs.session-token',
+    '__Secure-authjs.session-token',
+    'next-auth.session-token',
+    '__Secure-next-auth.session-token',
+  ]
+  return authCookieNames.some(name => request.cookies.has(name))
+}
+
 export async function middleware(request: NextRequest) {
   const logger = createServiceLogger('middleware');
   const { pathname } = request.nextUrl
@@ -99,44 +109,13 @@ export async function middleware(request: NextRequest) {
   // APPLICATION DOMAIN HANDLING (my.orbo.ru)
   // ========================================
   
-  // Create response once - don't recreate it multiple times
   const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
-  // Создаем supabase клиент для проверки аутентификации и обновления токена
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (name) => {
-          return request.cookies.get(name)?.value
-        },
-        set: (name, value, options) => {
-          // Устанавливаем куки в ответе (не пересоздаем response)
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove: (name, options) => {
-          // Удаляем куки в ответе (не пересоздаем response)
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
-    }
-  )
-
   // Исключаем публичные пути и API маршруты из проверки аутентификации
-  // Note: pathname already extracted above for website domain check
   if (
     pathname.startsWith('/api/auth') || // NextAuth routes
     pathname.startsWith('/api/') ||
@@ -150,52 +129,15 @@ export async function middleware(request: NextRequest) {
     pathname === '/' || // Root redirects to /signin or /orgs
     pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|css|js)$/)
   ) {
-    // ⚠️ НЕ вызываем getSession() для auth callback маршрутов - это нарушает PKCE flow!
-    // Code verifier cookie должен быть доступен для exchangeCodeForSession
-    if (pathname.startsWith('/auth/callback') || pathname.startsWith('/auth-callback')) {
-      return response
-    }
-    
-    // ⭐ Refresh session for other public routes to update tokens before Server Components access them
-    // This prevents "Cookies can only be modified" errors in Server Components
-    try {
-      await supabase.auth.getSession()
-    } catch (error) {
-      // Ignore session refresh errors in middleware - they will be handled by Route Handlers
-      logger.warn({ 
-        error: error instanceof Error ? error.message : String(error),
-        pathname
-      }, 'Session refresh error (non-critical)');
-    }
     return response
   }
 
-  // ⭐ Проверка авторизации через Supabase
-  const {
-    data: { session: supabaseSession },
-  } = await supabase.auth.getSession()
-
-  // Проверяем NextAuth сессию через наличие session cookie
-  // НЕ вызываем auth() - это вызывает UntrustedHost ошибку
-  const authCookieNames = [
-    'authjs.session-token',
-    '__Secure-authjs.session-token',
-    'next-auth.session-token',
-    '__Secure-next-auth.session-token',
-  ]
-  const hasNextAuthSession = authCookieNames.some(name => request.cookies.has(name))
-
-  // Пользователь авторизован если есть хотя бы одна активная сессия
-  const isAuthenticated = !!supabaseSession || hasNextAuthSession
+  // ⭐ Проверяем NextAuth сессию через наличие session cookie
+  const isAuthenticated = hasAuthSession(request)
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
   if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
-    // Логируем только редиректы (не каждый запрос)
-    logger.debug({ 
-      pathname, 
-      hasSupabase: !!supabaseSession, 
-      hasNextAuth: hasNextAuthSession 
-    }, 'Unauthenticated access, redirecting to signin')
+    logger.debug({ pathname }, 'Unauthenticated access, redirecting to signin')
     
     // Перенаправляем на страницу входа (используем публичный URL для Docker)
     const baseUrl = getPublicBaseUrl(request)

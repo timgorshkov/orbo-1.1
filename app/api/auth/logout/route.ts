@@ -1,55 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { createClientServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 
-// POST /api/auth/logout - Clear Supabase auth session
+// POST /api/auth/logout - Clear auth session
 export async function POST(request: NextRequest) {
-  const logger = createAPILogger(request, { endpoint: '/api/auth/logout' });
+  const logger = createAPILogger(request, { endpoint: '/api/auth/logout' })
+  
   try {
     // Проверяем наличие тела запроса
     let returnUrl = '/'
     try {
       const body = await request.json()
       returnUrl = body.returnUrl || '/'
-    } catch (e) {
+    } catch {
       // Тело запроса пустое или невалидный JSON - это нормально
-      logger.debug({}, 'No request body or invalid JSON, using default returnUrl');
+      logger.debug({}, 'No request body or invalid JSON, using default returnUrl')
     }
     
-    logger.info({ return_url: returnUrl }, 'Starting logout process');
+    logger.info({ return_url: returnUrl }, 'Starting logout process')
     
-    // Sign out from Supabase (clears session)
-    const supabase = await createClientServer()
-    const { error } = await supabase.auth.signOut()
-    
-    if (error) {
-      logger.warn({ 
-        error: error.message
-      }, 'Supabase signOut error, continuing with manual cookie clearing');
-      // Continue anyway - we'll clear cookies manually
-    }
-    
-    // Manually clear all Supabase cookies as backup
+    // Manually clear all auth cookies
     const cookieStore = await cookies()
     const allCookies = cookieStore.getAll()
     
-    // Find all auth cookies (Supabase + NextAuth)
-    const supabaseCookies = allCookies.filter(c => 
+    // Find all auth cookies
+    const authCookies = allCookies.filter(c => 
       c.name.includes('auth-token') || 
       c.name.startsWith('sb-') ||
       c.name.includes('supabase') ||
-      c.name.includes('authjs') ||  // NextAuth cookies
+      c.name.includes('authjs') ||
       c.name.includes('next-auth')
     )
     
     logger.debug({ 
-      cookie_count: supabaseCookies.length,
-      cookie_names: supabaseCookies.map(c => c.name)
-    }, 'Found Supabase cookies to clear');
+      cookie_count: authCookies.length,
+      cookie_names: authCookies.map(c => c.name)
+    }, 'Found auth cookies to clear')
     
     // Delete cookies by setting them to expire immediately
-    for (const cookie of supabaseCookies) {
+    for (const cookie of authCookies) {
       cookieStore.set(cookie.name, '', {
         maxAge: 0,
         expires: new Date(0),
@@ -60,8 +49,8 @@ export async function POST(request: NextRequest) {
     }
     
     logger.info({ 
-      cookies_cleared: supabaseCookies.length
-    }, 'Logout completed successfully');
+      cookies_cleared: authCookies.length
+    }, 'Logout completed successfully')
     
     // Return response with Set-Cookie headers to clear cookies on client
     const response = NextResponse.json({ 
@@ -70,7 +59,7 @@ export async function POST(request: NextRequest) {
     })
     
     // Also set cookies in response headers
-    for (const cookie of supabaseCookies) {
+    for (const cookie of authCookies) {
       response.cookies.set(cookie.name, '', {
         maxAge: 0,
         expires: new Date(0),
@@ -85,7 +74,7 @@ export async function POST(request: NextRequest) {
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
-    }, 'Error during logout');
+    }, 'Error during logout')
     return NextResponse.json(
       { 
         error: 'Failed to logout',
@@ -95,4 +84,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
