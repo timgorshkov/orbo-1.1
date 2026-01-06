@@ -43,26 +43,42 @@ export default async function EventDetailPage({
   const adminSupabase = createAdminServer()
 
   // Fetch event using admin client to avoid RLS issues after access check
-  const { data: event, error } = await adminSupabase
+  const { data: eventBase, error } = await adminSupabase
     .from('events')
-    .select(`
-      *,
-      event_registrations!event_registrations_event_id_fkey(
-        id,
-        status,
-        registered_at,
-        participants!inner(
-          id,
-          full_name,
-          username,
-          tg_user_id,
-          merged_into
-        )
-      )
-    `)
+    .select('*')
     .eq('org_id', params.org)
     .eq('id', params.id)
     .single()
+  
+  let event = eventBase as any;
+  
+  if (eventBase && !error) {
+    // Получаем регистрации
+    const { data: registrations } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status, registered_at, participant_id')
+      .eq('event_id', params.id);
+    
+    if (registrations && registrations.length > 0) {
+      const participantIds = registrations.map(r => r.participant_id).filter(Boolean);
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, username, tg_user_id, merged_into')
+        .in('id', participantIds);
+      
+      const participantsMap = new Map(participants?.map(p => [p.id, p]) || []);
+      
+      event = {
+        ...eventBase,
+        event_registrations: registrations.map(r => ({
+          ...r,
+          participants: participantsMap.get(r.participant_id) || null
+        }))
+      };
+    } else {
+      event = { ...eventBase, event_registrations: [] };
+    }
+  }
 
   if (error || !event) {
     return (
@@ -143,24 +159,21 @@ export default async function EventDetailPage({
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
   if (isAdmin) {
-    // Загружаем группы через org_telegram_groups (new many-to-many schema)
-    const { data: orgGroupsData } = await adminSupabase
+    // Загружаем группы через org_telegram_groups
+    const { data: orgGroupLinks } = await adminSupabase
       .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status
-        )
-      `)
+      .select('tg_chat_id')
       .eq('org_id', params.org)
     
-    if (orgGroupsData) {
-      // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
-      telegramGroups = (orgGroupsData as any[])
-        .map((item: any) => item.telegram_groups)
-        .filter((group: any) => group !== null && group.bot_status === 'connected')
+    if (orgGroupLinks && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: groups } = await adminSupabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status')
+        .in('tg_chat_id', chatIds);
+      
+      telegramGroups = (groups || [])
+        .filter((group: any) => group.bot_status === 'connected')
         .sort((a: any, b: any) => {
           const titleA = a.title || ''
           const titleB = b.title || ''

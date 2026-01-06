@@ -62,29 +62,10 @@ export async function GET(
       )
     }
 
-    // Fetch registrations with payment info and participant details (use admin client to bypass RLS)
+    // Fetch registrations with payment info (use admin client to bypass RLS)
     let query = supabaseAdmin
       .from('event_registrations')
-      .select(`
-        id,
-        participant_id,
-        status,
-        registered_at,
-        price,
-        payment_status,
-        payment_method,
-        paid_at,
-        paid_amount,
-        payment_notes,
-        payment_updated_at,
-        participants!inner (
-          id,
-          full_name,
-          username,
-          tg_user_id,
-          photo_url
-        )
-      `)
+      .select('id, participant_id, status, registered_at, price, payment_status, payment_method, paid_at, paid_amount, payment_notes, payment_updated_at')
       .eq('event_id', eventId)
       .order('registered_at', { ascending: false })
 

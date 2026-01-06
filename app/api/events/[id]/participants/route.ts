@@ -330,23 +330,27 @@ export async function GET(
     }
 
     // Get registered participants
-    const { data: registrations, error: regError } = await adminSupabase
+    const { data: registrationsRaw, error: regError } = await adminSupabase
       .from('event_registrations')
-      .select(`
-        id,
-        registered_at,
-        registration_data,
-        participants!inner (
-          id,
-          full_name,
-          username,
-          bio,
-          photo_url,
-          tg_user_id
-        )
-      `)
+      .select('id, registered_at, registration_data, participant_id')
       .eq('event_id', eventId)
       .eq('status', 'registered')
+    
+    // Получаем данные участников
+    let registrations: any[] = [];
+    if (registrationsRaw && registrationsRaw.length > 0) {
+      const participantIds = registrationsRaw.map(r => r.participant_id).filter(Boolean);
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, username, bio, photo_url, tg_user_id')
+        .in('id', participantIds);
+      
+      const participantsMap = new Map(participants?.map(p => [p.id, p]) || []);
+      registrations = registrationsRaw.filter(r => participantsMap.has(r.participant_id)).map(r => ({
+        ...r,
+        participants: participantsMap.get(r.participant_id)
+      }));
+    }
       .order('registered_at', { ascending: true })
 
     if (regError) {
@@ -362,9 +366,7 @@ export async function GET(
     // Transform data for frontend
     const participants = (registrations || [])
       .map(reg => {
-        // Supabase returns participants as array when using !inner
-        const participantsArray = Array.isArray(reg.participants) ? reg.participants : [reg.participants]
-        const participant = participantsArray[0]
+        const participant = reg.participants;
         
         if (!participant) {
           logger.debug({ registration_id: reg.id }, '[Event Participants] Skipping registration with no participant data');
