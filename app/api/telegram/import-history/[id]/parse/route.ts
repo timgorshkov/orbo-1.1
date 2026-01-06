@@ -103,13 +103,22 @@ export async function POST(
 
       const { data, error } = await supabaseAdmin
         .from('telegram_groups')
-        .select('*, org_telegram_groups!inner(org_id)')
+        .select('*')
         .eq(variant.column, variant.value)
         .maybeSingle();
 
       if (data) {
-        group = data;
-        break;
+        // Проверяем что группа привязана к организации
+        const { data: orgLink } = await supabaseAdmin
+          .from('org_telegram_groups')
+          .select('org_id')
+          .eq('tg_chat_id', data.tg_chat_id)
+          .maybeSingle();
+        
+        if (orgLink) {
+          group = { ...data, org_telegram_groups: orgLink };
+          break;
+        }
       }
 
       if (error?.code !== 'PGRST116') { // not-a-single-row error from maybeSingle

@@ -67,12 +67,9 @@ export async function POST(request: Request) {
     
     // Получаем все группы для организации через org_telegram_groups
     logger.debug({ org_id: orgId }, 'Fetching groups for org');
-    const { data: orgGroups, error: orgGroupsError } = await supabaseService
+    const { data: orgGroupLinks, error: orgGroupsError } = await supabaseService
       .from('org_telegram_groups')
-      .select(`
-        tg_chat_id,
-        telegram_groups!inner(*)
-      `)
+      .select('tg_chat_id')
       .eq('org_id', orgId);
     
     if (orgGroupsError) {
@@ -83,10 +80,19 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
     
-    const groups = orgGroups?.map((og: any) => ({
-      ...og.telegram_groups,
-      tg_chat_id: og.tg_chat_id
-    })) || [];
+    let groups: any[] = [];
+    if (orgGroupLinks && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: telegramGroups } = await supabaseService
+        .from('telegram_groups')
+        .select('*')
+        .in('tg_chat_id', chatIds);
+      
+      groups = (telegramGroups || []).map(g => ({
+        ...g,
+        tg_chat_id: g.tg_chat_id
+      }));
+    }
     
     // Note: No fallback to direct telegram_groups query - org_id column doesn't exist
     // All groups must be linked via org_telegram_groups table

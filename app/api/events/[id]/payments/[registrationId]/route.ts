@@ -139,35 +139,28 @@ export async function PATCH(
     }
 
     // Update registration (use admin client to bypass RLS)
-    const { data: updatedReg, error: updateError } = await supabaseAdmin
+    const { data: updatedRegBase, error: updateError } = await supabaseAdmin
       .from('event_registrations')
       .update(updateData)
       .eq('id', registrationId)
-      .select(`
-        id,
-        participant_id,
-        status,
-        registered_at,
-        price,
-        payment_status,
-        payment_method,
-        paid_at,
-        paid_amount,
-        payment_notes,
-        payment_updated_at,
-        participants!inner (
-          id,
-          full_name,
-          username,
-          tg_user_id,
-          photo_url
-        )
-      `)
+      .select('id, participant_id, status, registered_at, price, payment_status, payment_method, paid_at, paid_amount, payment_notes, payment_updated_at')
       .single()
 
     if (updateError) {
       logger.error({ error: updateError.message, event_id: eventId, registration_id: registrationId }, 'Error updating payment');
       return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    // Получаем данные участника
+    let updatedReg = updatedRegBase as any;
+    if (updatedRegBase?.participant_id) {
+      const { data: participant } = await supabaseAdmin
+        .from('participants')
+        .select('id, full_name, username, tg_user_id, photo_url')
+        .eq('id', updatedRegBase.participant_id)
+        .single();
+      
+      updatedReg = { ...updatedRegBase, participants: participant };
     }
 
     // Log admin action

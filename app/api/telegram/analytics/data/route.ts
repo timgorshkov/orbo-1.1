@@ -175,36 +175,33 @@ export async function GET(request: Request) {
 
     // 1) Загружаем актуальных участников группы
     try {
-      const { data: membershipRows, error: membershipError } = await supabase
+      const { data: membershipLinks, error: membershipError } = await supabase
         .from('participant_groups')
-        .select('participants!inner(tg_user_id, username, full_name, last_activity_at, activity_score, risk_score)')
+        .select('participant_id')
         .eq('tg_group_id', Number(chatId))
         .eq('is_active', true)
 
       if (membershipError) {
         logger.error({ error: membershipError.message, chat_id: chatId }, 'Error fetching participant memberships for analytics');
-      } else if (membershipRows) {
-        membershipRows.forEach(row => {
-          const participantsRaw = row?.participants
-          const participantRecords = Array.isArray(participantsRaw)
-            ? participantsRaw
-            : participantsRaw
-              ? [participantsRaw]
-              : []
+      } else if (membershipLinks && membershipLinks.length > 0) {
+        const participantIds = membershipLinks.map(m => m.participant_id);
+        const { data: participants } = await supabase
+          .from('participants')
+          .select('tg_user_id, username, full_name, last_activity_at, activity_score, risk_score')
+          .in('id', participantIds);
+        
+        (participants || []).forEach(member => {
+          if (!member || member.tg_user_id == null) {
+            return
+          }
 
-          participantRecords.forEach(member => {
-            if (!member || member.tg_user_id == null) {
-              return
-            }
-
-            addOrUpdateParticipant(member.tg_user_id, {
-              username: member.username ?? null,
-              fullName: member.full_name ?? null,
-              lastActivity: member.last_activity_at ?? null,
-              activityScore: member.activity_score ?? null,
-              riskScore: member.risk_score ?? null,
-              fromMembership: true
-            })
+          addOrUpdateParticipant(member.tg_user_id, {
+            username: member.username ?? null,
+            fullName: member.full_name ?? null,
+            lastActivity: member.last_activity_at ?? null,
+            activityScore: member.activity_score ?? null,
+            riskScore: member.risk_score ?? null,
+            fromMembership: true
           })
         })
       }
