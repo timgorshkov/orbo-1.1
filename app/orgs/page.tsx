@@ -26,10 +26,11 @@ export default async function OrganizationsPage() {
       email: session.user.email,
     };
     
-    logger.debug({
+    logger.info({
       user_id: user.id,
+      email: user.email,
       provider: session.provider,
-    }, 'User authenticated via unified auth');
+    }, 'OrgsPage: User authenticated via unified auth');
 
   const adminSupabase = createAdminServer();
 
@@ -73,9 +74,17 @@ export default async function OrganizationsPage() {
   const { data: memberships, error: membershipsError } = membershipsResult;
   const { data: telegramAccounts } = telegramAccountsResult;
 
+  logger.info({
+    user_id: user.id,
+    memberships_count: memberships?.length ?? 0,
+    memberships_error: membershipsError?.message,
+    qualification_completed: !!qualification?.completed_at,
+    telegram_accounts: telegramAccounts?.length ?? 0
+  }, 'OrgsPage: Query results');
+
   // Если квалификация не пройдена — редирект на welcome для прохождения
   if (!qualification?.completed_at) {
-    logger.debug({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
+    logger.info({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
     redirect('/welcome');
   }
 
