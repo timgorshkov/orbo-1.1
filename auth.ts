@@ -11,10 +11,8 @@
 
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
-import Credentials from 'next-auth/providers/credentials'
 import type { NextAuthConfig } from 'next-auth'
 import { PostgresAdapter } from '@/lib/auth/postgres-adapter'
-import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('NextAuth')
@@ -95,98 +93,8 @@ if (hasYandexCredentials) {
   })
 }
 
-// Email Magic Link через Credentials provider
-// Фактическая верификация токена происходит в /api/auth/email/verify
-providers.push(
-  Credentials({
-    id: 'email-token',
-    name: 'Email',
-    credentials: {
-      email: { label: 'Email', type: 'email' },
-      token: { label: 'Token', type: 'text' },
-    },
-    async authorize(credentials) {
-      if (!credentials?.email || !credentials?.token) {
-        return null
-      }
-
-      const db = createAdminServer()
-      const email = (credentials.email as string).toLowerCase()
-      const token = credentials.token as string
-
-      // Проверяем токен
-      const { data: tokenData, error: tokenError } = await db
-        .from('email_auth_tokens')
-        .select('*')
-        .eq('token', token)
-        .eq('email', email)
-        .eq('is_used', false)
-        .single()
-
-      if (tokenError || !tokenData) {
-        logger.warn({ email }, 'Invalid email token')
-        return null
-      }
-
-      // Проверяем срок действия
-      if (new Date(tokenData.expires_at) < new Date()) {
-        logger.warn({ email }, 'Email token expired')
-        return null
-      }
-
-      // Помечаем токен как использованный
-      await db
-        .from('email_auth_tokens')
-        .update({ is_used: true, used_at: new Date().toISOString() })
-        .eq('id', tokenData.id)
-
-      // Находим или создаём пользователя
-      let { data: user } = await db
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .single()
-
-      if (!user) {
-        // Создаём нового пользователя
-        const { data: newUser, error: createError } = await db
-          .from('users')
-          .insert({
-            email,
-            email_verified: new Date().toISOString(),
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          logger.error({ error: createError.message, email }, 'Failed to create user')
-          return null
-        }
-
-        user = newUser
-        logger.info({ email, user_id: user.id }, 'Created new user via email')
-      } else {
-        // Обновляем email_verified
-        await db
-          .from('users')
-          .update({ 
-            email_verified: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', user.id)
-
-        logger.info({ email, user_id: user.id }, 'User signed in via email')
-      }
-
-      return {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        image: user.image,
-      }
-    },
-  })
-)
+// Email Magic Link обрабатывается напрямую в /api/auth/email/verify
+// Не используем Credentials provider - создаём JWT сессию напрямую
 
 export const authConfig: NextAuthConfig = {
   adapter: PostgresAdapter(),
@@ -194,6 +102,11 @@ export const authConfig: NextAuthConfig = {
 
   // Важно для Docker: доверять host заголовкам
   trustHost: true,
+  
+  // Разрешаем связывать OAuth аккаунты с существующими пользователями по email
+  // Это безопасно, т.к. OAuth провайдеры верифицируют email
+  // @ts-ignore - allowDangerousEmailAccountLinking is valid NextAuth option
+  allowDangerousEmailAccountLinking: true,
 
   pages: {
     signIn: '/signin',

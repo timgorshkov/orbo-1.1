@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { cookies } from 'next/headers'
 import { createAPILogger } from '@/lib/logger'
-import { signIn } from '@/auth'
+import { encode } from 'next-auth/jwt'
 
 const supabaseAdmin = createAdminServer()
 
@@ -13,7 +13,7 @@ const supabaseAdmin = createAdminServer()
  * 
  * 1. Проверяет токен в БД
  * 2. Находит или создаёт пользователя
- * 3. Создаёт сессию через NextAuth
+ * 3. Создаёт JWT сессию напрямую (без Credentials callback)
  * 4. Редиректит на redirectUrl
  */
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get('token')
   
   // Определяем базовый URL
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
   
   if (!token) {
     logger.warn({}, 'Missing token')
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=expired_token', baseUrl))
     }
     
-    const email = authToken.email
+    const email = authToken.email.toLowerCase()
     logger.info({ email, token_id: authToken.id }, 'Valid token, processing auth')
     
     // 3. Помечаем токен как использованный
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     let { data: user } = await supabaseAdmin
       .from('users')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .eq('email', email)
       .single()
     
     if (!user) {
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       const { data: newUser, error: createError } = await supabaseAdmin
         .from('users')
         .insert({
-          email: email.toLowerCase(),
+          email: email,
           email_verified: new Date().toISOString(),
         })
         .select()
@@ -103,99 +103,74 @@ export async function GET(request: NextRequest) {
       logger.info({ email, user_id: user.id }, 'User signed in via email')
     }
     
-    // 5. Создаём сессию через NextAuth signIn
-    // Используем redirect напрямую через signIn
+    // 5. Создаём сессию через account record (для email provider)
+    // Проверяем/создаём account для email
+    const { data: existingAccount } = await supabaseAdmin
+      .from('accounts')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('provider', 'email')
+      .single()
+    
+    if (!existingAccount) {
+      await supabaseAdmin
+        .from('accounts')
+        .insert({
+          user_id: user.id,
+          type: 'email',
+          provider: 'email',
+          provider_account_id: email,
+        })
+    }
+    
+    // 6. Создаём JWT токен напрямую
+    const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
+    if (!secret) {
+      logger.error({}, 'AUTH_SECRET not configured')
+      return NextResponse.redirect(new URL('/signin?error=config_error', baseUrl))
+    }
+    
+    // Определяем имя cookie для salt
+    const cookieName = process.env.NODE_ENV === 'production' 
+      ? '__Secure-authjs.session-token'
+      : 'authjs.session-token'
+    
+    const jwtToken = await encode({
+      token: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        picture: user.image,
+        provider: 'email',
+        sub: user.id, // NextAuth requires sub
+      },
+      secret,
+      salt: cookieName,
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    })
+    
+    // 7. Определяем redirect URL
     const finalRedirectUrl = authToken.redirect_url || '/orgs'
     
     logger.info({ 
       user_id: user.id,
       email,
       redirect_url: finalRedirectUrl
-    }, 'Email auth successful')
+    }, 'Email auth successful, creating session')
     
-    // 6. Возвращаем HTML страницу с автосабмитом формы для NextAuth
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Вход в Orbo...</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    .container {
-      text-align: center;
-      color: white;
-      padding: 2rem;
-    }
-    .spinner {
-      border: 4px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      border-top: 4px solid white;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1rem;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .message {
-      font-size: 18px;
-      font-weight: 500;
-    }
-    .sub-message {
-      font-size: 14px;
-      opacity: 0.8;
-      margin-top: 8px;
-    }
-    form { display: none; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="spinner"></div>
-    <div class="message">Добро пожаловать в Orbo!</div>
-    <div class="sub-message">Переход в личный кабинет...</div>
-  </div>
-  <form id="authForm" method="POST" action="/api/auth/callback/email-token">
-    <input type="hidden" name="email" value="${email}" />
-    <input type="hidden" name="token" value="${token}" />
-    <input type="hidden" name="callbackUrl" value="${finalRedirectUrl}" />
-    <input type="hidden" name="csrfToken" value="" />
-  </form>
-  <script>
-    // Получаем CSRF токен и сабмитим форму
-    fetch('/api/auth/csrf')
-      .then(r => r.json())
-      .then(data => {
-        document.querySelector('input[name="csrfToken"]').value = data.csrfToken;
-        document.getElementById('authForm').submit();
-      })
-      .catch(() => {
-        // Если не удалось получить CSRF, просто редиректим
-        window.location.href = '${finalRedirectUrl}';
-      });
-  </script>
-</body>
-</html>
-    `.trim()
+    // 8. Создаём response с редиректом и устанавливаем cookie
+    const response = NextResponse.redirect(new URL(finalRedirectUrl, baseUrl))
     
-    return new NextResponse(html, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-      },
+    // Устанавливаем session cookie (cookieName уже определён выше)
+    response.cookies.set(cookieName, jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
     })
+    
+    return response
     
   } catch (error) {
     logger.error({

@@ -55,4 +55,4 @@ deploy/nginx/logs/
 *.pem
 id_rsa*
 selectel_key*
-.s3cfg
+.s3cfgorbo-app.tar.gz
