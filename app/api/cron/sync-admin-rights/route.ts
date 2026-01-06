@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем уникальные org_ids и tg_chat_ids
-    const orgIds = [...new Set(orgGroupLinks?.map(link => link.org_id) || [])];
-    const chatIds = [...new Set(orgGroupLinks?.map(link => link.tg_chat_id) || [])];
+    const orgIds = Array.from(new Set(orgGroupLinks?.map(link => link.org_id) || []));
+    const chatIds = Array.from(new Set(orgGroupLinks?.map(link => link.tg_chat_id) || []));
 
     // Получаем организации и группы параллельно
     const [orgsResult, groupsResult] = await Promise.all([
