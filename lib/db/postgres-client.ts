@@ -127,7 +127,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   private updateData: any = null;
   private upsertData: any = null;
   private upsertOptions: UpsertOptions = {};
-  private conditions: { sql: string; values: any[] }[] = [];
+  private conditions: { column: string; operator: string; values: any[]; raw?: string }[] = [];
   private orderByClause: string[] = [];
   private limitValue: number | null = null;
   private offsetValue: number | null = null;
@@ -175,52 +175,53 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     return this;
   }
 
-  // Фильтры
+  // Фильтры - НЕ создаём placeholder сразу, только при buildQuery()
+  // Это исправляет баг с порядком параметров для update/delete
   eq(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" = ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '=', values: [value] });
     return this;
   }
 
   neq(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" != ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '!=', values: [value] });
     return this;
   }
 
   gt(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" > ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '>', values: [value] });
     return this;
   }
 
   gte(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" >= ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '>=', values: [value] });
     return this;
   }
 
   lt(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" < ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '<', values: [value] });
     return this;
   }
 
   lte(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" <= ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator: '<=', values: [value] });
     return this;
   }
 
   like(column: string, pattern: string): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" LIKE ${this.nextParam()}`, values: [pattern] });
+    this.conditions.push({ column, operator: 'LIKE', values: [pattern] });
     return this;
   }
 
   ilike(column: string, pattern: string): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" ILIKE ${this.nextParam()}`, values: [pattern] });
+    this.conditions.push({ column, operator: 'ILIKE', values: [pattern] });
     return this;
   }
 
   is(column: string, value: null | boolean): QueryBuilder<T> {
     if (value === null) {
-      this.conditions.push({ sql: `"${column}" IS NULL`, values: [] });
+      this.conditions.push({ column, operator: 'IS NULL', values: [] });
     } else {
-      this.conditions.push({ sql: `"${column}" IS ${value ? 'TRUE' : 'FALSE'}`, values: [] });
+      this.conditions.push({ column, operator: value ? 'IS TRUE' : 'IS FALSE', values: [] });
     }
     return this;
   }
@@ -228,31 +229,30 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   in(column: string, values: any[]): QueryBuilder<T> {
     if (values.length === 0) {
       // Пустой массив - условие никогда не выполняется
-      this.conditions.push({ sql: '1 = 0', values: [] });
+      this.conditions.push({ column: '', operator: 'FALSE', values: [], raw: '1 = 0' });
     } else {
-      const placeholders = values.map(() => this.nextParam()).join(', ');
-      this.conditions.push({ sql: `"${column}" IN (${placeholders})`, values });
+      this.conditions.push({ column, operator: 'IN', values });
     }
     return this;
   }
 
   contains(column: string, value: any): QueryBuilder<T> {
     // Для JSONB массивов
-    this.conditions.push({ sql: `"${column}" @> ${this.nextParam()}`, values: [JSON.stringify(value)] });
+    this.conditions.push({ column, operator: '@>', values: [JSON.stringify(value)] });
     return this;
   }
 
   containedBy(column: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" <@ ${this.nextParam()}`, values: [JSON.stringify(value)] });
+    this.conditions.push({ column, operator: '<@', values: [JSON.stringify(value)] });
     return this;
   }
 
   not(column: string, operator: string, value: any): QueryBuilder<T> {
     // Специальная обработка для IS NULL / IS NOT NULL
     if (operator.toLowerCase() === 'is' && value === null) {
-      this.conditions.push({ sql: `"${column}" IS NOT NULL`, values: [] });
+      this.conditions.push({ column, operator: 'IS NOT NULL', values: [] });
     } else {
-      this.conditions.push({ sql: `NOT ("${column}" ${operator} ${this.nextParam()})`, values: [value] });
+      this.conditions.push({ column, operator: `NOT_${operator}`, values: [value] });
     }
     return this;
   }
@@ -262,12 +262,12 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     // Пример: "status.eq.active,status.eq.pending"
     const logger = createServiceLogger('PostgresQueryBuilder');
     logger.warn({ filters }, 'or() filter requires manual SQL conversion for complex cases');
-    this.conditions.push({ sql: `(${filters.replace(/\./g, ' ')})`, values: [] });
+    this.conditions.push({ column: '', operator: 'RAW', values: [], raw: `(${filters.replace(/\./g, ' ')})` });
     return this;
   }
 
   filter(column: string, operator: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ sql: `"${column}" ${operator} ${this.nextParam()}`, values: [value] });
+    this.conditions.push({ column, operator, values: [value] });
     return this;
   }
 
@@ -303,11 +303,62 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   }
 
   /**
+   * Строит WHERE clause из conditions, добавляя значения в массив и создавая placeholder'ы
+   */
+  private buildWhereClause(allValues: any[]): string {
+    if (this.conditions.length === 0) return '';
+    
+    const whereParts: string[] = [];
+    
+    for (const cond of this.conditions) {
+      // Raw SQL условие (для or() и пустого in())
+      if (cond.raw) {
+        whereParts.push(cond.raw);
+        continue;
+      }
+      
+      // Операторы без значений (IS NULL, IS NOT NULL, IS TRUE, IS FALSE)
+      if (cond.values.length === 0) {
+        whereParts.push(`"${cond.column}" ${cond.operator}`);
+        continue;
+      }
+      
+      // IN оператор - несколько placeholder'ов
+      if (cond.operator === 'IN') {
+        const placeholders: string[] = [];
+        for (const v of cond.values) {
+          allValues.push(v);
+          placeholders.push(this.nextParam());
+        }
+        whereParts.push(`"${cond.column}" IN (${placeholders.join(', ')})`);
+        continue;
+      }
+      
+      // NOT оператор
+      if (cond.operator.startsWith('NOT_')) {
+        const actualOp = cond.operator.replace('NOT_', '');
+        allValues.push(cond.values[0]);
+        whereParts.push(`NOT ("${cond.column}" ${actualOp} ${this.nextParam()})`);
+        continue;
+      }
+      
+      // Стандартные операторы с одним значением
+      allValues.push(cond.values[0]);
+      whereParts.push(`"${cond.column}" ${cond.operator} ${this.nextParam()}`);
+    }
+    
+    return ` WHERE ${whereParts.join(' AND ')}`;
+  }
+
+  /**
    * Собирает SQL запрос
    */
   private buildQuery(): { sql: string; values: any[] } {
     const allValues: any[] = [];
     let sql = '';
+    
+    // Сбрасываем счётчик параметров перед построением запроса
+    this.paramCounter = 1;
 
     switch (this.operation) {
       case 'select': {
@@ -315,14 +366,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         const columns = this.parseSelectColumns(this.selectColumns);
         sql = `SELECT ${columns} FROM "${this.tableName}"`;
         
-        if (this.conditions.length > 0) {
-          const whereParts: string[] = [];
-          for (const cond of this.conditions) {
-            whereParts.push(cond.sql);
-            allValues.push(...cond.values);
-          }
-          sql += ` WHERE ${whereParts.join(' AND ')}`;
-        }
+        sql += this.buildWhereClause(allValues);
         
         if (this.orderByClause.length > 0) {
           sql += ` ORDER BY ${this.orderByClause.join(', ')}`;
@@ -349,24 +393,13 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         const columns = Object.keys(rows[0]);
         const columnNames = columns.map(c => `"${c}"`).join(', ');
         
-        const valuePlaceholders = rows.map(row => {
-          const placeholders = columns.map(() => {
-            allValues.push(row[columns[allValues.length % columns.length]]);
-            return this.nextParam();
-          }).join(', ');
-          return `(${placeholders})`;
-        });
-        
-        // Пересобираем values правильно
-        allValues.length = 0;
         for (const row of rows) {
           for (const col of columns) {
             allValues.push(row[col]);
           }
         }
         
-        this.paramCounter = 1;
-        const valueStrings = rows.map(row => {
+        const valueStrings = rows.map(() => {
           return `(${columns.map(() => this.nextParam()).join(', ')})`;
         }).join(', ');
         
@@ -376,6 +409,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
 
       case 'update': {
         const columns = Object.keys(this.updateData);
+        
+        // Сначала добавляем значения SET
         const setParts = columns.map(col => {
           allValues.push(this.updateData[col]);
           return `"${col}" = ${this.nextParam()}`;
@@ -383,14 +418,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         sql = `UPDATE "${this.tableName}" SET ${setParts.join(', ')}`;
         
-        if (this.conditions.length > 0) {
-          const whereParts: string[] = [];
-          for (const cond of this.conditions) {
-            whereParts.push(cond.sql);
-            allValues.push(...cond.values);
-          }
-          sql += ` WHERE ${whereParts.join(' AND ')}`;
-        }
+        // Затем WHERE clause - placeholder'ы создаются ПОСЛЕ SET значений
+        sql += this.buildWhereClause(allValues);
         
         sql += ' RETURNING *';
         break;
@@ -407,7 +436,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
           }
         }
         
-        const valueStrings = rows.map(row => {
+        const valueStrings = rows.map(() => {
           return `(${columns.map(() => this.nextParam()).join(', ')})`;
         }).join(', ');
         
@@ -430,14 +459,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       case 'delete': {
         sql = `DELETE FROM "${this.tableName}"`;
         
-        if (this.conditions.length > 0) {
-          const whereParts: string[] = [];
-          for (const cond of this.conditions) {
-            whereParts.push(cond.sql);
-            allValues.push(...cond.values);
-          }
-          sql += ` WHERE ${whereParts.join(' AND ')}`;
-        }
+        sql += this.buildWhereClause(allValues);
         
         sql += ' RETURNING *';
         break;

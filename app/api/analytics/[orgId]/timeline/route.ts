@@ -109,7 +109,11 @@ export async function GET(
         logger.error({ error: telegramError.message }, 'Error fetching telegram events');
       } else {
         telegramEvents?.forEach(event => {
-          const dateKey = event.created_at.split('T')[0];
+          // PostgreSQL возвращает Date объект, Supabase - строку
+          const createdAt = event.created_at instanceof Date 
+            ? event.created_at.toISOString() 
+            : String(event.created_at);
+          const dateKey = createdAt.split('T')[0];
           if (dailyData[dateKey]) {
             if (event.event_type === 'message') {
               dailyData[dateKey].message_count++;
@@ -135,7 +139,11 @@ export async function GET(
         logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
       } else {
         whatsappEvents?.forEach(event => {
-          const dateKey = event.created_at.split('T')[0];
+          // PostgreSQL возвращает Date объект, Supabase - строку
+          const createdAt = event.created_at instanceof Date 
+            ? event.created_at.toISOString() 
+            : String(event.created_at);
+          const dateKey = createdAt.split('T')[0];
           if (dailyData[dateKey]) {
             if (event.event_type === 'message') {
               dailyData[dateKey].message_count++;
