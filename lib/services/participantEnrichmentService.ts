@@ -152,19 +152,23 @@ export async function enrichParticipant(
     }
     
     // 4. Fetch group keywords (for AI context)
-    const { data: groups } = await supabaseAdmin
+    const { data: groupLinks } = await supabaseAdmin
       .from('participant_groups')
-      .select(`
-        tg_group_id,
-        telegram_groups!inner (
-          keywords
-        )
-      `)
+      .select('tg_group_id')
       .eq('participant_id', participantId);
     
-    const allKeywords = groups
-      ?.flatMap(g => (g.telegram_groups as any).keywords || [])
-      .filter((v, i, a) => a.indexOf(v) === i) || []; // unique
+    let allKeywords: string[] = [];
+    if (groupLinks && groupLinks.length > 0) {
+      const chatIds = groupLinks.map(g => g.tg_group_id);
+      const { data: telegramGroups } = await supabaseAdmin
+        .from('telegram_groups')
+        .select('keywords')
+        .in('tg_chat_id', chatIds);
+      
+      allKeywords = (telegramGroups || [])
+        .flatMap(g => g.keywords || [])
+        .filter((v, i, a) => a.indexOf(v) === i); // unique
+    }
     
     // 5. Calculate activity stats (for role classification)
     const stats = await calculateActivityStats(participantId, chatIds, daysBack);

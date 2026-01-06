@@ -56,41 +56,46 @@ export async function notifyItemApproved(itemId: string): Promise<{
   try {
     const adminSupabase = createAdminServer();
 
-    // Fetch item with app and org details
-    const { data: item, error: itemError } = await adminSupabase
+    // Fetch item with app and org details (step by step, without JOINs)
+    const { data: itemBase, error: itemError } = await adminSupabase
       .from('app_items')
-      .select(`
-        id,
-        data,
-        collection_id,
-        org_id,
-        creator_id,
-        app_collections!inner(
-          app_id,
-          display_name,
-          apps!inner(
-            name,
-            icon,
-            org_id,
-            organizations!inner(
-              name,
-              slug
-            )
-          )
-        ),
-        participants!creator_id(
-          id,
-          username,
-          tg_user_id
-        )
-      `)
+      .select('id, data, collection_id, org_id, creator_id')
       .eq('id', itemId)
       .single();
 
-    if (itemError || !item) {
+    if (itemError || !itemBase) {
       logger.error({ item_id: itemId, error: itemError?.message }, 'Item not found');
       return { success: false, error: 'Item not found' };
     }
+
+    // Получаем связанные данные
+    const [collectionResult, creatorResult] = await Promise.all([
+      adminSupabase.from('app_collections').select('app_id, display_name').eq('id', itemBase.collection_id).single(),
+      itemBase.creator_id ? adminSupabase.from('participants').select('id, username, tg_user_id').eq('id', itemBase.creator_id).single() : null
+    ]);
+
+    const collection = collectionResult?.data;
+    let app = null;
+    let org = null;
+
+    if (collection?.app_id) {
+      const { data: appData } = await adminSupabase.from('apps').select('name, icon, org_id').eq('id', collection.app_id).single();
+      app = appData;
+      if (app?.org_id) {
+        const { data: orgData } = await adminSupabase.from('organizations').select('name, slug').eq('id', app.org_id).single();
+        org = orgData;
+      }
+    }
+
+    // Собираем item в формате, совместимом с предыдущим кодом
+    const item = {
+      ...itemBase,
+      app_collections: collection ? {
+        ...collection,
+        apps: app ? { ...app, organizations: org } : null
+      } : null,
+      participants: creatorResult?.data || null
+    };
 
     // Get Telegram groups for this org
     const { data: groups, error: groupsError } = await adminSupabase
@@ -267,41 +272,46 @@ export async function notifyItemRejected(
   try {
     const adminSupabase = createAdminServer();
 
-    // Fetch item with creator details
-    const { data: item, error: itemError } = await adminSupabase
+    // Fetch item with creator details (step by step, without JOINs)
+    const { data: itemBase, error: itemError } = await adminSupabase
       .from('app_items')
-      .select(`
-        id,
-        data,
-        collection_id,
-        org_id,
-        creator_id,
-        app_collections!inner(
-          app_id,
-          display_name,
-          apps!inner(
-            name,
-            icon,
-            org_id,
-            organizations!inner(
-              name,
-              slug
-            )
-          )
-        ),
-        participants!creator_id(
-          id,
-          username,
-          tg_user_id
-        )
-      `)
+      .select('id, data, collection_id, org_id, creator_id')
       .eq('id', itemId)
       .single();
 
-    if (itemError || !item) {
+    if (itemError || !itemBase) {
       logger.error({ item_id: itemId, error: itemError?.message }, 'Item not found');
       return { success: false, error: 'Item not found' };
     }
+
+    // Получаем связанные данные
+    const [collectionResult, creatorResult] = await Promise.all([
+      adminSupabase.from('app_collections').select('app_id, display_name').eq('id', itemBase.collection_id).single(),
+      itemBase.creator_id ? adminSupabase.from('participants').select('id, username, tg_user_id').eq('id', itemBase.creator_id).single() : null
+    ]);
+
+    const collection = collectionResult?.data;
+    let app = null;
+    let org = null;
+
+    if (collection?.app_id) {
+      const { data: appData } = await adminSupabase.from('apps').select('name, icon, org_id').eq('id', collection.app_id).single();
+      app = appData;
+      if (app?.org_id) {
+        const { data: orgData } = await adminSupabase.from('organizations').select('name, slug').eq('id', app.org_id).single();
+        org = orgData;
+      }
+    }
+
+    // Собираем item в формате, совместимом с предыдущим кодом
+    const item = {
+      ...itemBase,
+      app_collections: collection ? {
+        ...collection,
+        apps: app ? { ...app, organizations: org } : null
+      } : null,
+      participants: creatorResult?.data || null
+    };
 
     const creator = item.participants as any;
     if (!creator?.tg_user_id) {

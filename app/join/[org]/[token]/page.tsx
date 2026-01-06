@@ -11,15 +11,23 @@ export default async function JoinPage({
   const supabase = createAdminServer()
 
   // Проверяем валидность приглашения
-  const { data: invite, error } = await supabase
+  const { data: inviteRaw, error } = await supabase
     .from('organization_invites')
-    .select(`
-      *,
-      organizations!inner(id, name, logo_url)
-    `)
+    .select('*')
     .eq('token', token)
     .eq('is_active', true)
     .maybeSingle()
+
+  // Получаем данные организации
+  let invite = inviteRaw as any;
+  if (inviteRaw && !error) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, name, logo_url')
+      .eq('id', inviteRaw.org_id)
+      .single();
+    invite = { ...inviteRaw, organizations: org };
+  }
 
   if (error || !invite) {
     return (

@@ -39,21 +39,9 @@ export async function GET(request: NextRequest) {
     }, 'Checking for events');
 
     // Fetch published events happening tomorrow
-    const { data: events, error: eventsError } = await adminSupabase
+    const { data: eventsRaw, error: eventsError } = await adminSupabase
       .from('events')
-      .select(`
-        id,
-        title,
-        event_date,
-        start_time,
-        org_id,
-        location_info,
-        requires_payment,
-        organizations!inner(
-          id,
-          name
-        )
-      `)
+      .select('id, title, event_date, start_time, org_id, location_info, requires_payment')
       .eq('status', 'published')
       .gte('event_date', tomorrow.toISOString().split('T')[0])
       .lt('event_date', dayAfterTomorrow.toISOString().split('T')[0]);
@@ -63,10 +51,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
-    if (!events || events.length === 0) {
+    if (!eventsRaw || eventsRaw.length === 0) {
       logger.info({}, 'No events found for tomorrow');
       return NextResponse.json({ message: 'No events to remind about', sent: 0 });
     }
+
+    // Получаем данные организаций
+    const orgIds = [...new Set(eventsRaw.map(e => e.org_id))];
+    const { data: orgs } = await adminSupabase
+      .from('organizations')
+      .select('id, name')
+      .in('id', orgIds);
+    
+    const orgsMap = new Map(orgs?.map(o => [o.id, o]) || []);
+    const events = eventsRaw.map(e => ({
+      ...e,
+      organizations: orgsMap.get(e.org_id) || null
+    }));
 
     logger.info({ events_count: events.length }, 'Found events for tomorrow');
 
@@ -79,18 +80,9 @@ export async function GET(request: NextRequest) {
         logger.debug({ event_id: event.id, event_title: event.title }, 'Processing event');
 
         // Get registrations for this event
-        const { data: registrations, error: regsError } = await adminSupabase
+        const { data: regsRaw, error: regsError } = await adminSupabase
           .from('event_registrations')
-          .select(`
-            id,
-            payment_status,
-            participants!inner(
-              id,
-              tg_user_id,
-              full_name,
-              merged_into
-            )
-          `)
+          .select('id, payment_status, participant_id')
           .eq('event_id', event.id)
           .eq('status', 'registered');
 
@@ -100,10 +92,26 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        if (!registrations || registrations.length === 0) {
+        if (!regsRaw || regsRaw.length === 0) {
           logger.debug({ event_id: event.id, event_title: event.title }, 'No registrations for event');
           continue;
         }
+
+        // Получаем данные участников
+        const participantIds = regsRaw.map(r => r.participant_id).filter(Boolean);
+        const { data: participants } = await adminSupabase
+          .from('participants')
+          .select('id, tg_user_id, full_name, merged_into')
+          .in('id', participantIds)
+          .is('merged_into', null);
+        
+        const participantsMap = new Map(participants?.map(p => [p.id, p]) || []);
+        const registrations = regsRaw
+          .filter(r => participantsMap.has(r.participant_id))
+          .map(r => ({
+            ...r,
+            participants: participantsMap.get(r.participant_id)
+          }));
 
         // Filter out merged participants and those without telegram
         const validRegistrations = registrations.filter(
