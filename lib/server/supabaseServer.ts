@@ -42,6 +42,8 @@ function hasJoinSyntax(columns?: string): boolean {
  * - Направляет сложные запросы (с JOIN) на Supabase
  */
 function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: SupabaseClient) {
+  logger.info({ table }, 'Creating smart query builder for table');
+  
   // Отслеживаем какой провайдер использовать
   let providerDecided = false;
   let useSupabase = false;
@@ -61,6 +63,7 @@ function createSmartQueryBuilder(table: string, pgClient: any, supabaseClient: S
         if (prop === 'select' && !providerDecided) {
           return (columns?: string, options?: any) => {
             providerDecided = true;
+            logger.info({ table, columns: columns?.substring(0, 200), hasJoin: hasJoinSyntax(columns) }, 'Select called');
             
             if (hasJoinSyntax(columns)) {
               useSupabase = true;
