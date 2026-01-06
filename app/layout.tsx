@@ -72,6 +72,7 @@ export default function RootLayout({
     <html lang="ru">
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="yandex-verification" content="aaf870695d84854f" />
       <link rel="icon" href="/icon.svg" type="image/svg+xml" />
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     </head>
