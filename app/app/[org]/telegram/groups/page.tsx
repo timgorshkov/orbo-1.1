@@ -22,32 +22,30 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
     const { supabase } = await requireOrgAccess(params.org);
 
     // Получаем список подключенных групп через org_telegram_groups
-    const { data: orgGroupsData, error: orgGroupsError } = await supabase
+    const { data: orgGroupLinks, error: linksError } = await supabase
       .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status,
-          last_sync_at,
-          member_count,
-          last_activity_at
-        )
-      `)
+      .select('tg_chat_id')
       .eq('org_id', params.org);
 
     let groups: TelegramGroup[] | null = null;
 
-    if (orgGroupsData && !orgGroupsError) {
-      groups = (orgGroupsData as any[])
-        .map((item: any) => item.telegram_groups as TelegramGroup)
-        .filter((group: TelegramGroup | null): group is TelegramGroup => group !== null)
-        .sort((a, b) => (a.id || 0) - (b.id || 0)) as TelegramGroup[];
+    if (orgGroupLinks && !linksError && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: telegramGroups, error: groupsError } = await supabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status, last_sync_at, member_count, last_activity_at')
+        .in('tg_chat_id', chatIds);
+      
+      if (groupsError) {
+        logger.error({ error: groupsError.message }, 'Error fetching telegram groups');
+      } else {
+        groups = (telegramGroups || [])
+          .sort((a, b) => (a.id || 0) - (b.id || 0)) as TelegramGroup[];
+      }
     }
 
-    if (orgGroupsError) {
-      logger.error({ error: orgGroupsError.message }, 'Error fetching telegram groups');
+    if (linksError) {
+      logger.error({ error: linksError.message }, 'Error fetching org_telegram_groups');
     }
 
     const activeGroups = groups?.filter(g => g.bot_status === 'connected') || [];

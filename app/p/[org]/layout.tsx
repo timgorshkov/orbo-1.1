@@ -70,22 +70,24 @@ export default async function PublicOrgLayout({
 
     // Telegram-группы загружаем только для админов (после определения роли)
     if (role === 'owner' || role === 'admin') {
-      const { data: orgGroups } = await adminSupabase
+      // Получаем связи org -> telegram_groups
+      const { data: orgGroupLinks } = await adminSupabase
         .from('org_telegram_groups')
-        .select(`
-          telegram_groups!inner (
-            id,
-            tg_chat_id,
-            title,
-            bot_status
-          )
-        `)
+        .select('tg_chat_id')
         .eq('org_id', org.id)
 
-      if (orgGroups) {
-        telegramGroups = orgGroups
-          .map((og: any) => og.telegram_groups)
-          .filter((g: any) => g !== null)
+      if (orgGroupLinks && orgGroupLinks.length > 0) {
+        const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+        
+        // Получаем данные telegram_groups
+        const { data: groups } = await adminSupabase
+          .from('telegram_groups')
+          .select('id, tg_chat_id, title, bot_status')
+          .in('tg_chat_id', chatIds)
+
+        if (groups) {
+          telegramGroups = groups;
+        }
       }
     }
   }

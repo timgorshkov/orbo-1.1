@@ -48,13 +48,23 @@ export async function GET(
         .eq('org_id', orgId)
         .eq('is_verified', true)
         .single(),
-      adminSupabase
-        .from('org_telegram_groups')
-        .select(`
-          tg_chat_id,
-          telegram_groups!inner(bot_status, tg_chat_id)
-        `)
-        .eq('org_id', orgId),
+      (async () => {
+        const { data: orgGroupLinks } = await adminSupabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', orgId);
+        
+        if (!orgGroupLinks || orgGroupLinks.length === 0) return { data: [] };
+        
+        const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+        const { data: groups } = await adminSupabase
+          .from('telegram_groups')
+          .select('bot_status, tg_chat_id')
+          .in('tg_chat_id', chatIds);
+        
+        // Возвращаем в том же формате, что и раньше
+        return { data: groups?.map(g => ({ tg_chat_id: g.tg_chat_id, telegram_groups: g })) || [] };
+      })(),
       adminSupabase
         .from('material_pages')
         .select('*', { count: 'exact', head: true })

@@ -77,22 +77,19 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
   if (isAdmin) {
-    const { data: orgGroups } = await adminSupabase
+    const { data: orgGroupLinks } = await adminSupabase
       .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status
-        )
-      `)
+      .select('tg_chat_id')
       .eq('org_id', orgId)
     
-    if (orgGroups) {
-      telegramGroups = orgGroups
-        .map((og: any) => og.telegram_groups)
-        .filter((g: any) => g !== null && g.bot_status === 'connected')
+    if (orgGroupLinks && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: groups } = await adminSupabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status')
+        .in('tg_chat_id', chatIds)
+      
+      telegramGroups = groups?.filter(g => g.bot_status === 'connected') || []
     }
   }
   

@@ -19,24 +19,9 @@ async function copyGroupParticipantsToOrg(
   logger.info({ tg_chat_id: tgChatId, org_id: targetOrgId }, '[CopyParticipants] Starting copy');
 
   // 1. Получаем всех участников группы из participant_groups
-  const { data: groupParticipants, error: pgError } = await supabase
+  const { data: groupLinks, error: pgError } = await supabase
     .from('participant_groups')
-    .select(`
-      participant_id,
-      participants!inner (
-        id,
-        tg_user_id,
-        full_name,
-        username,
-        phone,
-        email,
-        photo_url,
-        source,
-        participant_status,
-        custom_attributes,
-        bio
-      )
-    `)
+    .select('participant_id')
     .eq('tg_group_id', tgChatId);
 
   if (pgError) {
@@ -44,10 +29,23 @@ async function copyGroupParticipantsToOrg(
     return;
   }
 
-  if (!groupParticipants || groupParticipants.length === 0) {
+  if (!groupLinks || groupLinks.length === 0) {
     logger.info({ tg_chat_id: tgChatId }, '[CopyParticipants] No participants found in this group');
     return;
   }
+
+  // Получаем данные участников
+  const participantIds = groupLinks.map(link => link.participant_id);
+  const { data: participantsData } = await supabase
+    .from('participants')
+    .select('id, tg_user_id, full_name, username, phone, email, photo_url, source, participant_status, custom_attributes, bio')
+    .in('id', participantIds);
+
+  const participantsMap = new Map(participantsData?.map(p => [p.id, p]) || []);
+  const groupParticipants = groupLinks.map(link => ({
+    participant_id: link.participant_id,
+    participants: participantsMap.get(link.participant_id) || null
+  })).filter(gp => gp.participants !== null);
 
   logger.info({ tg_chat_id: tgChatId, participants_count: groupParticipants.length }, '[CopyParticipants] Found participants');
 

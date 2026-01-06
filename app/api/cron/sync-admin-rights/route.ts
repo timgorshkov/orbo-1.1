@@ -26,26 +26,53 @@ export async function GET(request: NextRequest) {
     const supabaseService = createAdminServer();
 
     // Получаем все организации с Telegram группами
-    const { data: orgs, error: orgsError } = await adminSupabase
-      .from('organizations')
-      .select(`
-        id,
-        name,
-        org_telegram_groups!inner (
-          tg_chat_id,
-          telegram_groups (
-            tg_chat_id,
-            title
-          )
-        )
-      `);
+    // Сначала получаем все связи org -> telegram_groups
+    const { data: orgGroupLinks, error: linksError } = await adminSupabase
+      .from('org_telegram_groups')
+      .select('org_id, tg_chat_id');
 
-    if (orgsError) {
-      logger.error({ error: orgsError.message }, 'Error fetching organizations');
+    if (linksError) {
+      logger.error({ error: linksError.message }, 'Error fetching org_telegram_groups');
       return NextResponse.json({ error: 'Failed to fetch organizations' }, { status: 500 });
     }
 
-    logger.info({ orgs_count: orgs?.length || 0 }, 'Found organizations with Telegram groups');
+    // Получаем уникальные org_ids и tg_chat_ids
+    const orgIds = [...new Set(orgGroupLinks?.map(link => link.org_id) || [])];
+    const chatIds = [...new Set(orgGroupLinks?.map(link => link.tg_chat_id) || [])];
+
+    // Получаем организации и группы параллельно
+    const [orgsResult, groupsResult] = await Promise.all([
+      adminSupabase.from('organizations').select('id, name').in('id', orgIds),
+      adminSupabase.from('telegram_groups').select('tg_chat_id, title').in('tg_chat_id', chatIds)
+    ]);
+
+    const orgsMap = new Map(orgsResult.data?.map(o => [o.id, o]) || []);
+    const groupsMap = new Map(groupsResult.data?.map(g => [g.tg_chat_id, g]) || []);
+
+    // Группируем связи по org_id
+    const orgGroupsMap = new Map<string, typeof orgGroupLinks>();
+    orgGroupLinks?.forEach(link => {
+      if (!orgGroupsMap.has(link.org_id)) {
+        orgGroupsMap.set(link.org_id, []);
+      }
+      orgGroupsMap.get(link.org_id)!.push(link);
+    });
+
+    // Формируем результат в том же формате
+    const orgs = orgIds.map(orgId => {
+      const org = orgsMap.get(orgId);
+      const links = orgGroupsMap.get(orgId) || [];
+      return {
+        id: orgId,
+        name: org?.name || 'Unknown',
+        org_telegram_groups: links.map(link => ({
+          tg_chat_id: link.tg_chat_id,
+          telegram_groups: groupsMap.get(link.tg_chat_id) || null
+        }))
+      };
+    }).filter(org => org.org_telegram_groups.length > 0);
+
+    logger.info({ orgs_count: orgs.length }, 'Found organizations with Telegram groups');
 
     const results = [];
     const telegramService = createTelegramService('main');

@@ -66,12 +66,9 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
     const orgChatIds = orgGroups.map(g => g.tg_chat_id)
     
     // Get groups where user is admin AND group is in this org
-    const { data: adminGroups, error } = await adminSupabase
+    const { data: adminStatus, error } = await adminSupabase
       .from('user_group_admin_status')
-      .select(`
-        tg_chat_id,
-        telegram_groups!inner(id, title, tg_chat_id)
-      `)
+      .select('tg_chat_id')
       .eq('user_id', userId)
       .eq('is_admin', true)
       .in('tg_chat_id', orgChatIds)
@@ -85,10 +82,19 @@ export async function checkUserAdminStatus(userId: string, orgId: string): Promi
       return { isAdmin: false, groups: [] }
     }
     
-    const groups = (adminGroups || []).map((item: any) => ({
-      id: item.telegram_groups.id,
-      title: item.telegram_groups.title
-    }))
+    let groups: Array<{ id: string; title: string }> = [];
+    if (adminStatus && adminStatus.length > 0) {
+      const chatIds = adminStatus.map(s => s.tg_chat_id);
+      const { data: telegramGroups } = await adminSupabase
+        .from('telegram_groups')
+        .select('id, title, tg_chat_id')
+        .in('tg_chat_id', chatIds);
+      
+      groups = (telegramGroups || []).map(g => ({
+        id: g.id,
+        title: g.title
+      }));
+    }
     
     return {
       isAdmin: groups.length > 0,

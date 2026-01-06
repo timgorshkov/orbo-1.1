@@ -25,16 +25,23 @@ export default async function WelcomePage() {
       .single(),
     
     // Проверяем количество АКТИВНЫХ организаций пользователя (не archived)
-    adminSupabase
-      .from('memberships')
-      .select(`
-        org_id,
-        organizations!inner (
-          status
-        )
-      `)
-      .eq('user_id', user.id)
-      .or('status.is.null,status.eq.active', { foreignTable: 'organizations' })
+    (async () => {
+      const { data: memberships } = await adminSupabase
+        .from('memberships')
+        .select('org_id')
+        .eq('user_id', user.id);
+      
+      if (!memberships || memberships.length === 0) return { data: [] };
+      
+      const orgIds = memberships.map(m => m.org_id);
+      const { data: activeOrgs } = await adminSupabase
+        .from('organizations')
+        .select('id')
+        .in('id', orgIds)
+        .or('status.is.null,status.eq.active');
+      
+      return { data: activeOrgs?.map(o => ({ org_id: o.id })) || [] };
+    })()
   ]);
 
   const { data: qualification } = qualificationResult;

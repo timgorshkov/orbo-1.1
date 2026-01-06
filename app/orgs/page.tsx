@@ -42,21 +42,11 @@ export default async function OrganizationsPage() {
       .eq('user_id', user.id)
       .single(),
     
-    // Получаем все memberships пользователя (только активные организации)
+    // Получаем все memberships пользователя
     adminSupabase
       .from('memberships')
-      .select(`
-        role,
-        org_id,
-        organizations!inner (
-          id,
-          name,
-          logo_url,
-          status
-        )
-      `)
+      .select('role, org_id')
       .eq('user_id', user.id)
-      .or('status.is.null,status.eq.active', { foreignTable: 'organizations' })
       .order('role', { ascending: true }),
     
     // Получаем telegram аккаунты
@@ -86,14 +76,29 @@ export default async function OrganizationsPage() {
     }, 'OrgsPage: Error fetching memberships');
   }
 
+  // Получаем организации для memberships (без Supabase JOIN)
+  const membershipOrgIds = memberships?.map(m => m.org_id) || [];
+  let orgsMap = new Map<string, { id: string; name: string; logo_url: string | null; status: string | null }>();
+  
+  if (membershipOrgIds.length > 0) {
+    const { data: orgsData } = await adminSupabase
+      .from('organizations')
+      .select('id, name, logo_url, status')
+      .in('id', membershipOrgIds)
+      .or('status.is.null,status.eq.active');
+    
+    orgsData?.forEach(org => orgsMap.set(org.id, org));
+  }
+
+  // Объединяем memberships с organizations в JS
   let organizations: Array<{
     org_id: string;
     org_name: string;
     logo_url: string | null;
     role: string;
     last_activity_at: string | null;
-  }> = memberships?.map(m => {
-    const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
+  }> = memberships?.filter(m => orgsMap.has(m.org_id)).map(m => {
+    const org = orgsMap.get(m.org_id);
     return {
       org_id: m.org_id,
       org_name: org?.name || 'Без названия',

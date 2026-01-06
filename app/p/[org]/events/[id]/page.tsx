@@ -163,31 +163,47 @@ export default async function EventDetailPage({
   
   // Fetch event FIRST to check if it's public (before auth check)
   timing.mark('fetch_event_start');
-  const { data: event, error } = await adminSupabase
+  
+  // Получаем событие
+  const { data: eventBase, error } = await adminSupabase
     .from('events')
-    .select(`
-      *,
-      event_registrations!event_registrations_event_id_fkey(
-        id,
-        status,
-        registered_at,
-        payment_status,
-        registration_data,
-        participants!inner(
-          id,
-          full_name,
-          username,
-          email,
-          phone,
-          bio,
-          tg_user_id,
-          merged_into
-        )
-      )
-    `)
+    .select('*')
     .eq('org_id', orgId)
     .eq('id', eventId)
     .single();
+  
+  let event = eventBase as any;
+  
+  if (eventBase && !error) {
+    // Получаем регистрации
+    const { data: registrations } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status, registered_at, payment_status, registration_data, participant_id')
+      .eq('event_id', eventId);
+    
+    if (registrations && registrations.length > 0) {
+      // Получаем участников
+      const participantIds = registrations.map(r => r.participant_id).filter(Boolean);
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, username, email, phone, bio, tg_user_id, merged_into')
+        .in('id', participantIds);
+      
+      const participantsMap = new Map(participants?.map(p => [p.id, p]) || []);
+      
+      // Объединяем в JS
+      event = {
+        ...eventBase,
+        event_registrations: registrations.map(r => ({
+          ...r,
+          participants: participantsMap.get(r.participant_id) || null
+        }))
+      };
+    } else {
+      event = { ...eventBase, event_registrations: [] };
+    }
+  }
+  
   timing.mark('fetch_event_end');
   timing.measure('fetch_event', 'fetch_event_start', 'fetch_event_end');
 
@@ -412,31 +428,28 @@ export default async function EventDetailPage({
   if (role === 'owner' || role === 'admin') {
     // Загружаем группы через org_telegram_groups (new many-to-many schema)
     timing.mark('fetch_tg_groups_start');
-    const { data: orgGroupsData } = await adminSupabase
+    const { data: orgGroupLinks } = await adminSupabase
       .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status
-        )
-      `)
+      .select('tg_chat_id')
       .eq('org_id', orgId);
-    timing.mark('fetch_tg_groups_end');
-    timing.measure('fetch_tg_groups', 'fetch_tg_groups_start', 'fetch_tg_groups_end');
     
-    if (orgGroupsData) {
-      // Извлекаем telegram_groups из результата JOIN и фильтруем по bot_status
-      telegramGroups = (orgGroupsData as any[])
-        .map((item: any) => item.telegram_groups)
-        .filter((group: any) => group !== null && group.bot_status === 'connected')
+    if (orgGroupLinks && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: groups } = await adminSupabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status')
+        .in('tg_chat_id', chatIds);
+      
+      telegramGroups = (groups || [])
+        .filter((group: any) => group.bot_status === 'connected')
         .sort((a: any, b: any) => {
           const titleA = a.title || ''
           const titleB = b.title || ''
           return titleA.localeCompare(titleB)
-        })
+        });
     }
+    timing.mark('fetch_tg_groups_end');
+    timing.measure('fetch_tg_groups', 'fetch_tg_groups_start', 'fetch_tg_groups_end');
     
     logger.debug({
       group_count: telegramGroups.length,

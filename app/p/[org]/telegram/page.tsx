@@ -28,28 +28,23 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     const { supabase, role } = await requireOrgAccess(orgId)
     
     // Получаем список подключенных групп через org_telegram_groups
-    const { data: orgGroupsData, error: orgGroupsError } = await supabase
+    const { data: orgGroupLinks, error: linksError } = await supabase
       .from('org_telegram_groups')
-      .select(`
-        telegram_groups!inner (
-          id,
-          tg_chat_id,
-          title,
-          bot_status,
-          last_sync_at
-        )
-      `)
+      .select('tg_chat_id')
       .eq('org_id', orgId)
     
     let groups: TelegramGroup[] | null = null
-    let error = orgGroupsError
+    let error = linksError
     
-    if (orgGroupsData && !orgGroupsError) {
-      // Извлекаем telegram_groups из результата JOIN
-      // Supabase возвращает связанную запись как объект (не массив) для foreign key
-      groups = (orgGroupsData as any[])
-        .map((item: any) => item.telegram_groups as TelegramGroup)
-        .filter((group: TelegramGroup | null): group is TelegramGroup => group !== null)
+    if (orgGroupLinks && !linksError && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const { data: telegramGroups, error: groupsError } = await supabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id, title, bot_status, last_sync_at')
+        .in('tg_chat_id', chatIds);
+      
+      error = groupsError;
+      groups = (telegramGroups || []) as TelegramGroup[]
         .sort((a, b) => (a.id || 0) - (b.id || 0)) as TelegramGroup[]
     }
     
