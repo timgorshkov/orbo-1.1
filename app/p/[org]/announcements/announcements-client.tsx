@@ -331,7 +331,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
               <div className="flex items-center justify-between">
                 <Button 
                   variant="ghost" 
-                  size="icon"
+                  size="sm"
                   onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -341,7 +341,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                 </CardTitle>
                 <Button 
                   variant="ghost" 
-                  size="icon"
+                  size="sm"
                   onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
                 >
                   <ChevronRight className="w-4 h-4" />
