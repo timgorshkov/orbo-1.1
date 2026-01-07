@@ -116,15 +116,32 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     }
   };
   
+  // Конвертация UTC в локальный datetime-local формат
+  const utcToLocalDatetimeString = (utcString: string) => {
+    const date = new Date(utcString);
+    // Получаем локальное время в формате YYYY-MM-DDTHH:mm
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+  
+  // Получение локального datetime-local строки для текущего времени + offset
+  const getLocalDatetimeString = (hoursOffset: number = 0) => {
+    const date = new Date();
+    date.setHours(date.getHours() + hoursOffset, 0, 0, 0);
+    return utcToLocalDatetimeString(date.toISOString());
+  };
+  
   const handleCreateNew = () => {
     setEditingAnnouncement(null);
-    const now = new Date();
-    now.setHours(now.getHours() + 1, 0, 0, 0);
     setFormData({
       title: '',
       content: '',
       target_groups: groups.map(g => g.tg_chat_id), // Все группы по умолчанию
-      scheduled_at: now.toISOString().slice(0, 16)
+      scheduled_at: getLocalDatetimeString(1) // +1 час от текущего времени
     });
     setIsDialogOpen(true);
   };
@@ -135,7 +152,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       title: announcement.title,
       content: announcement.content,
       target_groups: announcement.target_groups,
-      scheduled_at: announcement.scheduled_at.slice(0, 16)
+      // Конвертируем UTC время из БД в локальное для отображения
+      scheduled_at: utcToLocalDatetimeString(announcement.scheduled_at)
     });
     setIsDialogOpen(true);
   };
@@ -239,7 +257,9 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   
   const getAnnouncementsForDate = (date: Date) => {
     return announcements.filter(a => {
+      // scheduled_at хранится в UTC, конвертируем в локальное время для сравнения
       const announcementDate = new Date(a.scheduled_at);
+      // Сравниваем по локальной дате (getDate/getMonth/getFullYear используют локальную TZ)
       return (
         announcementDate.getDate() === date.getDate() &&
         announcementDate.getMonth() === date.getMonth() &&
