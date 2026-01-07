@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { createEventReminders } from '@/lib/services/announcementService'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
@@ -267,6 +268,38 @@ export async function POST(request: NextRequest) {
           logger.error({ error: fieldsError.message, event_id: event.id }, 'Error creating registration fields');
           // Don't fail the entire request, just log the error
         }
+      }
+    }
+
+    // Create auto-announcements (reminders) for the event
+    // Only for future events with event_date set
+    if (event?.id && event.event_date) {
+      try {
+        // Get all org groups for announcements
+        const { data: orgGroups } = await adminSupabase
+          .from('org_telegram_groups')
+          .select('id')
+          .eq('org_id', orgId);
+        
+        const targetGroups = (orgGroups || []).map(g => g.id);
+        
+        if (targetGroups.length > 0) {
+          await createEventReminders(
+            event.id,
+            orgId,
+            event.title,
+            event.description,
+            new Date(event.event_date),
+            event.location,
+            targetGroups
+          );
+          logger.info({ event_id: event.id, targetGroups: targetGroups.length }, 'Event reminders created');
+        }
+      } catch (reminderError: any) {
+        logger.warn({ 
+          error: reminderError.message, 
+          event_id: event.id 
+        }, 'Failed to create event reminders (non-critical)');
       }
     }
 

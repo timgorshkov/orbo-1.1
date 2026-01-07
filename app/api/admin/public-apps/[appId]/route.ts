@@ -4,7 +4,7 @@ import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
- * Проверка прав superadmin
+ * Проверка прав superadmin (используем таблицу superadmins как в guard)
  */
 async function verifySuperadmin() {
   const user = await getUnifiedUser();
@@ -14,16 +14,14 @@ async function verifySuperadmin() {
   }
   
   const adminSupabase = createAdminServer();
-  const { data: profile } = await adminSupabase
-    .from('profiles')
-    .select('raw_user_meta_data')
-    .eq('id', user.id)
-    .single();
+  const { data: superadmin, error } = await adminSupabase
+    .from('superadmins')
+    .select('is_active')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .maybeSingle();
   
-  const isSuperadmin = profile?.raw_user_meta_data?.is_superadmin === true ||
-                       profile?.raw_user_meta_data?.is_superadmin === 'true';
-  
-  if (!isSuperadmin) {
+  if (error || !superadmin) {
     return { authorized: false, error: 'Forbidden: superadmin access required' };
   }
   

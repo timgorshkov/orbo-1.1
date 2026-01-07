@@ -18,6 +18,7 @@ import {
   User as UserIcon,
   AppWindow,
   Home,
+  Megaphone,
   Eye,
   MessageCircle,
   Bell
@@ -159,6 +160,17 @@ export default function CollapsibleSidebar({
       icon: Calendar,
       href: `/p/${orgId}/events`,
       active: pathname?.startsWith(`/p/${orgId}/events`),
+    })
+  }
+
+  // Анонсы (только для owner и admin)
+  if (role === 'owner' || role === 'admin') {
+    navItems.push({
+      key: 'announcements',
+      label: 'Анонсы',
+      icon: Megaphone,
+      href: `/p/${orgId}/announcements`,
+      active: pathname?.startsWith(`/p/${orgId}/announcements`),
     })
   }
 

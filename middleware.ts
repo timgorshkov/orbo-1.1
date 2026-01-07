@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createServiceLogger } from '@/lib/logger'
+import { createServiceLogger } from '@/lib/logger-base'
 
 /**
  * Get the public base URL for redirects

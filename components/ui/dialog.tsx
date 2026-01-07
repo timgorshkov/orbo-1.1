@@ -98,3 +98,17 @@ export function DialogDescription({
   )
 }
 
+export function DialogFooter({ 
+  className, 
+  children 
+}: { 
+  className?: string
+  children: React.ReactNode 
+}) {
+  return (
+    <div className={clsx('flex justify-end gap-2 mt-6 pt-4 border-t', className)}>
+      {children}
+    </div>
+  )
+}
+

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminServer } from '@/lib/server/supabaseServer';
+import { createPostgresClient } from '@/lib/db/postgres-client';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
       }, '🚨 BACKUP FAILED');
       
       // Log to error_logs table for visibility in superadmin
-      const adminSupabase = createAdminServer();
-      await adminSupabase
+      const db = createPostgresClient();
+      await db
         .from('error_logs')
         .insert({
           level: 'error',
@@ -59,4 +59,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

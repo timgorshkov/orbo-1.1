@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     
     const durationMs = Date.now() - startTime;
     
-    logger.info({
+    logger.debug({
       processed: result.processed,
       triggered: result.triggered,
       total_ai_cost_usd: result.totalAiCost,

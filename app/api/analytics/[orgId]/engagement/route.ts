@@ -37,7 +37,7 @@ export async function GET(
     }
 
     // Call RPC function
-    logger.info({ org_id: orgId }, 'Calling get_engagement_breakdown');
+    logger.debug({ org_id: orgId }, 'Calling get_engagement_breakdown');
     
     const { data, error } = await adminSupabase.rpc('get_engagement_breakdown', {
       p_org_id: orgId
@@ -52,7 +52,7 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    logger.info({ 
+    logger.debug({ 
       org_id: orgId,
       data_count: Array.isArray(data) ? data.length : (data ? 1 : 0),
       data_sample: data

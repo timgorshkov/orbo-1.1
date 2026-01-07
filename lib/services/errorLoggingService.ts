@@ -1,15 +1,9 @@
-// Dynamic import to avoid next/headers issues in client components
-let createAdminServer: (() => any) | null = null;
-
-// Only load on server side
-if (typeof window === 'undefined') {
-  try {
-    const supabaseModule = require('@/lib/server/supabaseServer');
-    createAdminServer = supabaseModule.createAdminServer;
-  } catch (e) {
-    console.warn('[ErrorLoggingService] Could not load supabaseServer:', e);
-  }
-}
+/**
+ * Error Logging Service
+ * 
+ * Logs errors to the PostgreSQL database for visibility in superadmin panel.
+ * Uses batching to reduce database load.
+ */
 
 interface ErrorLogEntry {
   level: 'error' | 'warn' | 'info';
@@ -29,6 +23,25 @@ let errorQueue: ErrorLogEntry[] = [];
 let flushTimeout: NodeJS.Timeout | null = null;
 const FLUSH_INTERVAL_MS = 5000; // Flush every 5 seconds
 const MAX_QUEUE_SIZE = 50; // Flush if queue reaches this size
+
+// Dynamic import of postgres client (only on server)
+let pgClient: any = null;
+let pgClientInitialized = false;
+
+async function getPgClient() {
+  if (typeof window !== 'undefined') return null;
+  
+  if (!pgClientInitialized) {
+    pgClientInitialized = true;
+    try {
+      const { createPostgresClient } = await import('@/lib/db/postgres-client');
+      pgClient = createPostgresClient();
+    } catch (e) {
+      console.warn('[ErrorLoggingService] Could not load postgres client:', e);
+    }
+  }
+  return pgClient;
+}
 
 /**
  * Log an error to the database
@@ -65,40 +78,38 @@ async function flushErrorQueue(): Promise<void> {
   
   if (errorQueue.length === 0) return;
   
-  // Skip if createAdminServer is not available
-  if (!createAdminServer) {
-    console.warn('[ErrorLoggingService] createAdminServer not available, skipping flush');
-    errorQueue = [];
-    return;
-  }
-  
   const entries = [...errorQueue];
   errorQueue = [];
   
   try {
-    const adminSupabase = createAdminServer();
+    const client = await getPgClient();
+    if (!client) {
+      console.warn('[ErrorLoggingService] PostgreSQL client not available, skipping flush');
+      return;
+    }
     
-    const records = entries.map(entry => ({
-      level: entry.level,
-      message: entry.message.substring(0, 1000), // Limit message length
-      error_code: entry.error_code,
-      context: entry.context,
-      stack_trace: entry.stack_trace?.substring(0, 5000), // Limit stack trace
-      org_id: entry.org_id || null,
-      user_id: entry.user_id || null,
-      request_id: entry.request_id,
-      user_agent: entry.user_agent?.substring(0, 500),
-      fingerprint: entry.fingerprint || generateFingerprint(entry),
-      created_at: new Date().toISOString()
-    }));
-    
-    const { error } = await adminSupabase
-      .from('error_logs')
-      .insert(records);
-    
-    if (error) {
-      // Log to console but don't recurse
-      console.error('[ErrorLoggingService] Failed to insert error logs:', error.message);
+    // Insert each entry
+    for (const entry of entries) {
+      try {
+        await client
+          .from('error_logs')
+          .insert({
+            level: entry.level,
+            message: entry.message.substring(0, 1000),
+            error_code: entry.error_code || null,
+            context: entry.context || null,
+            stack_trace: entry.stack_trace?.substring(0, 5000) || null,
+            org_id: entry.org_id || null,
+            user_id: entry.user_id || null,
+            request_id: entry.request_id || null,
+            user_agent: entry.user_agent?.substring(0, 500) || null,
+            fingerprint: entry.fingerprint || generateFingerprint(entry),
+            created_at: new Date().toISOString()
+          });
+      } catch (e) {
+        // Log to console but don't recurse
+        console.error('[ErrorLoggingService] Failed to insert error log:', e);
+      }
     }
   } catch (e) {
     console.error('[ErrorLoggingService] Exception while flushing errors:', e);
@@ -174,9 +185,8 @@ export function logFromPino(
 }
 
 // Ensure queue is flushed on process exit
-if (typeof process !== 'undefined') {
+if (typeof process !== 'undefined' && process.on) {
   process.on('beforeExit', () => {
     flushErrorQueue();
   });
 }
-

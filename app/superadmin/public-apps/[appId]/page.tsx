@@ -90,7 +90,10 @@ export default function EditPublicAppPage() {
   
   const fetchApp = async () => {
     try {
-      const response = await fetch(`/api/admin/public-apps/${appId}`);
+      const response = await fetch(`/api/admin/public-apps/${appId}`, {
+        credentials: 'include'
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setApp(data.app);
@@ -120,8 +123,14 @@ export default function EditPublicAppPage() {
         });
       } else if (response.status === 404) {
         setError('Приложение не найдено');
+      } else if (response.status === 403 || response.status === 401) {
+        setError('Нет доступа. Требуются права суперадмина.');
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setError(data.error || `Ошибка загрузки (${response.status})`);
       }
     } catch (err) {
+      console.error('Fetch error:', err);
       setError('Ошибка загрузки');
     } finally {
       setIsLoading(false);

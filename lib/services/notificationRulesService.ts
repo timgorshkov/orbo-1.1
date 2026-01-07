@@ -216,25 +216,50 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
         .eq('role', 'owner')
         .single();
       
-      // Debug level for routine lookups
       logger.debug({ 
         rule_id: rule.id, 
         org_id: rule.org_id,
+        membership_found: !!membership,
+        user_id: membership?.user_id,
         error: membershipError?.message 
       }, 'Looking for owner membership');
       
       if (membership?.user_id) {
         // Use RPC function to get telegram ID (works with auth.users)
-        const { data: tgUserId, error: rpcError } = await supabaseAdmin
+        const { data: rpcResult, error: rpcError } = await supabaseAdmin
           .rpc('get_user_telegram_id', { p_user_id: membership.user_id });
         
-        if (tgUserId) {
+        // RPC can return different formats depending on Supabase version
+        // Handle: number, string, or array of objects [{get_user_telegram_id: "123"}]
+        let tgUserId: number | null = null;
+        if (rpcResult !== null && rpcResult !== undefined) {
+          if (typeof rpcResult === 'number') {
+            tgUserId = rpcResult;
+          } else if (typeof rpcResult === 'string') {
+            tgUserId = parseInt(rpcResult, 10);
+          } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
+            const firstItem = rpcResult[0];
+            if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
+              tgUserId = parseInt(firstItem.get_user_telegram_id, 10);
+            }
+          }
+        }
+        
+        logger.debug({
+          rule_id: rule.id,
+          user_id: membership.user_id,
+          rpc_raw_result: rpcResult,
+          tg_user_id_parsed: tgUserId,
+          rpc_error: rpcError?.message
+        }, 'RPC get_user_telegram_id result');
+        
+        if (tgUserId && !isNaN(tgUserId)) {
           recipients.push({
             tgUserId: tgUserId,
             name: 'Owner',
           });
         } else if (!rpcError) {
-          logger.debug({ rule_id: rule.id, user_id: membership.user_id }, 'Owner has no tg_user_id');
+          logger.warn({ rule_id: rule.id, user_id: membership.user_id, rpc_result: rpcResult }, 'Owner has no valid tg_user_id');
         }
       }
     }
@@ -249,10 +274,25 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
       
       if (adminMemberships) {
         for (const adminMembership of adminMemberships) {
-          const { data: tgUserId } = await supabaseAdmin
+          const { data: rpcResult } = await supabaseAdmin
             .rpc('get_user_telegram_id', { p_user_id: adminMembership.user_id });
           
-          if (tgUserId && !recipients.find(r => r.tgUserId === tgUserId)) {
+          // Parse RPC result (handle different formats)
+          let tgUserId: number | null = null;
+          if (rpcResult !== null && rpcResult !== undefined) {
+            if (typeof rpcResult === 'number') {
+              tgUserId = rpcResult;
+            } else if (typeof rpcResult === 'string') {
+              tgUserId = parseInt(rpcResult, 10);
+            } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
+              const firstItem = rpcResult[0];
+              if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
+                tgUserId = parseInt(firstItem.get_user_telegram_id, 10);
+              }
+            }
+          }
+          
+          if (tgUserId && !isNaN(tgUserId) && !recipients.find(r => r.tgUserId === tgUserId)) {
             recipients.push({
               tgUserId: tgUserId,
               name: 'Admin',
@@ -262,7 +302,11 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
       }
     }
     
-    logger.debug({ rule_id: rule.id, recipients_count: recipients.length }, 'Recipients found');
+    logger.debug({ 
+      rule_id: rule.id, 
+      recipients_count: recipients.length,
+      recipients: recipients.map(r => ({ tgUserId: r.tgUserId, name: r.name }))
+    }, 'Recipients found');
   } catch (error) {
     logger.error({ error, rule_id: rule.id }, 'Error getting recipients');
   }
@@ -572,7 +616,7 @@ _${rule.name}_`;
  * Process a single rule
  */
 async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
-  logger.info({ 
+  logger.debug({ 
     rule_id: rule.id, 
     rule_name: rule.name, 
     rule_type: rule.rule_type, 
@@ -587,7 +631,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
     const minutesSinceLastCheck = Math.floor((Date.now() - lastCheck.getTime()) / (1000 * 60));
     
     if (minutesSinceLastCheck < intervalMinutes) {
-      logger.info({ 
+      logger.debug({ 
         rule_id: rule.id, 
         rule_name: rule.name,
         minutes_since_last: minutesSinceLastCheck,
@@ -599,11 +643,11 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
   
   const groups = await getOrgGroups(rule.org_id, rule.config.groups);
   if (groups.length === 0) {
-    logger.info({ rule_id: rule.id, rule_name: rule.name, org_id: rule.org_id }, 'No groups to check for this rule');
+    logger.debug({ rule_id: rule.id, rule_name: rule.name, org_id: rule.org_id }, 'No groups to check for this rule');
     return { triggered: false };
   }
   
-  logger.info({ rule_id: rule.id, rule_name: rule.name, groups_count: groups.length }, 'Groups to check');
+  logger.debug({ rule_id: rule.id, rule_name: rule.name, groups_count: groups.length }, 'Groups to check');
   
   let triggered = false;
   let totalAiCost = 0;
@@ -916,6 +960,12 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         let sentCount = 0;
         for (const recipient of recipients) {
           const result = await sendSystemNotification(recipient.tgUserId, message);
+          if (!result.success) {
+            logger.warn({
+              tg_user_id: recipient.tgUserId,
+              error: result.error
+            }, 'Failed to send Telegram notification');
+          }
           if (result.success) sentCount++;
         }
         
@@ -935,9 +985,8 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           chat: groupTitle,
           inactive_hours: Math.floor(hoursInactive),
           telegram_sent: sentCount,
-          saved_to_db: logResult.success,
-          dedup_hash: inactivityDedupHash
-        }, '💤 Group inactivity notification SENT (one-time until new activity)');
+          saved_to_db: logResult.success
+        }, '💤 Group inactivity notification SENT');
         break;
       }
     }
@@ -983,11 +1032,11 @@ export async function processAllNotificationRules(): Promise<{
   }
   
   if (!rules || rules.length === 0) {
-    logger.info({}, 'No enabled notification rules to process');
+    logger.debug({}, 'No enabled notification rules to process');
     return { processed: 0, triggered: 0, totalAiCost: 0 };
   }
   
-  logger.info({
+  logger.debug({
     count: rules.length,
     enabled_rules: rules.map(r => ({ id: r.id, name: r.name, type: r.rule_type, org_id: r.org_id }))
   }, 'Processing enabled notification rules');
