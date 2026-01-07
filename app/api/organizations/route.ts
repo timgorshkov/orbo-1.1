@@ -32,18 +32,35 @@ export async function POST(req: NextRequest) {
     const user = { id: session.user.id, email: session.user.email };
 
     // Создаем новую организацию (с серверной стороны обходит RLS)
+    const insertData = {
+      name: name.trim(),
+      plan: 'free' // Базовый план по умолчанию
+    };
+    
+    logger.info({ 
+      insert_data: insertData,
+      user_id: user.id
+    }, 'Attempting to insert organization');
+    
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .insert({
-        name: name.trim(),
-        plan: 'free' // Базовый план по умолчанию
-      })
-      .select('id')
+      .insert(insertData)
+      .select('id, name, created_at')
       .single()
+    
+    logger.info({ 
+      org_data: org,
+      org_error: orgError?.message,
+      org_id: org?.id,
+      org_name: org?.name,
+      org_created_at: org?.created_at
+    }, 'Organization insert result');
     
     if (orgError) {
       logger.error({ 
         error: orgError.message,
+        code: orgError.code,
+        details: orgError.details,
         user_id: user.id,
         org_name: name
       }, 'Error creating organization');
@@ -51,6 +68,16 @@ export async function POST(req: NextRequest) {
         { error: orgError.message }, 
         { status: 400 }
       )
+    }
+    
+    // Проверяем что ID новый (а не существующий)
+    if (org.name !== insertData.name) {
+      logger.error({ 
+        expected_name: insertData.name,
+        actual_name: org.name,
+        org_id: org.id,
+        created_at: org.created_at
+      }, 'CRITICAL: Organization name mismatch! Insert returned wrong organization');
     }
     
     // Создаем членство для текущего пользователя как владельца

@@ -63,6 +63,15 @@ export default async function OrganizationsPage() {
   const { data: memberships, error: membershipsError } = membershipsResult;
   const { data: telegramAccounts } = telegramAccountsResult;
 
+  logger.info({ 
+    user_id: user.id,
+    qualification_completed: qualification?.completed_at,
+    memberships_count: memberships?.length || 0,
+    memberships_data: memberships,
+    memberships_error: membershipsError?.message,
+    telegram_accounts_count: telegramAccounts?.length || 0
+  }, 'OrgsPage: Initial data loaded');
+
   // Если квалификация не пройдена — редирект на welcome для прохождения
   if (!qualification?.completed_at) {
     logger.debug({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
@@ -78,14 +87,26 @@ export default async function OrganizationsPage() {
 
   // Получаем организации для memberships (без Supabase JOIN)
   const membershipOrgIds = memberships?.map(m => m.org_id) || [];
+  logger.info({ 
+    user_id: user.id,
+    membership_org_ids: membershipOrgIds
+  }, 'OrgsPage: Org IDs from memberships');
+  
   let orgsMap = new Map<string, { id: string; name: string; logo_url: string | null; status: string | null }>();
   
   if (membershipOrgIds.length > 0) {
-    const { data: orgsData } = await adminSupabase
+    const { data: orgsData, error: orgsError } = await adminSupabase
       .from('organizations')
       .select('id, name, logo_url, status')
       .in('id', membershipOrgIds)
       .or('status.is.null,status.eq.active');
+    
+    logger.info({ 
+      user_id: user.id,
+      orgs_data_count: orgsData?.length || 0,
+      orgs_data: orgsData,
+      orgs_error: orgsError?.message
+    }, 'OrgsPage: Organizations fetched');
     
     orgsData?.forEach(org => orgsMap.set(org.id, org));
   }

@@ -92,18 +92,32 @@ export default async function OrgLayout({
   let participant: any = null
 
   // Собираем все запросы для параллельного выполнения
+  // Получаем telegram groups через два запроса вместо JOIN
   const groupsPromise = (role === 'owner' || role === 'admin')
-    ? adminSupabase
-        .from('org_telegram_groups')
-        .select(`
-          telegram_groups (
-            id,
-            tg_chat_id,
-            title,
-            bot_status
-          )
-        `)
-        .eq('org_id', org.id)
+    ? (async () => {
+        // Сначала получаем связи org_telegram_groups
+        const { data: links, error: linksError } = await adminSupabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', org.id);
+        
+        if (linksError || !links || links.length === 0) {
+          return { data: [], error: linksError };
+        }
+        
+        // Затем получаем данные групп
+        const chatIds = links.map((l: any) => l.tg_chat_id);
+        const { data: groups, error: groupsError } = await adminSupabase
+          .from('telegram_groups')
+          .select('id, tg_chat_id, title, bot_status')
+          .in('tg_chat_id', chatIds);
+        
+        // Формируем результат в формате, совместимом со старым кодом
+        return { 
+          data: (groups || []).map(g => ({ telegram_groups: g })),
+          error: groupsError 
+        };
+      })()
     : Promise.resolve({ data: null, error: null })
 
   const participantPromise = telegramAccount?.telegram_user_id

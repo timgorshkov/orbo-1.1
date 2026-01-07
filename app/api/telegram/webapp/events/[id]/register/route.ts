@@ -47,7 +47,7 @@ export async function POST(
     // Get event details
     const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('*, event_registrations!event_registrations_event_id_fkey(id, status, quantity)')
+      .select('*')
       .eq('id', eventId)
       .single();
     
@@ -62,13 +62,23 @@ export async function POST(
     
     // Check capacity
     if (event.capacity) {
-      const { data: regCount } = await adminSupabase
-        .rpc('get_event_registered_count', {
-          event_uuid: eventId,
-          count_by_paid: event.capacity_count_by_paid || false
-        });
+      // Получаем регистрации отдельно
+      const { data: eventRegs } = await adminSupabase
+        .from('event_registrations')
+        .select('id, status, quantity')
+        .eq('event_id', eventId);
       
-      if ((regCount || 0) + quantity > event.capacity) {
+      const countByPaid = event.capacity_count_by_paid || false;
+      let regCount = 0;
+      if (countByPaid) {
+        regCount = eventRegs?.filter((r: any) => r.status === 'registered' && r.payment_status === 'paid')
+          .reduce((sum: number, r: any) => sum + (r.quantity || 1), 0) || 0;
+      } else {
+        regCount = eventRegs?.filter((r: any) => r.status === 'registered')
+          .reduce((sum: number, r: any) => sum + (r.quantity || 1), 0) || 0;
+      }
+      
+      if (regCount + quantity > event.capacity) {
         return NextResponse.json({ error: 'Все места заняты' }, { status: 400 });
       }
     }

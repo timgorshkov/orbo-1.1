@@ -190,14 +190,19 @@ export class SupabaseDbClient implements DbClient {
     return new SupabaseQueryBuilder<T>(this.client.from(table));
   }
 
-  async rpc<T = any>(
+  rpc<T = any>(
     functionName: string,
     params?: Record<string, any>,
     options?: { count?: 'exact' | 'planned' | 'estimated' }
-  ): Promise<DbResult<T>> {
-    const result = await this.client.rpc(functionName, params, options);
-    return {
-      data: result.data as T,
+  ): {
+    single: () => Promise<DbResult<T>>;
+    maybeSingle: () => Promise<DbResult<T | null>>;
+    then: <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>) => Promise<TResult>;
+  } {
+    const rpcCall = this.client.rpc(functionName, params, options);
+    
+    const transformResult = (result: any, single: boolean): DbResult<any> => ({
+      data: result.data,
       error: result.error ? {
         message: result.error.message,
         code: result.error.code,
@@ -205,6 +210,27 @@ export class SupabaseDbClient implements DbClient {
         hint: result.error.hint
       } : null,
       count: result.count
+    });
+    
+    return {
+      single: async (): Promise<DbResult<T>> => {
+        const result = await rpcCall.single();
+        return transformResult(result, true) as DbResult<T>;
+      },
+      
+      maybeSingle: async (): Promise<DbResult<T | null>> => {
+        const result = await rpcCall.maybeSingle();
+        return transformResult(result, true) as DbResult<T | null>;
+      },
+      
+      then: async <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>): Promise<TResult> => {
+        const result = await rpcCall;
+        const transformed = transformResult(result, false) as DbResult<T[]>;
+        if (onfulfilled) {
+          return onfulfilled(transformed);
+        }
+        return transformed as unknown as TResult;
+      }
     };
   }
 

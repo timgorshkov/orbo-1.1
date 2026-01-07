@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import JSZip from 'jszip'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 /**
  * Parse VCF file content to extract contact name and phone
@@ -68,14 +69,15 @@ export async function POST(request: NextRequest) {
     
     logger.info({ org_id: orgId }, 'Starting import');
     
-    // Auth check
-    const supabase = await createClientServer()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Auth check via unified auth
+    const user = await getUnifiedUser()
     
-    if (authError || !user) {
-      logger.error({ error: authError?.message }, 'Auth error');
+    if (!user) {
+      logger.error({}, 'Auth error - no user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    const supabase = createAdminServer()
     
     // Check org membership
     const { data: membership } = await supabase

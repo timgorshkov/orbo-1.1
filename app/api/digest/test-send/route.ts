@@ -7,18 +7,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';
 import { formatDigestForTelegram } from '@/lib/templates/weeklyDigest';
 import { sendDigestDM } from '@/lib/services/telegramNotificationService';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/digest/test-send' });
   let orgId: string | undefined;
   try {
-    const supabase = await createClientServer();
     const adminSupabase = createAdminServer();
     const body = await request.json();
     orgId = body.orgId;
@@ -27,14 +27,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check permissions (owner/admin only)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)

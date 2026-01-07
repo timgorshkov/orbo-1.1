@@ -678,15 +678,15 @@ export class EventProcessingService {
                 .eq('id', existingGroup.id);
             }
           } else {
-            // Если связи нет, создаем
+            // Если связи нет, создаем (используем upsert для избежания race conditions)
             await this.supabase
               .from('participant_groups')
-              .insert({
+              .upsert({
                 participant_id: participantId,
                 tg_group_id: chatId,
                 joined_at: new Date().toISOString(),
                 is_active: true
-              });
+              }, { onConflict: 'participant_id,tg_group_id' });
           }
           
           // Счетчик member_count обновляется автоматически через SQL триггер update_member_count_trigger
@@ -893,15 +893,15 @@ export class EventProcessingService {
             }, 'Reactivated participant in group');
           }
         } else {
-          // Если связи нет, создаем
+          // Если связи нет, создаем (используем upsert для избежания race conditions)
           await this.supabase
             .from('participant_groups')
-            .insert({
+            .upsert({
               participant_id: participantId,
               tg_group_id: chatId,
               joined_at: new Date().toISOString(),
               is_active: true
-            });
+            }, { onConflict: 'participant_id,tg_group_id' });
           
           this.logger.debug({ 
             participant_id: participantId,
@@ -1170,10 +1170,10 @@ export class EventProcessingService {
         .eq('tg_user_id', userId)
         .eq('org_id', orgId);
       
-      // Обновляем время последней активности группы
+      // Обновляем время последнего сообщения группы
       await this.supabase
         .from('telegram_groups')
-        .update({ last_activity_at: new Date().toISOString() })
+        .update({ last_sync_at: new Date().toISOString() })
         .eq('tg_chat_id', chatId);
     } catch (error) {
       this.logger.error({ 
@@ -1792,7 +1792,7 @@ export class EventProcessingService {
 
       const { error } = await this.supabase
         .from('participant_messages')
-        .insert({
+        .upsert({
           org_id: orgId,
           participant_id: participantId,
           tg_user_id: message.from?.id,
@@ -1806,19 +1806,16 @@ export class EventProcessingService {
           chars_count: messageText.length,
           words_count: wordsCount,
           sent_at: new Date(message.date * 1000).toISOString()
-        });
+        }, { onConflict: 'tg_chat_id,message_id' });
 
       if (error) {
-        // Игнорируем ошибки duplicate key (сообщение уже сохранено)
-        if (error.code !== '23505') {
-          this.logger.error({ 
-            org_id: orgId,
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            error: error.message,
-            code: error.code
-          }, 'Save text error');
-        }
+        this.logger.error({ 
+          org_id: orgId,
+          chat_id: message.chat.id,
+          message_id: message.message_id,
+          error: error.message,
+          code: error.code
+        }, 'Save text error');
       }
     } catch (error) {
       this.logger.error({ 

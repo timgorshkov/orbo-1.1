@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/send' });
   try {
-    // Проверяем авторизацию
-    const supabase = await createClientServer()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Проверяем авторизацию через unified auth
+    const user = await getUnifiedUser()
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    const supabase = createAdminServer()
     
     // Получаем данные из запроса
     const { orgId, chatId, message, options } = await req.json()
@@ -39,13 +41,25 @@ export async function POST(req: NextRequest) {
     
     logger.info({ org_id: orgId, chat_id: chatId, user_id: user.id }, 'Sending bot message');
     
-    // Проверяем, что группа принадлежит организации
-    const { data: group, error: groupError } = await supabase
-      .from('telegram_groups')
-      .select('id, tg_chat_id')
+    // Проверяем, что группа принадлежит организации через org_telegram_groups
+    const { data: orgGroupLink } = await supabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
       .eq('org_id', orgId)
       .eq('tg_chat_id', chatId)
       .single()
+    
+    let group = null;
+    let groupError = null;
+    if (orgGroupLink) {
+      const { data: groupData, error: gError } = await supabase
+        .from('telegram_groups')
+        .select('id, tg_chat_id')
+        .eq('tg_chat_id', chatId)
+        .single();
+      group = groupData;
+      groupError = gError;
+    }
     
     if (groupError || !group) {
       return NextResponse.json({ 

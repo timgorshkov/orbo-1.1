@@ -26,22 +26,31 @@ export async function GET(
     
     const adminSupabase = createAdminServer();
     
-    const { data: importData, error } = await adminSupabase
+    const { data: importDataRaw, error } = await adminSupabase
       .from('whatsapp_imports')
-      .select(`
-        *,
-        participant_tags (
-          id,
-          name,
-          color
-        )
-      `)
+      .select('*')
       .eq('id', importId)
       .single();
     
-    if (error || !importData) {
+    if (error || !importDataRaw) {
       return NextResponse.json({ error: 'Import not found' }, { status: 404 });
     }
+    
+    // Get linked tag if default_tag_id exists
+    let linkedTag = null;
+    if (importDataRaw.default_tag_id) {
+      const { data: tagData } = await adminSupabase
+        .from('participant_tags')
+        .select('id, name, color')
+        .eq('id', importDataRaw.default_tag_id)
+        .single();
+      linkedTag = tagData;
+    }
+    
+    const importData = {
+      ...importDataRaw,
+      participant_tags: linkedTag
+    };
     
     // Check org membership
     const { data: membership } = await adminSupabase

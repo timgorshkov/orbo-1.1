@@ -8,8 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 const supabaseAdmin = createAdminServer();
 
@@ -17,7 +18,6 @@ export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/digest/history' });
   let orgId: string | null = null;
   try {
-    const supabase = await createClientServer();
     const searchParams = request.nextUrl.searchParams;
     orgId = searchParams.get('orgId');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -26,14 +26,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
 
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Check permissions
-    const { data: membership } = await supabase
+    const { data: membership } = await supabaseAdmin
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)

@@ -20,10 +20,10 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get event details
+    // Get event details (простой запрос без JOIN)
     const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('*, event_registrations!event_registrations_event_id_fkey(id, status, payment_status, quantity)')
+      .select('*')
       .eq('id', eventId)
       .single()
 
@@ -44,45 +44,32 @@ export async function POST(
     const registrationData = body.registration_data || {}
     const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5) // Clamp between 1 and 5
 
-    // Check capacity using helper function
+    // Check capacity
     if (event.capacity) {
       const countByPaid = event.capacity_count_by_paid || false
       
-      // Use helper function to count registrations
-      const { data: countResult, error: countError } = await adminSupabase
-        .rpc('get_event_registered_count', {
-          event_uuid: eventId,
-          count_by_paid: countByPaid
-        })
-
-      if (countError) {
-        logger.error({ error: countError.message, event_id: eventId }, 'Error counting registrations');
-        // Fallback to manual count
-        let registeredCount = 0
-        if (countByPaid) {
-          registeredCount = event.event_registrations?.filter(
-            (reg: any) => reg.status === 'registered' && reg.payment_status === 'paid'
-          ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
-        } else {
-          registeredCount = event.event_registrations?.filter(
-            (reg: any) => reg.status === 'registered'
-          ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
-        }
-        
-        if (registeredCount + quantity > event.capacity) {
-          return NextResponse.json(
-            { error: 'Event is full' },
-            { status: 400 }
-          )
-        }
+      // Получаем регистрации отдельно для подсчёта
+      const { data: eventRegistrations } = await adminSupabase
+        .from('event_registrations')
+        .select('id, status, payment_status, quantity')
+        .eq('event_id', eventId)
+      
+      let registeredCount = 0
+      if (countByPaid) {
+        registeredCount = eventRegistrations?.filter(
+          (reg: any) => reg.status === 'registered' && reg.payment_status === 'paid'
+        ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
       } else {
-        const currentCount = countResult || 0
-        if (currentCount + quantity > event.capacity) {
-          return NextResponse.json(
-            { error: 'Event is full' },
-            { status: 400 }
-          )
-        }
+        registeredCount = eventRegistrations?.filter(
+          (reg: any) => reg.status === 'registered'
+        ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0) || 0
+      }
+      
+      if (registeredCount + quantity > event.capacity) {
+        return NextResponse.json(
+          { error: 'Event is full' },
+          { status: 400 }
+        )
       }
     }
 

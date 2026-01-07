@@ -16,26 +16,10 @@ export async function GET(
     eventId = paramsData.id;
     const adminSupabase = createAdminServer()
     
-    // Fetch event with registrations
+    // Fetch event (простой запрос без JOIN)
     const { data: event, error } = await adminSupabase
       .from('events')
-      .select(`
-        *,
-        organizations(id, name),
-        event_registrations!event_registrations_event_id_fkey(
-          id,
-          status,
-          registered_at,
-          payment_status,
-          quantity,
-          participants(
-            id,
-            full_name,
-            username,
-            tg_user_id
-          )
-        )
-      `)
+      .select('*')
       .eq('id', eventId)
       .single()
 
@@ -45,6 +29,47 @@ export async function GET(
       }
       logger.error({ error: error.message, event_id: eventId }, 'Error fetching event');
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Получаем организацию отдельно
+    const { data: organization } = await adminSupabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', event.org_id)
+      .single()
+
+    // Получаем регистрации отдельно
+    const { data: registrations } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status, registered_at, payment_status, quantity, participant_id')
+      .eq('event_id', eventId)
+
+    // Получаем участников для регистраций
+    const participantIds = registrations?.map(r => r.participant_id).filter(Boolean) || [];
+    let participantsMap = new Map<string, any>();
+    
+    if (participantIds.length > 0) {
+      const { data: participants } = await adminSupabase
+        .from('participants')
+        .select('id, full_name, username, tg_user_id')
+        .in('id', participantIds);
+      
+      for (const p of participants || []) {
+        participantsMap.set(p.id, p);
+      }
+    }
+
+    // Собираем event_registrations с вложенными participants
+    const eventRegistrations = registrations?.map(reg => ({
+      ...reg,
+      participants: participantsMap.get(reg.participant_id) || null
+    })) || [];
+
+    // Добавляем связанные данные к событию
+    const eventWithRelations = {
+      ...event,
+      organizations: organization,
+      event_registrations: eventRegistrations
     }
 
     // Check if current user is admin via unified auth
@@ -63,24 +88,16 @@ export async function GET(
       isAdmin = membership?.role === 'owner' || membership?.role === 'admin'
     }
 
-    // Calculate registered count using helper function (includes quantity)
-    const countByPaid = event.capacity_count_by_paid || false
-    const { data: registeredCountResult } = await adminSupabase
-      .rpc('get_event_registered_count', {
-        event_uuid: eventId,
-        count_by_paid: false // Always count all registered for display
-      })
-
-    const registeredCount = registeredCountResult || 0
+    // Calculate registered count (считаем из полученных регистраций)
+    const registeredCount = eventRegistrations.filter(
+      (reg: any) => reg.status === 'registered'
+    ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0)
 
     // For admins, also calculate paid count if event requires payment
     if (isAdmin && event.requires_payment) {
-      const { data: paidCountResult } = await adminSupabase
-        .rpc('get_event_registered_count', {
-          event_uuid: eventId,
-          count_by_paid: true
-        })
-      paidCount = paidCountResult || 0
+      paidCount = eventRegistrations.filter(
+        (reg: any) => reg.status === 'registered' && reg.payment_status === 'paid'
+      ).reduce((sum: number, reg: any) => sum + (reg.quantity || 1), 0)
     }
 
     // Check if current user is registered and get their payment status
@@ -96,7 +113,7 @@ export async function GET(
         .single()
 
       if (participant) {
-        const userRegistration = event.event_registrations?.find(
+        const userRegistration = eventRegistrations.find(
           (reg: any) => 
             reg.participants?.id === participant.id && 
             reg.status === 'registered'
@@ -108,7 +125,7 @@ export async function GET(
 
     return NextResponse.json({
       event: {
-        ...event,
+        ...eventWithRelations,
         registered_count: registeredCount,
         paid_count: paidCount, // Only for admins, only for paid events
         available_spots: null, // Don't show available spots on public page (as per requirements)

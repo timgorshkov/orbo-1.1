@@ -31,12 +31,16 @@ export default async function SuperadminOrganizationsPage() {
     { data: orgGroups },
     { data: participants },
     { data: materialPages },
-    { data: events }
+    { data: events },
+    { data: memberships },
+    { data: telegramAccounts }
   ] = await Promise.all([
     supabase.from('org_telegram_groups').select('org_id, tg_chat_id').in('org_id', orgIds),
     supabase.from('participants').select('id, org_id').in('org_id', orgIds),
     supabase.from('material_pages').select('id, org_id').in('org_id', orgIds),
-    supabase.from('events').select('id, org_id').in('org_id', orgIds)
+    supabase.from('events').select('id, org_id').in('org_id', orgIds),
+    supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
+    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username').in('org_id', orgIds)
   ])
   
   // Получаем telegram_groups для подсчёта bot_status
@@ -75,9 +79,24 @@ export default async function SuperadminOrganizationsPage() {
     eventsMap.set(e.org_id, (eventsMap.get(e.org_id) || 0) + 1)
   }
   
+  // Создаём маппинг telegram для организаций (по owner/admin)
+  const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null }>()
+  for (const ta of telegramAccounts || []) {
+    // Проверяем что этот telegram аккаунт принадлежит owner или admin
+    const isOwnerOrAdmin = memberships?.some(m => m.org_id === ta.org_id && m.user_id === ta.user_id)
+    if (isOwnerOrAdmin && !telegramMap.has(ta.org_id)) {
+      telegramMap.set(ta.org_id, {
+        has_telegram: true,
+        telegram_verified: ta.is_verified || false,
+        telegram_username: ta.telegram_username
+      })
+    }
+  }
+  
   // Форматируем данные
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
+    const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null }
     
     return {
       id: org.id,
@@ -85,9 +104,9 @@ export default async function SuperadminOrganizationsPage() {
       created_at: org.created_at,
       status: org.status || 'active',
       archived_at: org.archived_at,
-      has_telegram: false,
-      telegram_verified: false,
-      telegram_username: null,
+      has_telegram: telegram.has_telegram,
+      telegram_verified: telegram.telegram_verified,
+      telegram_username: telegram.telegram_username,
       groups_count: groups.count,
       groups_with_bot: groups.withBot,
       participants_count: participantsMap.get(org.id) || 0,

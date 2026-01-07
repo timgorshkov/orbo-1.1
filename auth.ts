@@ -80,11 +80,11 @@ if (hasYandexCredentials) {
           },
         })
         const data = await response.json()
-        // Логируем для дебага
-        logger.debug({ 
-          yandex_profile: data,
+        // Логируем в info чтобы видеть в production
+        logger.info({ 
+          yandex_login: data.login,
           has_default_email: !!data.default_email,
-          has_emails: !!data.emails,
+          default_email: data.default_email,
         }, 'Yandex userinfo response')
         return data
       },
@@ -93,11 +93,10 @@ if (hasYandexCredentials) {
       // Извлекаем email из различных полей Yandex API
       const email = profile.default_email || profile.emails?.[0] || `${profile.login}@yandex.ru`
       
-      logger.debug({ 
+      logger.info({ 
         yandex_id: profile.id,
         login: profile.login,
         default_email: profile.default_email,
-        emails: profile.emails,
         extracted_email: email,
       }, 'Yandex profile mapping')
       
@@ -200,16 +199,38 @@ export const authConfig: NextAuthConfig = {
         }
         
         if (dbUser) {
-          // Используем данные из БД
+          // Получаем email из OAuth профиля (user.email приходит из profile function)
+          const profileEmail = user?.email?.toLowerCase() || null
+          
+          // Если email в БД пустой, но есть в профиле - обновляем БД
+          if (!dbUser.email && profileEmail) {
+            logger.info({ user_id: dbUser.id, new_email: profileEmail }, 'Updating user email from OAuth profile')
+            await db.from('users').update({ 
+              email: profileEmail,
+              updated_at: new Date().toISOString()
+            }).eq('id', dbUser.id)
+            dbUser.email = profileEmail
+          }
+          
+          // Если имя в БД пустое, но есть в профиле - обновляем БД
+          if (!dbUser.name && user?.name) {
+            await db.from('users').update({ 
+              name: user.name,
+              updated_at: new Date().toISOString()
+            }).eq('id', dbUser.id)
+            dbUser.name = user.name
+          }
+          
+          // Используем данные из БД (с возможно обновлёнными полями)
           token.id = dbUser.id
           token.sub = dbUser.id
-          token.email = dbUser.email
+          token.email = dbUser.email || profileEmail
           token.name = dbUser.name || user?.name
           token.picture = dbUser.image || user?.image
           logger.debug({ 
             oauth_id: user?.id, 
             db_id: dbUser.id, 
-            email: dbUser.email 
+            email: token.email 
           }, 'Using database user data')
         } else if (user) {
           // Fallback на данные из OAuth

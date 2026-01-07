@@ -87,12 +87,22 @@ export default async function OrganizationSettingsPage({
           .order('created_at', { ascending: true })
 
         const teamWithGroups = (team || []).map((member: any) => {
-          if (member.role === 'admin' && member.role_source === 'telegram_admin') {
-            const groupIds = member.metadata?.telegram_groups || []
-            const groupTitles = member.metadata?.telegram_group_titles || []
+          // Преобразуем поля из view в формат ожидаемый компонентом
+          // View возвращает tg_first_name, tg_username, has_verified_email
+          // Компонент ожидает full_name, telegram_username, email_confirmed
+          const normalizedMember = {
+            ...member,
+            full_name: member.tg_first_name || member.full_name,
+            telegram_username: member.tg_username || member.telegram_username,
+            email_confirmed: member.has_verified_email || member.email_confirmed,
+          }
+          
+          if (normalizedMember.role === 'admin' && normalizedMember.role_source === 'telegram_admin') {
+            const groupIds = normalizedMember.metadata?.telegram_groups || []
+            const groupTitles = normalizedMember.metadata?.telegram_group_titles || []
             
             return {
-              ...member,
+              ...normalizedMember,
               admin_groups: groupIds.map((id: number, index: number) => ({
                 id,
                 title: groupTitles[index] || `Group ${id}`
@@ -101,7 +111,7 @@ export default async function OrganizationSettingsPage({
           }
           
           return {
-            ...member,
+            ...normalizedMember,
             admin_groups: []
           }
         })

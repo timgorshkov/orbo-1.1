@@ -175,11 +175,19 @@ export async function GET(request: Request) {
 
     // 1) Загружаем актуальных участников группы
     try {
+      logger.debug({ chat_id: chatId, chat_id_type: typeof chatId }, 'Fetching participant_groups');
+      
       const { data: membershipLinks, error: membershipError } = await supabase
         .from('participant_groups')
         .select('participant_id')
         .eq('tg_group_id', Number(chatId))
         .eq('is_active', true)
+
+      logger.debug({ 
+        chat_id: chatId, 
+        links_count: membershipLinks?.length || 0, 
+        error: membershipError?.message 
+      }, 'participant_groups query result');
 
       if (membershipError) {
         logger.error({ error: membershipError.message, chat_id: chatId }, 'Error fetching participant memberships for analytics');
@@ -334,6 +342,12 @@ export async function GET(request: Request) {
     }
 
     const participantList = Array.from(participantsMap.values()).filter(record => !BOT_USER_IDS.has(record.tg_user_id))
+    
+    logger.debug({ 
+      participants_count: participantList.length,
+      chat_id: chatId,
+      from_membership_count: participantList.filter(p => p.from_membership).length
+    }, 'Participant list compiled');
 
     // Получаем все tg_user_id для последующих запросов
     const allTgUserIds = participantList.map(p => p.tg_user_id)

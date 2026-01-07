@@ -92,11 +92,17 @@ export async function POST(
     }
     
     if (!success) {
-      logger.warn({ 
+      // Уведомление уже было решено ранее - это не ошибка, возвращаем успех
+      logger.info({ 
         notification_id: notificationId, 
         source_type: sourceType 
-      }, 'Notification not found or already resolved');
-      return NextResponse.json({ error: 'Not found or already resolved' }, { status: 404 });
+      }, 'Notification already resolved');
+      return NextResponse.json({ 
+        success: true,
+        alreadyResolved: true,
+        resolvedBy: userName,
+        resolvedAt: new Date().toISOString(),
+      });
     }
     
     logger.info({ 

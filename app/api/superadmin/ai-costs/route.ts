@@ -44,26 +44,39 @@ export async function GET(request: NextRequest) {
     
     logger.debug({ days }, 'Fetching AI costs');
     
-    // Fetch summary via RPC
-    const { data: summaryData, error: summaryError } = await supabaseAdmin
-      .rpc('get_openai_cost_summary', { p_org_id: null, p_days: days })
-      .single();
+    const supabase = createAdminServer();
+    const dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - days);
     
-    if (summaryError) {
-      logger.error({ error: summaryError.message, code: summaryError.code }, 'Error loading summary');
-    }
-    
-    // Fetch recent logs via RPC
-    const { data: logsData, error: logsError } = await supabaseAdmin
-      .rpc('get_openai_api_logs', { p_org_id: null, p_limit: 50 });
+    // Получаем логи напрямую из таблицы
+    const { data: logsData, error: logsError } = await supabase
+      .from('openai_api_logs')
+      .select('*')
+      .gte('created_at', dateFrom.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50);
     
     if (logsError) {
       logger.error({ error: logsError.message, code: logsError.code }, 'Error loading logs');
     }
     
+    // Вычисляем summary из логов
+    const logs = logsData || [];
+    const totalCost = logs.reduce((sum: number, log: any) => sum + (parseFloat(log.cost_usd) || 0), 0);
+    const totalPromptTokens = logs.reduce((sum: number, log: any) => sum + (parseInt(log.prompt_tokens) || 0), 0);
+    const totalCompletionTokens = logs.reduce((sum: number, log: any) => sum + (parseInt(log.completion_tokens) || 0), 0);
+    
+    const summaryData = {
+      total_cost_usd: totalCost,
+      total_prompt_tokens: totalPromptTokens,
+      total_completion_tokens: totalCompletionTokens,
+      total_requests: logs.length,
+      period_days: days
+    };
+    
     return NextResponse.json({
-      summary: summaryData || null,
-      logs: logsData || [],
+      summary: summaryData,
+      logs: logs,
       filters: { days }
     });
     

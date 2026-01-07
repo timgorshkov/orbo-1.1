@@ -17,22 +17,15 @@ export default async function WhatsAppGroupPage({
     
     const adminSupabase = createAdminServer();
     
-    // Fetch import details with tag info
-    const { data: importData, error } = await adminSupabase
+    // Fetch import details
+    const { data: importDataRaw, error } = await adminSupabase
       .from('whatsapp_imports')
-      .select(`
-        *,
-        participant_tags (
-          id,
-          name,
-          color
-        )
-      `)
+      .select('*')
       .eq('id', importId)
       .eq('org_id', orgId)
       .single();
     
-    if (error || !importData) {
+    if (error || !importDataRaw) {
       logger.warn({ importId, orgId, error: error?.message }, 'Import not found');
       return notFound();
     }
@@ -43,6 +36,22 @@ export default async function WhatsAppGroupPage({
       .select('id, name, color')
       .eq('org_id', orgId)
       .order('name');
+    
+    // Get linked tag if default_tag_id exists
+    let linkedTag = null;
+    if (importDataRaw.default_tag_id) {
+      const { data: tagData } = await adminSupabase
+        .from('participant_tags')
+        .select('id, name, color')
+        .eq('id', importDataRaw.default_tag_id)
+        .single();
+      linkedTag = tagData;
+    }
+    
+    const importData = {
+      ...importDataRaw,
+      participant_tags: linkedTag
+    };
     
     return (
       <WhatsAppGroupDetail 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
@@ -9,11 +10,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { email, code, action } = body
 
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
 
     // Получаем текущего пользователя
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -225,16 +225,16 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/auth/activate-profile' });
   try {
-    const supabase = await createClientServer()
+    const adminSupabase = createAdminServer()
 
     // Получаем текущего пользователя
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUnifiedUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Проверяем статус активации
-    const { data: memberships } = await supabase
+    const { data: memberships } = await adminSupabase
       .from('memberships')
       .select('org_id, role, role_source, metadata')
       .eq('user_id', user.id)

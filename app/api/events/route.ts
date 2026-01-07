@@ -19,13 +19,10 @@ export async function GET(request: NextRequest) {
 
     const adminSupabase = createAdminServer()
 
-    // Build query
+    // Build query - простой запрос без JOIN
     let query = adminSupabase
       .from('events')
-      .select(`
-        *,
-        event_registrations!event_registrations_event_id_fkey(id, status)
-      `)
+      .select('*')
       .eq('org_id', orgId)
       .order('event_date', { ascending: true })
 
@@ -45,9 +42,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Получаем регистрации отдельно
+    const eventIds = events?.map(e => e.id) || [];
+    let registrationsMap = new Map<string, any[]>();
+    
+    if (eventIds.length > 0) {
+      const { data: registrations } = await adminSupabase
+        .from('event_registrations')
+        .select('id, status, event_id')
+        .in('event_id', eventIds);
+      
+      // Группируем регистрации по event_id
+      for (const reg of registrations || []) {
+        const existing = registrationsMap.get(reg.event_id) || [];
+        existing.push(reg);
+        registrationsMap.set(reg.event_id, existing);
+      }
+    }
+
     // Calculate registered count for each event
     const eventsWithStats = events?.map(event => {
-      const registeredCount = event.event_registrations?.filter(
+      const eventRegistrations = registrationsMap.get(event.id) || [];
+      const registeredCount = eventRegistrations.filter(
         (reg: any) => reg.status === 'registered'
       ).length || 0
 
@@ -58,8 +74,7 @@ export async function GET(request: NextRequest) {
       return {
         ...event,
         registered_count: registeredCount,
-        available_spots: availableSpots,
-        event_registrations: undefined // Remove registration details from list
+        available_spots: availableSpots
       }
     })
 

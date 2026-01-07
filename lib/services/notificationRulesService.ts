@@ -571,6 +571,14 @@ _${rule.name}_`;
  * Process a single rule
  */
 async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
+  logger.info({ 
+    rule_id: rule.id, 
+    rule_name: rule.name, 
+    rule_type: rule.rule_type, 
+    org_id: rule.org_id,
+    use_ai: rule.use_ai
+  }, '🔄 Processing notification rule');
+  
   // Check if enough time has passed since last check (respect check_interval_minutes)
   const intervalMinutes = (rule.config.check_interval_minutes as number) || 60;
   if (rule.last_check_at) {
@@ -578,8 +586,9 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
     const minutesSinceLastCheck = Math.floor((Date.now() - lastCheck.getTime()) / (1000 * 60));
     
     if (minutesSinceLastCheck < intervalMinutes) {
-      logger.debug({ 
+      logger.info({ 
         rule_id: rule.id, 
+        rule_name: rule.name,
         minutes_since_last: minutesSinceLastCheck,
         interval_minutes: intervalMinutes 
       }, '⏭️ Skipping rule - not enough time since last check');
@@ -589,11 +598,11 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
   
   const groups = await getOrgGroups(rule.org_id, rule.config.groups);
   if (groups.length === 0) {
-    logger.debug({ rule_id: rule.id }, 'No groups to check');
+    logger.info({ rule_id: rule.id, rule_name: rule.name, org_id: rule.org_id }, 'No groups to check for this rule');
     return { triggered: false };
   }
   
-  logger.debug({ rule_id: rule.id, groups_count: groups.length }, 'Groups to check');
+  logger.info({ rule_id: rule.id, rule_name: rule.name, groups_count: groups.length }, 'Groups to check');
   
   let triggered = false;
   let totalAiCost = 0;
@@ -973,13 +982,14 @@ export async function processAllNotificationRules(): Promise<{
   }
   
   if (!rules || rules.length === 0) {
-    logger.debug({}, 'No enabled notification rules to process');
+    logger.info({}, 'No enabled notification rules to process');
     return { processed: 0, triggered: 0, totalAiCost: 0 };
   }
   
-  logger.debug({
-    enabled_rules: rules.map(r => ({ id: r.id, name: r.name, type: r.rule_type }))
-  }, 'Processing enabled rules');
+  logger.info({
+    count: rules.length,
+    enabled_rules: rules.map(r => ({ id: r.id, name: r.name, type: r.rule_type, org_id: r.org_id }))
+  }, 'Processing enabled notification rules');
   
   let triggeredCount = 0;
   let totalAiCost = 0;

@@ -34,10 +34,7 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
   // Fetch all events (admins see all, members see published only)
   let eventsQuery = adminSupabase
     .from('events')
-    .select(`
-      *,
-      event_registrations!event_registrations_event_id_fkey(id, status)
-    `)
+    .select('*')
     .eq('org_id', orgId)
     .order('event_date', { ascending: true })
 
@@ -56,9 +53,27 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     }, 'Error fetching events');
   }
   
+  // Получаем регистрации отдельно
+  const eventIds = events?.map(e => e.id) || [];
+  let registrationsMap = new Map<string, any[]>();
+  
+  if (eventIds.length > 0) {
+    const { data: registrations } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status, event_id')
+      .in('event_id', eventIds);
+    
+    for (const reg of registrations || []) {
+      const existing = registrationsMap.get(reg.event_id) || [];
+      existing.push(reg);
+      registrationsMap.set(reg.event_id, existing);
+    }
+  }
+  
   // Calculate stats for each event
   const eventsWithStats = events?.map(event => {
-    const registeredCount = event.event_registrations?.filter(
+    const eventRegs = registrationsMap.get(event.id) || [];
+    const registeredCount = eventRegs.filter(
       (reg: any) => reg.status === 'registered'
     ).length || 0
 
@@ -69,8 +84,7 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     return {
       ...event,
       registered_count: registeredCount,
-      available_spots: availableSpots,
-      event_registrations: undefined
+      available_spots: availableSpots
     }
   }) || []
 

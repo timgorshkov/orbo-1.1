@@ -37,10 +37,7 @@ export async function GET(
     // Получаем приглашения
     const { data: invites, error } = await supabase
       .from('organization_invites')
-      .select(`
-        *,
-        organization_invite_uses(count)
-      `)
+      .select('*')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
 
@@ -52,11 +49,32 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch invites' }, { status: 500 })
     }
 
+    // Получаем количество использований для каждого приглашения
+    const inviteIds = invites?.map(i => i.id) || [];
+    let usesMap = new Map<string, number>();
+    
+    if (inviteIds.length > 0) {
+      const { data: uses } = await supabase
+        .from('organization_invite_uses')
+        .select('invite_id')
+        .in('invite_id', inviteIds);
+      
+      for (const use of uses || []) {
+        usesMap.set(use.invite_id, (usesMap.get(use.invite_id) || 0) + 1);
+      }
+    }
+
+    // Добавляем count к каждому приглашению
+    const invitesWithCount = invites?.map(invite => ({
+      ...invite,
+      organization_invite_uses: [{ count: usesMap.get(invite.id) || 0 }]
+    })) || [];
+
     logger.info({ 
-      invite_count: invites?.length || 0,
+      invite_count: invitesWithCount.length,
       org_id: orgId
     }, 'Fetched invites');
-    return NextResponse.json(invites)
+    return NextResponse.json(invitesWithCount)
   } catch (error) {
     logger.error({ 
       error: error instanceof Error ? error.message : String(error),

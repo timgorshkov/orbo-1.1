@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
  * POST /api/telegram/event-bot/setup
@@ -9,9 +9,8 @@ import { getEventBotToken } from '@/lib/telegram/webAppAuth';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check if superadmin
-    const supabase = await createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check if superadmin via unified auth
+    const user = await getUnifiedUser();
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

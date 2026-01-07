@@ -127,7 +127,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   private updateData: any = null;
   private upsertData: any = null;
   private upsertOptions: UpsertOptions = {};
-  private conditions: { column: string; operator: string; values: any[]; raw?: string }[] = [];
+  private conditions: { column: string; operator: string; values: any[]; raw?: string; orFilters?: Array<{ column: string; op: string; value: string | null }> }[] = [];
   private orderByClause: string[] = [];
   private limitValue: number | null = null;
   private offsetValue: number | null = null;
@@ -145,7 +145,13 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   }
 
   select(columns?: string, options?: SelectOptions): QueryBuilder<T> {
-    this.operation = 'select';
+    // НЕ меняем operation если уже установлен insert/update/upsert/delete!
+    // .select() после .insert()/.update()/.upsert() только указывает какие колонки вернуть
+    if (this.operation === 'select') {
+      // Только для чистого SELECT устанавливаем operation
+      this.operation = 'select';
+    }
+    // Для insert/update/upsert/delete - сохраняем колонки для RETURNING
     this.selectColumns = columns || '*';
     this.selectOptions = options || {};
     return this;
@@ -257,66 +263,91 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     return this;
   }
 
+  /**
+   * Supabase-style filter method
+   * Supports:
+   * - filter('column', 'eq', value) -> column = value
+   * - filter('column::text', 'eq', value) -> column::text = value (type cast)
+   * - filter('meta->>key', 'eq', value) -> meta->>'key' = value (JSONB)
+   */
+  filter(column: string, operator: string, value: any): QueryBuilder<T> {
+    // Преобразуем Supabase оператор в SQL
+    let sqlOperator = '=';
+    switch (operator.toLowerCase()) {
+      case 'eq': sqlOperator = '='; break;
+      case 'neq': sqlOperator = '!='; break;
+      case 'gt': sqlOperator = '>'; break;
+      case 'gte': sqlOperator = '>='; break;
+      case 'lt': sqlOperator = '<'; break;
+      case 'lte': sqlOperator = '<='; break;
+      case 'like': sqlOperator = 'LIKE'; break;
+      case 'ilike': sqlOperator = 'ILIKE'; break;
+      case 'is': 
+        if (value === null) {
+          this.conditions.push({ column, operator: 'IS NULL', values: [], raw: `${this.formatColumn(column)} IS NULL` });
+          return this;
+        }
+        sqlOperator = '=';
+        break;
+      default: sqlOperator = '=';
+    }
+    
+    // Добавляем как raw condition с форматированной колонкой
+    this.conditions.push({ 
+      column, 
+      operator: 'RAW_FILTER', 
+      values: [value],
+      raw: `${this.formatColumn(column)} ${sqlOperator}` 
+    });
+    return this;
+  }
+
+  /**
+   * Форматирует имя колонки для SQL
+   * Обрабатывает: column::type, meta->>key, простые имена
+   */
+  private formatColumn(column: string): string {
+    // JSONB arrow operator: meta->>key
+    if (column.includes('->>')) {
+      const [jsonCol, jsonKey] = column.split('->>');
+      return `"${jsonCol}"->>'${jsonKey}'`;
+    }
+    // Type cast: column::type
+    if (column.includes('::')) {
+      const [col, type] = column.split('::');
+      return `"${col}"::${type}`;
+    }
+    // Regular column
+    return `"${column}"`;
+  }
+
   or(filters: string): QueryBuilder<T> {
     // Парсим Supabase-стиль фильтров
     // Пример: "status.is.null,status.eq.active" -> (status IS NULL OR status = 'active')
+    // НЕ создаём placeholder'ы здесь - это делается в buildWhereClause!
     const parts = filters.split(',');
-    const sqlParts: string[] = [];
-    const orValues: any[] = [];
+    const orFilters: Array<{ column: string; op: string; value: string | null }> = [];
     
     for (const part of parts) {
       const segments = part.trim().split('.');
       if (segments.length >= 2) {
         const column = segments[0];
         const op = segments[1];
-        const value = segments.slice(2).join('.');
-        
-        if (op === 'is' && value === 'null') {
-          sqlParts.push(`"${column}" IS NULL`);
-        } else if (op === 'is' && value === 'not.null') {
-          sqlParts.push(`"${column}" IS NOT NULL`);
-        } else if (op === 'eq') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" = $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'neq') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" != $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'gt') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" > $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'lt') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" < $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'gte') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" >= $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'lte') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" <= $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'like') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" LIKE $${this.paramCounter + orValues.length - 1}`);
-        } else if (op === 'ilike') {
-          orValues.push(value);
-          sqlParts.push(`"${column}" ILIKE $${this.paramCounter + orValues.length - 1}`);
-        }
+        const value = segments.slice(2).join('.') || null;
+        orFilters.push({ column, op, value });
       }
     }
     
-    if (sqlParts.length > 0) {
+    if (orFilters.length > 0) {
+      // Сохраняем фильтры для обработки в buildWhereClause
       this.conditions.push({ 
         column: '', 
-        operator: 'RAW', 
-        values: orValues, 
-        raw: `(${sqlParts.join(' OR ')})` 
+        operator: 'OR_FILTERS', 
+        values: [],
+        orFilters: orFilters
       });
     }
     
-    return this;
-  }
-
-  filter(column: string, operator: string, value: any): QueryBuilder<T> {
-    this.conditions.push({ column, operator, values: [value] });
     return this;
   }
 
@@ -360,7 +391,61 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     const whereParts: string[] = [];
     
     for (const cond of this.conditions) {
-      // Raw SQL условие (для or() и пустого in())
+      // OR_FILTERS - обрабатываем отложенные OR фильтры
+      if (cond.operator === 'OR_FILTERS' && (cond as any).orFilters) {
+        const orFilters = (cond as any).orFilters as Array<{ column: string; op: string; value: string | null }>;
+        const orParts: string[] = [];
+        
+        for (const filter of orFilters) {
+          if (filter.op === 'is' && filter.value === 'null') {
+            orParts.push(`"${filter.column}" IS NULL`);
+          } else if (filter.op === 'is' && filter.value === 'not.null') {
+            orParts.push(`"${filter.column}" IS NOT NULL`);
+          } else if (filter.op === 'eq') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" = ${this.nextParam()}`);
+          } else if (filter.op === 'neq') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" != ${this.nextParam()}`);
+          } else if (filter.op === 'gt') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" > ${this.nextParam()}`);
+          } else if (filter.op === 'lt') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" < ${this.nextParam()}`);
+          } else if (filter.op === 'gte') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" >= ${this.nextParam()}`);
+          } else if (filter.op === 'lte') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" <= ${this.nextParam()}`);
+          } else if (filter.op === 'like') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" LIKE ${this.nextParam()}`);
+          } else if (filter.op === 'ilike') {
+            allValues.push(filter.value);
+            orParts.push(`"${filter.column}" ILIKE ${this.nextParam()}`);
+          }
+        }
+        
+        if (orParts.length > 0) {
+          whereParts.push(`(${orParts.join(' OR ')})`);
+        }
+        continue;
+      }
+      
+      // RAW_FILTER - фильтр с форматированной колонкой (для filter() метода)
+      if (cond.operator === 'RAW_FILTER' && cond.raw) {
+        if (cond.values.length > 0) {
+          allValues.push(cond.values[0]);
+          whereParts.push(`${cond.raw} ${this.nextParam()}`);
+        } else {
+          whereParts.push(cond.raw);
+        }
+        continue;
+      }
+      
+      // Raw SQL условие (для пустого in())
       if (cond.raw) {
         whereParts.push(cond.raw);
         continue;
@@ -452,7 +537,9 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
           return `(${columns.map(() => this.nextParam()).join(', ')})`;
         }).join(', ');
         
-        sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings} RETURNING *`;
+        // Используем selectColumns для RETURNING (если указаны через .select())
+        const returningColumns = this.selectColumns === '*' ? '*' : this.parseSelectColumns(this.selectColumns);
+        sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings} RETURNING ${returningColumns}`;
         break;
       }
 
@@ -470,7 +557,9 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         // Затем WHERE clause - placeholder'ы создаются ПОСЛЕ SET значений
         sql += this.buildWhereClause(allValues);
         
-        sql += ' RETURNING *';
+        // Используем selectColumns для RETURNING (если указаны через .select())
+        const returningColumns = this.selectColumns === '*' ? '*' : this.parseSelectColumns(this.selectColumns);
+        sql += ` RETURNING ${returningColumns}`;
         break;
       }
 
@@ -501,7 +590,9 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings}`;
         sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO UPDATE SET ${updateSet}`;
-        sql += ' RETURNING *';
+        // Используем selectColumns для RETURNING (если указаны через .select())
+        const upsertReturningColumns = this.selectColumns === '*' ? '*' : this.parseSelectColumns(this.selectColumns);
+        sql += ` RETURNING ${upsertReturningColumns}`;
         break;
       }
 
@@ -510,7 +601,9 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         sql += this.buildWhereClause(allValues);
         
-        sql += ' RETURNING *';
+        // Используем selectColumns для RETURNING (если указаны через .select())
+        const deleteReturningColumns = this.selectColumns === '*' ? '*' : this.parseSelectColumns(this.selectColumns);
+        sql += ` RETURNING ${deleteReturningColumns}`;
         break;
       }
     }
@@ -528,23 +621,65 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       const logger = createServiceLogger('PostgresQueryBuilder');
       logger.warn({ columns }, 'Complex select with joins detected. Consider using raw SQL for complex queries.');
       // Возвращаем базовые колонки без joins
-      return columns.split(',').map(c => {
-        const base = c.trim().split(':')[0].split('(')[0];
-        return `"${base.trim()}"`;
-      }).join(', ');
+      const result: string[] = [];
+      for (const c of columns.split(',')) {
+        const base = c.trim().split(':')[0].split('(')[0].trim();
+        // Пропускаем пустые и связанные таблицы (которые начинались с join синтаксиса)
+        if (!base || base.includes(')')) continue;
+        // Обрабатываем * отдельно
+        if (base === '*') {
+          result.push('*');
+        } else {
+          result.push(`"${base}"`);
+        }
+      }
+      return result.length > 0 ? result.join(', ') : '*';
     }
     
     if (columns === '*') return '*';
     
-    return columns.split(',').map(c => `"${c.trim()}"`).join(', ');
+    return columns.split(',').map(c => {
+      const trimmed = c.trim();
+      if (trimmed === '*') return '*';
+      return `"${trimmed}"`;
+    }).join(', ');
   }
 
   async single(): Promise<DbResult<T>> {
+    const logger = createServiceLogger('PostgresQueryBuilder');
     try {
       const { sql, values } = this.buildQuery();
+      
+      // Логируем INSERT запросы для отладки
+      if (this.operation === 'insert') {
+        logger.info({ 
+          table: this.tableName,
+          operation: 'insert',
+          sql: sql.substring(0, 200),
+          values_count: values.length,
+          insert_data: this.insertData
+        }, 'Executing INSERT query');
+      }
+      
       const result = await this.pool.query(sql, values);
+      
+      // Логируем результат INSERT
+      if (this.operation === 'insert') {
+        logger.info({ 
+          table: this.tableName,
+          rows_returned: result.rows?.length,
+          first_row: result.rows?.[0]
+        }, 'INSERT query result');
+      }
+      
       return transformResult<T>(result, true);
     } catch (error: any) {
+      logger.error({ 
+        table: this.tableName,
+        operation: this.operation,
+        error: error.message,
+        code: error.code
+      }, 'Query execution error');
       return { data: null, error: transformError(error) };
     }
   }
@@ -562,9 +697,12 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
   async then<TResult>(
     onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>
   ): Promise<TResult> {
+    const logger = createServiceLogger('PostgresQueryBuilder');
     try {
       const { sql, values } = this.buildQuery();
+      
       const result = await this.pool.query(sql, values);
+      
       const transformed = transformResult<T[]>(result, false);
       
       if (onfulfilled) {
@@ -572,6 +710,12 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       }
       return transformed as unknown as TResult;
     } catch (error: any) {
+      logger.error({
+        table: this.tableName,
+        operation: this.operation,
+        error: error.message,
+        code: error.code
+      }, 'Query execution error');
       const errorResult: DbResult<T[]> = { data: null, error: transformError(error) };
       if (onfulfilled) {
         return onfulfilled(errorResult);
@@ -627,12 +771,16 @@ export class PostgresDbClient implements DbClient {
     return builder;
   }
 
-  async rpc<T = any>(
+  /**
+   * Вызывает PostgreSQL функцию
+   * Возвращает объект с методами .single(), .maybeSingle() и .then() для совместимости с Supabase API
+   */
+  rpc<T = any>(
     functionName: string,
     params?: Record<string, any>,
     options?: { count?: 'exact' | 'planned' | 'estimated' }
-  ): Promise<DbResult<T>> {
-    try {
+  ): { single: () => Promise<DbResult<T>>; maybeSingle: () => Promise<DbResult<T | null>>; then: <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>) => Promise<TResult> } {
+    const executeRpc = async (): Promise<{ rows: T[]; rowCount: number }> => {
       await this.ensureInitialized();
       
       // Формируем вызов функции PostgreSQL
@@ -641,16 +789,52 @@ export class PostgresDbClient implements DbClient {
       const placeholders = paramNames.map((name, i) => `${name} := $${i + 1}`).join(', ');
       
       const sql = `SELECT * FROM ${functionName}(${placeholders})`;
-      const result = await this.pool.query(sql, paramValues);
+      return await this.pool.query(sql, paramValues);
+    };
+    
+    return {
+      single: async (): Promise<DbResult<T>> => {
+        try {
+          const result = await executeRpc();
+          if (result.rows.length === 0) {
+            return { data: null, error: { message: 'No rows returned', code: 'PGRST116' } };
+          }
+          return { data: result.rows[0] as T, error: null };
+        } catch (error: any) {
+          return { data: null, error: transformError(error) };
+        }
+      },
       
-      return {
-        data: result.rows as T,
-        error: null,
-        count: result.rowCount
-      };
-    } catch (error: any) {
-      return { data: null, error: transformError(error) };
-    }
+      maybeSingle: async (): Promise<DbResult<T | null>> => {
+        try {
+          const result = await executeRpc();
+          return { data: result.rows[0] || null, error: null };
+        } catch (error: any) {
+          return { data: null, error: transformError(error) };
+        }
+      },
+      
+      then: async <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>): Promise<TResult> => {
+        try {
+          const result = await executeRpc();
+          const transformed: DbResult<T[]> = {
+            data: result.rows as T[],
+            error: null,
+            count: result.rowCount
+          };
+          if (onfulfilled) {
+            return onfulfilled(transformed);
+          }
+          return transformed as unknown as TResult;
+        } catch (error: any) {
+          const errorResult: DbResult<T[]> = { data: null, error: transformError(error) };
+          if (onfulfilled) {
+            return onfulfilled(errorResult);
+          }
+          return errorResult as unknown as TResult;
+        }
+      }
+    };
   }
 
   async raw<T = any>(sql: string, params?: any[]): Promise<DbResult<T[]>> {

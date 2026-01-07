@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'subscriptions' });
   
   try {
-    const supabase = await createClientServer();
+    const adminSupabase = createAdminServer();
     const url = new URL(req.url);
     const orgId = url.searchParams.get('orgId');
     
@@ -22,14 +23,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
     // Check permissions (user must be member of org)
-    const { data: membership } = await supabase
+    const { data: membership } = await adminSupabase
       .from('memberships')
       .select('role')
       .eq('org_id', orgId)
@@ -43,7 +44,6 @@ export async function GET(req: NextRequest) {
     logger.info({ orgId, userId: user.id }, 'Fetching subscriptions');
     
     // Use admin client to bypass RLS for subscriptions query
-    const adminSupabase = createAdminServer();
     const { data: subscriptions, error } = await adminSupabase
       .from('subscriptions')
       .select(`
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'subscriptions' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const body = await req.json();
     
     const {
@@ -117,8 +117,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -220,7 +220,7 @@ export async function PATCH(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'subscriptions' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const body = await req.json();
     
     const {
@@ -238,8 +238,8 @@ export async function PATCH(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -317,7 +317,7 @@ export async function DELETE(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'subscriptions' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
     const orgId = url.searchParams.get('orgId');
@@ -328,8 +328,8 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

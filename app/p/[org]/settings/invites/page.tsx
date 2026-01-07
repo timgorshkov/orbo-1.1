@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import { createClientServer } from '@/lib/server/supabaseServer'
-import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
+import { createAdminServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import InvitesManager from '@/components/settings/invites-manager'
 
@@ -10,19 +10,24 @@ export default async function InvitesPage({
   params: Promise<{ org: string }>
 }) {
   const { org: orgId } = await params
-  const supabase = await createClientServer()
+  const supabase = createAdminServer()
 
-  // Проверяем авторизацию
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Проверяем авторизацию через unified auth
+  const user = await getUnifiedUser()
 
   if (!user) {
     redirect(`/signin?redirect=/p/${orgId}/settings/invites`)
   }
 
   // Определяем роль
-  const role = await getUserRoleInOrg(user.id, orgId)
+  const { data: membership } = await supabase
+    .from('memberships')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .single()
+
+  const role = membership?.role || 'guest'
 
   if (role !== 'owner' && role !== 'admin') {
     redirect(`/p/${orgId}`)
@@ -40,21 +45,48 @@ export default async function InvitesPage({
   }
 
   // Получаем приглашения
-  const { data: invites } = await supabase
+  const { data: invitesRaw } = await supabase
     .from('organization_invites')
-    .select(`
-      *,
-      organization_invite_uses(count)
-    `)
+    .select('*')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
 
-  // Получаем Telegram-группы для sidebar
-  const { data: telegramGroups } = await supabase
-    .from('telegram_groups')
-    .select('tg_chat_id, title')
+  // Получаем количество использований
+  const inviteIds = invitesRaw?.map(i => i.id) || [];
+  let usesMap = new Map<string, number>();
+  
+  if (inviteIds.length > 0) {
+    const { data: uses } = await supabase
+      .from('organization_invite_uses')
+      .select('invite_id')
+      .in('invite_id', inviteIds);
+    
+    for (const use of uses || []) {
+      usesMap.set(use.invite_id, (usesMap.get(use.invite_id) || 0) + 1);
+    }
+  }
+
+  const invites = invitesRaw?.map(invite => ({
+    ...invite,
+    organization_invite_uses: [{ count: usesMap.get(invite.id) || 0 }]
+  })) || [];
+
+  // Получаем Telegram-группы для sidebar через org_telegram_groups
+  const { data: orgGroupLinks } = await supabase
+    .from('org_telegram_groups')
+    .select('tg_chat_id')
     .eq('org_id', orgId)
-    .order('title')
+
+  let telegramGroups: any[] = [];
+  if (orgGroupLinks && orgGroupLinks.length > 0) {
+    const chatIds = orgGroupLinks.map(l => l.tg_chat_id);
+    const { data: groups } = await supabase
+      .from('telegram_groups')
+      .select('tg_chat_id, title')
+      .in('tg_chat_id', chatIds)
+      .order('title');
+    telegramGroups = groups || [];
+  }
 
   return (
     <div className="flex h-screen">

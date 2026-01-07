@@ -251,14 +251,7 @@ export async function GET(
       const [criticalEventsResult, churningResult, inactiveResult, resolvedItemsResult] = await Promise.all([
         adminSupabase
           .from('events')
-          .select(`
-            id,
-            title,
-            event_date,
-            start_time,
-            capacity,
-            event_registrations!event_registrations_event_id_fkey(id, status)
-          `)
+          .select('id, title, event_date, start_time, capacity')
           .eq('org_id', orgId)
           .eq('status', 'published')
           .gte('event_date', new Date().toISOString())
@@ -280,6 +273,23 @@ export async function GET(
           .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
       ])
 
+      // Получаем регистрации для критических событий отдельно
+      const criticalEventIds = criticalEventsResult.data?.map(e => e.id) || [];
+      let criticalEventsRegistrationsMap = new Map<string, any[]>();
+      
+      if (criticalEventIds.length > 0) {
+        const { data: regs } = await adminSupabase
+          .from('event_registrations')
+          .select('id, status, event_id')
+          .in('event_id', criticalEventIds);
+        
+        for (const reg of regs || []) {
+          const existing = criticalEventsRegistrationsMap.get(reg.event_id) || [];
+          existing.push(reg);
+          criticalEventsRegistrationsMap.set(reg.event_id, existing);
+        }
+      }
+
       // Build set of resolved item IDs by type
       const resolvedIds = new Map<string, Set<string>>()
       for (const item of resolvedItemsResult.data || []) {
@@ -291,7 +301,8 @@ export async function GET(
 
       const criticalEvents = (criticalEventsResult.data || [])
         .map(event => {
-          const registeredCount = event.event_registrations?.filter(
+          const eventRegs = criticalEventsRegistrationsMap.get(event.id) || [];
+          const registeredCount = eventRegs.filter(
             (r: any) => r.status === 'registered'
           ).length || 0
           const registrationRate = event.capacity ? (registeredCount / event.capacity) * 100 : 0
@@ -355,26 +366,33 @@ export async function GET(
     // 5. Upcoming events (next 3)
     const { data: upcomingEvents } = await adminSupabase
       .from('events')
-      .select(`
-        id,
-        title,
-        event_date,
-        start_time,
-        end_time,
-        event_type,
-        capacity,
-        is_paid,
-        cover_image_url,
-        event_registrations!event_registrations_event_id_fkey(id, status)
-      `)
+      .select('id, title, event_date, start_time, end_time, event_type, capacity, is_paid, cover_image_url')
       .eq('org_id', orgId)
       .eq('status', 'published')
       .gte('event_date', new Date().toISOString())
       .order('event_date', { ascending: true })
       .limit(3)
 
+    // Получаем регистрации для предстоящих событий
+    const upcomingEventIds = upcomingEvents?.map(e => e.id) || [];
+    let upcomingRegsMap = new Map<string, any[]>();
+    
+    if (upcomingEventIds.length > 0) {
+      const { data: regs } = await adminSupabase
+        .from('event_registrations')
+        .select('id, status, event_id')
+        .in('event_id', upcomingEventIds);
+      
+      for (const reg of regs || []) {
+        const existing = upcomingRegsMap.get(reg.event_id) || [];
+        existing.push(reg);
+        upcomingRegsMap.set(reg.event_id, existing);
+      }
+    }
+
     const upcomingEventsData = (upcomingEvents || []).map(event => {
-      const registeredCount = event.event_registrations?.filter(
+      const eventRegs = upcomingRegsMap.get(event.id) || [];
+      const registeredCount = eventRegs.filter(
         (r: any) => r.status === 'registered'
       ).length || 0
       const registrationRate = event.capacity ? (registeredCount / event.capacity) * 100 : 100

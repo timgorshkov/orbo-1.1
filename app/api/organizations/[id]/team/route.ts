@@ -51,17 +51,25 @@ export async function GET(
     }
 
     // Also get shadow admins (Telegram admins without linked accounts)
-    // Step 1: Get all chat IDs and titles for this org
-    const { data: orgGroups } = await adminSupabase
+    // Step 1: Get all chat IDs for this org
+    const { data: orgGroupLinks } = await adminSupabase
       .from('org_telegram_groups')
-      .select('tg_chat_id, telegram_groups(title)')
+      .select('tg_chat_id')
       .eq('org_id', orgId)
     
-    const orgChatIds = (orgGroups || []).map(g => g.tg_chat_id)
+    const orgChatIds = (orgGroupLinks || []).map(g => g.tg_chat_id)
     const chatTitles = new Map<number, string>()
-    for (const g of orgGroups || []) {
-      const title = (g.telegram_groups as any)?.title || `Group ${g.tg_chat_id}`
-      chatTitles.set(g.tg_chat_id, title)
+    
+    // Получаем названия групп отдельно
+    if (orgChatIds.length > 0) {
+      const { data: groups } = await adminSupabase
+        .from('telegram_groups')
+        .select('tg_chat_id, title')
+        .in('tg_chat_id', orgChatIds)
+      
+      for (const g of groups || []) {
+        chatTitles.set(g.tg_chat_id, g.title || `Group ${g.tg_chat_id}`)
+      }
     }
     
     // Step 2: Get admins for these chats
@@ -188,9 +196,12 @@ export async function GET(
         role: member.role,
         role_source: member.role_source,
         email: member.email,
-        email_confirmed: member.email_confirmed,
-        full_name: member.full_name,
-        telegram_username: member.telegram_username,
+        // View возвращает has_verified_email, компонент ожидает email_confirmed
+        email_confirmed: member.has_verified_email || member.email_confirmed,
+        // View возвращает tg_first_name, компонент ожидает full_name
+        full_name: member.tg_first_name || member.full_name,
+        // View возвращает tg_username, компонент ожидает telegram_username
+        telegram_username: member.tg_username || member.telegram_username,
         tg_user_id: member.tg_user_id,
         has_verified_telegram: member.has_verified_telegram,
         is_shadow_profile: member.is_shadow_profile,

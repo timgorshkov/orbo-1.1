@@ -94,12 +94,17 @@ export interface DbClient {
   
   /**
    * Вызывает RPC функцию (хранимую процедуру)
+   * Возвращает объект с методами single(), maybeSingle(), then() для совместимости с Supabase API
    */
   rpc<T = any>(
     functionName: string, 
     params?: Record<string, any>,
     options?: { count?: 'exact' | 'planned' | 'estimated' }
-  ): Promise<DbResult<T>>;
+  ): {
+    single: () => Promise<DbResult<T>>;
+    maybeSingle: () => Promise<DbResult<T | null>>;
+    then: <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>) => Promise<TResult>;
+  };
   
   /**
    * Выполняет raw SQL запрос (для миграций и сложных запросов)

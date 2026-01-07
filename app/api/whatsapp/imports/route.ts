@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +18,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId is required' }, { status: 400 })
     }
     
-    const supabase = await createClientServer()
-    
-    // Auth check
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Auth check via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    const supabase = createAdminServer()
     
     // Check org membership
     const { data: membership } = await supabase

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'payment-methods' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const url = new URL(req.url);
     const orgId = url.searchParams.get('orgId');
     
@@ -22,8 +23,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'payment-methods' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const body = await req.json();
     
     const {
@@ -84,8 +85,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -160,7 +161,7 @@ export async function PATCH(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'payment-methods' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const body = await req.json();
     
     const {
@@ -177,8 +178,8 @@ export async function PATCH(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -254,7 +255,7 @@ export async function DELETE(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: 'payment-methods' });
   
   try {
-    const supabase = await createClientServer();
+    const supabase = createAdminServer();
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
     const orgId = url.searchParams.get('orgId');
@@ -265,8 +266,8 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check authentication via unified auth
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -317,4 +318,3 @@ export async function DELETE(req: NextRequest) {
     }, { status: 500 });
   }
 }
-

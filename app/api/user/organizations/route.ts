@@ -20,18 +20,24 @@ export async function GET(request: NextRequest) {
 
     const adminSupabase = createAdminServer();
 
-    // Get user's memberships
+    log.info({
+      user_id: session.user.id,
+      user_email: session.user.email,
+      provider: session.provider,
+    }, 'Fetching organizations for user');
+
+    // Get user's memberships (without JOIN)
     const { data: memberships, error: membershipError } = await adminSupabase
       .from('memberships')
-      .select(`
-        role,
-        organization:organizations(
-          id,
-          name,
-          logo_url
-        )
-      `)
+      .select('role, org_id')
       .eq('user_id', session.user.id);
+
+    log.info({
+      user_id: session.user.id,
+      memberships_count: memberships?.length || 0,
+      memberships_data: memberships,
+      membership_error: membershipError?.message,
+    }, 'Memberships query result');
 
     if (membershipError) {
       log.error({
@@ -45,15 +51,45 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Format organizations
-    const organizations = (memberships || [])
-      .filter((m: any) => m.organization)
-      .map((m: any) => ({
-        id: m.organization.id,
-        name: m.organization.name,
-        logo_url: m.organization.logo_url,
-        role: m.role,
-      }));
+    // Get organization details separately
+    const orgIds = (memberships || []).map((m: any) => m.org_id).filter(Boolean);
+    let organizations: any[] = [];
+    
+    if (orgIds.length > 0) {
+      const { data: orgsData, error: orgsError } = await adminSupabase
+        .from('organizations')
+        .select('id, name, logo_url')
+        .in('id', orgIds);
+      
+      if (orgsError) {
+        log.error({
+          error: orgsError,
+          userId: session.user.id,
+        }, 'Failed to fetch organizations');
+        
+        return NextResponse.json(
+          { error: 'Failed to fetch organizations' },
+          { status: 500 }
+        );
+      }
+      
+      // Create a map for quick lookup
+      const orgsMap = new Map((orgsData || []).map((o: any) => [o.id, o]));
+      
+      // Combine memberships with organizations
+      organizations = (memberships || [])
+        .map((m: any) => {
+          const org = orgsMap.get(m.org_id);
+          if (!org) return null;
+          return {
+            id: org.id,
+            name: org.name,
+            logo_url: org.logo_url,
+            role: m.role,
+          };
+        })
+        .filter(Boolean);
+    }
 
     const duration = Date.now() - startTime;
     log.debug({

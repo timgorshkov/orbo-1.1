@@ -123,11 +123,11 @@ export default async function MembersPage({ params, searchParams }: {
 
   // ⚡ Параллельные запросы для дополнительных данных (только для админов)
   if (isAdmin) {
-    const [tagStatsResult, invitesResult] = await Promise.all([
+    const [tagStatsResult, invitesRawResult] = await Promise.all([
       adminSupabase.rpc('get_tag_stats', { p_org_id: orgId }),
       adminSupabase
         .from('organization_invites')
-        .select(`*, organization_invite_uses(count)`)
+        .select('*')
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
     ])
@@ -138,7 +138,26 @@ export default async function MembersPage({ params, searchParams }: {
       tagStats = tagStatsResult.data || []
     }
 
-    invites = invitesResult.data || []
+    // Получаем количество использований для приглашений
+    const invitesRaw = invitesRawResult.data || [];
+    const inviteIds = invitesRaw.map(i => i.id);
+    let usesMap = new Map<string, number>();
+    
+    if (inviteIds.length > 0) {
+      const { data: uses } = await adminSupabase
+        .from('organization_invite_uses')
+        .select('invite_id')
+        .in('invite_id', inviteIds);
+      
+      for (const use of uses || []) {
+        usesMap.set(use.invite_id, (usesMap.get(use.invite_id) || 0) + 1);
+      }
+    }
+
+    invites = invitesRaw.map(invite => ({
+      ...invite,
+      organization_invite_uses: [{ count: usesMap.get(invite.id) || 0 }]
+    }));
   }
 
   return (

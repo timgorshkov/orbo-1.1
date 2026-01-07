@@ -37,6 +37,8 @@ export async function GET(
     }
 
     // Call RPC function
+    logger.info({ org_id: orgId }, 'Calling get_engagement_breakdown');
+    
     const { data, error } = await adminSupabase.rpc('get_engagement_breakdown', {
       p_org_id: orgId
     });
@@ -44,10 +46,17 @@ export async function GET(
     if (error) {
       logger.error({ 
         error: error.message,
+        code: error.code,
         org_id: orgId
       }, 'Error fetching engagement');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    logger.info({ 
+      org_id: orgId,
+      data_count: Array.isArray(data) ? data.length : (data ? 1 : 0),
+      data_sample: data
+    }, 'Engagement data fetched');
 
     // Add cache headers - data is user-specific but can be cached briefly
     return NextResponse.json({ data }, {

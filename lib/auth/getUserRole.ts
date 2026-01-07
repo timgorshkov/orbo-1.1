@@ -39,7 +39,20 @@ export async function getUserRoleInOrg(
     return 'guest'
   }
 
-  return (data as UserRole) || 'guest'
+  // PostgreSQL RPC может вернуть:
+  // - Supabase: 'owner' (строка напрямую)
+  // - PostgresClient: { get_user_role_in_org: 'owner' } или [{ get_user_role_in_org: 'owner' }]
+  let role: UserRole = 'guest';
+  if (typeof data === 'string') {
+    role = data as UserRole;
+  } else if (Array.isArray(data) && data.length > 0) {
+    const firstRow = data[0];
+    role = (firstRow?.get_user_role_in_org || firstRow) as UserRole;
+  } else if (data && typeof data === 'object') {
+    role = ((data as any).get_user_role_in_org || data) as UserRole;
+  }
+  
+  return role || 'guest'
 }
 
 /**

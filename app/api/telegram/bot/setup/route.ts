@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/setup' });
   try {
-    // Проверяем авторизацию (должен быть админ)
-    const supabase = await createClientServer()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Проверяем авторизацию через unified auth
+    const user = await getUnifiedUser()
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    const supabase = createAdminServer()
     
     // Получаем данные из запроса
     const { orgId } = await req.json()

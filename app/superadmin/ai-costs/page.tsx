@@ -299,9 +299,9 @@ export default function AICoststPage() {
                     </td>
                     <td className="p-2">{log.request_type}</td>
                     <td className="p-2">{log.model}</td>
-                    <td className="p-2 text-right">{log.total_tokens.toLocaleString()}</td>
-                    <td className="p-2 text-right">${log.cost_usd.toFixed(4)}</td>
-                    <td className="p-2 text-right">{log.cost_rub?.toFixed(2)} ₽</td>
+                    <td className="p-2 text-right">{(Number(log.total_tokens) || 0).toLocaleString()}</td>
+                    <td className="p-2 text-right">${(Number(log.cost_usd) || 0).toFixed(4)}</td>
+                    <td className="p-2 text-right">{(Number(log.cost_rub) || 0).toFixed(2)} ₽</td>
                     <td className="p-2 text-xs text-gray-500">
                       {log.org_id ? log.org_id.slice(0, 8) : 'N/A'}
                     </td>

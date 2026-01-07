@@ -36,7 +36,7 @@ export async function GET(
     }
     
     // Get event details
-    const { data: event, error: eventError } = await adminSupabase
+    const { data: eventData, error: eventError } = await adminSupabase
       .from('events')
       .select(`
         id,
@@ -59,16 +59,27 @@ export async function GET(
         capacity,
         capacity_count_by_paid,
         status,
-        org_id,
-        organizations(name)
+        org_id
       `)
       .eq('id', eventId)
       .single();
     
-    if (eventError || !event) {
+    if (eventError || !eventData) {
       logger.warn({ event_id: eventId, error: eventError?.message, code: eventError?.code }, 'Event not found');
       return NextResponse.json({ error: 'Событие не найдено' }, { status: 404 });
     }
+    
+    // Get organization name separately
+    const { data: orgData } = await adminSupabase
+      .from('organizations')
+      .select('name')
+      .eq('id', eventData.org_id)
+      .single();
+    
+    const event = {
+      ...eventData,
+      organizations: orgData ? { name: orgData.name } : null
+    };
     
     // Check if event is published
     if (event.status !== 'published') {
@@ -117,7 +128,7 @@ export async function GET(
     }
     
     // Format response
-    const orgData = event.organizations as any;
+    const orgInfo = event.organizations as any;
     const response = {
       event: {
         id: event.id,
@@ -141,7 +152,7 @@ export async function GET(
         registered_count: regCount || 0,
         status: event.status,
         org_id: event.org_id,
-        org_name: orgData?.name,
+        org_name: orgInfo?.name,
       },
       fields: fields || [],
       isRegistered,

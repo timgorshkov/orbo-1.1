@@ -16,9 +16,14 @@ export function PostgresAdapter(): Adapter {
 
   return {
     async createUser(user) {
-      logger.debug({ email: user.email, name: user.name }, 'Creating user')
+      // Важно: NextAuth передаёт user.email из profile function
+      logger.info({ 
+        email: user.email, 
+        name: user.name,
+        has_email: !!user.email 
+      }, 'Creating user - received from NextAuth')
       
-      // Сначала проверяем - может пользователь уже существует
+      // Сначала проверяем - может пользователь уже существует по email
       if (user.email) {
         const { data: existingUser } = await db
           .from('users')
@@ -27,7 +32,7 @@ export function PostgresAdapter(): Adapter {
           .single()
         
         if (existingUser) {
-          logger.info({ user_id: existingUser.id, email: existingUser.email }, 'User already exists, returning existing')
+          logger.info({ user_id: existingUser.id, email: existingUser.email }, 'User already exists by email, returning existing')
           
           // Обновляем данные если нужно
           if (user.name && !existingUser.name) {
@@ -47,27 +52,36 @@ export function PostgresAdapter(): Adapter {
         }
       }
       
+      // Создаём нового пользователя
+      const insertData: Record<string, any> = {
+        name: user.name,
+        email_verified: user.emailVerified?.toISOString(),
+        image: user.image,
+      }
+      
+      // ВАЖНО: email должен быть сохранён!
+      if (user.email) {
+        insertData.email = user.email.toLowerCase()
+      }
+      
+      logger.info({ insertData }, 'Inserting new user')
+      
       const { data, error } = await db
         .from('users')
-        .insert({
-          email: user.email?.toLowerCase(),
-          name: user.name,
-          email_verified: user.emailVerified?.toISOString(),
-          image: user.image,
-        })
+        .insert(insertData)
         .select()
         .single()
 
       if (error) {
-        logger.error({ error: error.message, email: user.email }, 'Failed to create user')
+        logger.error({ error: error.message, email: user.email, insertData }, 'Failed to create user')
         throw error
       }
 
-      logger.info({ user_id: data.id, email: user.email }, 'User created')
+      logger.info({ user_id: data.id, email: data.email, saved_email: !!data.email }, 'User created successfully')
       
       return {
         id: data.id,
-        email: data.email!,
+        email: data.email || user.email || '',
         name: data.name,
         emailVerified: data.email_verified ? new Date(data.email_verified) : null,
         image: data.image,
