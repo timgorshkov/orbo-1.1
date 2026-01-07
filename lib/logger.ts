@@ -1,7 +1,8 @@
 import pino from 'pino';
 
-// Условный импорт Hawk только на сервере
+// Условный импорт Hawk и errorLoggingService только на сервере
 let captureError: ((error: Error, context?: Record<string, unknown>) => void) | null = null;
+let logFromPino: ((level: number, obj: Record<string, unknown>, msg?: string) => void) | null = null;
 
 if (typeof window === 'undefined') {
   // Динамический импорт только на сервере
@@ -13,6 +14,17 @@ if (typeof window === 'undefined') {
     }
   } catch (e) {
     console.warn('[Logger] Hawk module not available:', e instanceof Error ? e.message : String(e));
+  }
+  
+  // Import error logging service for DB persistence
+  try {
+    const errorLoggingModule = require('./services/errorLoggingService');
+    logFromPino = errorLoggingModule.logFromPino;
+    if (logFromPino) {
+      console.log('[Logger] Database error logging enabled');
+    }
+  } catch (e) {
+    console.warn('[Logger] Error logging service not available:', e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -40,38 +52,50 @@ export const logger = pino({
   // Timestamp
   timestamp: pino.stdTimeFunctions.isoTime,
   
-  // Hook для отправки ошибок и предупреждений в Hawk
+  // Hook для отправки ошибок и предупреждений в Hawk и базу данных
   hooks: {
     logMethod(inputArgs, method, level) {
-      // Если уровень warn (40) или выше - отправляем в Hawk (только на сервере)
-      if (level >= 40 && typeof window === 'undefined' && captureError) {
+      // Если уровень warn (40) или выше - обрабатываем на сервере
+      if (level >= 40 && typeof window === 'undefined') {
         const [obj, msg] = inputArgs as [Record<string, unknown>, string?];
         
-        // Собираем контекст для Hawk
-        const context = typeof obj === 'object' ? { ...obj } : {};
-        if (msg) context.message = msg;
-        
-        // Определяем Error объект или создаём его
-        let error: Error;
-        if (obj?.error instanceof Error) {
-          error = obj.error;
-        } else if (typeof obj?.error === 'string') {
-          error = new Error(obj.error);
-          if (obj.stack && typeof obj.stack === 'string') {
-            error.stack = obj.stack;
+        // Записываем в БД через errorLoggingService
+        if (logFromPino) {
+          try {
+            logFromPino(level, typeof obj === 'object' ? obj : {}, msg);
+          } catch (e) {
+            // Не логируем ошибку логирования чтобы избежать рекурсии
           }
-        } else if (obj?.stack && typeof obj.stack === 'string') {
-          error = new Error(msg || String(obj?.msg) || 'Unknown error');
-          error.stack = obj.stack;
-        } else if (msg) {
-          error = new Error(msg);
-        } else if (typeof obj?.msg === 'string') {
-          error = new Error(obj.msg);
-        } else {
-          error = new Error('Unknown error');
         }
         
-        captureError(error, context);
+        // Отправляем в Hawk
+        if (captureError) {
+          // Собираем контекст для Hawk
+          const context = typeof obj === 'object' ? { ...obj } : {};
+          if (msg) context.message = msg;
+          
+          // Определяем Error объект или создаём его
+          let error: Error;
+          if (obj?.error instanceof Error) {
+            error = obj.error;
+          } else if (typeof obj?.error === 'string') {
+            error = new Error(obj.error);
+            if (obj.stack && typeof obj.stack === 'string') {
+              error.stack = obj.stack;
+            }
+          } else if (obj?.stack && typeof obj.stack === 'string') {
+            error = new Error(msg || String(obj?.msg) || 'Unknown error');
+            error.stack = obj.stack;
+          } else if (msg) {
+            error = new Error(msg);
+          } else if (typeof obj?.msg === 'string') {
+            error = new Error(obj.msg);
+          } else {
+            error = new Error('Unknown error');
+          }
+          
+          captureError(error, context);
+        }
       }
       return method.apply(this, inputArgs);
     },

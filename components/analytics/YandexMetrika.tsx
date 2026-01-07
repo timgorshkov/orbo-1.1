@@ -15,15 +15,27 @@ declare global {
 }
 
 /**
- * Send Yandex.Metrika goal/event
- * @param goalName - Name of the goal (e.g., 'signup_start', 'signup_email_sent')
+ * Send Yandex.Metrika goal/event with retry support
+ * Script loads async, so we retry a few times if not ready
+ * @param goalName - Name of the goal (e.g., 'signup_start', 'registration_complete')
  * @param params - Optional parameters to send with the goal
  */
 export function ymGoal(goalName: string, params?: Record<string, unknown>) {
-  if (typeof window !== 'undefined' && window.ym) {
-    window.ym(YM_COUNTER_ID, 'reachGoal', goalName, params);
-    console.log(`[YM] Goal reached: ${goalName}`, params);
-  }
+  if (typeof window === 'undefined') return;
+  
+  const sendGoal = (attempt: number = 0) => {
+    if (window.ym) {
+      window.ym(YM_COUNTER_ID, 'reachGoal', goalName, params);
+      console.log(`[YM] Goal reached: ${goalName}`, params);
+    } else if (attempt < 10) {
+      // Retry up to 10 times with 500ms delay (5 seconds total)
+      setTimeout(() => sendGoal(attempt + 1), 500);
+    } else {
+      console.warn(`[YM] Failed to send goal after 10 attempts: ${goalName}`);
+    }
+  };
+  
+  sendGoal();
 }
 
 /**

@@ -55,6 +55,7 @@ interface Message {
 
 interface RuleCheckResult {
   triggered: boolean;
+  skipped?: boolean; // True if rule was skipped due to time interval
   triggerContext?: Record<string, unknown>;
   aiCostUsd?: number;
 }
@@ -592,7 +593,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         minutes_since_last: minutesSinceLastCheck,
         interval_minutes: intervalMinutes 
       }, '⏭️ Skipping rule - not enough time since last check');
-      return { triggered: false };
+      return { triggered: false, skipped: true };
     }
   }
   
@@ -1006,7 +1007,10 @@ export async function processAllNotificationRules(): Promise<{
         totalAiCost += result.aiCostUsd;
       }
       
-      await updateRuleStatus(rule.id, result.triggered);
+      // Only update status if rule was actually processed (not skipped due to time)
+      if (!result.skipped) {
+        await updateRuleStatus(rule.id, result.triggered);
+      }
     } catch (error) {
       logger.error({ error, rule_id: rule.id }, 'Error processing rule');
     }

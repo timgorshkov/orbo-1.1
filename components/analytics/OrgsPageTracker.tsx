@@ -10,20 +10,18 @@ interface OrgsPageTrackerProps {
 
 /**
  * Client component to track /orgs page view
- * This is the final step in the conversion funnel - user reaches dashboard
+ * Tracks: dashboard_view (every time) and auth_success (on each visit to dashboard)
  */
 export function OrgsPageTracker({ organizationsCount, hasAdminOrgs }: OrgsPageTrackerProps) {
   useEffect(() => {
-    // Track dashboard page view - this is a key conversion!
+    // Track dashboard page view - every visit
     ymGoal('dashboard_view', { 
       organizations_count: organizationsCount,
       has_admin_orgs: hasAdminOrgs
     });
     
-    // If user has organizations, they've completed the full funnel
-    if (organizationsCount > 0) {
-      ymGoal('user_activated', { organizations_count: organizationsCount });
-    }
+    // Track auth_success when user reaches dashboard (successful login)
+    ymGoal('auth_success');
   }, [organizationsCount, hasAdminOrgs]);
 
   return null;

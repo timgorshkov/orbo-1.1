@@ -72,12 +72,6 @@ export default async function OrganizationsPage() {
     telegram_accounts_count: telegramAccounts?.length || 0
   }, 'OrgsPage: Initial data loaded');
 
-  // Если квалификация не пройдена — редирект на welcome для прохождения
-  if (!qualification?.completed_at) {
-    logger.debug({ user_id: user.id }, 'Qualification not completed, redirecting to welcome');
-    redirect('/welcome');
-  }
-
   if (membershipsError) {
     logger.warn({ 
       user_id: user.id,
@@ -109,6 +103,19 @@ export default async function OrganizationsPage() {
     }, 'OrgsPage: Organizations fetched');
     
     orgsData?.forEach(org => orgsMap.set(org.id, org));
+  }
+
+  // Проверяем наличие АКТИВНЫХ организаций (не в архиве)
+  // Если все организации архивированы, пользователь должен пройти квалификацию заново
+  const hasActiveOrganizations = orgsMap.size > 0;
+  
+  if (!qualification?.completed_at && !hasActiveOrganizations) {
+    logger.debug({ 
+      user_id: user.id,
+      memberships_count: memberships?.length || 0,
+      active_orgs_count: orgsMap.size
+    }, 'Qualification not completed and no active orgs, redirecting to welcome');
+    redirect('/welcome');
   }
 
   // Объединяем memberships с organizations в JS

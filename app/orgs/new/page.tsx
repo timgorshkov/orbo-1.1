@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClientLogger } from '@/lib/logger'
+import { ymGoal } from '@/components/analytics/YandexMetrika'
 
 export default function CreateOrganization() {
   const router = useRouter()
@@ -93,6 +94,14 @@ export default function CreateOrganization() {
       if (!response.ok) {
         throw new Error(result.error || 'Ошибка при создании организации')
       }
+
+      // Track first organization creation (key conversion!)
+      if (isFirstOrg) {
+        ymGoal('first_org_created');
+      }
+      
+      // Track any organization creation
+      ymGoal('org_created');
 
       // Redirect to organization dashboard
       router.push(`/app/${result.org_id}/dashboard`)

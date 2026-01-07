@@ -64,10 +64,12 @@ services:
       context: ./app
       dockerfile: Dockerfile
       args:
+        # Public env vars needed at build time for Next.js
         - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
         - NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+        # Server-side keys for build-time checks
         - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
         - OPENAI_API_KEY=${OPENAI_API_KEY}
     container_name: orbo_app

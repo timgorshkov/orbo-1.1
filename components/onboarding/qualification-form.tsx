@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils';
 import { QUALIFICATION_STEPS, QualificationStep, QualificationQuestion } from '@/lib/qualification/config';
 import { CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
+import { ymGoal } from '@/components/analytics/YandexMetrika';
 
 interface QualificationFormProps {
   onComplete: (responses: Record<string, unknown>) => void;
@@ -98,6 +99,12 @@ export function QualificationForm({
       } catch {
         // Silent fail for progress save
       }
+      
+      // Track qualification step completion
+      ymGoal(`qualification_step_${currentStepIndex + 1}`, {
+        step_id: currentStep.id
+      });
+      
       setCurrentStepIndex(prev => prev + 1);
     }
   };

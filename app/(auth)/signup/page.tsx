@@ -83,8 +83,6 @@ export default function SignUp() {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
         setMessage('Отлично! Мы отправили ссылку для подтверждения на ваш email.')
-        // Track successful email signup request
-        ymGoal('signup_email_sent', { method: 'email' });
       }
     } catch (error) {
       logger.error({
@@ -105,9 +103,6 @@ export default function SignUp() {
   async function signInWithOAuth(provider: 'google' | 'yandex') {
     setOauthLoading(provider)
     setMessage(null)
-    
-    // Track OAuth signup attempt
-    ymGoal('signup_oauth_start', { provider });
     
     try {
       // NextAuth.js signIn - редиректит на провайдера

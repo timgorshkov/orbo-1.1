@@ -24,11 +24,17 @@ export function WelcomeContent({
   const [showQualification, setShowQualification] = useState(!initialCompleted);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
   
-  // Track welcome page view (successful registration)
+  // Track welcome page view and registration/auth success
   useEffect(() => {
     ymGoal('welcome_page_view');
-    // This is a key conversion - user successfully authenticated and landed on welcome
-    ymGoal('auth_success', { new_user: !initialCompleted });
+    
+    // Key conversion: new user registration (first time on welcome = new registration)
+    if (!initialCompleted) {
+      ymGoal('registration_complete'); // New user registered successfully
+    }
+    
+    // Auth success for both new and returning users
+    ymGoal('auth_success');
   }, [initialCompleted]);
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
