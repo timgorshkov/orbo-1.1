@@ -326,100 +326,208 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
         </TabsList>
         
         <TabsContent value="calendar">
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <CardTitle className="text-lg">
-                  {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-                </CardTitle>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-7 gap-1">
-                {dayNames.map(day => (
-                  <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
-                    {day}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Компактный календарь */}
+            <Card className="lg:col-span-1">
+              <CardHeader className="py-2 px-3">
+                <div className="flex items-center justify-between">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm font-medium">
+                    {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+                  </span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-2 pt-0">
+                <div className="grid grid-cols-7 gap-0.5">
+                  {dayNames.map(day => (
+                    <div key={day} className="text-center text-xs font-medium text-gray-400 py-1">
+                      {day}
+                    </div>
+                  ))}
+                  {days.map((day, index) => {
+                    if (!day) {
+                      return <div key={`empty-${index}`} className="h-7" />;
+                    }
+                    
+                    const dayAnnouncements = getAnnouncementsForDate(day);
+                    const isToday = day.toDateString() === today.toDateString();
+                    const isSelected = selectedDate?.toDateString() === day.toDateString();
+                    const hasAnnouncements = dayAnnouncements.length > 0;
+                    
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        onClick={() => setSelectedDate(day)}
+                        className={`
+                          h-7 rounded text-xs relative flex items-center justify-center
+                          hover:bg-gray-100 transition-colors
+                          ${isToday ? 'bg-blue-100 font-bold text-blue-600' : ''}
+                          ${isSelected ? 'ring-2 ring-blue-500 ring-inset' : ''}
+                          ${hasAnnouncements && !isToday ? 'bg-blue-50' : ''}
+                        `}
+                      >
+                        {day.getDate()}
+                        {hasAnnouncements && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* Выбранная дата под календарём (мобильная версия) */}
+                {selectedDate && (
+                  <div className="mt-3 pt-3 border-t lg:hidden">
+                    <h4 className="text-sm font-medium mb-2">
+                      {selectedDate.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </h4>
+                    {getAnnouncementsForDate(selectedDate).length === 0 ? (
+                      <p className="text-gray-500 text-xs">Нет анонсов</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {getAnnouncementsForDate(selectedDate).map(announcement => (
+                          <AnnouncementCard
+                            key={announcement.id}
+                            announcement={announcement}
+                            groups={groups}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onSendNow={handleSendNow}
+                            compact
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
-                {days.map((day, index) => {
-                  if (!day) {
-                    return <div key={`empty-${index}`} className="aspect-square" />;
-                  }
-                  
-                  const dayAnnouncements = getAnnouncementsForDate(day);
-                  const isToday = day.toDateString() === today.toDateString();
-                  const isSelected = selectedDate?.toDateString() === day.toDateString();
-                  
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      onClick={() => setSelectedDate(day)}
-                      className={`
-                        aspect-square p-1 rounded-lg text-sm relative
-                        hover:bg-gray-100 transition-colors
-                        ${isToday ? 'bg-blue-50 font-bold' : ''}
-                        ${isSelected ? 'ring-2 ring-blue-500' : ''}
-                      `}
-                    >
-                      <span className={isToday ? 'text-blue-600' : ''}>{day.getDate()}</span>
-                      {dayAnnouncements.length > 0 && (
-                        <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-0.5">
-                          {dayAnnouncements.slice(0, 3).map((a, i) => (
-                            <div
-                              key={i}
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                a.status === 'sent' ? 'bg-green-500' :
-                                a.status === 'scheduled' ? 'bg-blue-500' :
-                                'bg-red-500'
-                              }`}
+                )}
+              </CardContent>
+            </Card>
+            
+            {/* Список предстоящих анонсов */}
+            <div className="lg:col-span-2 space-y-3">
+              {/* Desktop: показываем анонсы выбранного дня или предстоящие */}
+              <div className="hidden lg:block">
+                {selectedDate ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">
+                        {selectedDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      </h3>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedDate(null)}>
+                        Показать все
+                      </Button>
+                    </div>
+                    {getAnnouncementsForDate(selectedDate).length === 0 ? (
+                      <Card>
+                        <CardContent className="py-6 text-center text-gray-500 text-sm">
+                          Нет анонсов на этот день
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="space-y-2">
+                        {getAnnouncementsForDate(selectedDate).map(announcement => (
+                          <AnnouncementCard
+                            key={announcement.id}
+                            announcement={announcement}
+                            groups={groups}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onSendNow={handleSendNow}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">
+                      Предстоящие анонсы
+                    </h3>
+                    {scheduledAnnouncements.length === 0 ? (
+                      <Card>
+                        <CardContent className="py-6 text-center text-gray-500 text-sm">
+                          Нет запланированных анонсов
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="space-y-2">
+                        {scheduledAnnouncements
+                          .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+                          .slice(0, 5)
+                          .map(announcement => (
+                            <AnnouncementCard
+                              key={announcement.id}
+                              announcement={announcement}
+                              groups={groups}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                              onSendNow={handleSendNow}
                             />
                           ))}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                        {scheduledAnnouncements.length > 5 && (
+                          <Button 
+                            variant="ghost" 
+                            className="w-full text-sm"
+                            onClick={() => setActiveTab('scheduled')}
+                          >
+                            Показать все ({scheduledAnnouncements.length})
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               
-              {selectedDate && (
-                <div className="mt-4 pt-4 border-t">
-                  <h3 className="font-medium mb-2">
-                    {selectedDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {/* Mobile: всегда показываем предстоящие под календарём, если дата не выбрана */}
+              {!selectedDate && (
+                <div className="lg:hidden">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                    Предстоящие
                   </h3>
-                  {getAnnouncementsForDate(selectedDate).length === 0 ? (
-                    <p className="text-gray-500 text-sm">Нет анонсов на этот день</p>
+                  {scheduledAnnouncements.length === 0 ? (
+                    <Card>
+                      <CardContent className="py-4 text-center text-gray-500 text-sm">
+                        Нет запланированных анонсов
+                      </CardContent>
+                    </Card>
                   ) : (
                     <div className="space-y-2">
-                      {getAnnouncementsForDate(selectedDate).map(announcement => (
-                        <AnnouncementCard
-                          key={announcement.id}
-                          announcement={announcement}
-                          groups={groups}
-                          onEdit={handleEdit}
-                          onDelete={handleDelete}
-                          onSendNow={handleSendNow}
-                        />
-                      ))}
+                      {scheduledAnnouncements
+                        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+                        .slice(0, 3)
+                        .map(announcement => (
+                          <AnnouncementCard
+                            key={announcement.id}
+                            announcement={announcement}
+                            groups={groups}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                            onSendNow={handleSendNow}
+                            compact
+                          />
+                        ))}
                     </div>
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
         
         <TabsContent value="scheduled">
@@ -580,7 +688,8 @@ function AnnouncementCard({
   onEdit,
   onDelete,
   onSendNow,
-  showResults = false
+  showResults = false,
+  compact = false
 }: {
   announcement: Announcement;
   groups: TelegramGroup[];
@@ -588,6 +697,7 @@ function AnnouncementCard({
   onDelete: (id: string) => void;
   onSendNow: (id: string) => void;
   showResults?: boolean;
+  compact?: boolean;
 }) {
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('ru-RU', {
@@ -599,17 +709,18 @@ function AnnouncementCard({
   };
   
   const getStatusBadge = (status: Announcement['status']) => {
+    const baseClass = compact ? "text-xs px-1.5 py-0" : "";
     switch (status) {
       case 'scheduled':
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700"><Clock className="w-3 h-3 mr-1" />Запланирован</Badge>;
+        return <Badge variant="outline" className={`bg-blue-50 text-blue-700 ${baseClass}`}><Clock className="w-3 h-3 mr-1" />{!compact && 'Запланирован'}</Badge>;
       case 'sending':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700"><AlertCircle className="w-3 h-3 mr-1" />Отправляется</Badge>;
+        return <Badge variant="outline" className={`bg-yellow-50 text-yellow-700 ${baseClass}`}><AlertCircle className="w-3 h-3 mr-1" />{!compact && 'Отправляется'}</Badge>;
       case 'sent':
-        return <Badge variant="outline" className="bg-green-50 text-green-700"><CheckCircle className="w-3 h-3 mr-1" />Отправлен</Badge>;
+        return <Badge variant="outline" className={`bg-green-50 text-green-700 ${baseClass}`}><CheckCircle className="w-3 h-3 mr-1" />{!compact && 'Отправлен'}</Badge>;
       case 'failed':
-        return <Badge variant="outline" className="bg-red-50 text-red-700"><XCircle className="w-3 h-3 mr-1" />Ошибка</Badge>;
+        return <Badge variant="outline" className={`bg-red-50 text-red-700 ${baseClass}`}><XCircle className="w-3 h-3 mr-1" />{!compact && 'Ошибка'}</Badge>;
       case 'cancelled':
-        return <Badge variant="outline" className="bg-gray-50 text-gray-700"><XCircle className="w-3 h-3 mr-1" />Отменён</Badge>;
+        return <Badge variant="outline" className={`bg-gray-50 text-gray-700 ${baseClass}`}><XCircle className="w-3 h-3 mr-1" />{!compact && 'Отменён'}</Badge>;
     }
   };
   
@@ -619,6 +730,39 @@ function AnnouncementCard({
       .filter(Boolean)
       .join(', ');
   };
+  
+  if (compact) {
+    return (
+      <Card>
+        <CardContent className="py-2 px-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h4 className="text-sm font-medium truncate">{announcement.title}</h4>
+                {getStatusBadge(announcement.status)}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                <span>{formatDate(announcement.scheduled_at)}</span>
+                <span>• {announcement.target_groups.length} групп</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {announcement.status === 'scheduled' && (
+                <>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onSendNow(announcement.id)}>
+                    <Send className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onEdit(announcement)}>
+                    <Edit className="w-3.5 h-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   
   return (
     <Card>
