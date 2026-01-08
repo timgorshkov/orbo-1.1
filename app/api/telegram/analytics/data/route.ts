@@ -225,10 +225,12 @@ export async function GET(request: Request) {
     const activityWindowStart = new Date()
     activityWindowStart.setDate(activityWindowStart.getDate() - activityWindowDays)
 
+    const numericChatId = Number(chatId)
+    
     const { data: activityEvents, error: activityError } = await supabase
       .from('activity_events')
       .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
-      .eq('tg_chat_id', chatId)
+      .eq('tg_chat_id', numericChatId)
       .gte('created_at', activityWindowStart.toISOString())
       .order('created_at', { ascending: false })
       .limit(2000)
