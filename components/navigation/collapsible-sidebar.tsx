@@ -163,8 +163,8 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Анонсы (только для owner и admin)
-  if (role === 'owner' || role === 'admin') {
+  // Анонсы (только для owner и admin в режиме админа)
+  if (isAdmin && adminMode) {
     navItems.push({
       key: 'announcements',
       label: 'Анонсы',
