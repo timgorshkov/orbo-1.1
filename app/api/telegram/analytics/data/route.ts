@@ -176,7 +176,7 @@ export async function GET(request: Request) {
 
     // 1) Загружаем актуальных участников группы
     try {
-      logger.info({ chat_id: chatId, chat_id_type: typeof chatId, numeric_chat_id: numericChatId }, 'Fetching participant_groups');
+      logger.debug({ chat_id: chatId, numeric_chat_id: numericChatId }, 'Fetching participant_groups');
       
       const { data: membershipLinks, error: membershipError } = await supabase
         .from('participant_groups')
@@ -184,9 +184,8 @@ export async function GET(request: Request) {
         .eq('tg_group_id', numericChatId)
         .eq('is_active', true)
 
-      logger.info({ 
+      logger.debug({ 
         chat_id: chatId, 
-        numeric_chat_id: numericChatId,
         links_count: membershipLinks?.length || 0, 
         error: membershipError?.message 
       }, 'participant_groups query result');
@@ -235,10 +234,9 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(2000)
 
-    logger.info({ 
+    logger.debug({ 
       events_count: activityEvents?.length || 0,
       numeric_chat_id: numericChatId,
-      window_start: activityWindowStart.toISOString(),
       error: activityError?.message
     }, 'Activity events query result');
 
@@ -253,13 +251,8 @@ export async function GET(request: Request) {
     let leaveCount = 0
 
     if (activityEvents) {
-      logger.info({ 
-        first_event_sample: activityEvents[0] ? {
-          id: activityEvents[0].id,
-          event_type: activityEvents[0].event_type,
-          tg_user_id: activityEvents[0].tg_user_id,
-          tg_user_id_type: typeof activityEvents[0].tg_user_id
-        } : null
+      logger.debug({ 
+        first_event_tg_user_id_type: activityEvents[0] ? typeof activityEvents[0].tg_user_id : null
       }, 'Activity events sample');
       
       activityEvents.forEach(event => {
