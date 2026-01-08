@@ -855,6 +855,9 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
       
       case 'group_inactive': {
         const timeoutHours = rule.config.timeout_hours || 24;
+        // Window in hours after threshold crossing when notification can be sent
+        // Using 2 hours to account for cron job intervals (typically 15-60 min)
+        const notificationWindowHours = 2;
         
         // Get last message time
         const { data: lastMessage } = await supabaseAdmin
@@ -872,62 +875,44 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         const lastMessageTimestamp = lastMessage.created_at; // ISO string for exact comparison
         const hoursInactive = (Date.now() - lastMessageTime.getTime()) / (1000 * 60 * 60);
         
-        // Not inactive yet - skip
-        if (hoursInactive < timeoutHours) continue;
+        // ===== SIMPLE AND RELIABLE LOGIC =====
+        // Send notification ONLY if:
+        // 1. Inactivity >= X hours (threshold crossed)
+        // 2. Inactivity < X + window hours (threshold was JUST crossed, not long ago)
+        //
+        // This ensures notification is sent ONCE per inactivity period:
+        // - If hours_inactive < X: threshold not yet crossed → skip
+        // - If X <= hours_inactive < X+window: threshold just crossed → SEND
+        // - If hours_inactive >= X+window: threshold crossed long ago → skip (already notified)
         
-        // ===== CRITICAL FIX: Check if we already notified about THIS inactivity period =====
-        // Look for the most recent notification for this group
-        // We check if the last_message_timestamp matches - if yes, we already notified
-        const { data: recentGroupNotifs } = await supabaseAdmin
-          .from('notification_logs')
-          .select('id, trigger_context, created_at')
-          .eq('rule_id', rule.id)
-          .eq('rule_type', 'group_inactive')
-          .eq('notification_status', 'sent')
-          .order('created_at', { ascending: false })
-          .limit(50); // Check more notifications to find ones for this group
-        
-        // Find notifications for THIS specific group
-        const notifsForThisGroup = (recentGroupNotifs || []).filter(notif => {
-          const ctx = notif.trigger_context as Record<string, unknown>;
-          return ctx?.group_id === chatId;
-        });
-        
-        if (notifsForThisGroup.length > 0) {
-          const mostRecentNotif = notifsForThisGroup[0];
-          const prevContext = mostRecentNotif.trigger_context as Record<string, unknown>;
-          const prevLastMessageTimestamp = prevContext.last_message_timestamp;
-          
-          // Case 1: New format - has last_message_timestamp
-          if (prevLastMessageTimestamp) {
-            if (prevLastMessageTimestamp === lastMessageTimestamp) {
-              logger.debug({ 
-                rule_id: rule.id, 
-                chat_id: chatId,
-                group_title: groupTitle,
-                last_message: lastMessageTimestamp,
-              }, '⏭️ Skipping - already notified about this inactivity period (same timestamp)');
-              continue;
-            }
-            // Different timestamp = there was new activity, now inactive again - OK to notify
-          } else {
-            // Case 2: Old format - doesn't have last_message_timestamp
-            // Compare the human-readable last_message_at string as fallback
-            const prevLastMessageAt = prevContext.last_message_at as string;
-            const currentLastMessageAt = lastMessageTime.toLocaleString('ru');
-            
-            if (prevLastMessageAt === currentLastMessageAt) {
-              logger.debug({ 
-                rule_id: rule.id, 
-                chat_id: chatId,
-                group_title: groupTitle,
-                last_message_at: currentLastMessageAt,
-              }, '⏭️ Skipping - already notified about this inactivity period (same last_message_at)');
-              continue;
-            }
-            // Different last_message_at = there was new activity, now inactive again - OK to notify
-          }
+        if (hoursInactive < timeoutHours) {
+          // Not inactive long enough yet
+          continue;
         }
+        
+        if (hoursInactive >= timeoutHours + notificationWindowHours) {
+          // Threshold was crossed more than 2 hours ago - we should have already sent notification
+          // Skip to prevent spam
+          logger.debug({ 
+            rule_id: rule.id, 
+            chat_id: chatId,
+            group_title: groupTitle,
+            hours_inactive: Math.floor(hoursInactive),
+            timeout_hours: timeoutHours,
+            window_hours: notificationWindowHours,
+          }, '⏭️ Skipping - inactivity threshold crossed too long ago (outside notification window)');
+          continue;
+        }
+        
+        // We're in the notification window: X <= hoursInactive < X + window
+        // This is the sweet spot - threshold was just crossed
+        logger.info({ 
+          rule_id: rule.id, 
+          chat_id: chatId,
+          group_title: groupTitle,
+          hours_inactive: Math.floor(hoursInactive),
+          timeout_hours: timeoutHours,
+        }, '🔔 In notification window - threshold just crossed');
         
         const triggerContext = {
           type: 'group_inactive',
@@ -935,22 +920,20 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           group_title: groupTitle,
           last_message_at: lastMessageTime.toLocaleString('ru'),
           inactive_hours: Math.floor(hoursInactive),
-          // CRITICAL: Store the exact timestamp of the last message
-          // This is used to detect if we already notified about this inactivity period
           last_message_timestamp: lastMessageTimestamp,
         };
         
-        // Use a dedup hash that includes the last message timestamp
-        // This ensures we only notify ONCE per inactivity period
-        const inactivityDedupHash = `inactivity_${rule.id}_${chatId}_${lastMessageTimestamp}`;
+        // Additional safety: dedup hash based on the DAY of the last message
+        // This prevents multiple notifications on the same day even if cron runs multiple times
+        const lastMessageDay = lastMessageTime.toISOString().split('T')[0];
+        const inactivityDedupHash = `inactivity_${rule.id}_${chatId}_${lastMessageDay}`;
         
-        // Final check with dedup hash (belt and suspenders)
-        if (await isDuplicate(rule.id, inactivityDedupHash, 720)) { // 720 hours = 30 days
+        if (await isDuplicate(rule.id, inactivityDedupHash, 48)) { // 48 hours lookback
           logger.debug({ 
             rule_id: rule.id, 
             chat_id: chatId,
             dedup_hash: inactivityDedupHash
-          }, '⏭️ Skipping - duplicate check failed');
+          }, '⏭️ Skipping - duplicate found in last 48 hours');
           continue;
         }
         
