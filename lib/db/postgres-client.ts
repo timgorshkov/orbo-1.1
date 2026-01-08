@@ -529,7 +529,14 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         for (const row of rows) {
           for (const col of columns) {
-            allValues.push(row[col]);
+            // pg doesn't auto-serialize objects to JSON for JSONB columns
+            // We need to manually stringify objects/arrays
+            const value = row[col];
+            if (value !== null && typeof value === 'object') {
+              allValues.push(JSON.stringify(value));
+            } else {
+              allValues.push(value);
+            }
           }
         }
         
@@ -548,7 +555,13 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         // Сначала добавляем значения SET
         const setParts = columns.map(col => {
-          allValues.push(this.updateData[col]);
+          const value = this.updateData[col];
+          // pg doesn't auto-serialize objects to JSON for JSONB columns
+          if (value !== null && typeof value === 'object') {
+            allValues.push(JSON.stringify(value));
+          } else {
+            allValues.push(value);
+          }
           return `"${col}" = ${this.nextParam()}`;
         });
         
@@ -570,7 +583,13 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         for (const row of rows) {
           for (const col of columns) {
-            allValues.push(row[col]);
+            // pg doesn't auto-serialize objects to JSON for JSONB columns
+            const value = row[col];
+            if (value !== null && typeof value === 'object') {
+              allValues.push(JSON.stringify(value));
+            } else {
+              allValues.push(value);
+            }
           }
         }
         

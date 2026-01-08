@@ -1,12 +1,12 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useSearchParams } from 'next/navigation';
 import AIConstructorChat from '@/components/ai-constructor/ai-constructor-chat';
 
-export const metadata: Metadata = {
-  title: 'Создать приложение с AI | Orbo',
-  description: 'Создайте своё приложение за несколько минут с помощью AI-помощника',
-};
-
 export default function CreateAppPage() {
+  const searchParams = useSearchParams();
+  const orgId = searchParams?.get('org') || undefined;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -21,7 +21,7 @@ export default function CreateAppPage() {
         </div>
 
         {/* Chat Component */}
-        <AIConstructorChat />
+        <AIConstructorChat defaultOrgId={orgId} />
 
         {/* Info Cards */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -16,7 +16,11 @@ interface UserOrganization {
   name: string;
 }
 
-export default function AIConstructorChat() {
+interface AIConstructorChatProps {
+  defaultOrgId?: string;
+}
+
+export default function AIConstructorChat({ defaultOrgId }: AIConstructorChatProps) {
   const router = useRouter();
   const [conversationId] = useState<string>(() => `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [messages, setMessages] = useState<Message[]>([
@@ -263,6 +267,7 @@ export default function AIConstructorChat() {
           onClose={() => setShowPreview(false)}
           onCreateApp={handleCreateApp}
           userOrganizations={userOrganizations}
+          defaultOrgId={defaultOrgId}
         />
       )}
     </div>

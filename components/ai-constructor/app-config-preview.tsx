@@ -9,6 +9,7 @@ interface AppConfigPreviewProps {
   onClose: () => void;
   onCreateApp: (orgId: string, visibility: 'public' | 'members' | 'private') => void;
   userOrganizations: Array<{ id: string; name: string }>;
+  defaultOrgId?: string;
 }
 
 export default function AppConfigPreview({
@@ -16,10 +17,15 @@ export default function AppConfigPreview({
   onClose,
   onCreateApp,
   userOrganizations,
+  defaultOrgId,
 }: AppConfigPreviewProps) {
+  // If defaultOrgId is provided, use it; otherwise let user select
   const [selectedOrgId, setSelectedOrgId] = useState(
-    userOrganizations.length > 0 ? userOrganizations[0].id : ''
+    defaultOrgId || (userOrganizations.length > 0 ? userOrganizations[0].id : '')
   );
+  
+  // Find the org name for display when defaultOrgId is set
+  const selectedOrg = userOrganizations.find(o => o.id === selectedOrgId);
   const [selectedVisibility, setSelectedVisibility] = useState<'public' | 'members' | 'private'>('members');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -175,22 +181,34 @@ export default function AppConfigPreview({
           {/* Organization Selector */}
           {userOrganizations.length > 0 && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Организация:
-                </label>
-                <select
-                  value={selectedOrgId}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {userOrganizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Show org name or dropdown depending on whether defaultOrgId was provided */}
+              {defaultOrgId && selectedOrg ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Организация:
+                  </label>
+                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white font-medium">
+                    {selectedOrg.name}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Организация:
+                  </label>
+                  <select
+                    value={selectedOrgId}
+                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {userOrganizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Visibility Selector */}
               <div>
