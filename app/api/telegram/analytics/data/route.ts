@@ -98,6 +98,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = createAdminServer()
+    const numericChatId = Number(chatId)
 
     const participantsMap = new Map<number, ParticipantAggregate>()
     const usernameToUserId = new Map<string, number>()
@@ -175,16 +176,17 @@ export async function GET(request: Request) {
 
     // 1) Загружаем актуальных участников группы
     try {
-      logger.debug({ chat_id: chatId, chat_id_type: typeof chatId }, 'Fetching participant_groups');
+      logger.info({ chat_id: chatId, chat_id_type: typeof chatId, numeric_chat_id: numericChatId }, 'Fetching participant_groups');
       
       const { data: membershipLinks, error: membershipError } = await supabase
         .from('participant_groups')
         .select('participant_id')
-        .eq('tg_group_id', Number(chatId))
+        .eq('tg_group_id', numericChatId)
         .eq('is_active', true)
 
-      logger.debug({ 
+      logger.info({ 
         chat_id: chatId, 
+        numeric_chat_id: numericChatId,
         links_count: membershipLinks?.length || 0, 
         error: membershipError?.message 
       }, 'participant_groups query result');
@@ -225,8 +227,6 @@ export async function GET(request: Request) {
     const activityWindowStart = new Date()
     activityWindowStart.setDate(activityWindowStart.getDate() - activityWindowDays)
 
-    const numericChatId = Number(chatId)
-    
     const { data: activityEvents, error: activityError } = await supabase
       .from('activity_events')
       .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
@@ -235,8 +235,10 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(2000)
 
-    logger.debug({ 
+    logger.info({ 
       events_count: activityEvents?.length || 0,
+      numeric_chat_id: numericChatId,
+      window_start: activityWindowStart.toISOString(),
       error: activityError?.message
     }, 'Activity events query result');
 
