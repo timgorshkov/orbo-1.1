@@ -253,6 +253,15 @@ export async function GET(request: Request) {
     let leaveCount = 0
 
     if (activityEvents) {
+      logger.info({ 
+        first_event_sample: activityEvents[0] ? {
+          id: activityEvents[0].id,
+          event_type: activityEvents[0].event_type,
+          tg_user_id: activityEvents[0].tg_user_id,
+          tg_user_id_type: typeof activityEvents[0].tg_user_id
+        } : null
+      }, 'Activity events sample');
+      
       activityEvents.forEach(event => {
         const metaUsername = event.meta?.user?.username || event.meta?.from?.username || event.meta?.username || null
         const metaFullName =
@@ -262,7 +271,15 @@ export async function GET(request: Request) {
             ? `${event.meta.first_name}${event.meta.last_name ? ` ${event.meta.last_name}` : ''}`
             : null)
 
-        let tgUserId = typeof event.tg_user_id === 'number' ? event.tg_user_id : null
+        // Handle bigint that might come as string from PostgreSQL
+        let tgUserId: number | null = null
+        if (typeof event.tg_user_id === 'number') {
+          tgUserId = event.tg_user_id
+        } else if (typeof event.tg_user_id === 'string') {
+          tgUserId = parseInt(event.tg_user_id, 10)
+        } else if (typeof event.tg_user_id === 'bigint') {
+          tgUserId = Number(event.tg_user_id)
+        }
         if (tgUserId == null) {
           const metaId =
             typeof event.meta?.user?.id === 'number'
