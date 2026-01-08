@@ -160,7 +160,18 @@ export async function getParticipantDetail(orgId: string, participantId: string)
   
   let eventsData: ParticipantTimelineEvent[] = [];
 
-  const tgUserId = participantRecord.tg_user_id;
+  // Handle bigint that might come as string from PostgreSQL
+  const rawTgUserId = participantRecord.tg_user_id;
+  const tgUserId = typeof rawTgUserId === 'string' ? parseInt(rawTgUserId, 10) 
+    : typeof rawTgUserId === 'number' ? rawTgUserId 
+    : null;
+
+  logger.debug({ 
+    participant_id: participantId,
+    raw_tg_user_id: rawTgUserId,
+    raw_type: typeof rawTgUserId,
+    parsed_tg_user_id: tgUserId
+  }, 'Participant tg_user_id parsing');
 
   if (tgUserId) {
     let accessibleChatIds: string[] = [];
