@@ -113,18 +113,14 @@ export async function GET(req: NextRequest) {
       const userIds = Array.from(new Set(logs.map(l => l.user_id).filter(Boolean)));
       const orgIds = Array.from(new Set(logs.map(l => l.org_id).filter(Boolean)));
       
-      // Fetch users by ID - more reliable than listUsers pagination
-      const userMap = new Map<string, string>();
-      for (const userId of userIds) {
-        try {
-          const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
-          if (data?.user?.email) {
-            userMap.set(userId, data.user.email);
-          }
-        } catch {
-          // Skip if user not found
-        }
-      }
+      // Fetch users from local users table
+      const { data: users } = await supabaseAdmin
+        .from('users')
+        .select('id, email')
+        .in('id', userIds);
+      const userMap = new Map(
+        (users || []).map(u => [u.id, u.email])
+      );
       
       // Fetch organizations
       const { data: orgs } = await supabaseAdmin

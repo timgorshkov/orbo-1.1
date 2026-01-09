@@ -9,6 +9,7 @@ import { Archive, ArchiveRestore, Loader2 } from 'lucide-react'
 type Organization = {
   id: string
   name: string
+  owner_email: string | null
   created_at: string
   status: string
   archived_at?: string | null
@@ -109,6 +110,7 @@ export default function OrganizationsTable({
             <thead className="border-b bg-neutral-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Название</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email владельца</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Telegram</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Групп</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">С ботом</th>
@@ -124,7 +126,7 @@ export default function OrganizationsTable({
             <tbody className="divide-y">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
                     {showArchived 
                       ? 'Нет архивных организаций' 
                       : 'Организации не найдены'}
@@ -141,10 +143,22 @@ export default function OrganizationsTable({
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {org.owner_email || '—'}
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       {org.has_telegram ? (
                         org.telegram_verified ? (
-                          <span>✅ {org.telegram_username || 'Верифицирован'}</span>
+                          org.telegram_username ? (
+                            <a 
+                              href={`https://t.me/${org.telegram_username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              ✅ @{org.telegram_username}
+                            </a>
+                          ) : '✅ Верифицирован'
                         ) : '⚠️ Добавлен'
                       ) : '❌ Нет'}
                     </td>

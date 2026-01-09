@@ -69,7 +69,20 @@ export default function UsersTable({ users }: { users: User[] }) {
                   <td className="px-4 py-3 text-sm text-right">{user.groups_with_bot_count}</td>
                   <td className="px-4 py-3 text-sm">
                     {user.last_sign_in_at 
-                      ? new Date(user.last_sign_in_at).toLocaleDateString('ru-RU')
+                      ? (() => {
+                          const date = new Date(user.last_sign_in_at)
+                          const today = new Date()
+                          const isToday = date.toDateString() === today.toDateString()
+                          const isYesterday = new Date(today.setDate(today.getDate() - 1)).toDateString() === date.toDateString()
+                          
+                          if (isToday) {
+                            return `Сегодня в ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+                          } else if (isYesterday) {
+                            return `Вчера в ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+                          } else {
+                            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })
+                          }
+                        })()
                       : 'Никогда'
                     }
                   </td>

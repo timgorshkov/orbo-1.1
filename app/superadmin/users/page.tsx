@@ -60,6 +60,21 @@ export default async function SuperadminUsersPage() {
   
   const usersMap = new Map((usersData || []).map(u => [u.id, u]))
   
+  // Получаем время последнего входа из сессий
+  const { data: lastSessions } = await supabase
+    .from('sessions')
+    .select('user_id, created_at')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+  
+  // Создаём карту последних входов (берём самую свежую сессию для каждого пользователя)
+  const lastLoginMap = new Map<string, string>()
+  lastSessions?.forEach(session => {
+    if (!lastLoginMap.has(session.user_id)) {
+      lastLoginMap.set(session.user_id, session.created_at)
+    }
+  })
+  
   // Получаем telegram аккаунты
   const { data: telegramAccounts } = await supabase
     .from('user_telegram_accounts')
@@ -124,7 +139,7 @@ export default async function SuperadminUsersPage() {
       admin_orgs_count: userData.admin_orgs.length,
       total_orgs_count: userData.total_orgs,
       groups_with_bot_count: groupsAsAdmin.length,
-      last_sign_in_at: undefined,
+      last_sign_in_at: lastLoginMap.get(userId) || null,
       created_at: user?.created_at
     }
   }).sort((a, b) => {

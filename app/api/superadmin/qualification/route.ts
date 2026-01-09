@@ -43,23 +43,18 @@ export async function GET(request: NextRequest) {
     const userInfoMap: Record<string, UserInfo> = {};
     
     if (userIds.length > 0) {
-      // 1. Get emails from auth.users via admin API
-      try {
-        const { data: authUsers } = await adminSupabase.auth.admin.listUsers({
-          perPage: 100,
-        });
-        
-        authUsers?.users?.forEach(u => {
-          if (userIds.includes(u.id)) {
-            userInfoMap[u.id] = {
-              email: u.email,
-              name: u.user_metadata?.full_name || u.user_metadata?.name || undefined,
-            };
-          }
-        });
-      } catch (e) {
-        logger.warn({ error: e }, 'Could not fetch auth users');
-      }
+      // 1. Get emails from local users table
+      const { data: localUsers } = await adminSupabase
+        .from('users')
+        .select('id, email, name')
+        .in('id', userIds);
+      
+      localUsers?.forEach(u => {
+        userInfoMap[u.id] = {
+          email: u.email || undefined,
+          name: u.name || undefined,
+        };
+      });
       
       // 2. Get Telegram usernames
       const { data: telegramAccounts } = await adminSupabase

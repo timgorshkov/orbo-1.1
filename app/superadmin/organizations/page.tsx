@@ -93,6 +93,26 @@ export default async function SuperadminOrganizationsPage() {
     }
   }
   
+  // Получаем email владельцев организаций
+  const ownerUserIds = Array.from(new Set(
+    memberships?.filter(m => m.role === 'owner').map(m => m.user_id) || []
+  ))
+  
+  const { data: ownerUsers } = ownerUserIds.length > 0
+    ? await supabase.from('users').select('id, email').in('id', ownerUserIds)
+    : { data: [] }
+  
+  // Создаём маппинг email для организаций (по owner)
+  const orgEmailMap = new Map<string, string>()
+  for (const membership of memberships || []) {
+    if (membership.role === 'owner' && !orgEmailMap.has(membership.org_id)) {
+      const ownerUser = ownerUsers?.find(u => u.id === membership.user_id)
+      if (ownerUser?.email) {
+        orgEmailMap.set(membership.org_id, ownerUser.email)
+      }
+    }
+  }
+  
   // Форматируем данные
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
@@ -101,6 +121,7 @@ export default async function SuperadminOrganizationsPage() {
     return {
       id: org.id,
       name: org.name,
+      owner_email: orgEmailMap.get(org.id) || null,
       created_at: org.created_at,
       status: org.status || 'active',
       archived_at: org.archived_at,

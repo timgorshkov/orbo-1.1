@@ -15,6 +15,7 @@ type Group = {
   has_admin_rights: boolean
   participants_count: number
   organizations_count: number
+  organization_names: string[]
   last_activity_at: string | null
 }
 
@@ -40,10 +41,10 @@ export default function GroupsTable({ groups }: { groups: Group[] }) {
             <thead className="border-b bg-neutral-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Название</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Организации</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Бот</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Права админа</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Участников</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Орг.</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Последняя активность</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Last Sync</th>
               </tr>
@@ -53,13 +54,24 @@ export default function GroupsTable({ groups }: { groups: Group[] }) {
                 <tr key={group.id} className="hover:bg-neutral-50">
                   <td className="px-4 py-3 text-sm font-medium">{group.title}</td>
                   <td className="px-4 py-3 text-sm">
+                    {group.organization_names.length > 0 ? (
+                      <span title={group.organization_names.join(', ')}>
+                        {group.organization_names.length === 1 
+                          ? group.organization_names[0]
+                          : `${group.organization_names[0]} +${group.organization_names.length - 1}`
+                        }
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
                     {group.has_bot ? '✅' : '❌'}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {group.has_admin_rights ? '✅' : '❌'}
                   </td>
                   <td className="px-4 py-3 text-sm text-right">{group.participants_count}</td>
-                  <td className="px-4 py-3 text-sm text-right">{group.organizations_count}</td>
                   <td className="px-4 py-3 text-sm">
                     {group.last_activity_at 
                       ? new Date(group.last_activity_at).toLocaleDateString('ru-RU')
