@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import ReactMarkdown from 'react-markdown';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
@@ -116,7 +116,6 @@ type ViewState = 'loading' | 'event' | 'form' | 'payment' | 'success' | 'error';
 
 export default function TelegramEventPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
   const eventId = params.id as string;
   
   const [viewState, setViewState] = useState<ViewState>('loading');
@@ -371,24 +370,8 @@ export default function TelegramEventPage() {
     handleRegister();
   };
 
-  // Handle cancel registration
-  const handleCancelRegistration = useCallback(async () => {
-    if (!event) return;
-    
-    // Show confirmation
-    const tg = window.Telegram?.WebApp;
-    if (tg?.showConfirm) {
-      tg.showConfirm('Отменить регистрацию на мероприятие?', async (confirmed) => {
-        if (!confirmed) return;
-        await performCancelRegistration();
-      });
-    } else {
-      if (!confirm('Отменить регистрацию на мероприятие?')) return;
-      await performCancelRegistration();
-    }
-  }, [event, eventId]);
-
-  const performCancelRegistration = async () => {
+  // Perform cancel registration
+  const performCancelRegistration = useCallback(async () => {
     setIsCancelling(true);
     setError(null);
     
@@ -415,11 +398,28 @@ export default function TelegramEventPage() {
       setViewState('event');
     } catch (err: any) {
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('error');
-      setError(err.message);
+      setError(err.message || 'Failed to cancel registration');
     } finally {
       setIsCancelling(false);
     }
-  };
+  }, [eventId]);
+
+  // Handle cancel registration with confirmation
+  const handleCancelRegistration = useCallback(async () => {
+    if (!event) return;
+    
+    // Show confirmation
+    const tg = window.Telegram?.WebApp;
+    if (tg?.showConfirm) {
+      tg.showConfirm('Отменить регистрацию на мероприятие?', async (confirmed) => {
+        if (!confirmed) return;
+        await performCancelRegistration();
+      });
+    } else {
+      if (!confirm('Отменить регистрацию на мероприятие?')) return;
+      await performCancelRegistration();
+    }
+  }, [event, performCancelRegistration]);
 
   // Currency symbol
   const getCurrencySymbol = (currency: string) => {
