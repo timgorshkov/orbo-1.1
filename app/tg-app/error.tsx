@@ -15,6 +15,22 @@ export default function TelegramAppError({
   useEffect(() => {
     // Log error to console for debugging
     console.error('TelegramApp error:', error);
+    
+    // Send error to server for logging
+    fetch('/api/log-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'tg-app-error-boundary',
+        message: error.message,
+        stack: error.stack,
+        digest: error.digest,
+        url: typeof window !== 'undefined' ? window.location.href : '',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      }),
+    }).catch(() => {
+      // Ignore logging errors
+    });
   }, [error]);
 
   const handleRetry = () => {
