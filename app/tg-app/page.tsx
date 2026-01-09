@@ -87,7 +87,7 @@ export default function TelegramAppHome() {
     <>
       <Script
         src="https://telegram.org/js/telegram-web-app.js"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
       />
       
       <div className="min-h-screen flex items-center justify-center p-4">

@@ -745,8 +745,8 @@ export default function TelegramEventPage() {
   // Render event details (main view)
   return (
     <>
-      {/* Telegram WebApp Script */}
-      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      {/* Telegram WebApp Script - use afterInteractive to avoid hydration mismatch */}
+      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
       
       <div className="min-h-screen flex flex-col bg-white">
         {/* Cover image */}

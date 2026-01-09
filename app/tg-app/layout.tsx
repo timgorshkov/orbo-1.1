@@ -21,13 +21,13 @@ export default function TelegramAppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
       <head>
         {/* Telegram WebApp script loaded in page */}
         <meta name="format-detection" content="telephone=no" />
         <meta name="color-scheme" content="light dark" />
       </head>
-      <body className="bg-white text-gray-900 antialiased">
+      <body className="bg-white text-gray-900 antialiased" suppressHydrationWarning>
         {children}
       </body>
     </html>

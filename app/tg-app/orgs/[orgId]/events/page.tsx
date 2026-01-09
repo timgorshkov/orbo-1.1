@@ -146,7 +146,7 @@ export default function TelegramEventsListPage() {
   if (loading) {
     return (
       <>
-        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
         <div className="min-h-screen flex items-center justify-center bg-white">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
@@ -157,7 +157,7 @@ export default function TelegramEventsListPage() {
   if (error) {
     return (
       <>
-        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
           <p className="text-red-500 text-center mb-4">{error}</p>
           <button
@@ -173,7 +173,7 @@ export default function TelegramEventsListPage() {
 
   return (
     <>
-      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" />
       
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
