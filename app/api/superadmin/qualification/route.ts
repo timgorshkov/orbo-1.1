@@ -15,9 +15,16 @@ export async function GET(request: NextRequest) {
   try {
     const adminSupabase = createAdminServer();
     
-    // Get summary statistics
-    const { data: summaryData } = await adminSupabase
+    // Get summary statistics - RPC returns a single row, not an array
+    const { data: summaryData, error: summaryError } = await adminSupabase
       .rpc('get_qualification_summary');
+    
+    if (summaryError) {
+      logger.error({ error: summaryError.message }, 'Error fetching qualification summary');
+    }
+    
+    // RPC returns a single object, not an array
+    const summary = Array.isArray(summaryData) ? summaryData[0] : summaryData;
 
     // Get recent qualifications with user info
     const { data: recentQualifications, error: recentError } = await adminSupabase
@@ -43,17 +50,37 @@ export async function GET(request: NextRequest) {
     const userInfoMap: Record<string, UserInfo> = {};
     
     if (userIds.length > 0) {
-      // 1. Get emails from local users table
-      const { data: localUsers } = await adminSupabase
-        .from('users')
-        .select('id, email, name')
-        .in('id', userIds);
+      // 1. Get emails from local users table and accounts table
+      const [{ data: localUsers }, { data: accounts }] = await Promise.all([
+        adminSupabase
+          .from('users')
+          .select('id, email, name')
+          .in('id', userIds),
+        adminSupabase
+          .from('accounts')
+          .select('user_id, provider, provider_account_id')
+          .in('user_id', userIds)
+          .in('provider', ['email', 'google', 'yandex'])
+      ]);
       
       localUsers?.forEach(u => {
         userInfoMap[u.id] = {
           email: u.email || undefined,
           name: u.name || undefined,
         };
+      });
+      
+      // Add emails from accounts table (for users without email in users table)
+      accounts?.forEach(acc => {
+        if (acc.provider === 'email' && acc.provider_account_id) {
+          const existing = userInfoMap[acc.user_id] || {};
+          if (!existing.email) {
+            userInfoMap[acc.user_id] = {
+              ...existing,
+              email: acc.provider_account_id,
+            };
+          }
+        }
       });
       
       // 2. Get Telegram usernames
@@ -122,7 +149,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      summary: summaryData?.[0] || {
+      summary: summary || {
         total_users: 0,
         completed_qualification: 0,
         completion_rate: 0,

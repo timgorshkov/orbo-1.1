@@ -56,7 +56,7 @@ export default async function SuperadminUsersPage() {
   const [
     { data: usersData },
     { data: accountsData },
-    { data: lastSessions },
+    { data: membershipsData },
     { data: telegramAccounts }
   ] = await Promise.all([
     supabase
@@ -68,7 +68,7 @@ export default async function SuperadminUsersPage() {
       .select('user_id, provider, provider_account_id')
       .in('user_id', userIds),
     supabase
-      .from('sessions')
+      .from('memberships')
       .select('user_id, created_at')
       .in('user_id', userIds)
       .order('created_at', { ascending: false }),
@@ -90,18 +90,18 @@ export default async function SuperadminUsersPage() {
     }
     // Google/Yandex OAuth тоже означает подтверждённый email
     if ((acc.provider === 'google' || acc.provider === 'yandex') && acc.provider_account_id) {
-      if (!accountEmailMap.has(acc.user_id)) {
-        accountEmailMap.set(acc.user_id, acc.provider_account_id)
-      }
+      // Для OAuth provider_account_id это не email, но можно попробовать извлечь из users
       hasEmailAuthMap.set(acc.user_id, true)
     }
   })
   
-  // Создаём карту последних входов (берём самую свежую сессию для каждого пользователя)
+  // Создаём карту последних входов из memberships (когда пользователь присоединился к организации)
+  // Это лучше чем sessions, так как sessions может быть пустой
   const lastLoginMap = new Map<string, string>()
-  lastSessions?.forEach(session => {
-    if (!lastLoginMap.has(session.user_id)) {
-      lastLoginMap.set(session.user_id, session.created_at)
+  membershipsData?.forEach(membership => {
+    if (!lastLoginMap.has(membership.user_id) || 
+        new Date(membership.created_at) > new Date(lastLoginMap.get(membership.user_id) || '')) {
+      lastLoginMap.set(membership.user_id, membership.created_at)
     }
   })
   

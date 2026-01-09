@@ -104,23 +104,21 @@ export default async function SuperadminOrganizationsPage() {
       ? supabase.from('users').select('id, email').in('id', ownerUserIds)
       : Promise.resolve({ data: [] }),
     ownerUserIds.length > 0
-      ? supabase.from('accounts').select('user_id, provider, provider_account_id').in('user_id', ownerUserIds).eq('provider', 'email')
+      ? supabase.from('accounts').select('user_id, provider, provider_account_id').in('user_id', ownerUserIds).in('provider', ['email', 'google', 'yandex'])
       : Promise.resolve({ data: [] })
   ])
   
   // Создаём маппинг email для организаций (по owner)
-  // Приоритет: users.email -> accounts(email).provider_account_id -> telegram_username
+  // Приоритет: users.email -> accounts(email).provider_account_id
+  // НЕ используем telegram_username как fallback
   const orgEmailMap = new Map<string, string>()
   for (const membership of memberships || []) {
     if (membership.role === 'owner' && !orgEmailMap.has(membership.org_id)) {
       const ownerUser = ownerUsers?.find(u => u.id === membership.user_id)
-      const ownerAccount = ownerAccounts?.find(a => a.user_id === membership.user_id)
-      const telegramAcc = telegramAccounts?.find(ta => ta.user_id === membership.user_id)
+      const ownerAccount = ownerAccounts?.find(a => a.user_id === membership.user_id && a.provider === 'email')
       
-      // Приоритет источников email
-      const email = ownerUser?.email 
-        || ownerAccount?.provider_account_id 
-        || (telegramAcc?.telegram_username ? `@${telegramAcc.telegram_username}` : null)
+      // Только реальные email, без fallback на telegram
+      const email = ownerUser?.email || ownerAccount?.provider_account_id || null
       
       if (email) {
         orgEmailMap.set(membership.org_id, email)
