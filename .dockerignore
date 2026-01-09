@@ -95,3 +95,5 @@ __pycache__
 *.tar.gz
 *.zip
 
+# Data directory (postgres, certbot)
+data

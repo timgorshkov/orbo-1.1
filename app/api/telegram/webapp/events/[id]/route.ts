@@ -87,11 +87,23 @@ export async function GET(
     }
     
     // Get registration count
-    const { data: regCount } = await adminSupabase
+    const { data: regCountData } = await adminSupabase
       .rpc('get_event_registered_count', {
         event_uuid: eventId,
         count_by_paid: event.capacity_count_by_paid || false
       });
+    
+    // RPC can return number directly, array, or object - handle all cases
+    let regCount = 0;
+    if (typeof regCountData === 'number') {
+      regCount = regCountData;
+    } else if (Array.isArray(regCountData) && regCountData.length > 0) {
+      regCount = typeof regCountData[0] === 'number' ? regCountData[0] : 0;
+    } else if (regCountData && typeof regCountData === 'object') {
+      // Handle object with get_event_registered_count key
+      const val = (regCountData as any).get_event_registered_count;
+      regCount = typeof val === 'number' ? val : 0;
+    }
     
     // Get registration fields
     const { data: fields } = await adminSupabase
