@@ -52,20 +52,50 @@ export default async function SuperadminUsersPage() {
   
   const userIds = Array.from(userMap.keys())
   
-  // Получаем данные пользователей из локальной таблицы users
-  const { data: usersData } = await supabase
-    .from('users')
-    .select('id, email, name, email_verified, image, created_at')
-    .in('id', userIds)
+  // Получаем данные пользователей из нескольких источников параллельно
+  const [
+    { data: usersData },
+    { data: accountsData },
+    { data: lastSessions },
+    { data: telegramAccounts }
+  ] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, email, name, email_verified, image, created_at')
+      .in('id', userIds),
+    supabase
+      .from('accounts')
+      .select('user_id, provider, provider_account_id')
+      .in('user_id', userIds),
+    supabase
+      .from('sessions')
+      .select('user_id, created_at')
+      .in('user_id', userIds)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('user_telegram_accounts')
+      .select('user_id, telegram_user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified')
+      .in('user_id', userIds)
+  ])
   
   const usersMap = new Map((usersData || []).map(u => [u.id, u]))
   
-  // Получаем время последнего входа из сессий
-  const { data: lastSessions } = await supabase
-    .from('sessions')
-    .select('user_id, created_at')
-    .in('user_id', userIds)
-    .order('created_at', { ascending: false })
+  // Создаём карту email из accounts (для пользователей без email в users)
+  const accountEmailMap = new Map<string, string>()
+  const hasEmailAuthMap = new Map<string, boolean>()
+  accountsData?.forEach(acc => {
+    if (acc.provider === 'email' && acc.provider_account_id) {
+      accountEmailMap.set(acc.user_id, acc.provider_account_id)
+      hasEmailAuthMap.set(acc.user_id, true) // Если есть запись в accounts с email provider, значит email подтверждён
+    }
+    // Google/Yandex OAuth тоже означает подтверждённый email
+    if ((acc.provider === 'google' || acc.provider === 'yandex') && acc.provider_account_id) {
+      if (!accountEmailMap.has(acc.user_id)) {
+        accountEmailMap.set(acc.user_id, acc.provider_account_id)
+      }
+      hasEmailAuthMap.set(acc.user_id, true)
+    }
+  })
   
   // Создаём карту последних входов (берём самую свежую сессию для каждого пользователя)
   const lastLoginMap = new Map<string, string>()
@@ -74,12 +104,6 @@ export default async function SuperadminUsersPage() {
       lastLoginMap.set(session.user_id, session.created_at)
     }
   })
-  
-  // Получаем telegram аккаунты
-  const { data: telegramAccounts } = await supabase
-    .from('user_telegram_accounts')
-    .select('user_id, telegram_user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified')
-    .in('user_id', userIds)
   
   // Получаем уникальные telegram_user_id для поиска групп
   const tgUserIds = Array.from(new Set(
@@ -128,11 +152,16 @@ export default async function SuperadminUsersPage() {
       ? `@${tgAccount.telegram_username}`
       : (tgAccount ? fullName : null)
     
+    // Получаем email из разных источников (users.email или accounts.provider_account_id)
+    const email = user?.email || accountEmailMap.get(userId) || null
+    // Email подтверждён если: есть email_verified в users ИЛИ есть запись в accounts (OAuth/email auth)
+    const emailConfirmed = !!user?.email_verified || hasEmailAuthMap.has(userId)
+    
     return {
       user_id: userId,
       full_name: fullName,
-      email: user?.email || 'N/A',
-      email_confirmed: !!user?.email_verified,
+      email: email || 'N/A',
+      email_confirmed: emailConfirmed,
       telegram_verified: tgAccounts.some(acc => acc.is_verified),
       telegram_display_name: telegramDisplayName,
       owner_orgs_count: userData.owner_orgs.length,
