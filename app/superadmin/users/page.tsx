@@ -139,7 +139,7 @@ export default async function SuperadminUsersPage() {
       admin_orgs_count: userData.admin_orgs.length,
       total_orgs_count: userData.total_orgs,
       groups_with_bot_count: groupsAsAdmin.length,
-      last_sign_in_at: lastLoginMap.get(userId) || null,
+      last_sign_in_at: lastLoginMap.get(userId) || undefined,
       created_at: user?.created_at
     }
   }).sort((a, b) => {
