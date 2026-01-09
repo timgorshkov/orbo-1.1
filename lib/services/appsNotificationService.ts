@@ -97,15 +97,26 @@ export async function notifyItemApproved(itemId: string): Promise<{
       participants: creatorResult?.data || null
     };
 
-    // Get Telegram groups for this org
+    // Get Telegram groups for this org (via org_telegram_groups mapping)
+    const { data: orgGroupMappings, error: mappingError } = await adminSupabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
+      .eq('org_id', item.org_id)
+      .eq('status', 'active');
+
+    if (mappingError || !orgGroupMappings || orgGroupMappings.length === 0) {
+      logger.error({ org_id: item.org_id }, 'No active Telegram groups found');
+      return { success: false, error: 'No Telegram groups configured' };
+    }
+
+    const chatIds = orgGroupMappings.map(m => m.tg_chat_id);
     const { data: groups, error: groupsError } = await adminSupabase
       .from('telegram_groups')
       .select('id, tg_chat_id, title')
-      .eq('org_id', item.org_id)
-      .eq('is_active', true);
+      .in('tg_chat_id', chatIds);
 
     if (groupsError || !groups || groups.length === 0) {
-      logger.error({ org_id: item.org_id }, 'No active Telegram groups found');
+      logger.error({ org_id: item.org_id, chat_ids: chatIds }, 'Failed to fetch Telegram group details');
       return { success: false, error: 'No Telegram groups configured' };
     }
 

@@ -144,6 +144,36 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     return `$${this.paramCounter++}`;
   }
 
+  /**
+   * Serialize value for SQL query
+   * - Primitive arrays (string[], number[]) → pass directly for PostgreSQL arrays
+   * - Objects and arrays of objects → JSON.stringify for JSONB columns
+   * - Primitives → pass as-is
+   */
+  private serializeValue(value: unknown): unknown {
+    if (value === null || value === undefined) {
+      return value;
+    }
+    
+    if (typeof value !== 'object') {
+      return value;
+    }
+    
+    // Array of primitives - for PostgreSQL array columns (text[], int[], etc.)
+    if (Array.isArray(value)) {
+      const allPrimitives = value.every(v => 
+        v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+      );
+      if (allPrimitives) {
+        // Pass directly - pg driver handles conversion to PostgreSQL array format
+        return value;
+      }
+    }
+    
+    // Objects and arrays of objects - JSON stringify for JSONB
+    return JSON.stringify(value);
+  }
+
   select(columns?: string, options?: SelectOptions): QueryBuilder<T> {
     // НЕ меняем operation если уже установлен insert/update/upsert/delete!
     // .select() после .insert()/.update()/.upsert() только указывает какие колонки вернуть
@@ -529,14 +559,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         for (const row of rows) {
           for (const col of columns) {
-            // pg doesn't auto-serialize objects to JSON for JSONB columns
-            // We need to manually stringify objects/arrays
             const value = row[col];
-            if (value !== null && typeof value === 'object') {
-              allValues.push(JSON.stringify(value));
-            } else {
-              allValues.push(value);
-            }
+            allValues.push(this.serializeValue(value));
           }
         }
         
@@ -556,12 +580,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         // Сначала добавляем значения SET
         const setParts = columns.map(col => {
           const value = this.updateData[col];
-          // pg doesn't auto-serialize objects to JSON for JSONB columns
-          if (value !== null && typeof value === 'object') {
-            allValues.push(JSON.stringify(value));
-          } else {
-            allValues.push(value);
-          }
+          allValues.push(this.serializeValue(value));
           return `"${col}" = ${this.nextParam()}`;
         });
         
@@ -583,13 +602,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         
         for (const row of rows) {
           for (const col of columns) {
-            // pg doesn't auto-serialize objects to JSON for JSONB columns
             const value = row[col];
-            if (value !== null && typeof value === 'object') {
-              allValues.push(JSON.stringify(value));
-            } else {
-              allValues.push(value);
-            }
+            allValues.push(this.serializeValue(value));
           }
         }
         
@@ -669,26 +683,42 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
     try {
       const { sql, values } = this.buildQuery();
       
+      // Высокочастотные таблицы - логируем только в debug
+      const highVolumeTables = ['activity_events', 'participants', 'participant_groups'];
+      const isHighVolume = highVolumeTables.includes(this.tableName);
+      
       // Логируем INSERT запросы для отладки
       if (this.operation === 'insert') {
-        logger.info({ 
+        const logData = { 
           table: this.tableName,
           operation: 'insert',
           sql: sql.substring(0, 200),
           values_count: values.length,
           insert_data: this.insertData
-        }, 'Executing INSERT query');
+        };
+        
+        if (isHighVolume) {
+          logger.debug(logData, 'Executing INSERT query');
+        } else {
+          logger.info(logData, 'Executing INSERT query');
+        }
       }
       
       const result = await this.pool.query(sql, values);
       
       // Логируем результат INSERT
       if (this.operation === 'insert') {
-        logger.info({ 
+        const logData = { 
           table: this.tableName,
           rows_returned: result.rows?.length,
           first_row: result.rows?.[0]
-        }, 'INSERT query result');
+        };
+        
+        if (isHighVolume) {
+          logger.debug(logData, 'INSERT query result');
+        } else {
+          logger.info(logData, 'INSERT query result');
+        }
       }
       
       return transformResult<T>(result, true);

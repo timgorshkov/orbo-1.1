@@ -66,6 +66,8 @@ if (hasYandexCredentials) {
       params: {
         response_type: 'code',
         scope: 'login:email login:info',
+        // Принудительно показывать выбор аккаунта при каждом входе
+        force_confirm: 'yes',
       },
     },
     token: {

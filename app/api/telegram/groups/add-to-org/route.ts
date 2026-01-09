@@ -83,13 +83,14 @@ async function copyGroupParticipantsToOrg(
         .maybeSingle();
 
       if (!existingPG) {
-        // Добавляем связь
+        // Добавляем связь (upsert to handle race conditions)
         await supabase
           .from('participant_groups')
-          .insert({
+          .upsert({
             participant_id: existing.id,
-            tg_group_id: tgChatId
-          });
+            tg_group_id: tgChatId,
+            is_active: true
+          }, { onConflict: 'participant_id,tg_group_id' });
         logger.debug({ tg_user_id: participant.tg_user_id }, '[CopyParticipants] Added participant_groups link');
       }
       
@@ -122,13 +123,14 @@ async function copyGroupParticipantsToOrg(
       continue;
     }
 
-    // Создаем связь participant_groups для новой организации
+    // Создаем связь participant_groups для новой организации (upsert to handle race conditions)
     const { error: pgLinkError } = await supabase
       .from('participant_groups')
-      .insert({
+      .upsert({
         participant_id: newParticipant.id,
-        tg_group_id: tgChatId
-      });
+        tg_group_id: tgChatId,
+        is_active: true
+      }, { onConflict: 'participant_id,tg_group_id' });
 
     if (pgLinkError) {
       logger.error({ tg_user_id: participant.tg_user_id, error: pgLinkError.message }, '[CopyParticipants] Error linking participant to group');
