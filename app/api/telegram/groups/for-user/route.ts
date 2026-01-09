@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { TelegramService } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 
@@ -364,7 +365,7 @@ export async function GET(request: Request) {
           adminRightsMap.set(String(right.tg_chat_id), right);
         });
 
-        // ✅ ОПТИМИЗАЦИЯ: Получаем количество участников для ВСЕХ групп одним запросом
+        // ✅ ОПТИМИЗАЦИЯ: Получаем актуальное количество участников через Telegram API
         const memberCountsStart = Date.now();
         const memberCountsMap = new Map<string, number>();
         
@@ -375,25 +376,68 @@ export async function GET(request: Request) {
           }).filter((id): id is number => id !== null);
           
           if (allChatIdsForCount.length > 0) {
-            // Используем RPC или aggregated query вместо count для каждой группы
-            const { data: memberCounts, error: countError } = await supabaseService
-              .from('participant_groups')
-              .select('tg_group_id')
-              .in('tg_group_id', allChatIdsForCount)
-              .eq('is_active', true);
+            // Получаем актуальные данные из Telegram API параллельно
+            let telegramService: TelegramService | null = null;
+            try {
+              telegramService = new TelegramService('main');
+            } catch (e) {
+              logger.warn({}, 'Could not initialize TelegramService for member counts');
+            }
             
-            if (!countError && memberCounts) {
-              // Считаем количество записей для каждой группы
-              memberCounts.forEach(row => {
-                const key = String(row.tg_group_id);
-                memberCountsMap.set(key, (memberCountsMap.get(key) || 0) + 1);
+            if (telegramService) {
+              const countPromises = allChatIdsForCount.map(async (chatId) => {
+                try {
+                  const result = await telegramService!.getChatMembersCount(chatId);
+                  if (result?.ok && typeof result.result === 'number') {
+                    memberCountsMap.set(String(chatId), result.result);
+                    
+                    // Обновляем member_count в БД для кэширования
+                    await supabaseService
+                      .from('telegram_groups')
+                      .update({ member_count: result.result })
+                      .filter('tg_chat_id::text', 'eq', String(chatId));
+                  }
+                } catch (e) {
+                  // Ignore individual chat errors (bot might not have access)
+                  logger.debug({ chat_id: chatId, error: e instanceof Error ? e.message : String(e) }, 'Could not get member count from Telegram');
+                }
               });
+              
+              // Ждём все запросы с таймаутом 5 секунд
+              await Promise.race([
+                Promise.all(countPromises),
+                new Promise(resolve => setTimeout(resolve, 5000))
+              ]);
+            }
+            
+            // Fallback: если Telegram API не вернул данные, используем participant_groups
+            const missingChatIds = allChatIdsForCount.filter(id => !memberCountsMap.has(String(id)));
+            if (missingChatIds.length > 0) {
+              const { data: memberCounts, error: countError } = await supabaseService
+                .from('participant_groups')
+                .select('tg_group_id')
+                .in('tg_group_id', missingChatIds)
+                .eq('is_active', true);
+              
+              if (!countError && memberCounts) {
+                const dbCounts = new Map<string, number>();
+                memberCounts.forEach(row => {
+                  const key = String(row.tg_group_id);
+                  dbCounts.set(key, (dbCounts.get(key) || 0) + 1);
+                });
+                // Добавляем только те, которых нет из Telegram API
+                dbCounts.forEach((count, key) => {
+                  if (!memberCountsMap.has(key)) {
+                    memberCountsMap.set(key, count);
+                  }
+                });
+              }
             }
           }
         } catch (countError) {
           logger.warn({ 
             error: countError instanceof Error ? countError.message : String(countError)
-          }, 'Error batch counting members, will use group.member_count');
+          }, 'Error getting member counts');
         }
         track('member_counts', memberCountsStart);
 
