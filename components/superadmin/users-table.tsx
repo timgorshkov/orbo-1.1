@@ -25,6 +25,16 @@ const COMMUNITY_TYPE_LABELS: Record<string, string> = {
   other: 'Другое'
 }
 
+const PAIN_POINTS_LABELS: Record<string, string> = {
+  missing_messages: 'Пропуск сообщений',
+  scattered_tools: 'Разрозненные инструменты',
+  fear_of_blocks: 'Страх блокировок',
+  event_registration: 'Регистрация на события',
+  no_crm: 'Нет CRM',
+  tracking_inactive: 'Отслеживание неактивных',
+  access_management: 'Управление доступом'
+}
+
 type User = {
   user_id: string
   full_name: string
@@ -33,7 +43,9 @@ type User = {
   telegram_verified: boolean
   telegram_display_name: string | null
   owner_orgs_count: number
+  owner_orgs_names: string[]
   admin_orgs_count: number
+  admin_orgs_names: string[]
   total_orgs_count: number
   groups_with_bot_count: number
   last_sign_in_at: string | null
@@ -42,6 +54,7 @@ type User = {
   qualification_role: string | null
   qualification_community_type: string | null
   qualification_groups_count: string | null
+  qualification_pain_points: string[]
 }
 
 function formatLastLogin(dateStr: string | null): string {
@@ -148,12 +161,21 @@ export default function UsersTable({ users }: { users: User[] }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-center">
-                    {user.owner_orgs_count}/{user.admin_orgs_count}
+                    <span 
+                      className="cursor-help"
+                      title={user.owner_orgs_names.length > 0 
+                        ? `Владелец:\n${user.owner_orgs_names.join('\n')}${user.admin_orgs_names.length > 0 ? '\n\nАдмин:\n' + user.admin_orgs_names.join('\n') : ''}`
+                        : user.admin_orgs_names.length > 0 
+                          ? `Админ:\n${user.admin_orgs_names.join('\n')}`
+                          : ''}
+                    >
+                      {user.owner_orgs_count}/{user.admin_orgs_count}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-center">{user.groups_with_bot_count}</td>
                   <td className="px-4 py-3 text-sm">
                     {user.qualification_completed ? (
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1 items-center">
                         {user.qualification_role && (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-blue-100 text-blue-700'}`}>
                             {ROLE_LABELS[user.qualification_role] || user.qualification_role}
@@ -167,6 +189,14 @@ export default function UsersTable({ users }: { users: User[] }) {
                         {user.qualification_groups_count && (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-green-100 text-green-700'}`}>
                             {user.qualification_groups_count} групп
+                          </span>
+                        )}
+                        {user.qualification_pain_points.length > 0 && (
+                          <span 
+                            className={`px-1.5 py-0.5 rounded text-xs cursor-help ${user.is_test ? 'bg-gray-200' : 'bg-red-100 text-red-700'}`}
+                            title={`Боли:\n${user.qualification_pain_points.map(p => PAIN_POINTS_LABELS[p] || p).join('\n')}`}
+                          >
+                            😓 {user.qualification_pain_points.length}
                           </span>
                         )}
                       </div>

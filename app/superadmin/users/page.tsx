@@ -10,10 +10,10 @@ export default async function SuperadminUsersPage() {
   
   const supabase = createAdminServer()
   
-  // Получаем memberships (простой запрос без JOIN)
+  // Получаем memberships с названиями организаций
   const { data: memberships } = await supabase
     .from('memberships')
-    .select('user_id, role, org_id')
+    .select('user_id, role, org_id, organizations(name)')
     .in('role', ['owner', 'admin'])
   
   if (!memberships || memberships.length === 0) {
@@ -34,18 +34,19 @@ export default async function SuperadminUsersPage() {
     if (!userMap.has(membership.user_id)) {
       userMap.set(membership.user_id, {
         user_id: membership.user_id,
-        owner_orgs: [],
-        admin_orgs: [],
+        owner_orgs: [] as { id: string, name: string }[],
+        admin_orgs: [] as { id: string, name: string }[],
         total_orgs: 0
       })
     }
     
     const userData = userMap.get(membership.user_id)!
+    const orgName = (membership.organizations as any)?.name || 'Без названия'
     
     if (membership.role === 'owner') {
-      userData.owner_orgs.push(membership.org_id)
+      userData.owner_orgs.push({ id: membership.org_id, name: orgName })
     } else {
-      userData.admin_orgs.push(membership.org_id)
+      userData.admin_orgs.push({ id: membership.org_id, name: orgName })
     }
     userData.total_orgs++
   }
@@ -173,6 +174,9 @@ export default async function SuperadminUsersPage() {
     // Получаем квалификацию
     const qualification = qualificationMap.get(userId)
     
+    // Получаем боли (pain_points — массив)
+    const painPoints = qualification?.responses?.pain_points || []
+    
     return {
       user_id: userId,
       full_name: fullName,
@@ -181,7 +185,9 @@ export default async function SuperadminUsersPage() {
       telegram_verified: tgAccounts.some(acc => acc.is_verified),
       telegram_display_name: telegramDisplayName,
       owner_orgs_count: userData.owner_orgs.length,
+      owner_orgs_names: userData.owner_orgs.map((o: { name: string }) => o.name),
       admin_orgs_count: userData.admin_orgs.length,
+      admin_orgs_names: userData.admin_orgs.map((o: { name: string }) => o.name),
       total_orgs_count: userData.total_orgs,
       groups_with_bot_count: groupsAsAdmin.length,
       last_sign_in_at: lastLogin,
@@ -190,8 +196,14 @@ export default async function SuperadminUsersPage() {
       qualification_role: qualification?.responses?.role || null,
       qualification_community_type: qualification?.responses?.community_type || null,
       qualification_groups_count: qualification?.responses?.groups_count || null,
+      qualification_pain_points: Array.isArray(painPoints) ? painPoints : [],
     }
   }).sort((a, b) => {
+    // Сначала обычные пользователи, потом тестовые
+    if (a.is_test !== b.is_test) {
+      return a.is_test ? 1 : -1
+    }
+    // Внутри каждой группы — по дате создания (новые сверху)
     const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
     const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
     return dateB - dateA

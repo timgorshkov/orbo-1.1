@@ -27,6 +27,7 @@ interface QualificationResponse {
   user_name: string | null;
   telegram_username: string | null;
   org_name: string | null;
+  is_test: boolean;
   responses: Record<string, unknown>;
   responses_readable: Record<string, string>;
   form_version: string;
@@ -201,20 +202,24 @@ export default function QualificationPage() {
           ) : (
             <div className="divide-y">
               {recent.map((q) => (
-                <div key={q.id} className="py-3 first:pt-0 last:pb-0">
+                <div 
+                  key={q.id} 
+                  className={`py-3 first:pt-0 last:pb-0 ${q.is_test ? 'opacity-50' : ''}`}
+                >
                   {/* Compact Row */}
                   <div className="flex items-center justify-between gap-3">
                     {/* User + Status */}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="font-medium truncate">
+                      <span className={`font-medium truncate ${q.is_test ? 'text-gray-400' : ''}`}>
                         {q.user_name || q.user_email || 'Неизвестный пользователь'}
+                        {q.is_test && <span className="ml-1 text-xs">(тест)</span>}
                       </span>
                       {q.telegram_username && (
                         <a 
                           href={`https://t.me/${q.telegram_username}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-sm"
+                          className={`hover:underline text-sm ${q.is_test ? 'text-gray-400' : 'text-blue-600'}`}
                         >
                           @{q.telegram_username}
                         </a>
@@ -226,7 +231,7 @@ export default function QualificationPage() {
                     
                     <div className="flex items-center gap-2">
                       {q.completed_at ? (
-                        <Badge variant="default" className="bg-green-500 text-xs">✓</Badge>
+                        <Badge variant="default" className={`text-xs ${q.is_test ? 'bg-gray-400' : 'bg-green-500'}`}>✓</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-xs">...</Badge>
                       )}
@@ -239,22 +244,22 @@ export default function QualificationPage() {
                   {/* Answers Row */}
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {q.responses_readable.role && (
-                      <Badge variant="outline" className="text-xs py-0">
+                      <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
                         {q.responses_readable.role}
                       </Badge>
                     )}
                     {q.responses_readable.community_type && (
-                      <Badge variant="outline" className="text-xs py-0">
+                      <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
                         {q.responses_readable.community_type}
                       </Badge>
                     )}
                     {q.responses_readable.groups_count && (
-                      <Badge variant="outline" className="text-xs py-0">
+                      <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
                         {q.responses_readable.groups_count} групп
                       </Badge>
                     )}
                     {q.responses_readable.pain_points && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className={`text-xs ${q.is_test ? 'text-gray-400' : 'text-muted-foreground'}`}>
                         • {q.responses_readable.pain_points}
                       </span>
                     )}

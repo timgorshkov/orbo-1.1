@@ -10,6 +10,7 @@ type Organization = {
   id: string
   name: string
   owner_email: string | null
+  owner_name: string | null
   created_at: string
   status: string
   archived_at?: string | null
@@ -144,7 +145,7 @@ export default function OrganizationsTable({
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {org.owner_email || '—'}
+                      {org.owner_email || org.owner_name || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {org.has_telegram ? (

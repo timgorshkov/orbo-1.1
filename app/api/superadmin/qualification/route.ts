@@ -125,13 +125,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Enrich qualifications with readable labels and user info (excluding test users)
+    // Enrich qualifications with readable labels and user info (include test users but mark them)
     const enrichedQualifications = recentQualifications
-      ?.filter(q => {
-        const userInfo = userInfoMap[q.user_id];
-        return !userInfo?.is_test; // Exclude test users
-      })
-      .map(q => {
+      ?.map(q => {
         const userInfo = userInfoMap[q.user_id] || {};
         
         // Build display name: Name (email) or just email or just user_id
@@ -150,10 +146,13 @@ export async function GET(request: NextRequest) {
           user_name: userInfo.name || null,
           telegram_username: userInfo.telegram_username || null,
           org_name: userInfo.org_name || null,
+          is_test: userInfo.is_test || false,
           responses_readable: enrichResponses(q.responses),
         };
       })
-      .slice(0, 50); // Limit after filtering
+      // Sort: non-test users first, then test users
+      .sort((a, b) => (a.is_test ? 1 : 0) - (b.is_test ? 1 : 0))
+      .slice(0, 50)
 
     return NextResponse.json({
       summary: summary || {
