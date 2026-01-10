@@ -45,7 +45,7 @@ function isWebsiteDomain(request: NextRequest): boolean {
  * Website routes that should be rewritten to /site folder
  * Public URL (orbo.ru/product) -> Internal path (/site/product)
  */
-const WEBSITE_ROUTES = ['/', '/product', '/events', '/notifications', '/crm', '/journal', '/terms', '/privacy', '/whatsapp-migration', '/agencies']
+const WEBSITE_ROUTES = ['/', '/product', '/events', '/notifications', '/crm', '/journal', '/terms', '/privacy', '/whatsapp-migration', '/agencies', '/events-organizers']
 
 function isWebsiteRoute(pathname: string): boolean {
   return WEBSITE_ROUTES.some(route => 
