@@ -56,25 +56,30 @@ export default async function SuperadminUsersPage() {
   const [
     { data: usersData },
     { data: accountsData },
-    { data: membershipsData },
-    { data: telegramAccounts }
+    { data: sessionsData },
+    { data: telegramAccounts },
+    { data: qualificationData }
   ] = await Promise.all([
     supabase
       .from('users')
-      .select('id, email, name, email_verified, image, created_at')
+      .select('id, email, name, email_verified, image, created_at, is_test')
       .in('id', userIds),
     supabase
       .from('accounts')
-      .select('user_id, provider, provider_account_id')
+      .select('user_id, provider, provider_account_id, updated_at')
       .in('user_id', userIds),
     supabase
-      .from('memberships')
-      .select('user_id, created_at')
+      .from('sessions')
+      .select('user_id, expires')
       .in('user_id', userIds)
-      .order('created_at', { ascending: false }),
+      .order('expires', { ascending: false }),
     supabase
       .from('user_telegram_accounts')
       .select('user_id, telegram_user_id, telegram_first_name, telegram_last_name, telegram_username, is_verified')
+      .in('user_id', userIds),
+    supabase
+      .from('user_qualification_responses')
+      .select('user_id, responses, completed_at')
       .in('user_id', userIds)
   ])
   
@@ -82,27 +87,34 @@ export default async function SuperadminUsersPage() {
   
   // Создаём карту email из accounts (для пользователей без email в users)
   const accountEmailMap = new Map<string, string>()
-  const hasEmailAuthMap = new Map<string, boolean>()
+  // Создаём карту последней активности из accounts.updated_at
+  const accountActivityMap = new Map<string, string>()
   accountsData?.forEach(acc => {
     if (acc.provider === 'email' && acc.provider_account_id) {
       accountEmailMap.set(acc.user_id, acc.provider_account_id)
-      hasEmailAuthMap.set(acc.user_id, true) // Если есть запись в accounts с email provider, значит email подтверждён
     }
-    // Google/Yandex OAuth тоже означает подтверждённый email
-    if ((acc.provider === 'google' || acc.provider === 'yandex') && acc.provider_account_id) {
-      // Для OAuth provider_account_id это не email, но можно попробовать извлечь из users
-      hasEmailAuthMap.set(acc.user_id, true)
+    // Отслеживаем updated_at как показатель активности
+    if (acc.updated_at) {
+      const current = accountActivityMap.get(acc.user_id)
+      if (!current || new Date(acc.updated_at) > new Date(current)) {
+        accountActivityMap.set(acc.user_id, acc.updated_at)
+      }
     }
   })
   
-  // Создаём карту последних входов из memberships (когда пользователь присоединился к организации)
-  // Это лучше чем sessions, так как sessions может быть пустой
+  // Создаём карту последних входов из sessions
   const lastLoginMap = new Map<string, string>()
-  membershipsData?.forEach(membership => {
-    if (!lastLoginMap.has(membership.user_id) || 
-        new Date(membership.created_at) > new Date(lastLoginMap.get(membership.user_id) || '')) {
-      lastLoginMap.set(membership.user_id, membership.created_at)
+  sessionsData?.forEach(session => {
+    // expires показывает когда сессия истекает, используем как показатель активности
+    if (!lastLoginMap.has(session.user_id)) {
+      lastLoginMap.set(session.user_id, session.expires)
     }
+  })
+  
+  // Создаём карту квалификации
+  const qualificationMap = new Map<string, { responses: any, completed_at: string | null }>()
+  qualificationData?.forEach(q => {
+    qualificationMap.set(q.user_id, { responses: q.responses, completed_at: q.completed_at })
   })
   
   // Получаем уникальные telegram_user_id для поиска групп
@@ -154,22 +166,30 @@ export default async function SuperadminUsersPage() {
     
     // Получаем email из разных источников (users.email или accounts.provider_account_id)
     const email = user?.email || accountEmailMap.get(userId) || null
-    // Email подтверждён если: есть email_verified в users ИЛИ есть запись в accounts (OAuth/email auth)
-    const emailConfirmed = !!user?.email_verified || hasEmailAuthMap.has(userId)
+    
+    // Получаем последний вход: sessions > accounts.updated_at > created_at
+    const lastLogin = lastLoginMap.get(userId) || accountActivityMap.get(userId) || user?.created_at || null
+    
+    // Получаем квалификацию
+    const qualification = qualificationMap.get(userId)
     
     return {
       user_id: userId,
       full_name: fullName,
       email: email || 'N/A',
-      email_confirmed: emailConfirmed,
+      is_test: user?.is_test || false,
       telegram_verified: tgAccounts.some(acc => acc.is_verified),
       telegram_display_name: telegramDisplayName,
       owner_orgs_count: userData.owner_orgs.length,
       admin_orgs_count: userData.admin_orgs.length,
       total_orgs_count: userData.total_orgs,
       groups_with_bot_count: groupsAsAdmin.length,
-      last_sign_in_at: lastLoginMap.get(userId) || user?.created_at || undefined,
-      created_at: user?.created_at
+      last_sign_in_at: lastLogin,
+      created_at: user?.created_at,
+      qualification_completed: !!qualification?.completed_at,
+      qualification_role: qualification?.responses?.role || null,
+      qualification_community_type: qualification?.responses?.community_type || null,
+      qualification_groups_count: qualification?.responses?.groups_count || null,
     }
   }).sort((a, b) => {
     const dateA = a.created_at ? new Date(a.created_at).getTime() : 0

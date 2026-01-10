@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         updated_at
       `)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100); // Fetch more to filter out test users
 
     if (recentError) {
       logger.error({ error: recentError.message }, 'Error fetching recent qualifications');
@@ -47,14 +47,14 @@ export async function GET(request: NextRequest) {
 
     // Get detailed user info for the qualifications
     const userIds = recentQualifications?.map(q => q.user_id) || [];
-    const userInfoMap: Record<string, UserInfo> = {};
+    const userInfoMap: Record<string, UserInfo & { is_test?: boolean }> = {};
     
     if (userIds.length > 0) {
-      // 1. Get emails from local users table and accounts table
+      // 1. Get emails from local users table (including is_test) and accounts table
       const [{ data: localUsers }, { data: accounts }] = await Promise.all([
         adminSupabase
           .from('users')
-          .select('id, email, name')
+          .select('id, email, name, is_test')
           .in('id', userIds),
         adminSupabase
           .from('accounts')
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         userInfoMap[u.id] = {
           email: u.email || undefined,
           name: u.name || undefined,
+          is_test: u.is_test || false,
         };
       });
       
@@ -124,29 +125,35 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Enrich qualifications with readable labels and user info
-    const enrichedQualifications = recentQualifications?.map(q => {
-      const userInfo = userInfoMap[q.user_id] || {};
-      
-      // Build display name: Name (email) or just email or just user_id
-      let userDisplay = userInfo.name || '';
-      if (userInfo.email) {
-        userDisplay = userDisplay ? `${userDisplay} (${userInfo.email})` : userInfo.email;
-      }
-      if (!userDisplay) {
-        userDisplay = q.user_id.slice(0, 8) + '...';
-      }
-      
-      return {
-        ...q,
-        user_display: userDisplay,
-        user_email: userInfo.email || null,
-        user_name: userInfo.name || null,
-        telegram_username: userInfo.telegram_username || null,
-        org_name: userInfo.org_name || null,
-        responses_readable: enrichResponses(q.responses),
-      };
-    });
+    // Enrich qualifications with readable labels and user info (excluding test users)
+    const enrichedQualifications = recentQualifications
+      ?.filter(q => {
+        const userInfo = userInfoMap[q.user_id];
+        return !userInfo?.is_test; // Exclude test users
+      })
+      .map(q => {
+        const userInfo = userInfoMap[q.user_id] || {};
+        
+        // Build display name: Name (email) or just email or just user_id
+        let userDisplay = userInfo.name || '';
+        if (userInfo.email) {
+          userDisplay = userDisplay ? `${userDisplay} (${userInfo.email})` : userInfo.email;
+        }
+        if (!userDisplay) {
+          userDisplay = q.user_id.slice(0, 8) + '...';
+        }
+        
+        return {
+          ...q,
+          user_display: userDisplay,
+          user_email: userInfo.email || null,
+          user_name: userInfo.name || null,
+          telegram_username: userInfo.telegram_username || null,
+          org_name: userInfo.org_name || null,
+          responses_readable: enrichResponses(q.responses),
+        };
+      })
+      .slice(0, 50); // Limit after filtering
 
     return NextResponse.json({
       summary: summary || {
