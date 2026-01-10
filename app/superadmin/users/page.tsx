@@ -10,10 +10,10 @@ export default async function SuperadminUsersPage() {
   
   const supabase = createAdminServer()
   
-  // Получаем memberships с названиями организаций
+  // Получаем memberships (простой запрос без JOIN)
   const { data: memberships } = await supabase
     .from('memberships')
-    .select('user_id, role, org_id, organizations(name)')
+    .select('user_id, role, org_id')
     .in('role', ['owner', 'admin'])
   
   if (!memberships || memberships.length === 0) {
@@ -30,6 +30,17 @@ export default async function SuperadminUsersPage() {
   // Группируем по user_id
   const userMap = new Map<string, any>()
   
+  // Собираем все org_id для получения имён
+  const orgIds = Array.from(new Set(memberships.map(m => m.org_id)))
+  
+  // Получаем названия организаций
+  const { data: organizations } = await supabase
+    .from('organizations')
+    .select('id, name')
+    .in('id', orgIds)
+  
+  const orgNameMap = new Map((organizations || []).map(o => [o.id, o.name]))
+  
   for (const membership of memberships) {
     if (!userMap.has(membership.user_id)) {
       userMap.set(membership.user_id, {
@@ -41,7 +52,7 @@ export default async function SuperadminUsersPage() {
     }
     
     const userData = userMap.get(membership.user_id)!
-    const orgName = (membership.organizations as any)?.name || 'Без названия'
+    const orgName = orgNameMap.get(membership.org_id) || 'Без названия'
     
     if (membership.role === 'owner') {
       userData.owner_orgs.push({ id: membership.org_id, name: orgName })
