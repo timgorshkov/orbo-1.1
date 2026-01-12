@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAPILogger } from '@/lib/logger'
+import { createTelegramService } from '@/lib/services/telegramService'
 
 // Admin client для создания сессии
 const supabaseAdmin = createClient(
@@ -167,10 +168,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=signin_error', baseUrl))
     }
     
+    // Помечаем код как использованный (только если ещё не использован)
+    const wasFirstUse = !authCodes.is_used
+    
     await supabaseAdmin
       .from('telegram_auth_codes')
       .update({ is_used: true, used_at: new Date().toISOString() })
       .eq('id', authCodes.id)
+    
+    // Отправляем постоянную ссылку в Telegram (только при первом использовании)
+    if (wasFirstUse && authCodes.telegram_user_id && authCodes.org_id) {
+      try {
+        const telegramService = createTelegramService('main')
+        
+        // Получаем название организации
+        const { data: org } = await supabaseAdmin
+          .from('organizations')
+          .select('name')
+          .eq('id', authCodes.org_id)
+          .single()
+        
+        const orgName = org?.name || 'Ваше пространство'
+        const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL}/p/${authCodes.org_id}`
+        
+        const message = `🎉 Вы успешно вошли в систему!\n\n` +
+          `🏠 Пространство: *${orgName}*\n\n` +
+          `📱 Сохраните эту ссылку для быстрого доступа:\n${publicUrl}\n\n` +
+          `_Эта ссылка всегда будет работать для входа в пространство._`
+        
+        await telegramService.sendMessage(authCodes.telegram_user_id, message, {
+          parse_mode: 'Markdown'
+        })
+        
+        logger.info({ 
+          telegram_user_id: authCodes.telegram_user_id, 
+          org_id: authCodes.org_id 
+        }, 'Permanent link sent to Telegram')
+      } catch (telegramError) {
+        logger.warn({ 
+          error: telegramError instanceof Error ? telegramError.message : String(telegramError)
+        }, 'Failed to send permanent link to Telegram')
+      }
+    }
     
     // 8. Устанавливаем cookies через Supabase SSR (правильный способ)
     let finalRedirectUrl = authCodes.redirect_url || redirectUrl

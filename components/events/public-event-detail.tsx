@@ -114,6 +114,37 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
   const handleDownloadICS = () => {
     window.open(`/api/events/${event.id}/ics`, '_blank')
   }
+  
+  // Generate Google Calendar URL
+  const getGoogleCalendarUrl = () => {
+    const eventDate = new Date(event.event_date + 'T00:00:00')
+    const [startHour, startMin] = event.start_time.split(':').map(Number)
+    const [endHour, endMin] = event.end_time.split(':').map(Number)
+    
+    const startDateTime = new Date(eventDate)
+    startDateTime.setHours(startHour, startMin, 0, 0)
+    
+    const endDateTime = new Date(eventDate)
+    endDateTime.setHours(endHour, endMin, 0, 0)
+    
+    // Format for Google Calendar: YYYYMMDDTHHMMSS
+    const formatGCalDate = (d: Date) => {
+      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    }
+    
+    const title = encodeURIComponent(event.title)
+    const location = encodeURIComponent(event.location_info || (event.event_type === 'online' ? 'Онлайн' : 'Офлайн'))
+    const details = encodeURIComponent(event.description || '')
+    const dates = `${formatGCalDate(startDateTime)}/${formatGCalDate(endDateTime)}`
+    
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&location=${location}&details=${details}`
+  }
+  
+  const handleAddToGoogleCalendar = () => {
+    window.open(getGoogleCalendarUrl(), '_blank')
+  }
+  
+  const [showCalendarOptions, setShowCalendarOptions] = useState(false)
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -302,14 +333,36 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                       </div>
                     )}
 
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleDownloadICS}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Добавить в календарь
-                    </Button>
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowCalendarOptions(!showCalendarOptions)}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Добавить в календарь
+                      </Button>
+                      {showCalendarOptions && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg z-10">
+                          <button
+                            onClick={() => { handleAddToGoogleCalendar(); setShowCalendarOptions(false); }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                              <path fill="currentColor" d="M19.5 3.5h-15A2 2 0 0 0 2.5 5.5v15a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-15a2 2 0 0 0-2-2m-1 4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4 4v-3h-3v3h3m8 4h-3v-3h3v3"/>
+                            </svg>
+                            Google Календарь
+                          </button>
+                          <button
+                            onClick={() => { handleDownloadICS(); setShowCalendarOptions(false); }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            Скачать .ics файл
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <Button
                       variant="outline"
                       className="w-full"
@@ -369,14 +422,36 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
                       </>
                     )}
 
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleDownloadICS}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Добавить в календарь
-                    </Button>
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowCalendarOptions(!showCalendarOptions)}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Добавить в календарь
+                      </Button>
+                      {showCalendarOptions && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg z-10">
+                          <button
+                            onClick={() => { handleAddToGoogleCalendar(); setShowCalendarOptions(false); }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                              <path fill="currentColor" d="M19.5 3.5h-15A2 2 0 0 0 2.5 5.5v15a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-15a2 2 0 0 0-2-2m-1 4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4-4h-3v3h3v-3m0 4h-3v3h3v-3m-4 4v-3h-3v3h3m8 4h-3v-3h3v3"/>
+                            </svg>
+                            Google Календарь
+                          </button>
+                          <button
+                            onClick={() => { handleDownloadICS(); setShowCalendarOptions(false); }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            Скачать .ics файл
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 

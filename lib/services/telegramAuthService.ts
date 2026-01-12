@@ -3,13 +3,18 @@
  * Сервис для верификации кодов авторизации Telegram
  */
 
-import { getSupabaseAdminClient } from '@/lib/server/supabaseServer'
+import { getSupabaseAdminClient, createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('TelegramAuth');
 
 // Supabase admin client для auth операций (используем оригинальный клиент)
 const supabaseAdmin = getSupabaseAdminClient();
+
+// Создаём админ клиент для запросов к БД (более надёжный чем REST API)
+function getAdminSupabase() {
+  return createAdminServer();
+}
 
 // Helper для прямых HTTP запросов к Supabase REST API с timeout
 async function supabaseFetch(endpoint: string, options: RequestInit = {}) {
@@ -140,23 +145,67 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
 
   try {
     // 1. Проверяем код
-    logger.debug({ code }, 'Querying telegram_auth_codes');
+    // Нормализуем код: trim, uppercase
+    const normalizedCode = code.trim().toUpperCase()
+    logger.info({ code, normalizedCode }, 'Querying telegram_auth_codes');
     
     let authCode: any = null
-    let codeError: any = null
     
     try {
-      // Используем прямой HTTP запрос
-      const data = await supabaseFetch(
-        `telegram_auth_codes?code=eq.${code}&is_used=eq.false&select=*`
-      )
+      // Используем Supabase клиент вместо REST API (более надёжно)
+      const adminSupabase = getAdminSupabase()
       
-      authCode = Array.isArray(data) && data.length > 0 ? data[0] : null
+      const { data, error: queryError } = await adminSupabase
+        .from('telegram_auth_codes')
+        .select('*')
+        .eq('code', normalizedCode)
+        .eq('is_used', false)
+        .maybeSingle()
       
-      logger.debug({ code, found: !!authCode }, 'Query completed');
+      if (queryError) {
+        logger.error({ 
+          code: normalizedCode,
+          error: queryError.message,
+          errorCode: queryError.code
+        }, 'Query error');
+        
+        return {
+          success: false,
+          error: 'Failed to query auth code',
+          errorCode: 'QUERY_ERROR'
+        }
+      }
+      
+      authCode = data
+      
+      logger.info({ 
+        code: normalizedCode, 
+        found: !!authCode,
+        authCodeId: authCode?.id
+      }, 'Query completed');
+      
+      // Если не нашли - проверим диагностически
+      if (!authCode) {
+        logger.debug({ code: normalizedCode }, 'Code not found, checking if code exists at all');
+        
+        const { data: existingCode } = await adminSupabase
+          .from('telegram_auth_codes')
+          .select('code, is_used, expires_at, created_at')
+          .eq('code', normalizedCode)
+          .maybeSingle()
+        
+        if (existingCode) {
+          logger.warn({ 
+            code: normalizedCode, 
+            existingRecord: existingCode
+          }, 'Code exists but is_used=true or other issue');
+        } else {
+          logger.warn({ code: normalizedCode }, 'Code does not exist in database at all');
+        }
+      }
     } catch (queryError) {
       logger.error({ 
-        code,
+        code: normalizedCode,
         error: queryError instanceof Error ? queryError.message : String(queryError),
         error_type: queryError instanceof Error ? queryError.constructor.name : typeof queryError
       }, 'Query exception');

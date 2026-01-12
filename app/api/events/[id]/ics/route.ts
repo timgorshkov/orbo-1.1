@@ -51,12 +51,26 @@ export async function GET(
     // Fetch event
     const { data: event, error } = await supabase
       .from('events')
-      .select('*, organizations(name)')
+      .select('*')
       .eq('id', eventId)
       .single()
 
     if (error || !event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+    
+    // Fetch organization name separately
+    let orgName = 'Organization'
+    if (event.org_id) {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('name')
+        .eq('id', event.org_id)
+        .single()
+      
+      if (org?.name) {
+        orgName = org.name
+      }
     }
 
     // Combine date and time - ensure we're working with valid dates
@@ -112,7 +126,7 @@ export async function GET(
       foldLine('LOCATION:' + escapeICSText(location)),
       'STATUS:CONFIRMED',
       'SEQUENCE:0',
-      foldLine('ORGANIZER;CN=' + escapeICSText(event.organizations?.name || 'Organization') + ':MAILTO:noreply@orbo.app'),
+      foldLine('ORGANIZER;CN=' + escapeICSText(orgName) + ':MAILTO:noreply@orbo.app'),
       'BEGIN:VALARM',
       'TRIGGER:-PT1H',
       'ACTION:DISPLAY',

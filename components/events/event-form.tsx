@@ -70,10 +70,28 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [eventType, setEventType] = useState<'online' | 'offline'>(initialEvent?.event_type || 'online')
   const [locationInfo, setLocationInfo] = useState(initialEvent?.location_info || '')
   const [mapLink, setMapLink] = useState(initialEvent?.map_link || '')
-  const [eventDate, setEventDate] = useState(initialEvent?.event_date || '')
-  const [endDate, setEndDate] = useState(initialEvent?.end_date || initialEvent?.event_date || '')
-  const [startTime, setStartTime] = useState(initialEvent?.start_time || '')
-  const [endTime, setEndTime] = useState(initialEvent?.end_time || '')
+  
+  // Helper to format date for input (handles ISO format)
+  const formatDateForInput = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return ''
+    // If it's already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr
+    // Otherwise, extract just the date part
+    return dateStr.split('T')[0]
+  }
+  
+  const [eventDate, setEventDate] = useState(formatDateForInput(initialEvent?.event_date))
+  const [endDate, setEndDate] = useState(formatDateForInput(initialEvent?.end_date) || formatDateForInput(initialEvent?.event_date))
+  
+  // Helper to format time for input (handles HH:MM:SS format)
+  const formatTimeForInput = (timeStr: string | null | undefined): string => {
+    if (!timeStr) return ''
+    // Return first 5 characters (HH:MM)
+    return timeStr.substring(0, 5)
+  }
+  
+  const [startTime, setStartTime] = useState(formatTimeForInput(initialEvent?.start_time))
+  const [endTime, setEndTime] = useState(formatTimeForInput(initialEvent?.end_time))
   
   // Payment fields (new)
   const [requiresPayment, setRequiresPayment] = useState(
@@ -143,9 +161,15 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
     setError(null)
     setSuccess(false)
 
-    // Validation
-    if (!title || !eventDate || !startTime || !endTime) {
-      setError('Пожалуйста, заполните все обязательные поля')
+    // Validation with specific error messages
+    const missingFields: string[] = []
+    if (!title) missingFields.push('Название')
+    if (!eventDate) missingFields.push('Дата начала')
+    if (!startTime) missingFields.push('Время начала')
+    if (!endTime) missingFields.push('Время окончания')
+    
+    if (missingFields.length > 0) {
+      setError(`Пожалуйста, заполните обязательные поля: ${missingFields.join(', ')}`)
       return
     }
 

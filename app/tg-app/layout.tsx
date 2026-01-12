@@ -1,5 +1,13 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import '../globals.css';
+
+// Load Inter font (same as main app)
+const inter = Inter({ 
+  subsets: ['latin', 'cyrillic'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   title: 'Orbo Events',
@@ -21,13 +29,13 @@ export default function TelegramAppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" className={inter.variable} suppressHydrationWarning>
       <head>
         {/* Telegram WebApp script loaded in page */}
         <meta name="format-detection" content="telephone=no" />
         <meta name="color-scheme" content="light dark" />
       </head>
-      <body className="bg-white text-gray-900 antialiased" suppressHydrationWarning>
+      <body className={`${inter.className} bg-white text-gray-900 antialiased`} suppressHydrationWarning>
         {children}
       </body>
     </html>

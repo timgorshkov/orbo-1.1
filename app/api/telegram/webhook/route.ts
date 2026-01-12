@@ -833,39 +833,14 @@ async function handleAuthCode(message: any, code: string, logger: ReturnType<typ
     authLogger.debug({ result: verifyResult }, 'Auth code verification completed');
 
     if (verifyResult.success) {
-      // Успешная авторизация
+      // Успешная авторизация - отправляем ТОЛЬКО одноразовую ссылку
+      // Постоянная ссылка будет отправлена после успешного перехода
       const telegramService = createTelegramService('main');
       
-      // Формируем сообщение с двумя ссылками
-      let message = '✅ Авторизация успешна!\n\n';
-      
-      if (verifyResult.orgId) {
-        // Получаем название организации
-        try {
-          const { data: org } = await supabaseServiceRole
-            .from('organizations')
-            .select('name')
-            .eq('id', verifyResult.orgId)
-            .single();
-          
-          const orgName = org?.name || 'Ваше пространство';
-          const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL}/p/${verifyResult.orgId}`;
-          
-          message += `🏠 Вы получили доступ к пространству *${orgName}*\n\n`;
-          message += `📱 Постоянная ссылка на пространство:\n${publicUrl}\n\n`;
-          message += `🔐 Для первого входа откройте эту авторизационную ссылку:\n${verifyResult.sessionUrl}\n\n`;
-          message += `⏰ _Авторизационная ссылка действует 1 час и только для первого входа._\n`;
-          message += `_После первого входа используйте постоянную ссылку выше._`;
-        } catch (err) {
-          logger.error({ 
-            org_id: verifyResult.orgId,
-            error: err instanceof Error ? err.message : String(err)
-          }, 'Failed to fetch org name');
-          message += `Откройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`;
-        }
-      } else {
-        message += `Откройте эту ссылку для входа в систему:\n${verifyResult.sessionUrl}\n\n🔒 Ссылка действительна 1 час.`;
-      }
+      let message = '✅ Код подтверждён!\n\n';
+      message += '🔐 Нажмите на ссылку ниже для входа:\n';
+      message += `${verifyResult.sessionUrl}\n\n`;
+      message += '⏰ _Ссылка действует 1 час и работает только один раз._';
       
       await telegramService.sendMessage(chatId, message, {
         parse_mode: 'Markdown'
@@ -875,7 +850,7 @@ async function handleAuthCode(message: any, code: string, logger: ReturnType<typ
         telegram_user_id: from.id,
         code,
         org_id: verifyResult.orgId
-      }, 'User authenticated successfully');
+      }, 'One-time auth link sent');
     } else {
       // Ошибка верификации
       let errorMessage = '❌ Неверный или просроченный код авторизации.'
