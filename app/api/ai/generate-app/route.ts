@@ -102,7 +102,25 @@ export async function POST(request: NextRequest) {
     const collections = appConfig.collections || [];
     const createdCollections = [];
 
+    // Helper to ensure valid JSONB
+    const ensureValidJson = (value: any, defaultValue: any = {}): any => {
+      if (value === null || value === undefined) return defaultValue;
+      if (typeof value === 'object') return value;
+      try {
+        return JSON.parse(String(value));
+      } catch {
+        log.warn({ value: String(value).substring(0, 100) }, 'Invalid JSON value, using default');
+        return defaultValue;
+      }
+    };
+
     for (const collectionConfig of collections) {
+      // Validate and sanitize JSONB fields
+      const schema = ensureValidJson(collectionConfig.schema, { fields: [] });
+      const permissions = ensureValidJson(collectionConfig.permissions, {});
+      const workflows = ensureValidJson(collectionConfig.workflows, []);
+      const views = Array.isArray(collectionConfig.views) ? collectionConfig.views : ['list'];
+      
       const { data: collection, error: collectionError } = await supabaseAdmin
         .from('app_collections')
         .insert({
@@ -110,10 +128,10 @@ export async function POST(request: NextRequest) {
           name: collectionConfig.name,
           display_name: collectionConfig.display_name,
           icon: collectionConfig.icon || '📋',
-          schema: collectionConfig.schema,
-          permissions: collectionConfig.permissions,
-          workflows: collectionConfig.workflows,
-          views: collectionConfig.views || ['list'],
+          schema,
+          permissions,
+          workflows,
+          views,
           moderation_enabled: collectionConfig.moderation_enabled || false,
         })
         .select()
@@ -124,13 +142,15 @@ export async function POST(request: NextRequest) {
           error: collectionError,
           appId: app.id,
           collectionName: collectionConfig.name,
+          schemaType: typeof schema,
+          permissionsType: typeof permissions,
         }, 'Failed to create collection');
         
         // Rollback: delete app
         await supabaseAdmin.from('apps').delete().eq('id', app.id);
         
         return NextResponse.json(
-          { error: 'Failed to create collection' },
+          { error: 'Failed to create collection', details: collectionError.message },
           { status: 500 }
         );
       }

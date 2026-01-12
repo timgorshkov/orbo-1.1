@@ -275,25 +275,36 @@ export async function POST(request: NextRequest) {
     // Only for future events with event_date set
     if (event?.id && event.event_date) {
       try {
-        // Get all org groups for announcements
+        // Get all org groups for announcements (via org_telegram_groups -> telegram_groups)
         const { data: orgGroups } = await adminSupabase
           .from('org_telegram_groups')
-          .select('id')
-          .eq('org_id', orgId);
+          .select('tg_chat_id')
+          .eq('org_id', orgId)
+          .eq('status', 'active');
         
-        const targetGroups = (orgGroups || []).map(g => g.id);
-        
-        if (targetGroups.length > 0) {
-          await createEventReminders(
-            event.id,
-            orgId,
-            event.title,
-            event.description,
-            new Date(event.event_date),
-            event.location,
-            targetGroups
-          );
-          logger.info({ event_id: event.id, targetGroups: targetGroups.length }, 'Event reminders created');
+        if (orgGroups && orgGroups.length > 0) {
+          const chatIds = orgGroups.map(g => g.tg_chat_id);
+          
+          // Get telegram_groups.id for each tg_chat_id
+          const { data: telegramGroups } = await adminSupabase
+            .from('telegram_groups')
+            .select('id')
+            .in('tg_chat_id', chatIds);
+          
+          const targetGroups = (telegramGroups || []).map(g => String(g.id));
+          
+          if (targetGroups.length > 0) {
+            await createEventReminders(
+              event.id,
+              orgId,
+              event.title,
+              event.description,
+              new Date(event.event_date),
+              event.location_info,
+              targetGroups
+            );
+            logger.info({ event_id: event.id, targetGroupsCount: targetGroups.length }, 'Event reminders created');
+          }
         }
       } catch (reminderError: any) {
         logger.warn({ 

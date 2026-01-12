@@ -139,28 +139,8 @@ export async function POST(request: Request) {
       }
     }
 
-    try {
-      const { data: directOrgGroups } = await supabaseService
-        .from('telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', orgId);
-
-      directOrgGroups?.forEach(group => {
-        if (group?.tg_chat_id !== undefined && group?.tg_chat_id !== null) {
-          candidateChatIds.add(String(group.tg_chat_id));
-        }
-      });
-    } catch (directGroupsError: any) {
-      if (directGroupsError?.code === '42703') {
-        logger.warn({}, 'org_id column missing on telegram_groups while updating admin rights');
-      } else {
-        logger.error({ error: directGroupsError.message, org_id: orgId }, 'Error fetching legacy org groups');
-        return NextResponse.json({
-          error: 'Failed to fetch legacy organization groups',
-          details: safeErrorJson(directGroupsError)
-        }, { status: 500 });
-      }
-    }
+    // Note: telegram_groups.org_id was removed in migration 071
+    // All org-group mappings are now in org_telegram_groups table (already fetched above)
 
     // ✅ НОВОЕ: Добавляем ВСЕ группы, где есть активность бота (включая новые группы)
     // Используем activity_events вместо удалённой таблицы telegram_activity_events
