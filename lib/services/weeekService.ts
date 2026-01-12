@@ -63,6 +63,7 @@ interface WeeekApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  notFound?: boolean; // True when resource was deleted in Weeek
 }
 
 class WeeekService {
@@ -137,6 +138,20 @@ class WeeekService {
       // Check if response is JSON
       if (!contentType.includes('application/json')) {
         const text = await response.text();
+        
+        // Handle 404 for deleted deals/contacts - log as warning, not error
+        if (response.status === 404) {
+          logger.warn({ 
+            status: response.status, 
+            endpoint,
+          }, 'Weeek resource not found (may have been deleted)');
+          return { 
+            success: false, 
+            error: `Resource not found (404)`,
+            notFound: true
+          };
+        }
+        
         logger.error({ 
           status: response.status, 
           contentType,
@@ -347,8 +362,10 @@ class WeeekService {
    * Note: PUT only supports title, amount, winStatus, customFields
    * Description updates via PATCH don't seem to work, so we store
    * qualification data in title or would need custom fields
+   * 
+   * Returns: { success: boolean, notFound?: boolean }
    */
-  async updateDeal(dealId: string, params: UpdateDealParams): Promise<boolean> {
+  async updateDeal(dealId: string, params: UpdateDealParams): Promise<{ success: boolean, notFound?: boolean }> {
     const updateData: any = {};
 
     if (params.title) {
@@ -361,7 +378,7 @@ class WeeekService {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return true; // Nothing to update
+      return { success: true }; // Nothing to update
     }
 
     logger.debug({ dealId, updateData }, 'Updating Weeek deal via PUT');
@@ -374,11 +391,17 @@ class WeeekService {
 
     if (result.success) {
       logger.debug({ dealId, title: params.title?.substring(0, 50) }, 'Updated Weeek deal');
-      return true;
+      return { success: true };
+    }
+
+    // If deal was deleted in Weeek, return notFound flag
+    if (result.notFound) {
+      logger.warn({ dealId }, 'Weeek deal not found (deleted in CRM)');
+      return { success: false, notFound: true };
     }
 
     logger.error({ dealId, error: result.error }, 'Failed to update Weeek deal');
-    return false;
+    return { success: false };
   }
 
   /**
@@ -557,7 +580,21 @@ export async function onOrganizationCreated(
     if (roleShort) newTitle += ` | ${roleShort}`;
     if (typeShort) newTitle += ` | ${typeShort}`;
 
-    await weeek.updateDeal(syncLog.weeek_deal_id, { title: newTitle });
+    const updateResult = await weeek.updateDeal(syncLog.weeek_deal_id, { title: newTitle });
+
+    // If deal was deleted in Weeek, clear the deal_id from sync log
+    if (updateResult.notFound) {
+      await supabase
+        .from('crm_sync_log')
+        .update({
+          weeek_deal_id: null,
+          synced_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+      
+      logger.warn({ userId, dealId: syncLog.weeek_deal_id }, 'Cleared deleted Weeek deal from sync log');
+      return;
+    }
 
     // Update sync log
     await supabase
