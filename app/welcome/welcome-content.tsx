@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -24,28 +24,34 @@ export function WelcomeContent({
   const [showQualification, setShowQualification] = useState(!initialCompleted);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
   
-  // Track welcome page view and registration/auth success
+  // Prevent duplicate goal sends (React StrictMode, re-renders)
+  const goalsSent = useRef(false);
+  
+  // Track welcome page view and registration/auth success - ONCE only
   useEffect(() => {
-    ymGoal('welcome_page_view');
+    if (goalsSent.current) return;
+    goalsSent.current = true;
+    
+    ymGoal('welcome_page_view', undefined, { once: true });
     
     // Key conversion: new user registration (first time on welcome = new registration)
     if (!initialCompleted) {
-      ymGoal('registration_complete'); // New user registered successfully
+      ymGoal('registration_complete', undefined, { once: true }); // New user registered successfully
     }
     
     // Auth success for both new and returning users
-    ymGoal('auth_success');
-  }, [initialCompleted]);
+    ymGoal('auth_success', undefined, { once: true });
+  }, []); // Empty deps - run only once on mount
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
     setQualificationDone(true);
     setShowQualification(false);
     
-    // Track qualification completion
+    // Track qualification completion (once per session)
     ymGoal('qualification_completed', { 
       use_case: responses.use_case,
       group_size: responses.group_size
-    });
+    }, { once: true });
     
     // Если у пользователя есть организации — редирект на /orgs
     if (hasOrganizations) {
@@ -56,8 +62,8 @@ export function WelcomeContent({
   const handleSkip = () => {
     setShowQualification(false);
     
-    // Track qualification skip
-    ymGoal('qualification_skipped');
+    // Track qualification skip (once per session)
+    ymGoal('qualification_skipped', undefined, { once: true });
     
     // Если у пользователя есть организации — редирект на /orgs
     if (hasOrganizations) {

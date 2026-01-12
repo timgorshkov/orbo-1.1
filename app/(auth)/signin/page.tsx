@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { Input } from '@/components/ui/input'
@@ -49,10 +49,13 @@ export default function SignIn() {
   const logger = createClientLogger('SignIn');
   const router = useRouter();
   const { data: session, status } = useSession();
+  const goalSent = useRef(false);
 
-  // Track signin page view
+  // Track signin page view - once only
   useEffect(() => {
-    ymGoal('signin_page_view');
+    if (goalSent.current) return;
+    goalSent.current = true;
+    ymGoal('signin_page_view', undefined, { once: true });
   }, []);
 
   // Редирект на /orgs если пользователь уже авторизован

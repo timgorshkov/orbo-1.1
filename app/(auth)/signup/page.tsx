@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { Input } from '@/components/ui/input'
@@ -17,10 +17,13 @@ export default function SignUp() {
   const logger = createClientLogger('SignUp');
   const router = useRouter();
   const { data: session, status } = useSession();
+  const goalSent = useRef(false);
   
-  // Track signup page view
+  // Track signup page view - once only
   useEffect(() => {
-    ymGoal('signup_page_view');
+    if (goalSent.current) return;
+    goalSent.current = true;
+    ymGoal('signup_page_view', undefined, { once: true });
   }, []);
 
   // Редирект на /orgs если пользователь уже авторизован

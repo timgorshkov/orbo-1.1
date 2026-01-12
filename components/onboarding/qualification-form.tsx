@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,9 @@ export function QualificationForm({
   const [responses, setResponses] = useState<Record<string, unknown>>(initialResponses);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track which steps have been sent to prevent duplicates
+  const sentSteps = useRef(new Set<number>());
 
   const currentStep = QUALIFICATION_STEPS[currentStepIndex];
   const isLastStep = currentStepIndex === QUALIFICATION_STEPS.length - 1;
@@ -100,10 +103,14 @@ export function QualificationForm({
         // Silent fail for progress save
       }
       
-      // Track qualification step completion
-      ymGoal(`qualification_step_${currentStepIndex + 1}`, {
-        step_id: currentStep.id
-      });
+      // Track qualification step completion (prevent duplicates)
+      const stepNumber = currentStepIndex + 1;
+      if (!sentSteps.current.has(stepNumber)) {
+        sentSteps.current.add(stepNumber);
+        ymGoal(`qualification_step_${stepNumber}`, {
+          step_id: currentStep.id
+        }, { once: true });
+      }
       
       setCurrentStepIndex(prev => prev + 1);
     }

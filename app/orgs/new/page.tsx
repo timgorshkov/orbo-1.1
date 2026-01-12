@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 // Removed: createClientBrowser - using API instead
@@ -18,6 +18,7 @@ export default function CreateOrganization() {
   const [error, setError] = useState<string | null>(null)
   const [orgCount, setOrgCount] = useState<number | null>(null)
   const [isFirstOrg, setIsFirstOrg] = useState(false)
+  const goalSent = useRef(false) // Prevent duplicate goal sends
 
   // Check organization count on mount
   useEffect(() => {
@@ -95,13 +96,18 @@ export default function CreateOrganization() {
         throw new Error(result.error || 'Ошибка при создании организации')
       }
 
-      // Track first organization creation (key conversion!)
-      if (isFirstOrg) {
-        ymGoal('first_org_created');
+      // Track organization creation (prevent duplicates from double-click)
+      if (!goalSent.current) {
+        goalSent.current = true;
+        
+        // Track first organization creation (key conversion!)
+        if (isFirstOrg) {
+          ymGoal('first_org_created', undefined, { once: true });
+        }
+        
+        // Track any organization creation
+        ymGoal('org_created');
       }
-      
-      // Track any organization creation
-      ymGoal('org_created');
 
       // Redirect to organization dashboard
       router.push(`/app/${result.org_id}/dashboard`)

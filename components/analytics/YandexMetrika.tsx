@@ -2,10 +2,13 @@
 
 import Script from 'next/script';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, Suspense } from 'react';
+import { useEffect, useRef, Suspense } from 'react';
 
 // Yandex.Metrika counter ID (same for orbo.ru and my.orbo.ru for cross-domain tracking)
 export const YM_COUNTER_ID = 104139201;
+
+// Track sent goals to prevent duplicates in the same session
+const sentGoals = new Set<string>();
 
 // Declare ym function type for TypeScript
 declare global {
@@ -15,18 +18,32 @@ declare global {
 }
 
 /**
- * Send Yandex.Metrika goal/event with retry support
- * Script loads async, so we retry a few times if not ready
+ * Send Yandex.Metrika goal/event
  * @param goalName - Name of the goal (e.g., 'signup_start', 'registration_complete')
  * @param params - Optional parameters to send with the goal
+ * @param options - Options: { once: true } prevents sending the same goal twice in a session
  */
-export function ymGoal(goalName: string, params?: Record<string, unknown>) {
+export function ymGoal(
+  goalName: string, 
+  params?: Record<string, unknown>,
+  options?: { once?: boolean }
+) {
   if (typeof window === 'undefined') return;
+  
+  // If once=true, check if already sent
+  const goalKey = options?.once ? `${goalName}:once` : null;
+  if (goalKey && sentGoals.has(goalKey)) {
+    console.log(`[YM] Goal already sent (once), skipping: ${goalName}`);
+    return;
+  }
   
   const sendGoal = (attempt: number = 0) => {
     if (window.ym) {
       window.ym(YM_COUNTER_ID, 'reachGoal', goalName, params);
       console.log(`[YM] Goal reached: ${goalName}`, params);
+      if (goalKey) {
+        sentGoals.add(goalKey);
+      }
     } else if (attempt < 10) {
       // Retry up to 10 times with 500ms delay (5 seconds total)
       setTimeout(() => sendGoal(attempt + 1), 500);
@@ -36,6 +53,21 @@ export function ymGoal(goalName: string, params?: Record<string, unknown>) {
   };
   
   sendGoal();
+}
+
+/**
+ * Hook for sending a goal only once when component mounts
+ * Prevents duplicate sends from React StrictMode or re-renders
+ */
+export function useYmGoalOnce(goalName: string, params?: Record<string, unknown>) {
+  const hasSent = useRef(false);
+  
+  useEffect(() => {
+    if (!hasSent.current) {
+      hasSent.current = true;
+      ymGoal(goalName, params, { once: true });
+    }
+  }, [goalName]); // Only goalName as dependency, params are captured at first call
 }
 
 /**

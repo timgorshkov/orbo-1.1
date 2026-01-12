@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ymGoal } from './YandexMetrika';
 
 interface OrgsPageTrackerProps {
@@ -10,19 +10,25 @@ interface OrgsPageTrackerProps {
 
 /**
  * Client component to track /orgs page view
- * Tracks: dashboard_view (every time) and auth_success (on each visit to dashboard)
+ * Tracks: dashboard_view (once per page load) and auth_success (once per session)
  */
 export function OrgsPageTracker({ organizationsCount, hasAdminOrgs }: OrgsPageTrackerProps) {
+  const hasSent = useRef(false);
+  
   useEffect(() => {
-    // Track dashboard page view - every visit
+    // Prevent duplicate sends from React StrictMode or re-renders
+    if (hasSent.current) return;
+    hasSent.current = true;
+    
+    // Track dashboard page view - once per page load
     ymGoal('dashboard_view', { 
       organizations_count: organizationsCount,
       has_admin_orgs: hasAdminOrgs
     });
     
-    // Track auth_success when user reaches dashboard (successful login)
-    ymGoal('auth_success');
-  }, [organizationsCount, hasAdminOrgs]);
+    // Track auth_success - once per session (user reached dashboard = successful auth)
+    ymGoal('auth_success', undefined, { once: true });
+  }, []); // Empty deps - run only once on mount
 
   return null;
 }
