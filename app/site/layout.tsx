@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import '@/components/website/website.css';
 
+// VK Pixel ID
+const VK_PIXEL_ID = '3733096';
+
 export const metadata: Metadata = {
   title: {
     default: 'Orbo — CRM для групп и сообществ в мессенджерах',
@@ -66,6 +69,43 @@ export default function WebsiteLayout({
             src={`https://mc.yandex.ru/watch/${YM_COUNTER_ID}`} 
             style={{ position: 'absolute', left: '-9999px' }} 
             alt="" 
+          />
+        </div>
+      </noscript>
+      
+      {/* DataLayer initialization */}
+      <Script
+        id="datalayer-init"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `window.dataLayer = window.dataLayer || [];`,
+        }}
+      />
+      
+      {/* Top.Mail.Ru counter (VK Pixel) */}
+      <Script
+        id="vk-pixel"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            var _tmr = window._tmr || (window._tmr = []);
+            _tmr.push({id: "${VK_PIXEL_ID}", type: "pageView", start: (new Date()).getTime()});
+            (function (d, w, id) {
+              if (d.getElementById(id)) return;
+              var ts = d.createElement("script"); ts.type = "text/javascript"; ts.async = true; ts.id = id;
+              ts.src = "https://top-fwz1.mail.ru/js/code.js";
+              var f = function () {var s = d.getElementsByTagName("script")[0]; s.parentNode.insertBefore(ts, s);};
+              if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); }
+            })(document, window, "tmr-code");
+          `,
+        }}
+      />
+      <noscript>
+        <div>
+          <img 
+            src={`https://top-fwz1.mail.ru/counter?id=${VK_PIXEL_ID};js=na`} 
+            style={{ position: 'absolute', left: '-9999px' }} 
+            alt="Top.Mail.Ru" 
           />
         </div>
       </noscript>

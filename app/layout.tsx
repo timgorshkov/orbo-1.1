@@ -4,6 +4,7 @@ import './globals.css';
 import { WebVitals } from '@/components/web-vitals';
 import { SessionProvider } from '@/components/providers/session-provider';
 import { YandexMetrika } from '@/components/analytics/YandexMetrika';
+import { VKPixel } from '@/components/analytics/VKPixel';
 
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
@@ -82,6 +83,7 @@ export default function RootLayout({
         </SessionProvider>
         <WebVitals />
         <YandexMetrika />
+        <VKPixel />
       </body>
   </html>
   );

@@ -10,15 +10,20 @@ export const YM_COUNTER_ID = 104139201;
 // Track sent goals to prevent duplicates in the same session
 const sentGoals = new Set<string>();
 
-// Declare ym function type for TypeScript
+// VK Pixel ID for dataLayer integration
+const VK_PIXEL_ID = '3733096';
+
+// Declare types for TypeScript
 declare global {
   interface Window {
     ym?: (counterId: number, action: string, ...args: unknown[]) => void;
+    dataLayer?: Array<Record<string, unknown>>;
+    _tmr?: Array<Record<string, unknown>>;
   }
 }
 
 /**
- * Send Yandex.Metrika goal/event
+ * Send goal to both Yandex.Metrika and VK Pixel (via dataLayer)
  * @param goalName - Name of the goal (e.g., 'signup_start', 'registration_complete')
  * @param params - Optional parameters to send with the goal
  * @param options - Options: { once: true } prevents sending the same goal twice in a session
@@ -33,26 +38,43 @@ export function ymGoal(
   // If once=true, check if already sent
   const goalKey = options?.once ? `${goalName}:once` : null;
   if (goalKey && sentGoals.has(goalKey)) {
-    console.log(`[YM] Goal already sent (once), skipping: ${goalName}`);
+    console.log(`[Analytics] Goal already sent (once), skipping: ${goalName}`);
     return;
   }
   
-  const sendGoal = (attempt: number = 0) => {
+  // Mark as sent if once=true
+  if (goalKey) {
+    sentGoals.add(goalKey);
+  }
+  
+  // === Yandex.Metrika ===
+  const sendYmGoal = (attempt: number = 0) => {
     if (window.ym) {
       window.ym(YM_COUNTER_ID, 'reachGoal', goalName, params);
       console.log(`[YM] Goal reached: ${goalName}`, params);
-      if (goalKey) {
-        sentGoals.add(goalKey);
-      }
     } else if (attempt < 10) {
-      // Retry up to 10 times with 500ms delay (5 seconds total)
-      setTimeout(() => sendGoal(attempt + 1), 500);
+      setTimeout(() => sendYmGoal(attempt + 1), 500);
     } else {
       console.warn(`[YM] Failed to send goal after 10 attempts: ${goalName}`);
     }
   };
+  sendYmGoal();
   
-  sendGoal();
+  // === VK Pixel (Top.Mail.Ru) via dataLayer ===
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({
+    event: goalName,
+    ...params,
+  });
+  console.log(`[VK dataLayer] Event pushed: ${goalName}`, params);
+  
+  // === VK Pixel direct goal ===
+  window._tmr = window._tmr || [];
+  window._tmr.push({ 
+    type: 'reachGoal', 
+    id: VK_PIXEL_ID, 
+    goal: goalName 
+  });
 }
 
 /**
