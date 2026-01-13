@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import '@/components/website/website.css';
+import { HelpDeskWidget } from '@/components/support/helpdesk-widget';
 
 // VK Pixel ID
 const VK_PIXEL_ID = '3733096';
@@ -109,6 +110,9 @@ export default function WebsiteLayout({
           />
         </div>
       </noscript>
+      
+      {/* HelpDeskEddy виджет поддержки */}
+      <HelpDeskWidget />
     </div>
   );
 }

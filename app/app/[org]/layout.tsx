@@ -5,6 +5,7 @@ import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
+import { HelpDeskWidget } from '@/components/support/helpdesk-widget'
 
 const logger = createServiceLogger('OrgLayout');
 
@@ -203,6 +204,12 @@ export default async function OrgLayout({
         role={role}
         telegramGroups={telegramGroups}
         userProfile={userProfile}
+      />
+      
+      {/* HelpDeskEddy виджет поддержки - только для владельцев и админов */}
+      <HelpDeskWidget 
+        allowedRoles={['owner', 'admin']} 
+        userRole={role} 
       />
     </div>
   )
