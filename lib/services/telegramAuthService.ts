@@ -250,19 +250,16 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
     logger.debug({ code_id: authCode.id }, 'Code is valid');
 
     // 3. Связываем код с Telegram пользователем (не помечаем как использованный - это сделает endpoint)
-    // ВАЖНО: Используем Supabase клиент напрямую и проверяем результат!
     logger.info({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Linking code to telegram user');
     
     const adminSupabase = getAdminSupabase()
-    const { data: updatedCode, error: updateError } = await adminSupabase
+    const { error: updateError } = await adminSupabase
       .from('telegram_auth_codes')
       .update({
         telegram_user_id: telegramUserId,
         telegram_username: telegramUsername
       })
       .eq('id', authCode.id)
-      .select('id, telegram_user_id')
-      .single()
     
     if (updateError) {
       logger.error({ 
@@ -277,22 +274,7 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       }
     }
     
-    // Сравниваем через String() т.к. PostgreSQL может вернуть bigint как string
-    if (!updatedCode || String(updatedCode.telegram_user_id) !== String(telegramUserId)) {
-      logger.error({ 
-        code_id: authCode.id,
-        expected_telegram_user_id: telegramUserId,
-        actual_telegram_user_id: updatedCode?.telegram_user_id,
-        types: `expected: ${typeof telegramUserId}, actual: ${typeof updatedCode?.telegram_user_id}`
-      }, 'Code update verification failed');
-      return {
-        success: false,
-        error: 'Failed to verify code',
-        errorCode: 'UPDATE_VERIFICATION_ERROR'
-      }
-    }
-    
-    logger.info({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Code successfully linked to telegram user');
+    logger.info({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Code linked to telegram user successfully');
 
     // 4. Ищем существующего пользователя по Telegram ID
     logger.debug({ telegram_user_id: telegramUserId }, 'Looking for existing user');
