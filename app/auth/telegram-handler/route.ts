@@ -4,24 +4,22 @@
  * 
  * GET /auth/telegram-handler?code=XXXXXX&redirect=/path/to/redirect
  * 
- * Note: This route is called from /auth/telegram page after OG metadata is rendered
+ * Создаёт NextAuth JWT сессию напрямую (без Supabase Auth)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { encode } from 'next-auth/jwt'
 
 /**
  * Get the public base URL for redirects
- * Uses NEXT_PUBLIC_APP_URL in production, or X-Forwarded headers, or request.url as fallback
  */
 function getPublicBaseUrl(request: NextRequest): string {
-  // First try NEXT_PUBLIC_APP_URL (most reliable in Docker)
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return process.env.NEXT_PUBLIC_APP_URL
   }
   
-  // Then try X-Forwarded headers (set by Nginx)
   const forwardedProto = request.headers.get('x-forwarded-proto')
   const forwardedHost = request.headers.get('x-forwarded-host')
   
@@ -29,7 +27,6 @@ function getPublicBaseUrl(request: NextRequest): string {
     return `${forwardedProto}://${forwardedHost}`
   }
   
-  // Fallback to request.url origin
   return new URL(request.url).origin
 }
 
@@ -41,7 +38,6 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const redirectUrl = searchParams.get('redirect') || '/orgs'
   
-  // Get public base URL for redirects (handles Docker environment)
   const baseUrl = getPublicBaseUrl(request)
   
   logger.debug({ 
@@ -56,17 +52,14 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // Гибридный клиент: .from() -> PostgreSQL, .auth -> Supabase
     const dbClient = createAdminServer()
-    // Прямой Supabase клиент для Auth операций
-    const authClient = getSupabaseAdminClient()
     
-    // 1. Проверяем код в нашей таблице (локальная PostgreSQL)
+    // 1. Проверяем код в локальной БД
     const { data: authCodes, error: codeError } = await dbClient
       .from('telegram_auth_codes')
       .select('*')
       .eq('code', code)
-      .not('telegram_user_id', 'is', null)  // Проверяем что telegram_user_id уже заполнен
+      .not('telegram_user_id', 'is', null)
       .maybeSingle()
     
     if (codeError) {
@@ -87,7 +80,6 @@ export async function GET(request: NextRequest) {
       const usedAt = authCodes.used_at ? new Date(authCodes.used_at) : null
       const now = new Date()
       
-      // Разрешаем повторное использование в течение 30 секунд (для предпросмотра Telegram)
       if (usedAt && (now.getTime() - usedAt.getTime()) > 30000) {
         logger.warn({ 
           code_id: authCodes.id,
@@ -96,24 +88,10 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(new URL('/signin?error=code_already_used', baseUrl))
       }
       
-      // Grace period reuse is normal behavior (Telegram preview), keep as info
       logger.info({ 
         code_id: authCodes.id,
         used_at: usedAt?.toISOString()
-      }, '[Telegram Auth] Code reused within grace period, redirecting to fallback');
-      
-      // Для уже использованного кода сразу редиректим на fallback
-      // Не пытаемся создать новую сессию (пароль уже изменился)
-      let finalRedirectUrl = authCodes.redirect_url || redirectUrl
-      if (finalRedirectUrl.includes('/p/') && finalRedirectUrl.includes('/events/')) {
-        finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
-      }
-      
-      const fallbackUrl = new URL('/auth/telegram-fallback', baseUrl)
-      fallbackUrl.searchParams.set('code', code)
-      fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
-      
-      return NextResponse.redirect(fallbackUrl)
+      }, '[Telegram Auth] Code reused within grace period');
     }
     
     logger.debug({ 
@@ -124,9 +102,7 @@ export async function GET(request: NextRequest) {
     
     // 2. Проверяем срок действия
     const expiresAt = new Date(authCodes.expires_at)
-    const currentTime = new Date()
-    
-    if (expiresAt < currentTime) {
+    if (expiresAt < new Date()) {
       logger.warn({ 
         code_id: authCodes.id,
         expires_at: expiresAt.toISOString()
@@ -134,97 +110,44 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
-    logger.debug({ code_id: authCodes.id }, 'Code is valid');
-    
-    // 3. Ищем пользователя по telegram_user_id и org_id (локальная PostgreSQL)
-    const { data: telegramAccounts, error: accountError } = await dbClient
+    // 3. Ищем пользователя по telegram_user_id и org_id в локальной БД
+    const { data: telegramAccount, error: accountError } = await dbClient
       .from('user_telegram_accounts')
       .select('user_id')
       .eq('telegram_user_id', authCodes.telegram_user_id)
       .eq('org_id', authCodes.org_id)
       .maybeSingle()
     
-    if (accountError || !telegramAccounts) {
+    if (accountError || !telegramAccount) {
       logger.error({ 
         error: accountError?.message,
         telegram_user_id: authCodes.telegram_user_id,
         org_id: authCodes.org_id
-      }, 'User not found');
+      }, 'Telegram account not found');
       return NextResponse.redirect(new URL('/signin?error=user_not_found', baseUrl))
     }
     
-    const userId = telegramAccounts.user_id
-    logger.debug({ 
-      user_id: userId,
-      telegram_user_id: authCodes.telegram_user_id
-    }, 'User found');
+    const userId = telegramAccount.user_id
+    logger.debug({ user_id: userId }, 'User found via telegram account');
     
-    // 4. Получаем email пользователя (Supabase Auth)
-    let userData;
-    try {
-      const result = await authClient.auth.admin.getUserById(userId);
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-      userData = result.data;
-    } catch (fetchError) {
-      const isTransient = fetchError instanceof Error && 
-        (fetchError.message?.includes('fetch failed') || fetchError.message?.includes('timeout'));
-      if (isTransient) {
-        logger.warn({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
-          'Transient error fetching user');
-      } else {
-        logger.error({ user_id: userId, error: fetchError instanceof Error ? fetchError.message : String(fetchError) }, 
-          'Error fetching user');
-      }
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
-    }
+    // 4. Получаем данные пользователя из локальной таблицы users
+    const { data: user, error: userError } = await dbClient
+      .from('users')
+      .select('id, email, name, image')
+      .eq('id', userId)
+      .single()
     
-    if (!userData?.user) {
-      logger.error({ user_id: userId }, 'User not found');
-      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl));
-    }
-    
-    const userEmail = userData.user.email
-    logger.debug({ user_id: userId, email: userEmail }, 'User email retrieved');
-    
-    // 5. Устанавливаем временный пароль для этого пользователя (Supabase Auth)
-    const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
-    
-    const { error: updateError } = await authClient.auth.admin.updateUserById(userId, {
-      password: tempPassword
-    })
-    
-    if (updateError) {
+    if (userError || !user) {
       logger.error({ 
-        error: updateError.message,
+        error: userError?.message,
         user_id: userId
-      }, 'Error setting temp password');
-      return NextResponse.redirect(new URL('/signin?error=password_error', baseUrl))
+      }, 'User not found in users table');
+      return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
-    logger.debug({ user_id: userId }, 'Temp password set');
+    logger.debug({ user_id: user.id, email: user.email }, 'User data retrieved');
     
-    // 6. Входим с email и паролем чтобы получить валидную сессию (Supabase Auth)
-    const { data: sessionData, error: sessionError } = await authClient.auth.signInWithPassword({
-      email: userEmail!,
-      password: tempPassword
-    })
-    
-    if (sessionError || !sessionData?.session) {
-      logger.error({ 
-        error: sessionError?.message,
-        user_id: userId
-      }, 'Error signing in');
-      return NextResponse.redirect(new URL('/signin?error=signin_error', baseUrl))
-    }
-    
-    logger.info({ 
-      user_id: sessionData.user.id,
-      code_id: authCodes.id
-    }, 'Session created for user');
-    
-    // 7. Помечаем код как использованный (локальная PostgreSQL)
+    // 5. Помечаем код как использованный
     await dbClient
       .from('telegram_auth_codes')
       .update({ is_used: true, used_at: new Date().toISOString() })
@@ -232,32 +155,61 @@ export async function GET(request: NextRequest) {
     
     logger.debug({ code_id: authCodes.id }, 'Code marked as used');
     
-    // 8. Определяем куда редиректить
+    // 6. Создаём NextAuth JWT токен
+    const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
+    if (!secret) {
+      logger.error({}, 'AUTH_SECRET not configured')
+      return NextResponse.redirect(new URL('/signin?error=config_error', baseUrl))
+    }
+    
+    const cookieName = process.env.NODE_ENV === 'production' 
+      ? '__Secure-authjs.session-token'
+      : 'authjs.session-token'
+    
+    const jwtToken = await encode({
+      token: {
+        id: user.id,
+        sub: user.id,
+        email: user.email,
+        name: user.name,
+        picture: user.image,
+        provider: 'telegram',
+      },
+      secret,
+      salt: cookieName,
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    })
+    
+    logger.info({ 
+      user_id: user.id,
+      code_id: authCodes.id
+    }, 'Session created for user');
+    
+    // 7. Определяем куда редиректить
     let finalRedirectUrl = authCodes.redirect_url || redirectUrl
     
-    // ВАЖНО: Если это публичная страница события и пользователь авторизован,
-    // редиректим сразу на защищённую страницу для корректной работы в Telegram WebView
+    // Заменяем /p/ на /app/ для авторизованных пользователей
     if (finalRedirectUrl.includes('/p/') && finalRedirectUrl.includes('/events/')) {
-      // Заменяем /p/ на /app/ для авторизованных пользователей
       finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
-      logger.debug({ redirect_url: finalRedirectUrl }, 'Redirecting to protected page for authenticated user');
     }
     
     logger.info({ 
       redirect_url: finalRedirectUrl,
-      user_id: sessionData.user.id
-    }, 'Preparing session setup page');
+      user_id: user.id
+    }, 'Redirecting to final URL');
     
-    // ✅ ВСЕГДА используем server-side метод для надежности
-    // Client-side метод не работает надёжно ни в Telegram WebView, ни в обычных браузерах
-    logger.debug({}, 'Using server-side cookies method');
+    // 8. Создаём response с редиректом и устанавливаем cookie
+    const response = NextResponse.redirect(new URL(finalRedirectUrl, baseUrl))
     
-    // Редиректим на fallback endpoint который установит cookies на сервере
-    const fallbackUrl = new URL('/auth/telegram-fallback', baseUrl)
-    fallbackUrl.searchParams.set('code', code)
-    fallbackUrl.searchParams.set('redirect', finalRedirectUrl)
+    response.cookies.set(cookieName, jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    })
     
-    return NextResponse.redirect(fallbackUrl)
+    return response
     
   } catch (error) {
     logger.error({ 
