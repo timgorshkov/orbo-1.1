@@ -277,11 +277,13 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       }
     }
     
-    if (!updatedCode || updatedCode.telegram_user_id !== telegramUserId) {
+    // Сравниваем через String() т.к. PostgreSQL может вернуть bigint как string
+    if (!updatedCode || String(updatedCode.telegram_user_id) !== String(telegramUserId)) {
       logger.error({ 
         code_id: authCode.id,
         expected_telegram_user_id: telegramUserId,
-        actual_telegram_user_id: updatedCode?.telegram_user_id
+        actual_telegram_user_id: updatedCode?.telegram_user_id,
+        types: `expected: ${typeof telegramUserId}, actual: ${typeof updatedCode?.telegram_user_id}`
       }, 'Code update verification failed');
       return {
         success: false,
