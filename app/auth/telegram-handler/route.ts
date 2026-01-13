@@ -8,20 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
-
-// Admin client для создания сессии
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
 
 /**
  * Get the public base URL for redirects
@@ -68,8 +56,13 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // 1. Проверяем код в нашей таблице
-    const { data: authCodes, error: codeError } = await supabaseAdmin
+    // Гибридный клиент: .from() -> PostgreSQL, .auth -> Supabase
+    const dbClient = createAdminServer()
+    // Прямой Supabase клиент для Auth операций
+    const authClient = getSupabaseAdminClient()
+    
+    // 1. Проверяем код в нашей таблице (локальная PostgreSQL)
+    const { data: authCodes, error: codeError } = await dbClient
       .from('telegram_auth_codes')
       .select('*')
       .eq('code', code)
@@ -143,8 +136,8 @@ export async function GET(request: NextRequest) {
     
     logger.debug({ code_id: authCodes.id }, 'Code is valid');
     
-    // 3. Ищем пользователя по telegram_user_id и org_id
-    const { data: telegramAccounts, error: accountError } = await supabaseAdmin
+    // 3. Ищем пользователя по telegram_user_id и org_id (локальная PostgreSQL)
+    const { data: telegramAccounts, error: accountError } = await dbClient
       .from('user_telegram_accounts')
       .select('user_id')
       .eq('telegram_user_id', authCodes.telegram_user_id)
@@ -166,10 +159,10 @@ export async function GET(request: NextRequest) {
       telegram_user_id: authCodes.telegram_user_id
     }, 'User found');
     
-    // 4. Получаем email пользователя
+    // 4. Получаем email пользователя (Supabase Auth)
     let userData;
     try {
-      const result = await supabaseAdmin.auth.admin.getUserById(userId);
+      const result = await authClient.auth.admin.getUserById(userId);
       if (result.error) {
         throw new Error(result.error.message);
       }
@@ -195,10 +188,10 @@ export async function GET(request: NextRequest) {
     const userEmail = userData.user.email
     logger.debug({ user_id: userId, email: userEmail }, 'User email retrieved');
     
-    // 5. Устанавливаем временный пароль для этого пользователя
+    // 5. Устанавливаем временный пароль для этого пользователя (Supabase Auth)
     const tempPassword = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
     
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    const { error: updateError } = await authClient.auth.admin.updateUserById(userId, {
       password: tempPassword
     })
     
@@ -212,8 +205,8 @@ export async function GET(request: NextRequest) {
     
     logger.debug({ user_id: userId }, 'Temp password set');
     
-    // 6. Входим с email и паролем чтобы получить валидную сессию
-    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+    // 6. Входим с email и паролем чтобы получить валидную сессию (Supabase Auth)
+    const { data: sessionData, error: sessionError } = await authClient.auth.signInWithPassword({
       email: userEmail!,
       password: tempPassword
     })
@@ -231,8 +224,8 @@ export async function GET(request: NextRequest) {
       code_id: authCodes.id
     }, 'Session created for user');
     
-    // 7. Помечаем код как использованный
-    await supabaseAdmin
+    // 7. Помечаем код как использованный (локальная PostgreSQL)
+    await dbClient
       .from('telegram_auth_codes')
       .update({ is_used: true, used_at: new Date().toISOString() })
       .eq('id', authCodes.id)

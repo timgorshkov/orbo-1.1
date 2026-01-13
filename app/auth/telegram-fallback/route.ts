@@ -6,21 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { createTelegramService } from '@/lib/services/telegramService'
-
-// Admin client для создания сессии
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
 
 /**
  * Get the public base URL for redirects
@@ -67,8 +55,13 @@ export async function GET(request: NextRequest) {
   }
   
   try {
+    // Гибридный клиент: .from() -> PostgreSQL, .auth -> Supabase
+    const dbClient = createAdminServer()
+    // Прямой Supabase клиент для Auth операций
+    const authClient = getSupabaseAdminClient()
+    
     // 1-7: Те же шаги что и в основном route (поиск кода, создание сессии)
-    const { data: authCodes, error: codeError } = await supabaseAdmin
+    const { data: authCodes, error: codeError } = await dbClient
       .from('telegram_auth_codes')
       .select('*')
       .eq('code', code)
@@ -112,7 +105,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
-    const { data: telegramAccounts } = await supabaseAdmin
+    const { data: telegramAccounts } = await dbClient
       .from('user_telegram_accounts')
       .select('user_id')
       .eq('telegram_user_id', authCodes.telegram_user_id)
@@ -131,7 +124,7 @@ export async function GET(request: NextRequest) {
     
     let userData;
     try {
-      const result = await supabaseAdmin.auth.admin.getUserById(userId);
+      const result = await authClient.auth.admin.getUserById(userId);
       userData = result.data;
     } catch (fetchError) {
       const isTransient = fetchError instanceof Error && 
@@ -153,9 +146,9 @@ export async function GET(request: NextRequest) {
     // Создаём НОВЫЙ временный пароль (на случай если код используется повторно)
     const tempPassword = `temp_fallback_${Math.random().toString(36).slice(2)}_${Date.now()}`
     logger.debug({ user_id: userId }, 'Setting new temp password');
-    await supabaseAdmin.auth.admin.updateUserById(userId, { password: tempPassword })
+    await authClient.auth.admin.updateUserById(userId, { password: tempPassword })
     
-    const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
+    const { data: sessionData, error: sessionError } = await authClient.auth.signInWithPassword({
       email: userData.user.email!,
       password: tempPassword
     })
@@ -171,7 +164,7 @@ export async function GET(request: NextRequest) {
     // Помечаем код как использованный (только если ещё не использован)
     const wasFirstUse = !authCodes.is_used
     
-    await supabaseAdmin
+    await dbClient
       .from('telegram_auth_codes')
       .update({ is_used: true, used_at: new Date().toISOString() })
       .eq('id', authCodes.id)
@@ -182,7 +175,7 @@ export async function GET(request: NextRequest) {
         const telegramService = createTelegramService('main')
         
         // Получаем название организации
-        const { data: org } = await supabaseAdmin
+        const { data: org } = await dbClient
           .from('organizations')
           .select('name')
           .eq('id', authCodes.org_id)
