@@ -250,31 +250,57 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
     logger.debug({ code_id: authCode.id }, 'Code is valid');
 
     // 3. Связываем код с Telegram пользователем (не помечаем как использованный - это сделает endpoint)
-    logger.debug({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Linking code to telegram user');
-    try {
-      await supabaseFetch(`telegram_auth_codes?id=eq.${authCode.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          telegram_user_id: telegramUserId,
-          telegram_username: telegramUsername
-        })
+    // ВАЖНО: Используем Supabase клиент напрямую и проверяем результат!
+    logger.info({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Linking code to telegram user');
+    
+    const adminSupabase = getAdminSupabase()
+    const { data: updatedCode, error: updateError } = await adminSupabase
+      .from('telegram_auth_codes')
+      .update({
+        telegram_user_id: telegramUserId,
+        telegram_username: telegramUsername
       })
-      logger.debug({ code_id: authCode.id }, 'Code linked to telegram user');
-    } catch (updateError) {
+      .eq('id', authCode.id)
+      .select('id, telegram_user_id')
+      .single()
+    
+    if (updateError) {
       logger.error({ 
         code_id: authCode.id,
-        error: updateError instanceof Error ? updateError.message : String(updateError)
-      }, 'Error updating code');
-      // Продолжаем даже при ошибке
+        error: updateError.message,
+        errorCode: updateError.code
+      }, 'Failed to link code to telegram user');
+      return {
+        success: false,
+        error: 'Failed to verify code',
+        errorCode: 'UPDATE_ERROR'
+      }
     }
+    
+    if (!updatedCode || updatedCode.telegram_user_id !== telegramUserId) {
+      logger.error({ 
+        code_id: authCode.id,
+        expected_telegram_user_id: telegramUserId,
+        actual_telegram_user_id: updatedCode?.telegram_user_id
+      }, 'Code update verification failed');
+      return {
+        success: false,
+        error: 'Failed to verify code',
+        errorCode: 'UPDATE_VERIFICATION_ERROR'
+      }
+    }
+    
+    logger.info({ code_id: authCode.id, telegram_user_id: telegramUserId }, 'Code successfully linked to telegram user');
 
     // 4. Ищем существующего пользователя по Telegram ID
     logger.debug({ telegram_user_id: telegramUserId }, 'Looking for existing user');
-    const existingAccounts = await supabaseFetch(
-      `user_telegram_accounts?telegram_user_id=eq.${telegramUserId}&select=user_id`
-    )
+    const { data: existingAccounts } = await adminSupabase
+      .from('user_telegram_accounts')
+      .select('user_id')
+      .eq('telegram_user_id', telegramUserId)
+      .limit(1)
     
-    const existingAccount = Array.isArray(existingAccounts) && existingAccounts.length > 0 ? existingAccounts[0] : null
+    const existingAccount = existingAccounts && existingAccounts.length > 0 ? existingAccounts[0] : null
 
     let userId: string
 
@@ -330,13 +356,14 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       logger.debug({ event_id: authCode.event_id }, 'Registering user for event');
       
       // Получаем org_id из события
-      const events = await supabaseFetch(
-        `events?id=eq.${authCode.event_id}&select=org_id`
-      )
-      const event = Array.isArray(events) && events.length > 0 ? events[0] : null
+      const { data: eventData } = await adminSupabase
+        .from('events')
+        .select('org_id')
+        .eq('id', authCode.event_id)
+        .single()
 
-      if (event) {
-        targetOrgId = event.org_id
+      if (eventData) {
+        targetOrgId = eventData.org_id
         logger.debug({ org_id: targetOrgId, event_id: authCode.event_id }, 'Event org_id found');
 
         // Создаём/обновляем участника
@@ -346,38 +373,43 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
           
           logger.debug({ telegram_user_id: telegramUserId, org_id: targetOrgId }, 'Searching for participant');
           
-          const existingParticipants = await supabaseFetch(
-            `participants?org_id=eq.${targetOrgId}&tg_user_id=eq.${telegramUserId}&is(merged_into,null)&select=id`
-          )
+          const { data: existingParticipants } = await adminSupabase
+            .from('participants')
+            .select('id')
+            .eq('org_id', targetOrgId)
+            .eq('tg_user_id', telegramUserId)
+            .is('merged_into', null)
+            .limit(1)
           
-          if (Array.isArray(existingParticipants) && existingParticipants.length > 0) {
+          if (existingParticipants && existingParticipants.length > 0) {
             participantId = existingParticipants[0].id
             logger.debug({ participant_id: participantId }, 'Participant already exists');
           } else {
             logger.debug({ telegram_user_id: telegramUserId, org_id: targetOrgId }, 'No participant found, creating new one');
             
             // Создаем нового participant
-            const newParticipants = await supabaseFetch('participants', {
-              method: 'POST',
-              headers: {
-                'Prefer': 'return=representation'
-              },
-              body: JSON.stringify({
+            const { data: newParticipant, error: participantError } = await adminSupabase
+              .from('participants')
+              .insert({
                 org_id: targetOrgId,
                 full_name: `${firstName || ''} ${lastName || ''}`.trim() || telegramUsername || `User ${telegramUserId}`,
                 tg_user_id: telegramUserId,
                 username: telegramUsername,
-                tg_first_name: firstName, // Telegram имя
-                tg_last_name: lastName, // Telegram фамилия
+                tg_first_name: firstName,
+                tg_last_name: lastName,
                 participant_status: 'participant',
                 source: 'telegram',
                 status: 'active'
               })
-            })
+              .select('id')
+              .single()
             
-            const newParticipant = Array.isArray(newParticipants) && newParticipants.length > 0 ? newParticipants[0] : newParticipants
-            participantId = newParticipant?.id
-            logger.info({ participant_id: participantId }, 'Participant created');
+            if (participantError) {
+              logger.warn({ error: participantError.message }, 'Failed to create participant');
+            } else {
+              participantId = newParticipant?.id
+              logger.info({ participant_id: participantId }, 'Participant created');
+            }
           }
           
           logger.debug({ participant_id: participantId }, 'Participant linked to org');
@@ -395,42 +427,31 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
     if (targetOrgId) {
       logger.debug({ org_id: targetOrgId, user_id: userId }, 'Upserting telegram account');
       try {
-        // Проверяем существование записи
-        const existing = await supabaseFetch(
-          `user_telegram_accounts?user_id=eq.${userId}&org_id=eq.${targetOrgId}&select=user_id`
-        )
-        
-        if (Array.isArray(existing) && existing.length > 0) {
-          // Обновляем существующую запись
-          await supabaseFetch(`user_telegram_accounts?user_id=eq.${userId}&org_id=eq.${targetOrgId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              telegram_user_id: telegramUserId,
-              telegram_username: telegramUsername,
-              telegram_first_name: firstName,
-              telegram_last_name: lastName,
-              is_verified: true,
-              verified_at: new Date().toISOString()
-            })
+        // Используем upsert для атомарной операции
+        const { error: upsertError } = await adminSupabase
+          .from('user_telegram_accounts')
+          .upsert({
+            user_id: userId,
+            org_id: targetOrgId,
+            telegram_user_id: telegramUserId,
+            telegram_username: telegramUsername,
+            telegram_first_name: firstName,
+            telegram_last_name: lastName,
+            is_verified: true,
+            verified_at: new Date().toISOString()
+          }, { 
+            onConflict: 'user_id,org_id'
           })
+        
+        if (upsertError) {
+          logger.warn({ 
+            user_id: userId,
+            org_id: targetOrgId,
+            error: upsertError.message
+          }, 'Error upserting telegram account');
         } else {
-          // Создаем новую запись
-          await supabaseFetch('user_telegram_accounts', {
-            method: 'POST',
-            body: JSON.stringify({
-              user_id: userId,
-              org_id: targetOrgId,
-              telegram_user_id: telegramUserId,
-              telegram_username: telegramUsername,
-              telegram_first_name: firstName,
-              telegram_last_name: lastName,
-              is_verified: true,
-              verified_at: new Date().toISOString()
-            })
-          })
+          logger.info({ user_id: userId, org_id: targetOrgId }, 'Telegram account linked');
         }
-        
-        logger.info({ user_id: userId, org_id: targetOrgId }, 'Telegram account linked');
       } catch (err) {
         logger.error({ 
           user_id: userId,
