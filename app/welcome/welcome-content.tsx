@@ -13,12 +13,14 @@ interface WelcomeContentProps {
   qualificationCompleted: boolean;
   initialResponses: Record<string, unknown>;
   hasOrganizations?: boolean;
+  isNewUser?: boolean; // True only when user was just created (not returning user)
 }
 
 export function WelcomeContent({ 
   qualificationCompleted: initialCompleted,
   initialResponses,
   hasOrganizations = false,
+  isNewUser = false, // Default false - only true for actual new registrations
 }: WelcomeContentProps) {
   const router = useRouter();
   const [showQualification, setShowQualification] = useState(!initialCompleted);
@@ -34,8 +36,9 @@ export function WelcomeContent({
     
     ymGoal('welcome_page_view', undefined, { once: true });
     
-    // Key conversion: new user registration (first time on welcome = new registration)
-    if (!initialCompleted) {
+    // Key conversion: new user registration - ONLY for actually new users
+    // This is determined by ?new=1 URL param or created_at < 5 minutes
+    if (isNewUser) {
       ymGoal('registration_complete', undefined, { once: true }); // New user registered successfully
     }
     

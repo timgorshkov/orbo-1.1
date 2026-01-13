@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
       .eq('email', email)
       .single()
     
+    let isNewUser = false
+    
     if (!user) {
       // Создаём нового пользователя
       const { data: newUser, error: createError } = await supabaseAdmin
@@ -89,6 +91,7 @@ export async function GET(request: NextRequest) {
       }
       
       user = newUser
+      isNewUser = true
       logger.info({ email, user_id: user.id }, 'Created new user via email')
     } else {
       // Обновляем email_verified
@@ -150,12 +153,18 @@ export async function GET(request: NextRequest) {
     })
     
     // 7. Определяем redirect URL
-    const finalRedirectUrl = authToken.redirect_url || '/orgs'
+    // Для новых пользователей добавляем ?new=1 для корректного отслеживания регистрации
+    let finalRedirectUrl = authToken.redirect_url || '/orgs'
+    if (isNewUser) {
+      const separator = finalRedirectUrl.includes('?') ? '&' : '?'
+      finalRedirectUrl = `${finalRedirectUrl}${separator}new=1`
+    }
     
     logger.info({ 
       user_id: user.id,
       email,
-      redirect_url: finalRedirectUrl
+      redirect_url: finalRedirectUrl,
+      is_new_user: isNewUser
     }, 'Email auth successful, creating session')
     
     // 8. Создаём response с редиректом и устанавливаем cookie

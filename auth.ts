@@ -288,11 +288,12 @@ export const authConfig: NextAuthConfig = {
   },
 
   events: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, isNewUser }) {
       logger.info({
         user_id: user.id,
         email: user.email,
         provider: account?.provider,
+        is_new_user: isNewUser,
       }, 'User signed in')
       
       // Ensure CRM record exists (non-blocking)
@@ -314,7 +315,7 @@ export const authConfig: NextAuthConfig = {
       logger.info({
         user_id: user.id,
         email: user.email,
-      }, 'New user created')
+      }, 'New OAuth user created')
     },
   },
 
