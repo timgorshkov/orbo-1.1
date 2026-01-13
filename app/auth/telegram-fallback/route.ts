@@ -130,6 +130,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
+    // Если email пустой, используем фейковый email для Telegram пользователей
+    const userEmail = user.email || `tg${authCodes.telegram_user_id}@telegram.user`
+    
     // 4. Помечаем код как использованный (обновляем время)
     const wasFirstUse = !authCodes.is_used
     
@@ -187,7 +190,7 @@ export async function GET(request: NextRequest) {
       token: {
         id: user.id,
         sub: user.id,
-        email: user.email,
+        email: userEmail,
         name: user.name,
         picture: user.image,
         provider: 'telegram',
@@ -203,10 +206,8 @@ export async function GET(request: NextRequest) {
     }, 'Session created via fallback');
     
     // 7. Определяем куда редиректить
+    // ВАЖНО: НЕ заменяем /p/ на /app/ - участники должны идти на публичную страницу
     let finalRedirectUrl = authCodes.redirect_url || redirectUrl
-    if (finalRedirectUrl.includes('/p/') && finalRedirectUrl.includes('/events/')) {
-      finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
-    }
     
     logger.info({ 
       redirect_url: finalRedirectUrl,

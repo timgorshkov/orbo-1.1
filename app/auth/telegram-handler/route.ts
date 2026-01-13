@@ -145,7 +145,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=user_error', baseUrl))
     }
     
-    logger.debug({ user_id: user.id, email: user.email }, 'User data retrieved');
+    // Если email пустой, используем фейковый email для Telegram пользователей
+    const userEmail = user.email || `tg${authCodes.telegram_user_id}@telegram.user`
+    
+    logger.debug({ user_id: user.id, email: userEmail, has_real_email: !!user.email }, 'User data retrieved');
     
     // 5. Помечаем код как использованный
     await dbClient
@@ -170,7 +173,7 @@ export async function GET(request: NextRequest) {
       token: {
         id: user.id,
         sub: user.id,
-        email: user.email,
+        email: userEmail,
         name: user.name,
         picture: user.image,
         provider: 'telegram',
@@ -186,12 +189,9 @@ export async function GET(request: NextRequest) {
     }, 'Session created for user');
     
     // 7. Определяем куда редиректить
+    // ВАЖНО: НЕ заменяем /p/ на /app/ - участники должны идти на публичную страницу
+    // Публичная страница /p/ сама проверит авторизацию и покажет нужный контент
     let finalRedirectUrl = authCodes.redirect_url || redirectUrl
-    
-    // Заменяем /p/ на /app/ для авторизованных пользователей
-    if (finalRedirectUrl.includes('/p/') && finalRedirectUrl.includes('/events/')) {
-      finalRedirectUrl = finalRedirectUrl.replace('/p/', '/app/')
-    }
     
     logger.info({ 
       redirect_url: finalRedirectUrl,
