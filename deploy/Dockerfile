@@ -56,6 +56,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
+# Reinstall sharp for Alpine Linux (musl) platform
+RUN npm install --os=linux --libc=musl --cpu=x64 sharp
+
 # Disable telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
