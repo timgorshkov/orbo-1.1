@@ -100,7 +100,7 @@ export default async function ChannelDetailPage({
         p_channel_id: channelId,
         p_days: days
       })
-      .single()
+      .single() as { data: ChannelStats | null }
     
     // Get top posts
     const { data: topPosts } = await adminSupabase
@@ -136,18 +136,7 @@ export default async function ChannelDetailPage({
       .order('engagement_score', { ascending: false })
       .limit(20)
     
-    const channelStats: ChannelStats = stats ? {
-      total_posts: stats.total_posts || 0,
-      total_views: stats.total_views || 0,
-      total_reactions: stats.total_reactions || 0,
-      total_comments: stats.total_comments || 0,
-      total_forwards: stats.total_forwards || 0,
-      avg_views_per_post: stats.avg_views_per_post || 0,
-      avg_engagement_rate: stats.avg_engagement_rate || 0,
-      active_readers: stats.active_readers || 0,
-      subscriber_count: stats.subscriber_count || channel.subscriber_count || 0,
-      subscriber_growth: stats.subscriber_growth || 0
-    } : {
+    const defaultStats: ChannelStats = {
       total_posts: 0,
       total_views: 0,
       total_reactions: 0,
@@ -159,6 +148,8 @@ export default async function ChannelDetailPage({
       subscriber_count: channel.subscriber_count || 0,
       subscriber_growth: 0
     }
+    
+    const channelStats: ChannelStats = stats ? { ...defaultStats, ...stats } : defaultStats
     
     return (
       <div className="p-6">
