@@ -11,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Plus, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -78,67 +77,78 @@ export function AddChannelDialog({ orgId }: AddChannelDialogProps) {
     }
   }
 
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen)
+    if (!newOpen) {
+      // Reset state when closing
+      setChannelInput('')
+      setError(null)
+      setSuccess(false)
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
-          Добавить канал
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Добавить Telegram-канал</DialogTitle>
-          <DialogDescription>
-            Введите username канала (например, @channel_name) или его числовой ID.
-            Убедитесь, что бот @orbo_community_bot добавлен в канал как администратор.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="channel">Username или ID канала</Label>
-              <Input
-                id="channel"
-                placeholder="@channel_name или -1001234567890"
-                value={channelInput}
-                onChange={(e) => setChannelInput(e.target.value)}
-                disabled={loading || success}
-              />
+    <>
+      <Button className="gap-2" onClick={() => setOpen(true)}>
+        <Plus className="h-4 w-4" />
+        Добавить канал
+      </Button>
+      
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Добавить Telegram-канал</DialogTitle>
+            <DialogDescription>
+              Введите username канала (например, @channel_name) или его числовой ID.
+              Убедитесь, что бот @orbo_community_bot добавлен в канал как администратор.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="channel">Username или ID канала</Label>
+                <Input
+                  id="channel"
+                  placeholder="@channel_name или -1001234567890"
+                  value={channelInput}
+                  onChange={(e) => setChannelInput(e.target.value)}
+                  disabled={loading || success}
+                />
+              </div>
+              
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              
+              {success && (
+                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
+                  <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                  <span>Канал успешно добавлен!</span>
+                </div>
+              )}
             </div>
             
-            {error && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-            
-            {success && (
-              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
-                <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                <span>Канал успешно добавлен!</span>
-              </div>
-            )}
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => setOpen(false)}
-              disabled={loading}
-            >
-              Отмена
-            </Button>
-            <Button type="submit" disabled={loading || !channelInput.trim() || success}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {loading ? 'Добавление...' : 'Добавить'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => handleOpenChange(false)}
+                disabled={loading}
+              >
+                Отмена
+              </Button>
+              <Button type="submit" disabled={loading || !channelInput.trim() || success}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {loading ? 'Добавление...' : 'Добавить'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
