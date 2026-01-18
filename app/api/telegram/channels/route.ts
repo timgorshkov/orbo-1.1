@@ -76,11 +76,23 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json();
-    const { orgId, tgChatId, title, username, isPrimary } = body;
+    // Support both snake_case (from frontend) and camelCase
+    const orgId = body.org_id || body.orgId;
+    const tgChatId = body.tg_chat_id || body.tgChatId;
+    const username = body.username;
+    const title = body.title;
+    const isPrimary = body.is_primary || body.isPrimary;
     
-    if (!orgId || !tgChatId) {
+    if (!orgId) {
       return NextResponse.json(
-        { error: 'orgId and tgChatId are required' },
+        { error: 'org_id is required' },
+        { status: 400 }
+      );
+    }
+    
+    if (!tgChatId && !username) {
+      return NextResponse.json(
+        { error: 'Either tg_chat_id or username is required' },
         { status: 400 }
       );
     }
@@ -106,16 +118,40 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    let finalTgChatId = tgChatId;
+    let channelTitle = title;
+    
+    // If we have username but no tgChatId, try to resolve it via Telegram API
+    // For now, we'll create a placeholder that will be updated when the bot receives a message
+    if (!finalTgChatId && username) {
+      // Check if channel already exists by username
+      const { data: existingChannel } = await supabase
+        .from('telegram_channels')
+        .select('id, tg_chat_id')
+        .eq('username', username.toLowerCase())
+        .single();
+      
+      if (existingChannel) {
+        finalTgChatId = existingChannel.tg_chat_id;
+      } else {
+        // Create with a temporary negative ID (will be updated when bot receives data)
+        // For Telegram channels, IDs are typically negative and start with -100
+        // We'll use a random negative ID that will be replaced
+        finalTgChatId = -100000000000 - Math.floor(Math.random() * 1000000);
+        channelTitle = channelTitle || `@${username}`;
+      }
+    }
+    
     // Create or update channel
     const { data: channelId, error: channelError } = await supabase
       .rpc('upsert_telegram_channel', {
-        p_tg_chat_id: tgChatId,
-        p_title: title || `Channel ${tgChatId}`,
+        p_tg_chat_id: finalTgChatId,
+        p_title: channelTitle || `Channel ${finalTgChatId}`,
         p_username: username || null
       });
     
     if (channelError) {
-      logger.error({ error: channelError, tg_chat_id: tgChatId }, 'Failed to upsert channel');
+      logger.error({ error: channelError, tg_chat_id: finalTgChatId, username }, 'Failed to upsert channel');
       return NextResponse.json({ error: 'Failed to create channel' }, { status: 500 });
     }
     

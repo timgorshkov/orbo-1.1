@@ -13,16 +13,22 @@ export default function TabsLayout({ orgId, children }: TabsLayoutProps) {
   const pathname = usePathname()
   
   // Determine which tab is active based on pathname
+  const isChannelsActive = pathname.startsWith(`/p/${orgId}/telegram/channels`)
   const isWhatsAppActive = pathname.startsWith(`/p/${orgId}/telegram/whatsapp`)
   const isMaxActive = pathname.startsWith(`/p/${orgId}/telegram/max`)
-  // Telegram is active if not WhatsApp and not Max
-  const isTelegramActive = !isWhatsAppActive && !isMaxActive
+  // Telegram Groups is active if not Channels, WhatsApp, or Max
+  const isTelegramActive = !isChannelsActive && !isWhatsAppActive && !isMaxActive
   
   const tabs = [
     {
-      name: 'Telegram',
+      name: 'Группы',
       href: `/p/${orgId}/telegram`,
       isActive: isTelegramActive
+    },
+    {
+      name: 'Каналы',
+      href: `/p/${orgId}/telegram/channels`,
+      isActive: isChannelsActive
     },
     {
       name: 'WhatsApp',
