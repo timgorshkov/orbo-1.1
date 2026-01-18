@@ -12,6 +12,11 @@ import {
   isWebhookProcessed,
   recordWebhookProcessed 
 } from '@/lib/services/webhookProcessingService'
+import {
+  processChannelPost,
+  processEditedChannelPost,
+  processChannelReaction
+} from '@/lib/services/channelEventService'
 
 // Feature flag for optimized processing (set to true to enable)
 const USE_OPTIMIZED_PROCESSING = process.env.USE_OPTIMIZED_WEBHOOK === 'true';
@@ -67,9 +72,11 @@ export async function POST(req: NextRequest) {
     logger.debug({ 
       update_id: body?.update_id,
       has_message: !!body?.message,
+      has_channel_post: !!body?.channel_post,
+      has_edited_channel_post: !!body?.edited_channel_post,
       has_text: !!body?.message?.text,
       text_preview: body?.message?.text?.substring(0, 30),
-      chat_id: body?.message?.chat?.id
+      chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id
     }, 'Webhook body parsed');
     
     // ⚡ НЕМЕДЛЕННЫЙ ОТВЕТ: Telegram требует ответ в течение 60 секунд
@@ -656,17 +663,22 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     if (body.message_reaction) {
       const reaction = body.message_reaction;
       const chatId = reaction.chat?.id;
+      const chatType = reaction.chat?.type;
       const messageId = reaction.message_id;
       const userId = reaction.user?.id;
       
       logger.debug({ 
         chat_id: chatId,
+        chat_type: chatType,
         message_id: messageId,
         user_id: userId
       }, 'Processing reaction');
       
-      // Проверяем, что группа привязана к организации
-      if (chatId && messageId && userId) {
+      // Handle channel reactions separately
+      if (chatType === 'channel') {
+        await processChannelReaction(body.message_reaction);
+      } else if (chatId && messageId && userId) {
+        // Group reactions
         const { data: orgBindings } = await supabaseServiceRole
           .from('org_telegram_groups')
           .select('org_id')
@@ -682,6 +694,36 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           }
         }
       }
+    }
+    
+    // ========================================
+    // STEP 2.9: Обработка постов каналов (channel_post)
+    // ========================================
+    if (body.channel_post) {
+      logger.debug({
+        chat_id: body.channel_post.chat?.id,
+        chat_type: body.channel_post.chat?.type,
+        message_id: body.channel_post.message_id,
+        has_text: !!body.channel_post.text,
+        has_caption: !!body.channel_post.caption,
+        views: body.channel_post.views
+      }, 'Processing channel post');
+      
+      await processChannelPost(body.channel_post);
+    }
+    
+    // ========================================
+    // STEP 2.10: Обновление статистики постов (edited_channel_post)
+    // ========================================
+    if (body.edited_channel_post) {
+      logger.debug({
+        chat_id: body.edited_channel_post.chat?.id,
+        message_id: body.edited_channel_post.message_id,
+        views: body.edited_channel_post.views,
+        forwards: body.edited_channel_post.forward_count
+      }, 'Processing edited channel post');
+      
+      await processEditedChannelPost(body.edited_channel_post);
     }
     
     // Обработка команд бота и кодов авторизации (включая личные сообщения)
