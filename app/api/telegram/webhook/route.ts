@@ -257,6 +257,16 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       if (orgMapping && orgMapping.length > 0 && orgMapping[0].org_id) {
         orgId = orgMapping[0].org_id;
         
+        logger.info({
+          chat_id: msgChatId,
+          org_id: orgId,
+          user_id: body.message?.from?.id,
+          username: body.message?.from?.username,
+          first_name: body.message?.from?.first_name,
+          chat_type: body.message.chat.type,
+          message_text: body.message.text?.substring(0, 50)
+        }, '📝 [WEBHOOK] Processing message from org group');
+        
         // Use optimized processing if enabled
         if (USE_OPTIMIZED_PROCESSING && body.message?.from?.id && orgId) {
           // ⚡ Optimized path: 1 RPC call instead of 8-12 queries
@@ -277,7 +287,23 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           // Legacy path: multiple DB queries
           const eventProcessingService = createEventProcessingService();
           eventProcessingService.setSupabaseClient(supabaseServiceRole);
-          await eventProcessingService.processUpdate(body);
+          
+          try {
+            await eventProcessingService.processUpdate(body);
+            
+            logger.info({
+              chat_id: msgChatId,
+              user_id: body.message?.from?.id,
+              org_id: orgId
+            }, '✅ [WEBHOOK] Message processed successfully');
+          } catch (error) {
+            logger.error({
+              chat_id: msgChatId,
+              user_id: body.message?.from?.id,
+              org_id: orgId,
+              error: error instanceof Error ? error.message : String(error)
+            }, '❌ [WEBHOOK] Failed to process message');
+          }
           
           // Update participant activity stats (lightweight, no enrichment)
           if (body.message?.from?.id && orgId) {
@@ -285,6 +311,11 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             incrementGroupMessageCount(msgChatId).catch(() => {});
           }
         }
+      } else {
+        logger.debug({
+          chat_id: msgChatId,
+          chat_type: body.message.chat.type
+        }, '⏭️ [WEBHOOK] Group not in org, skipping');
       }
     }
     
