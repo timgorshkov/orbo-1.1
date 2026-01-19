@@ -61,17 +61,24 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
     const chatId = post.chat.id;
     const chatType = post.chat.type;
     
+    logger.info({
+      chat_id: chatId,
+      chat_type: chatType,
+      message_id: post.message_id,
+      chat_title: post.chat.title,
+      chat_username: post.chat.username,
+      has_text: !!post.text,
+      has_caption: !!post.caption,
+      text_preview: (post.text || post.caption || '').substring(0, 50),
+      views: post.views,
+      date: post.date
+    }, '📢 [CHANNEL] Processing channel post');
+    
     // Only process channel posts
     if (chatType !== 'channel') {
+      logger.debug({ chat_type: chatType }, '⏭️ [CHANNEL] Skipping - not a channel');
       return { success: true };
     }
-    
-    logger.debug({
-      chat_id: chatId,
-      message_id: post.message_id,
-      has_text: !!post.text,
-      has_caption: !!post.caption
-    }, 'Processing channel post');
     
     // Check if channel is tracked
     const { data: orgBindings } = await supabase
@@ -108,7 +115,13 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
     }
     
     // Upsert channel first
-    const { data: channelId, error: channelError } = await supabase
+    logger.info({ 
+      chat_id: chatId, 
+      title: post.chat.title,
+      username: post.chat.username 
+    }, '🔄 [CHANNEL] Upserting channel');
+    
+    const { data: rpcChannelResult, error: channelError } = await supabase
       .rpc('upsert_telegram_channel', {
         p_tg_chat_id: chatId,
         p_title: post.chat.title || `Channel ${chatId}`,
@@ -116,12 +129,37 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       });
     
     if (channelError) {
-      logger.error({ error: channelError, chat_id: chatId }, 'Failed to upsert channel');
+      logger.error({ error: channelError, chat_id: chatId }, '❌ [CHANNEL] Failed to upsert channel');
       return { success: false, error: channelError.message };
     }
     
+    // Extract channel ID from RPC result
+    let channelId: string;
+    if (typeof rpcChannelResult === 'string') {
+      channelId = rpcChannelResult;
+    } else if (Array.isArray(rpcChannelResult) && rpcChannelResult.length > 0) {
+      const firstItem = rpcChannelResult[0];
+      channelId = firstItem.upsert_telegram_channel || firstItem.id || firstItem;
+    } else if (rpcChannelResult && typeof rpcChannelResult === 'object') {
+      channelId = (rpcChannelResult as any).upsert_telegram_channel || (rpcChannelResult as any).id;
+    } else {
+      logger.error({ rpc_result: rpcChannelResult }, '❌ [CHANNEL] Unexpected RPC result format for channel upsert');
+      return { success: false, error: 'Failed to get channel ID' };
+    }
+    
+    logger.info({ channel_id: channelId, chat_id: chatId }, '✅ [CHANNEL] Channel upserted');
+    
     // Upsert post
-    const { error: postError } = await supabase
+    logger.info({ 
+      chat_id: chatId,
+      channel_id: channelId,
+      message_id: post.message_id,
+      has_media: hasMedia,
+      media_type: mediaType,
+      views: post.views || 0
+    }, '🔄 [CHANNEL] Upserting post');
+    
+    const { data: postResult, error: postError } = await supabase
       .rpc('upsert_channel_post', {
         p_channel_tg_id: chatId,
         p_message_id: post.message_id,
@@ -135,9 +173,21 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       });
     
     if (postError) {
-      logger.error({ error: postError, chat_id: chatId, message_id: post.message_id }, 'Failed to upsert post');
+      logger.error({ 
+        error: postError, 
+        chat_id: chatId, 
+        message_id: post.message_id,
+        error_code: (postError as any).code,
+        error_details: (postError as any).details
+      }, '❌ [CHANNEL] Failed to upsert post');
       return { success: false, error: postError.message };
     }
+    
+    logger.info({ 
+      chat_id: chatId, 
+      message_id: post.message_id,
+      post_result: postResult 
+    }, '✅ [CHANNEL] Post upserted successfully');
     
     logger.info({
       chat_id: chatId,
@@ -161,6 +211,13 @@ export async function processEditedChannelPost(post: TelegramMessage): Promise<{
   
   try {
     const chatId = post.chat.id;
+    
+    logger.info({
+      chat_id: chatId,
+      message_id: post.message_id,
+      views: post.views,
+      forward_count: post.forward_count
+    }, '📝 [CHANNEL] Processing edited channel post');
     
     if (post.chat.type !== 'channel') {
       return { success: true };
@@ -214,13 +271,18 @@ export async function processChannelReaction(reaction: TelegramReaction): Promis
     
     const userId = reaction.user?.id;
     const newReactions = reaction.new_reaction || [];
+    const oldReactions = reaction.old_reaction || [];
     
-    logger.debug({
+    logger.info({
       chat_id: chatId,
       message_id: reaction.message_id,
       user_id: userId,
-      reactions_count: newReactions.length
-    }, 'Processing channel reaction');
+      username: reaction.user?.username,
+      new_reactions_count: newReactions.length,
+      old_reactions_count: oldReactions.length,
+      new_emojis: newReactions.map(r => r.emoji || r.custom_emoji_id).join(', '),
+      old_emojis: oldReactions.map(r => r.emoji || r.custom_emoji_id).join(', ')
+    }, '❤️ [CHANNEL] Processing channel reaction');
     
     // Add each new reaction
     for (const r of newReactions) {

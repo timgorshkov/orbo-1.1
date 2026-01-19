@@ -676,7 +676,23 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       
       // Handle channel reactions separately
       if (chatType === 'channel') {
-        await processChannelReaction(body.message_reaction);
+        logger.info({
+          webhook: 'main',
+          chat_id: chatId,
+          message_id: messageId,
+          user_id: userId,
+          new_reaction: reaction.new_reaction,
+          old_reaction: reaction.old_reaction
+        }, '❤️ [WEBHOOK] Received channel reaction');
+        
+        const result = await processChannelReaction(body.message_reaction);
+        if (!result.success) {
+          logger.error({ 
+            error: result.error, 
+            chat_id: chatId,
+            message_id: messageId
+          }, '❌ [WEBHOOK] Failed to process channel reaction');
+        }
       } else if (chatId && messageId && userId) {
         // Group reactions
         const { data: orgBindings } = await supabaseServiceRole
@@ -700,30 +716,50 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     // STEP 2.9: Обработка постов каналов (channel_post)
     // ========================================
     if (body.channel_post) {
-      logger.debug({
+      logger.info({
+        webhook: 'main',
+        update_id: body.update_id,
         chat_id: body.channel_post.chat?.id,
         chat_type: body.channel_post.chat?.type,
+        chat_title: body.channel_post.chat?.title,
+        chat_username: body.channel_post.chat?.username,
         message_id: body.channel_post.message_id,
         has_text: !!body.channel_post.text,
         has_caption: !!body.channel_post.caption,
-        views: body.channel_post.views
-      }, 'Processing channel post');
+        text_length: body.channel_post.text?.length || 0,
+        views: body.channel_post.views,
+        date: body.channel_post.date
+      }, '📢 [WEBHOOK] Received channel_post');
       
-      await processChannelPost(body.channel_post);
+      const result = await processChannelPost(body.channel_post);
+      if (!result.success) {
+        logger.error({ 
+          error: result.error, 
+          chat_id: body.channel_post.chat?.id 
+        }, '❌ [WEBHOOK] Failed to process channel_post');
+      }
     }
     
     // ========================================
     // STEP 2.10: Обновление статистики постов (edited_channel_post)
     // ========================================
     if (body.edited_channel_post) {
-      logger.debug({
+      logger.info({
+        webhook: 'main',
+        update_id: body.update_id,
         chat_id: body.edited_channel_post.chat?.id,
         message_id: body.edited_channel_post.message_id,
         views: body.edited_channel_post.views,
         forwards: body.edited_channel_post.forward_count
-      }, 'Processing edited channel post');
+      }, '📝 [WEBHOOK] Received edited_channel_post');
       
-      await processEditedChannelPost(body.edited_channel_post);
+      const result = await processEditedChannelPost(body.edited_channel_post);
+      if (!result.success) {
+        logger.error({ 
+          error: result.error, 
+          chat_id: body.edited_channel_post.chat?.id 
+        }, '❌ [WEBHOOK] Failed to process edited_channel_post');
+      }
     }
     
     // Обработка команд бота и кодов авторизации (включая личные сообщения)
