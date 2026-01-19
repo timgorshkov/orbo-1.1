@@ -35,6 +35,7 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
       \"channel_post\",
       \"edited_channel_post\",
       \"message_reaction\",
+      \"message_reaction_count\",
       \"my_chat_member\",
       \"chat_member\"
     ],

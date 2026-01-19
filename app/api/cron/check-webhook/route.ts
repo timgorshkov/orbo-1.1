@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
         body: JSON.stringify({ 
           url: webhookUrl,
           secret_token: webhookSecret,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'my_chat_member', 'chat_member'],
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member'],
           max_connections: 40,
           drop_pending_updates: false // Не удаляем необработанные обновления
         })

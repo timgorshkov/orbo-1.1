@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
     if (body.channel_post) updateTypes.push('channel_post');
     if (body.edited_channel_post) updateTypes.push('edited_channel_post');
     if (body.message_reaction) updateTypes.push('message_reaction');
+    if (body.message_reaction_count) updateTypes.push('message_reaction_count');
     if (body.my_chat_member) updateTypes.push('my_chat_member');
     if (body.chat_member) updateTypes.push('chat_member');
     if (body.callback_query) updateTypes.push('callback_query');
@@ -84,8 +85,8 @@ export async function POST(req: NextRequest) {
     logger.info({ 
       update_id: body?.update_id,
       update_types: updateTypes,
-      chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id || body?.my_chat_member?.chat?.id || body?.message_reaction?.chat?.id,
-      chat_type: body?.message?.chat?.type || body?.channel_post?.chat?.type || body?.my_chat_member?.chat?.type || body?.message_reaction?.chat?.type,
+      chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id || body?.my_chat_member?.chat?.id || body?.message_reaction?.chat?.id || body?.message_reaction_count?.chat?.id,
+      chat_type: body?.message?.chat?.type || body?.channel_post?.chat?.type || body?.my_chat_member?.chat?.type || body?.message_reaction?.chat?.type || body?.message_reaction_count?.chat?.type,
       user_id: body?.message?.from?.id || body?.message_reaction?.user?.id,
       has_text: !!(body?.message?.text || body?.channel_post?.text)
     }, '📨 [WEBHOOK] Received update');
@@ -719,6 +720,59 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           if (userId) {
             updateParticipantActivity(userId, orgBindings[0].org_id).catch(() => {});
           }
+        }
+      }
+    }
+    
+    // ========================================
+    // STEP 2.8.1: Обработка агрегированных реакций (message_reaction_count)
+    // ========================================
+    if (body.message_reaction_count) {
+      const reactionCount = body.message_reaction_count;
+      const chatId = reactionCount.chat?.id;
+      const chatType = reactionCount.chat?.type;
+      const messageId = reactionCount.message_id;
+      
+      logger.info({
+        webhook: 'main',
+        chat_id: chatId,
+        chat_type: chatType,
+        message_id: messageId,
+        reactions: reactionCount.reactions
+      }, '📊 [WEBHOOK] Received message_reaction_count');
+      
+      // Handle only for channels
+      if (chatType === 'channel') {
+        try {
+          // Update post reactions count in database
+          const totalReactions = reactionCount.reactions?.reduce((sum: number, r: any) => sum + (r.count || 0), 0) || 0;
+          
+          const { error: updateError } = await supabaseServiceRole
+            .rpc('update_post_reactions_count', {
+              p_channel_tg_id: chatId,
+              p_message_id: messageId,
+              p_reactions_count: totalReactions
+            });
+          
+          if (updateError) {
+            logger.error({ 
+              error: updateError, 
+              chat_id: chatId,
+              message_id: messageId
+            }, '❌ [WEBHOOK] Failed to update post reactions count');
+          } else {
+            logger.info({ 
+              chat_id: chatId,
+              message_id: messageId,
+              total_reactions: totalReactions
+            }, '✅ [WEBHOOK] Post reactions count updated');
+          }
+        } catch (error) {
+          logger.error({ 
+            error, 
+            chat_id: chatId,
+            message_id: messageId
+          }, '❌ [WEBHOOK] Error processing message_reaction_count');
         }
       }
     }

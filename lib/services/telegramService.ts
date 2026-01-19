@@ -54,7 +54,7 @@ export class TelegramService {
     return this.callApi('setWebhook', {
       url,
       secret_token: secretToken,
-      allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'my_chat_member', 'chat_member']
+      allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member']
     });
   }
 
