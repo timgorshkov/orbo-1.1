@@ -311,6 +311,74 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             incrementGroupMessageCount(msgChatId).catch(() => {});
           }
         }
+        
+        // STEP 2.3: Check if this is a discussion group for a channel
+        // If so, track as channel comment
+        const { data: linkedChannel } = await supabaseServiceRole
+          .from('telegram_channels')
+          .select('id, tg_chat_id, title')
+          .eq('linked_chat_id', msgChatId)
+          .maybeSingle();
+        
+        if (linkedChannel && body.message?.from?.id) {
+          const userId = body.message.from.id;
+          const username = body.message.from.username || null;
+          const firstName = body.message.from.first_name || null;
+          const lastName = body.message.from.last_name || null;
+          
+          logger.info({
+            chat_id: msgChatId,
+            channel_id: linkedChannel.tg_chat_id,
+            user_id: userId,
+            username,
+            first_name: firstName
+          }, '💬 [WEBHOOK] Channel comment detected');
+          
+          try {
+            // Update/create channel subscriber
+            await supabaseServiceRole.rpc('upsert_channel_subscriber_from_comment', {
+              p_channel_tg_id: linkedChannel.tg_chat_id,
+              p_tg_user_id: userId,
+              p_username: username,
+              p_first_name: firstName,
+              p_last_name: lastName
+            });
+            
+            // Create activity_event for channel comment
+            if (orgId) {
+              const messageId = body.message.message_id;
+              const text = body.message.text || body.message.caption || '';
+              const replyToMessageId = body.message.reply_to_message?.message_id || null;
+              
+              await supabaseServiceRole.from('activity_events').insert({
+                org_id: orgId,
+                tg_chat_id: msgChatId,
+                tg_user_id: userId,
+                tg_message_id: messageId,
+                event_type: 'channel_comment',
+                chars_count: text.length,
+                meta: {
+                  channel_id: linkedChannel.tg_chat_id,
+                  channel_title: linkedChannel.title,
+                  reply_to_message_id: replyToMessageId,
+                  text_preview: text.substring(0, 100)
+                }
+              });
+            }
+            
+            logger.info({
+              channel_id: linkedChannel.tg_chat_id,
+              user_id: userId,
+              org_id: orgId
+            }, '✅ [WEBHOOK] Channel subscriber and activity_event updated');
+          } catch (error) {
+            logger.error({
+              error: error instanceof Error ? error.message : String(error),
+              channel_id: linkedChannel.tg_chat_id,
+              user_id: userId
+            }, '❌ [WEBHOOK] Failed to update channel subscriber');
+          }
+        }
       } else {
         logger.debug({
           chat_id: msgChatId,
