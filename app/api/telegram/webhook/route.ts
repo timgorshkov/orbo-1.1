@@ -69,15 +69,26 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     
-    logger.debug({ 
+    // Определяем тип update
+    const updateTypes = [];
+    if (body.message) updateTypes.push('message');
+    if (body.edited_message) updateTypes.push('edited_message');
+    if (body.channel_post) updateTypes.push('channel_post');
+    if (body.edited_channel_post) updateTypes.push('edited_channel_post');
+    if (body.message_reaction) updateTypes.push('message_reaction');
+    if (body.my_chat_member) updateTypes.push('my_chat_member');
+    if (body.chat_member) updateTypes.push('chat_member');
+    if (body.callback_query) updateTypes.push('callback_query');
+    if (body.inline_query) updateTypes.push('inline_query');
+    
+    logger.info({ 
       update_id: body?.update_id,
-      has_message: !!body?.message,
-      has_channel_post: !!body?.channel_post,
-      has_edited_channel_post: !!body?.edited_channel_post,
-      has_text: !!body?.message?.text,
-      text_preview: body?.message?.text?.substring(0, 30),
-      chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id
-    }, 'Webhook body parsed');
+      update_types: updateTypes,
+      chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id || body?.my_chat_member?.chat?.id || body?.message_reaction?.chat?.id,
+      chat_type: body?.message?.chat?.type || body?.channel_post?.chat?.type || body?.my_chat_member?.chat?.type || body?.message_reaction?.chat?.type,
+      user_id: body?.message?.from?.id || body?.message_reaction?.user?.id,
+      has_text: !!(body?.message?.text || body?.channel_post?.text)
+    }, '📨 [WEBHOOK] Received update');
     
     // ⚡ НЕМЕДЛЕННЫЙ ОТВЕТ: Telegram требует ответ в течение 60 секунд
     // Обрабатываем в фоне без блокировки ответа
