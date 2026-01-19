@@ -354,13 +354,13 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 org_id: orgId,
                 tg_chat_id: msgChatId,
                 tg_user_id: userId,
-                tg_message_id: messageId,
+                message_id: messageId,
+                reply_to_message_id: replyToMessageId,
                 event_type: 'channel_comment',
                 chars_count: text.length,
                 meta: {
                   channel_id: linkedChannel.tg_chat_id,
                   channel_title: linkedChannel.title,
-                  reply_to_message_id: replyToMessageId,
                   text_preview: text.substring(0, 100)
                 }
               });
