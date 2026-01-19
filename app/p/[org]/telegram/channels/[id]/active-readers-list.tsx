@@ -9,9 +9,8 @@ interface Reader {
   username: string | null
   first_name: string | null
   last_name: string | null
-  total_reactions: number
-  total_comments: number
-  engagement_score: number
+  reactions_count: number
+  comments_count: number
   last_activity_at: string | null
 }
 
@@ -116,15 +115,15 @@ export function ActiveReadersList({ readers }: ActiveReadersListProps) {
                 <div className="flex items-center gap-3 text-xs">
                   <span className="flex items-center gap-1 text-pink-600" title="Реакции">
                     <Heart className="h-3.5 w-3.5" />
-                    {reader.total_reactions}
+                    {reader.reactions_count}
                   </span>
                   <span className="flex items-center gap-1 text-purple-600" title="Комментарии">
                     <MessageCircle className="h-3.5 w-3.5" />
-                    {reader.total_comments}
+                    {reader.comments_count}
                   </span>
-                  <span className="flex items-center gap-1 text-amber-600 font-medium" title="Engagement Score">
+                  <span className="flex items-center gap-1 text-amber-600 font-medium" title="Активность">
                     <Star className="h-3.5 w-3.5" />
-                    {reader.engagement_score.toFixed(1)}
+                    {(reader.reactions_count + reader.comments_count)}
                   </span>
                 </div>
                 

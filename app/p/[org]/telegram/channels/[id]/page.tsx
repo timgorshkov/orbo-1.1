@@ -127,13 +127,12 @@ export default async function ChannelDetailPage({
         username,
         first_name,
         last_name,
-        total_reactions,
-        total_comments,
-        engagement_score,
+        reactions_count,
+        comments_count,
         last_activity_at
       `)
       .eq('channel_id', channelId)
-      .order('engagement_score', { ascending: false })
+      .order('reactions_count', { ascending: false })
       .limit(20)
     
     const defaultStats: ChannelStats = {
