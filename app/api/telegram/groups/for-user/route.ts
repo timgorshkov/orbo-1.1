@@ -221,7 +221,21 @@ export async function GET(request: Request) {
               return { data: [] as any[], error };
             }
 
-            return { data: data || [], error: null };
+            // 📢 Исключаем каналы: фильтруем чаты, которые есть в telegram_channels
+            let filteredData = data || [];
+            if (filteredData.length > 0) {
+              const { data: channelChatIds } = await supabaseService
+                .from('telegram_channels')
+                .select('tg_chat_id')
+                .in('tg_chat_id', filteredData.map(g => g.tg_chat_id));
+              
+              if (channelChatIds && channelChatIds.length > 0) {
+                const channelIds = new Set(channelChatIds.map(c => c.tg_chat_id));
+                filteredData = filteredData.filter(g => !channelIds.has(g.tg_chat_id));
+              }
+            }
+
+            return { data: filteredData, error: null };
           } catch (fetchError: any) {
             return { data: [] as any[], error: fetchError };
           }

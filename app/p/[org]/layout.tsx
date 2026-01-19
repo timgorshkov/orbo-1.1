@@ -92,6 +92,21 @@ export default async function PublicOrgLayout({
     }
   }
 
+  // Load telegram channels
+  let telegramChannels: any[] = [];
+  if (role === 'owner' || role === 'admin') {
+    const { data: channelsResult, error: channelsError } = await adminSupabase
+      .rpc('get_org_channels', { p_org_id: org.id });
+    
+    if (!channelsError && channelsResult) {
+      telegramChannels = channelsResult.sort((a: any, b: any) => {
+        const titleA = a.title || '';
+        const titleB = b.title || '';
+        return titleA.localeCompare(titleB);
+      });
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* Desktop Sidebar */}
@@ -102,6 +117,7 @@ export default async function PublicOrgLayout({
           orgLogoUrl={org.logo_url}
           role={role}
           telegramGroups={telegramGroups}
+          telegramChannels={telegramChannels}
           userProfile={userProfile}
         />
       </div>
@@ -120,6 +136,7 @@ export default async function PublicOrgLayout({
             orgLogoUrl={org.logo_url}
             role={role}
             telegramGroups={telegramGroups}
+            telegramChannels={telegramChannels}
             userProfile={userProfile}
           />
         </div>

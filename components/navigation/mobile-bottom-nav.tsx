@@ -46,6 +46,7 @@ interface MobileBottomNavProps {
   orgLogoUrl: string | null
   role: UserRole
   telegramGroups?: any[]
+  telegramChannels?: any[]
   userProfile?: {
     id: string
     email: string | null
@@ -62,6 +63,7 @@ export default function MobileBottomNav({
   orgLogoUrl,
   role,
   telegramGroups = [],
+  telegramChannels = [],
   userProfile,
 }: MobileBottomNavProps) {
   const pathname = usePathname()

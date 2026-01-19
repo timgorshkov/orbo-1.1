@@ -152,6 +152,24 @@ export default async function OrgLayout({
     }, 'Loaded telegram groups');
   }
 
+  // Load telegram channels
+  let telegramChannels: any[] = [];
+  const { data: channelsResult, error: channelsError } = await supabaseAdmin
+    .rpc('get_org_channels', { p_org_id: org.id });
+  
+  if (!channelsError && channelsResult) {
+    telegramChannels = channelsResult.sort((a: any, b: any) => {
+      const titleA = a.title || '';
+      const titleB = b.title || '';
+      return titleA.localeCompare(titleB);
+    });
+    
+    logger.debug({ 
+      org_id: org.id,
+      channels_count: telegramChannels.length
+    }, 'Loaded telegram channels');
+  }
+
   participant = participantResult.data
 
   // Формируем профиль пользователя
@@ -187,6 +205,7 @@ export default async function OrgLayout({
           orgLogoUrl={org.logo_url}
           role={role}
           telegramGroups={telegramGroups}
+          telegramChannels={telegramChannels}
           userProfile={userProfile}
         />
       </div>
@@ -203,6 +222,7 @@ export default async function OrgLayout({
         orgLogoUrl={org.logo_url}
         role={role}
         telegramGroups={telegramGroups}
+        telegramChannels={telegramChannels}
         userProfile={userProfile}
       />
       
