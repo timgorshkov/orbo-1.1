@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Create or update channel
-    const { data: channelId, error: channelError } = await supabase
+    const { data: rpcResult, error: channelError } = await supabase
       .rpc('upsert_telegram_channel', {
         p_tg_chat_id: finalTgChatId,
         p_title: channelTitle || `Channel ${finalTgChatId}`,
@@ -154,6 +154,24 @@ export async function POST(request: NextRequest) {
       logger.error({ error: channelError, tg_chat_id: finalTgChatId, username }, 'Failed to upsert channel');
       return NextResponse.json({ error: 'Failed to create channel' }, { status: 500 });
     }
+    
+    // Extract channel ID from RPC result
+    // RPC can return either a UUID directly or an array with objects
+    let channelId: string;
+    if (typeof rpcResult === 'string') {
+      channelId = rpcResult;
+    } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
+      // Handle array result like [{"upsert_telegram_channel": "uuid"}]
+      const firstItem = rpcResult[0];
+      channelId = firstItem.upsert_telegram_channel || firstItem.id || firstItem;
+    } else if (rpcResult && typeof rpcResult === 'object') {
+      channelId = (rpcResult as any).upsert_telegram_channel || (rpcResult as any).id;
+    } else {
+      logger.error({ rpc_result: rpcResult }, 'Unexpected RPC result format');
+      return NextResponse.json({ error: 'Failed to get channel ID' }, { status: 500 });
+    }
+    
+    logger.info({ channel_id: channelId, rpc_result: rpcResult }, 'Channel upserted');
     
     // Link channel to organization
     const { error: linkError } = await supabase
