@@ -745,7 +745,15 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       if (chatType === 'channel') {
         try {
           // Update post reactions count in database
-          const totalReactions = reactionCount.reactions?.reduce((sum: number, r: any) => sum + (r.count || 0), 0) || 0;
+          // Telegram API sends r.total_count, not r.count
+          const totalReactions = reactionCount.reactions?.reduce((sum: number, r: any) => sum + (r.total_count || 0), 0) || 0;
+          
+          logger.debug({ 
+            chat_id: chatId,
+            message_id: messageId,
+            reactions_array: reactionCount.reactions,
+            calculated_total: totalReactions
+          }, '🔢 [WEBHOOK] Calculating reactions count');
           
           const { error: updateError } = await supabaseServiceRole
             .rpc('update_post_reactions_count', {
