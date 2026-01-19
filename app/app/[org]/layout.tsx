@@ -154,7 +154,7 @@ export default async function OrgLayout({
 
   // Load telegram channels
   let telegramChannels: any[] = [];
-  const { data: channelsResult, error: channelsError } = await supabaseAdmin
+  const { data: channelsResult, error: channelsError } = await adminSupabase
     .rpc('get_org_channels', { p_org_id: org.id });
   
   if (!channelsError && channelsResult) {
