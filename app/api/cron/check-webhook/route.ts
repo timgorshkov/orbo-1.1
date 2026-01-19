@@ -94,6 +94,8 @@ export async function GET(request: NextRequest) {
     // 3. Восстанавливаем webhook
     logger.info('Restoring webhook')
     
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    
     const setWebhookResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/setWebhook`,
       {
@@ -101,6 +103,8 @@ export async function GET(request: NextRequest) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           url: webhookUrl,
+          secret_token: webhookSecret,
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'my_chat_member', 'chat_member'],
           max_connections: 40,
           drop_pending_updates: false // Не удаляем необработанные обновления
         })

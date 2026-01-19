@@ -157,7 +157,7 @@ export async function POST(request: Request) {
       mainBot.setWebhookAdvanced({
         url: mainWebhookUrl,
         secret_token: webhookSecret,
-        allowed_updates: ['message', 'chat_member', 'my_chat_member', 'message_reaction'],
+        allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'my_chat_member', 'chat_member'],
         drop_pending_updates: false,
         max_connections: 40
       }),
