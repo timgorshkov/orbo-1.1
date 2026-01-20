@@ -85,19 +85,21 @@ npm run dev
 ### Технологический стек
 
 **Frontend:**
-- Next.js 14 (App Router)
-- React 18
+- Next.js 15 (App Router)
+- React 19
 - TypeScript
 - TailwindCSS
 
 **Backend:**
 - Next.js API Routes
-- Supabase (PostgreSQL + Auth + Storage)
-- Vercel (Hosting)
+- PostgreSQL (Selectel Managed Database)
+- NextAuth.js v5 (Auth)
+- Selectel S3 (Storage)
+- Docker (Deployment)
 
 **Интеграции:**
-- Telegram Bot API (2 бота)
-- Mailgun (Email)
+- Telegram Bot API
+- Unisender (Email)
 
 ### Структура проекта
 
@@ -128,8 +130,9 @@ orbo-1.1/
 ### ✅ Реализовано
 
 - **Авторизация:**
+  - OAuth (Google, Yandex)
   - Email (magic link)
-  - Telegram коды (для участников групп)
+  - Telegram 6-значные коды (для участников групп)
   - Теневые профили (автосоздание из Telegram админов)
 
 - **Организации:**
@@ -187,30 +190,44 @@ orbo-1.1/
 
 ### Требования
 
-- Node.js 18+
+- Node.js 20+
 - npm или yarn
-- Supabase account
-- Telegram Bot tokens (2 бота)
-- Mailgun account
+- Docker (для деплоя)
+- PostgreSQL database
+- Telegram Bot token
+- Selectel S3 bucket (или другой S3-совместимый storage)
 
 ### Environment Variables
 
 ```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-DATABASE_URL=
+# PostgreSQL Database
+DATABASE_URL=postgresql://user:password@host:5432/orbo
+
+# NextAuth.js
+AUTH_SECRET=your_secret
+AUTH_URL=https://your-domain.ru
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+YANDEX_CLIENT_ID=...
+YANDEX_CLIENT_SECRET=...
+
+# Selectel S3 Storage
+STORAGE_PROVIDER=s3
+SELECTEL_ACCESS_KEY=...
+SELECTEL_SECRET_KEY=...
+SELECTEL_BUCKET=orbo-materials
+SELECTEL_ENDPOINT=https://s3.storage.selcloud.ru
 
 # Telegram
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_NOTIFICATIONS_BOT_TOKEN=
-TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_WEBHOOK_SECRET=...
 
 # Email
-MAILGUN_API_KEY=
-MAILGUN_DOMAIN=
+EMAIL_PROVIDER=unisender
+UNISENDER_API_KEY=...
 ```
+
+Полный список переменных: см. `deploy/env.example`
 
 ### Команды
 

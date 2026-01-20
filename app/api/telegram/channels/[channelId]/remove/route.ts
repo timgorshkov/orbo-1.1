@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
-import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/services/adminActionsService';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 export async function DELETE(
   request: NextRequest,
@@ -128,12 +128,13 @@ export async function DELETE(
     await logAdminAction({
       orgId,
       userId: user.id,
-      action: AdminActions.REMOVE_TELEGRAM_GROUP, // Reuse existing action or create new one
-      resourceType: 'telegram_channel' as ResourceTypes,
+      action: AdminActions.REMOVE_TELEGRAM_GROUP, // Reuse for channels too
+      resourceType: ResourceTypes.TELEGRAM_GROUP, // Use same type for channels
       resourceId: channelId,
       metadata: {
         tg_chat_id: channel.tg_chat_id,
-        channel_title: channel.title
+        channel_title: channel.title,
+        is_channel: true // Flag to distinguish from groups
       }
     });
     
