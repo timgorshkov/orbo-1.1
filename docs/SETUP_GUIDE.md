@@ -1,167 +1,290 @@
-# Руководство по настройке Telegram-авторизации
+# Руководство по настройке Orbo
 
-## 📋 Список задач для запуска
+> **Версия:** 3.0 (Январь 2026)
+> 
+> Полная инструкция по развёртыванию и настройке Orbo.
 
-### 1. Применить миграцию БД ✅
+## 📋 Требования
+
+### Системные требования
+- Node.js 20+
+- Docker и Docker Compose (для production)
+- PostgreSQL 16+ (или managed DB)
+
+### Внешние сервисы
+- **Selectel S3** - файловое хранилище
+- **Telegram Bot** - интеграция с Telegram
+- **OAuth провайдеры** - Google и/или Yandex
+- **Email провайдер** - Unisender или Mailgun
+
+---
+
+## 🚀 Быстрый старт (Development)
+
+### 1. Клонирование и установка
+
 ```bash
-node db/init.js db/migrations/23_organization_invites.sql
+git clone <repository-url>
+cd orbo-1.1
+npm install
 ```
 
-### 2. Настроить бота в Telegram
+### 2. Настройка переменных окружения
 
-#### Важно: Можно использовать существующий бот!
-Для Telegram Login Widget можно использовать уже существующий бот, например `@orbo_community_bot` или `@orbo_assistant_bot`. Это **не помешает** его текущей работе с группами.
-
-#### Шаг 1: Настроить домен для Login Widget
-```
-1. В @BotFather отправить /setdomain
-2. Выбрать ваш бот (@orbo_community_bot)
-3. Ввести ваш домен (например: yourapp.com или localhost для теста)
+```bash
+cp deploy/env.example .env.local
 ```
 
-#### Шаг 2: Получить токен (если ещё не получен)
-```
-1. В @BotFather отправить /token
-2. Выбрать @orbo_community_bot
-3. Сохранить BOT_TOKEN
-```
-
-**Рекомендация:** Используйте `@orbo_community_bot` - название лучше подходит для сообщества пользователей.
-
-**Важно:** Для локальной разработки можно использовать `localhost`, но для продакшена нужен реальный домен с HTTPS.
-
-### 3. Настроить переменные окружения
-
-Создайте `.env.local` (или обновите существующий):
+Минимальные переменные для development:
 
 ```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# Database (можно использовать Docker)
+DATABASE_URL=postgresql://orbo:password@localhost:5432/orbo
 
-# App URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000  # для dev
-# NEXT_PUBLIC_APP_URL=https://app.orbo.ru  # для prod
+# NextAuth
+AUTH_SECRET=dev-secret-change-in-production
+AUTH_URL=http://localhost:3000
 
-# Telegram Bot
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name  # БЕЗ @
-TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-TELEGRAM_WEBHOOK_SECRET=your_secret_replace_in_production
+# Telegram (получить от @BotFather)
+TELEGRAM_BOT_TOKEN=your_bot_token
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name
+TELEGRAM_WEBHOOK_SECRET=dev-secret
+
+# Storage (можно использовать Supabase Storage временно)
+STORAGE_PROVIDER=supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_key
 ```
 
-### 4. Перезапустить dev-сервер
+### 3. Запуск PostgreSQL (если нет локального)
+
+```bash
+docker run -d \
+  --name orbo-postgres \
+  -e POSTGRES_USER=orbo \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=orbo \
+  -p 5432:5432 \
+  postgres:16
+```
+
+### 4. Применение миграций
+
+```bash
+npm run db:migrate
+# или вручную: psql -f db/migrations/*.sql
+```
+
+### 5. Запуск dev сервера
+
 ```bash
 npm run dev
 ```
 
-### 5. Протестировать
-
-#### Тест 1: Создание приглашения
-```
-1. Войти как admin/owner
-2. Перейти на /app/[org]/settings/invites
-3. Создать приглашение
-4. Скопировать ссылку
-```
-
-#### Тест 2: Использование приглашения
-```
-1. Открыть ссылку в режиме инкогнито
-2. Нажать "Войти через Telegram"
-3. Подтвердить в Telegram
-4. Проверить, что участник попал в организацию
-```
-
-#### Тест 3: Публичное событие
-```
-1. Создать публичное событие
-2. Открыть ссылку /p/[org]/events/[id]
-3. Нажать "Зарегистрироваться"
-4. Войти через Telegram в модальном окне
-5. Проверить регистрацию
-```
-
-## 🚨 Возможные проблемы и решения
-
-### Проблема: Widget не отображается
-**Причина:** Домен не настроен в BotFather  
-**Решение:** Выполнить `/setdomain` в @BotFather
-
-### Проблема: "Invalid Telegram authentication"
-**Причина:** Неверный BOT_TOKEN  
-**Решение:** Проверить токен в .env.local
-
-### Проблема: "No access to organization"
-**Причина:** Пользователь не в Telegram-группах и нет валидного invite  
-**Решение:** Использовать ссылку-приглашение
-
-### Проблема: ERR_BLOCKED_BY_CLIENT (AdBlock)
-**Причина:** Блокировщик рекламы блокирует telegram-widget.js  
-**Решение:** Отключить AdBlock для вашего домена
-
-## 📦 Созданные файлы
-
-### Миграция БД
-- `db/migrations/23_organization_invites.sql`
-
-### Компоненты
-- `components/auth/telegram-login.tsx` - Telegram Widget
-- `components/settings/invites-manager.tsx` - UI управления
-
-### API Endpoints
-- `app/api/auth/telegram/route.ts` - OAuth авторизация
-- `app/api/organizations/[id]/invites/route.ts` - CRUD приглашений
-- `app/api/organizations/[id]/invites/[inviteId]/route.ts` - Управление
-
-### Страницы
-- `app/join/[org]/[token]/page.tsx` - Приглашения (server)
-- `app/join/[org]/[token]/client.tsx` - Приглашения (client)
-- `app/login/telegram/page.tsx` - Логин через Telegram
-- `app/app/[org]/settings/invites/page.tsx` - Управление приглашениями
-
-### Обновлённые файлы
-- `components/events/public-event-detail.tsx` - Добавлена Telegram-авторизация
-
-### Документация
-- `MEMBER_AUTH_DESIGN.md` - Дизайн системы
-- `TELEGRAM_AUTH_COMPLETE.md` - Полная документация
-- `TELEGRAM_AUTH_STATUS.md` - Статус реализации
-- `SETUP_GUIDE.md` - Этот файл
-
-## 🎯 Следующие шаги
-
-### Обязательно перед продакшеном:
-1. [ ] Настроить реальный домен в BotFather
-2. [ ] Обновить NEXT_PUBLIC_APP_URL на продакшен URL (https://app.orbo.ru)
-3. [ ] Сгенерировать secure TELEGRAM_WEBHOOK_SECRET
-4. [ ] Протестировать на всех устройствах (Desktop, iOS, Android)
-5. [ ] Настроить мониторинг использования приглашений
-
-### Опционально:
-1. [ ] Создать страницу /help с инструкциями
-2. [ ] Добавить email-уведомления о новых участниках
-3. [ ] Настроить аналитику конверсии
-
-## 📞 Поддержка
-
-При возникновении проблем:
-1. Проверьте логи сервера (`npm run dev`)
-2. Проверьте Network tab в браузере
-3. Проверьте настройки бота в @BotFather
-4. Убедитесь, что все переменные окружения установлены
-
-## 🎉 Готово!
-
-После выполнения всех шагов у вас будет:
-- ✅ Telegram-авторизация для участников
-- ✅ Система приглашений с гибкими настройками
-- ✅ Регистрация на публичные события через Telegram
-- ✅ Автоматическая связка с Telegram-группами
-- ✅ UI управления приглашениями для админов
+Откройте http://localhost:3000
 
 ---
 
-**Дата создания:** 2025-10-09  
-**Версия:** 1.0
+## 🏗️ Production Deployment
 
+### Docker Compose (рекомендуется)
+
+```bash
+cd deploy
+cp env.example .env
+# Отредактируйте .env
+docker compose up -d
+```
+
+Подробная инструкция: `deploy/STEP_BY_STEP_GUIDE.md`
+
+---
+
+## 🔧 Настройка компонентов
+
+### 1. PostgreSQL Database
+
+#### Selectel Managed Database (рекомендуется для России)
+
+1. Создайте PostgreSQL в панели Selectel
+2. Получите connection string
+3. Установите в `.env`:
+
+```env
+DATABASE_URL=postgresql://user:password@host:5432/orbo?sslmode=require
+```
+
+#### Self-hosted PostgreSQL
+
+```bash
+# В docker-compose уже включён PostgreSQL
+docker compose up -d postgres
+```
+
+### 2. NextAuth.js (Авторизация)
+
+#### Google OAuth
+
+1. Откройте [Google Cloud Console](https://console.developers.google.com/)
+2. Создайте проект или выберите существующий
+3. APIs & Services → Credentials → Create OAuth Client ID
+4. Application type: Web application
+5. Authorized redirect URIs: `https://your-domain.ru/api/auth/callback/google`
+6. Скопируйте Client ID и Client Secret
+
+```env
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxx
+```
+
+#### Yandex OAuth
+
+1. Откройте [Yandex OAuth](https://oauth.yandex.ru/)
+2. Создайте новое приложение
+3. Тип: Веб-сервисы
+4. Redirect URI: `https://your-domain.ru/api/auth/callback/yandex`
+5. Права: `login:email`, `login:info`, `login:avatar`
+
+```env
+YANDEX_CLIENT_ID=xxx
+YANDEX_CLIENT_SECRET=xxx
+```
+
+#### Auth Secret
+
+```bash
+# Генерация секрета
+openssl rand -base64 32
+```
+
+```env
+AUTH_SECRET=your_generated_secret
+AUTH_URL=https://your-domain.ru
+AUTH_TRUST_HOST=true
+```
+
+### 3. Selectel S3 Storage
+
+1. Зайдите в [my.selectel.ru](https://my.selectel.ru)
+2. Объектное хранилище → Создать контейнер
+3. Тип: Публичный
+4. Создайте сервисного пользователя для S3 доступа
+5. Получите Access Key и Secret Key
+
+```env
+STORAGE_PROVIDER=s3
+SELECTEL_ACCESS_KEY=your_access_key
+SELECTEL_SECRET_KEY=your_secret_key
+SELECTEL_BUCKET=orbo-materials
+SELECTEL_ENDPOINT=https://s3.storage.selcloud.ru
+SELECTEL_REGION=ru-1
+SELECTEL_PUBLIC_URL_BASE=https://your-container-id.selstorage.ru
+```
+
+### 4. Telegram Bot
+
+1. Напишите [@BotFather](https://t.me/BotFather) в Telegram
+2. Создайте нового бота: `/newbot`
+3. Получите токен
+
+```env
+TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name
+```
+
+4. Настройте webhook:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://your-domain.ru/api/telegram/webhook" \
+  -d "secret_token=<WEBHOOK_SECRET>"
+```
+
+### 5. Email (Unisender)
+
+1. Зарегистрируйтесь на [Unisender](https://www.unisender.com/)
+2. Получите API ключ
+
+```env
+EMAIL_PROVIDER=unisender
+UNISENDER_API_KEY=your_api_key
+UNISENDER_FROM_EMAIL=noreply@your-domain.ru
+UNISENDER_FROM_NAME=Orbo
+```
+
+---
+
+## 🔍 Проверка работоспособности
+
+### Health Check
+
+```bash
+curl https://your-domain.ru/api/health
+```
+
+Ожидаемый ответ:
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "version": "0.1.0"
+}
+```
+
+### Telegram Webhook
+
+```bash
+curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
+```
+
+---
+
+## 🚨 Решение проблем
+
+### Проблема: Database connection failed
+
+**Причина:** Неверный DATABASE_URL или БД недоступна
+
+**Решение:**
+1. Проверьте формат URL: `postgresql://user:pass@host:port/db`
+2. Проверьте доступность хоста: `psql $DATABASE_URL`
+3. Проверьте SSL: добавьте `?sslmode=require` если нужно
+
+### Проблема: OAuth redirect mismatch
+
+**Причина:** Redirect URI не совпадает с настроенным в OAuth провайдере
+
+**Решение:**
+1. Проверьте AUTH_URL в .env
+2. Добавьте правильный redirect URI в Google/Yandex консоли
+3. Формат: `https://your-domain.ru/api/auth/callback/google`
+
+### Проблема: Storage upload failed
+
+**Причина:** Неверные credentials или права доступа
+
+**Решение:**
+1. Проверьте Access Key и Secret Key
+2. Убедитесь что bucket существует
+3. Проверьте права сервисного пользователя
+
+### Проблема: Telegram webhook not receiving
+
+**Причина:** Webhook не настроен или URL недоступен
+
+**Решение:**
+1. Проверьте webhook: `getWebhookInfo`
+2. URL должен быть HTTPS
+3. Проверьте secret_token совпадает с TELEGRAM_WEBHOOK_SECRET
+
+---
+
+## 📚 Дополнительная документация
+
+- `deploy/STEP_BY_STEP_GUIDE.md` - Пошаговый деплой
+- `docs/COMPREHENSIVE_PRD.md` - Полное описание проекта
+- `docs/ARCHITECTURE.md` - Архитектура системы
+
+---
+
+**Дата обновления:** Январь 2026

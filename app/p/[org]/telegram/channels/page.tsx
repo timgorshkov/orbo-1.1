@@ -6,8 +6,9 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import TabsLayout from '../tabs-layout'
 import { createServiceLogger } from '@/lib/logger'
-import { Plus, Users, Eye, Heart, TrendingUp, Radio } from 'lucide-react'
+import { Plus, Users, Eye, Heart, TrendingUp, Radio, BarChart3 } from 'lucide-react'
 import { AddChannelDialog } from './add-channel-dialog'
+import { RemoveChannelButton } from '@/components/telegram-channel-actions'
 
 type TelegramChannel = {
   id: string
@@ -150,73 +151,85 @@ export default async function ChannelsPage({ params }: { params: Promise<{ org: 
                 <CardContent>
                   <div className="space-y-4">
                     {channelList.map(channel => (
-                      <Link 
+                      <div 
                         key={channel.id} 
-                        href={`/p/${orgId}/telegram/channels/${channel.id}`}
-                        className="block"
+                        className="border rounded-lg p-4 hover:bg-neutral-50 transition-colors"
                       >
-                        <div className="border rounded-lg p-4 hover:bg-neutral-50 transition-colors">
-                          <div className="flex justify-between items-start">
-                            <div className="flex gap-3">
-                              {channel.photo_url ? (
-                                <img 
-                                  src={channel.photo_url} 
-                                  alt={channel.title}
-                                  className="w-12 h-12 rounded-lg object-cover"
-                                />
-                              ) : (
-                                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                                  {channel.title.charAt(0).toUpperCase()}
-                                </div>
+                        <div className="flex justify-between items-start">
+                          <div className="flex gap-3">
+                            {channel.photo_url ? (
+                              <img 
+                                src={channel.photo_url} 
+                                alt={channel.title}
+                                className="w-12 h-12 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                {channel.title.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <h3 className="font-medium">{channel.title}</h3>
+                              {channel.username && (
+                                <p className="text-sm text-neutral-500">@{channel.username}</p>
                               )}
-                              <div>
-                                <h3 className="font-medium">{channel.title}</h3>
-                                {channel.username && (
-                                  <p className="text-sm text-neutral-500">@{channel.username}</p>
-                                )}
-                                <div className="flex items-center gap-4 mt-1">
+                              <div className="flex items-center gap-4 mt-1">
+                                <span className="flex items-center gap-1 text-sm text-neutral-600">
+                                  <Users className="h-3.5 w-3.5" />
+                                  {(channel.subscriber_count || 0).toLocaleString()}
+                                </span>
+                                {channel.posts_count !== undefined && (
                                   <span className="flex items-center gap-1 text-sm text-neutral-600">
-                                    <Users className="h-3.5 w-3.5" />
-                                    {(channel.subscriber_count || 0).toLocaleString()}
+                                    <TrendingUp className="h-3.5 w-3.5" />
+                                    {channel.posts_count} постов
                                   </span>
-                                  {channel.posts_count !== undefined && (
-                                    <span className="flex items-center gap-1 text-sm text-neutral-600">
-                                      <TrendingUp className="h-3.5 w-3.5" />
-                                      {channel.posts_count} постов
-                                    </span>
-                                  )}
-                                  {channel.total_views !== undefined && (
-                                    <span className="flex items-center gap-1 text-sm text-neutral-600">
-                                      <Eye className="h-3.5 w-3.5" />
-                                      {channel.total_views.toLocaleString()} просмотров
-                                    </span>
-                                  )}
-                                </div>
+                                )}
+                                {channel.total_views !== undefined && (
+                                  <span className="flex items-center gap-1 text-sm text-neutral-600">
+                                    <Eye className="h-3.5 w-3.5" />
+                                    {channel.total_views.toLocaleString()} просмотров
+                                  </span>
+                                )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span 
-                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                  channel.bot_status === 'connected' 
-                                    ? 'bg-green-100 text-green-800' 
-                                    : channel.bot_status === 'pending'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}
-                              >
-                                {channel.bot_status === 'connected' ? 'Подключён' : 
-                                 channel.bot_status === 'pending' ? 'Ожидание' : 'Ошибка'}
-                              </span>
-                            </div>
                           </div>
-                          
-                          {channel.last_post_at && (
-                            <div className="mt-2 text-xs text-neutral-500">
-                              Последний пост: {new Date(channel.last_post_at).toLocaleString('ru')}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                channel.bot_status === 'connected' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : channel.bot_status === 'pending'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {channel.bot_status === 'connected' ? 'Подключён' : 
+                               channel.bot_status === 'pending' ? 'Ожидание' : 'Ошибка'}
+                            </span>
+                          </div>
                         </div>
-                      </Link>
+                        
+                        {channel.last_post_at && (
+                          <div className="mt-2 text-xs text-neutral-500">
+                            Последний пост: {new Date(channel.last_post_at).toLocaleString('ru')}
+                          </div>
+                        )}
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 mt-4 pt-4 border-t">
+                          <Link href={`/p/${orgId}/telegram/channels/${channel.id}`} className="flex-1">
+                            <Button variant="default" className="w-full">
+                              <BarChart3 className="h-4 w-4 mr-2" />
+                              Статистика
+                            </Button>
+                          </Link>
+                          <RemoveChannelButton
+                            channelId={channel.id}
+                            channelTitle={channel.title}
+                            orgId={orgId}
+                          />
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </CardContent>

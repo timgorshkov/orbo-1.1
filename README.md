@@ -247,55 +247,54 @@ npm run lint
 
 ### База данных
 
-**Миграции:** `db/migrations/` (66+ миграций)
+**Миграции:** `db/migrations/` (190+ миграций)
 
 **Применение:**
-1. Откройте Supabase SQL Editor
-2. Выполните миграции по порядку (01-66+)
-3. Проверьте статус
+```bash
+cd deploy
+./scripts/migrate-database.sh
+```
 
 **Очистка для тестирования:**
 См. документацию: `docs/CLEANUP_INSTRUCTIONS.md`
 
 ## 🚀 Deployment
 
-### Vercel
+### Docker (production)
 
-**Автоматический деплой:**
-- Push в `main` → автодеплой на `app.orbo.ru`
-
-**Ручной деплой:**
 ```bash
-vercel deploy --prod
+cd deploy
+cp env.example .env
+# Отредактировать .env с реальными значениями
+docker compose up -d
 ```
 
-### Supabase
+Подробнее: см. `deploy/STEP_BY_STEP_GUIDE.md`
 
-**Регион:** Frankfurt (EU Central)
+### База данных
 
-**Миграции:** Применяются вручную через SQL Editor
+**Миграции:** Хранятся в `db/migrations/`
+
+```bash
+# Применение миграций
+cd deploy
+./scripts/migrate-database.sh
+```
 
 ### Telegram Webhooks
 
-**Setup:**
 ```bash
-# Main bot
-curl -X POST \
-  https://api.telegram.org/bot<TOKEN>/setWebhook \
-  -d url=https://app.orbo.ru/api/telegram/webhook \
-  -d secret_token=<SECRET>
-
-# Notifications bot
-curl -X POST \
-  https://api.telegram.org/bot<TOKEN>/setWebhook \
-  -d url=https://app.orbo.ru/api/telegram/notifications/webhook
+# Setup через API
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://your-domain.ru/api/telegram/webhook" \
+  -d "secret_token=<SECRET>"
 ```
 
 ## 📊 Мониторинг
 
-- **Vercel Dashboard:** Логи и метрики
-- **Supabase Dashboard:** БД логи и метрики
-- **Telegram Bot API:** Webhook статус
+- **Docker logs:** `docker compose logs -f app`
+- **Hawk.so:** Мониторинг ошибок
+- **Health endpoint:** `/api/health`
 
 ## 🤝 Разработка
 
@@ -342,7 +341,7 @@ Proprietary - Все права защищены
 
 ---
 
-**Версия:** 2.0  
-**Последнее обновление:** 20 января 2025
+**Версия:** 3.0  
+**Последнее обновление:** 20 января 2026
 
 Made with ❤️ by Orbo Team

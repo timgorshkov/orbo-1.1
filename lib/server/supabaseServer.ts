@@ -1,12 +1,14 @@
 /**
- * Supabase Server Utilities - Hybrid Mode
+ * Database Server Utilities
  * 
- * Этот файл создаёт "гибридный" клиент:
- * - .from() и .rpc() направляются на локальный PostgreSQL (когда DB_PROVIDER=postgres)
- * - .auth и .storage продолжают использовать Supabase
+ * Этот файл предоставляет клиент для работы с БД:
+ * - .from() и .rpc() направляются на локальный PostgreSQL
+ * - .storage используется для файлов (Selectel S3 или Supabase Storage как fallback)
  * 
- * Все JOIN-запросы переписаны на простые запросы + JS join,
- * поэтому fallback на Supabase больше не нужен.
+ * ВАЖНО: Auth реализован через NextAuth.js (см. lib/auth/unified-auth.ts)
+ * Supabase Auth больше НЕ используется.
+ * 
+ * После полного отключения Supabase этот файл можно переименовать в postgresServer.ts
  */
 
 import { createServerClient } from "@supabase/ssr"
