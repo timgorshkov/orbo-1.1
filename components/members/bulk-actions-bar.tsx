@@ -74,17 +74,17 @@ export default function BulkActionsBar({
   }
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-[400px] max-w-2xl">
-        <div className="flex items-center justify-between gap-4">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)]">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 w-full sm:min-w-[400px] max-w-2xl">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           {/* Selected Count */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <div className="text-sm font-medium text-gray-900 dark:text-white">
               Выбрано: <span className="text-blue-600">{selectedCount}</span>
             </div>
             <button
               onClick={onClearSelection}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-auto sm:ml-0"
               title="Снять выделение"
             >
               <X className="w-5 h-5" />
@@ -92,7 +92,7 @@ export default function BulkActionsBar({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-end w-full sm:w-auto">
             {/* Assign Tags */}
             <div className="relative">
               <Button
@@ -225,7 +225,11 @@ export default function BulkActionsBar({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowArchiveConfirm(true)}
+                onClick={() => {
+                  setShowTagsMenu(false)
+                  setShowRemoveTagsMenu(false)
+                  setShowArchiveConfirm(true)
+                }}
                 className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
               >
                 <Archive className="w-4 h-4" />
@@ -248,8 +252,8 @@ export default function BulkActionsBar({
 
         {/* Archive Confirmation Dialog */}
         {showArchiveConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
               <h3 className="text-lg font-semibold mb-2">Архивировать участников?</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Будет архивировано {selectedCount} участников. Они будут скрыты из списков, но все данные сохранятся. Вы сможете восстановить их позже.
