@@ -152,49 +152,58 @@ export default async function OrgLayout({
     }, 'Loaded telegram groups');
   }
 
-  // Load telegram channels (simple query without stats for performance)
+  // Load telegram channels (two separate queries for PostgreSQL compatibility)
   let telegramChannels: any[] = [];
-  const { data: channelsResult, error: channelsError} = await adminSupabase
+  
+  // Step 1: Get channel links for this org
+  const { data: channelLinks, error: linksError } = await adminSupabase
     .from('org_telegram_channels')
-    .select(`
-      channel_id,
-      is_primary,
-      telegram_channels!inner(
-        id,
-        tg_chat_id,
-        title,
-        username,
-        bot_status
-      )
-    `)
+    .select('channel_id, is_primary')
     .eq('org_id', org.id);
   
-  if (channelsError) {
-    logger.error({ error: channelsError, org_id: org.id }, 'Failed to load telegram channels');
+  if (linksError) {
+    logger.error({ error: linksError, org_id: org.id }, 'Failed to load telegram channel links');
   }
   
-  if (!channelsError && channelsResult) {
-    // Transform to expected format and filter out nulls
-    telegramChannels = channelsResult
-      .filter((link: any) => link.telegram_channels) // Filter out broken links
-      .map((link: any) => ({
-        id: link.telegram_channels.id,
-        tg_chat_id: link.telegram_channels.tg_chat_id,
-        title: link.telegram_channels.title,
-        username: link.telegram_channels.username,
-        bot_status: link.telegram_channels.bot_status,
-        is_primary: link.is_primary
-      }))
-      .sort((a: any, b: any) => {
-        const titleA = a.title || '';
-        const titleB = b.title || '';
-        return titleA.localeCompare(titleB);
-      });
+  // Step 2: Get channel details if we have links
+  if (!linksError && channelLinks && channelLinks.length > 0) {
+    const channelIds = channelLinks.map((link: any) => link.channel_id);
     
-    logger.debug({ 
-      org_id: org.id,
-      channels_count: telegramChannels.length
-    }, 'Loaded telegram channels');
+    const { data: channels, error: channelsError } = await adminSupabase
+      .from('telegram_channels')
+      .select('id, tg_chat_id, title, username, bot_status')
+      .in('id', channelIds);
+    
+    if (channelsError) {
+      logger.error({ error: channelsError, org_id: org.id }, 'Failed to load telegram channels');
+    }
+    
+    if (!channelsError && channels) {
+      // Create a map for quick lookup
+      const channelMap = new Map(channels.map((ch: any) => [ch.id, ch]));
+      const linksMap = new Map(channelLinks.map((link: any) => [link.channel_id, link.is_primary]));
+      
+      // Combine data
+      telegramChannels = channels
+        .map((ch: any) => ({
+          id: ch.id,
+          tg_chat_id: ch.tg_chat_id,
+          title: ch.title,
+          username: ch.username,
+          bot_status: ch.bot_status,
+          is_primary: linksMap.get(ch.id) || false
+        }))
+        .sort((a: any, b: any) => {
+          const titleA = a.title || '';
+          const titleB = b.title || '';
+          return titleA.localeCompare(titleB);
+        });
+      
+      logger.debug({ 
+        org_id: org.id,
+        channels_count: telegramChannels.length
+      }, 'Loaded telegram channels');
+    }
   }
 
   participant = participantResult.data
