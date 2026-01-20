@@ -21,7 +21,8 @@ import {
   Megaphone,
   Eye,
   MessageCircle,
-  Bell
+  Bell,
+  Radio
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -298,7 +299,7 @@ export default function CollapsibleSidebar({
                                 onClick={() => setShowMenuDropdown(false)}
                               >
                                 <span className="inline-flex items-center gap-2">
-                                  <span className="text-xs">📢</span>
+                                  <Radio className="h-3 w-3" />
                                   {channel.title}
                                 </span>
                               </Link>
@@ -530,7 +531,7 @@ export default function CollapsibleSidebar({
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    <span className="h-4 w-4 flex-shrink-0 text-center leading-4">📢</span>
+                    <Radio className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate">{channel.title}</span>
                   </Link>
                 ))}

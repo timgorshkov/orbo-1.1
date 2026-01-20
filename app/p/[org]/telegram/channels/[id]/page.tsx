@@ -98,7 +98,7 @@ export default async function ChannelDetailPage({
     
     const { data: subscribersData, count: subscribersCount } = await adminSupabase
       .from('channel_subscribers')
-      .select('id, tg_user_id, comments_count, first_seen_at', { count: 'exact' })
+      .select('id, tg_user_id, comments_count, first_seen_at, participant_id', { count: 'exact' })
       .eq('channel_id', channelId)
       .neq('tg_user_id', 777000)        // Telegram service
       .neq('tg_user_id', 136817688)     // Channel_Bot
@@ -122,7 +122,8 @@ export default async function ChannelDetailPage({
         reactions_count,
         comments_count,
         first_seen_at,
-        last_activity_at
+        last_activity_at,
+        participant_id
       `)
       .eq('channel_id', channelId)
       .gte('first_seen_at', cutoffDate.toISOString())
@@ -143,7 +144,8 @@ export default async function ChannelDetailPage({
         last_name,
         reactions_count,
         comments_count,
-        last_activity_at
+        last_activity_at,
+        participant_id
       `)
       .eq('channel_id', channelId)
       .neq('tg_user_id', 777000)        // Telegram service
@@ -233,8 +235,18 @@ export default async function ChannelDetailPage({
                 <Users className="h-5 w-5" />
                 <span className="text-sm">Подписчики</span>
               </div>
-              <p className="text-3xl font-bold">{channelStats.subscriber_count.toLocaleString()}</p>
-              <p className="text-xs text-neutral-500 mt-1">Всего подписчиков канала</p>
+              <p className="text-3xl font-bold">
+                {channelStats.subscriber_count > 0 
+                  ? channelStats.subscriber_count.toLocaleString() 
+                  : <span className="text-neutral-400" title="Требуются права администратора канала для получения точного числа подписчиков">Н/Д</span>
+                }
+              </p>
+              <p className="text-xs text-neutral-500 mt-1">
+                {channelStats.subscriber_count > 0 
+                  ? 'Всего подписчиков канала'
+                  : 'Точные данные недоступны'
+                }
+              </p>
             </CardContent>
           </Card>
           

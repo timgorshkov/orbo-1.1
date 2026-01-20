@@ -15,6 +15,7 @@ interface Participant {
   reactions_count: number
   first_seen_at: string
   last_activity_at: string
+  participant_id: string | null
 }
 
 interface NewParticipantsListProps {
@@ -93,12 +94,18 @@ export function NewParticipantsList({ participants, orgId }: NewParticipantsList
                   </div>
                 </div>
                 
-                {/* Link to participant card - check if exists */}
-                <Link href={`/p/${orgId}/participants?search=${participant.tg_user_id}`}>
-                  <Button variant="outline" size="sm">
+                {/* Link to participant card - only if participant exists in CRM */}
+                {participant.participant_id ? (
+                  <Link href={`/p/${orgId}/members/${participant.participant_id}`}>
+                    <Button variant="outline" size="sm">
+                      Карточка
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" size="sm" disabled title="Участник еще не добавлен в CRM">
                     Карточка
                   </Button>
-                </Link>
+                )}
               </div>
             )
           })}

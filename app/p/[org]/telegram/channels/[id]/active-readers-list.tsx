@@ -14,6 +14,7 @@ interface Reader {
   reactions_count: number
   comments_count: number
   last_activity_at: string | null
+  participant_id: string | null
 }
 
 interface ActiveReadersListProps {
@@ -127,11 +128,18 @@ export function ActiveReadersList({ readers, orgId }: ActiveReadersListProps) {
                   </div>
                 </div>
                 
-                <Link href={`/p/${orgId}/participants?search=${reader.tg_user_id}`}>
-                  <Button variant="outline" size="sm">
+                {/* Link to participant card - only if participant exists in CRM */}
+                {reader.participant_id ? (
+                  <Link href={`/p/${orgId}/members/${reader.participant_id}`}>
+                    <Button variant="outline" size="sm">
+                      Карточка
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" size="sm" disabled title="Участник еще не добавлен в CRM">
                     Карточка
                   </Button>
-                </Link>
+                )}
               </div>
             ))}
           </div>
