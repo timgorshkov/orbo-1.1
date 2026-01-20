@@ -175,13 +175,34 @@ export async function GET(
     
     if (tgChatId && tgChatId !== '0') {
       // Get participants for specific Telegram group
-      const { count: groupMembersCount } = await adminSupabase
+      // Convert tgChatId to number for comparison with BIGINT field
+      const numericChatId = parseInt(tgChatId, 10);
+      
+      logger.debug({ 
+        tg_chat_id: tgChatId, 
+        numeric_chat_id: numericChatId, 
+        org_id: orgId 
+      }, 'Counting participants for specific group');
+      
+      const { count: groupMembersCount, error: countError } = await adminSupabase
         .from('participant_groups')
         .select('*', { count: 'exact', head: true })
-        .eq('tg_group_id', tgChatId)
+        .eq('tg_group_id', numericChatId)
         .eq('is_active', true);
       
+      if (countError) {
+        logger.error({ 
+          error: countError.message, 
+          tg_chat_id: numericChatId 
+        }, 'Error counting group participants');
+      }
+      
       totalMembersInOrg = groupMembersCount || 0;
+      
+      logger.debug({ 
+        tg_chat_id: numericChatId, 
+        member_count: totalMembersInOrg 
+      }, 'Group member count result');
     } else {
       // Get total participants count in organization for engagement calculation
       // Исключаем ботов, объединённых дубликатов и архивированных участников
@@ -194,6 +215,11 @@ export async function GET(
         .neq('participant_status', 'excluded');
       
       totalMembersInOrg = count || 0;
+      
+      logger.debug({ 
+        org_id: orgId, 
+        member_count: totalMembersInOrg 
+      }, 'Organization-wide member count result');
     }
 
     // Calculate date ranges
