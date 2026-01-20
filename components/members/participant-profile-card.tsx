@@ -479,39 +479,35 @@ export default function ParticipantProfileCard({
             <div className="flex items-start gap-3">
               <MessageCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <span className="text-sm text-gray-500 w-20">Telegram</span>
-              <div className="flex-1">
-                {participant.username ? (
+              <div className="flex-1 space-y-1">
+                {participant.username && (
                   <a
                     href={`https://t.me/${participant.username}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline block"
                   >
                     @{participant.username}
                   </a>
-                ) : participant.tg_user_id ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">ID: {participant.tg_user_id}</span>
-                      <button
-                        onClick={handleCopyTelegramId}
-                        className="p-1 rounded hover:bg-gray-100 transition-colors"
-                        title="Скопировать ID"
-                      >
-                        {telegramIdCopied ? (
-                          <Check className="h-3 w-3 text-green-600" />
-                        ) : (
-                          <Copy className="h-3 w-3 text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Найти: откройте Telegram → Поиск → вставьте ID
-                    </p>
-                  </div>
-                ) : (
-                  <span className="text-sm text-gray-400">Не указан</span>
                 )}
+                {participant.tg_user_id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">ID: {participant.tg_user_id}</span>
+                    <button
+                      onClick={handleCopyTelegramId}
+                      className="p-1 rounded hover:bg-gray-100 transition-colors"
+                      title="Скопировать ID"
+                    >
+                      {telegramIdCopied ? (
+                        <Check className="h-3 w-3 text-green-600" />
+                      ) : (
+                        <Copy className="h-3 w-3 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                ) : !participant.username ? (
+                  <span className="text-sm text-gray-400">Не указан</span>
+                ) : null}
               </div>
             </div>
 
