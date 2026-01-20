@@ -151,6 +151,28 @@ export default function MembersView({
     }
   }
 
+  const handleBulkArchive = async () => {
+    try {
+      const selectedIds = Array.from(selectedParticipants)
+      const promises = selectedIds.map((participantId) =>
+        fetch(`/api/participants/${participantId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId,
+            action: 'archive'
+          })
+        })
+      )
+      await Promise.all(promises)
+      alert(`Архивировано ${selectedIds.length} участников`)
+      window.location.reload()
+    } catch (error) {
+      console.error('Error archiving participants:', error)
+      alert('Ошибка при архивации участников')
+    }
+  }
+
   const handleExportSelected = () => {
     const selectedData = filteredParticipants.filter((p) =>
       selectedParticipants.has(p.id)
@@ -497,6 +519,7 @@ export default function MembersView({
           onAssignTags={handleAssignTags}
           onRemoveTags={handleRemoveTags}
           onExportSelected={handleExportSelected}
+          onArchiveSelected={handleBulkArchive}
         />
       )}
       </div>

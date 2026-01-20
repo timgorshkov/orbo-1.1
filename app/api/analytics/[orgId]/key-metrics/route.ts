@@ -168,15 +168,33 @@ export async function GET(
       });
     }
 
-    // Get total participants count in organization for engagement calculation
-    // Исключаем ботов, объединённых дубликатов и архивированных участников
-    const { count: totalMembersInOrg } = await adminSupabase
-      .from('participants')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .neq('source', 'bot')
-      .is('merged_into', null)
-      .neq('participant_status', 'excluded');
+    // Get total participants count
+    // If specific chat ID is provided, get participants for that chat only
+    // Otherwise, get participants for entire organization
+    let totalMembersInOrg = 0;
+    
+    if (tgChatId && tgChatId !== '0') {
+      // Get participants for specific Telegram group
+      const { count: groupMembersCount } = await adminSupabase
+        .from('participant_groups')
+        .select('*', { count: 'exact', head: true })
+        .eq('tg_group_id', tgChatId)
+        .eq('is_active', true);
+      
+      totalMembersInOrg = groupMembersCount || 0;
+    } else {
+      // Get total participants count in organization for engagement calculation
+      // Исключаем ботов, объединённых дубликатов и архивированных участников
+      const { count } = await adminSupabase
+        .from('participants')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .neq('source', 'bot')
+        .is('merged_into', null)
+        .neq('participant_status', 'excluded');
+      
+      totalMembersInOrg = count || 0;
+    }
 
     // Calculate date ranges
     const now = new Date();

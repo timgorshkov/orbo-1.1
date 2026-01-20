@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Tag, Download, Trash2 } from 'lucide-react'
+import { X, Tag, Download, Trash2, Archive } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface Tag {
@@ -17,6 +17,7 @@ interface BulkActionsBarProps {
   onAssignTags: (tagIds: string[]) => Promise<void>
   onRemoveTags: (tagIds: string[]) => Promise<void>
   onExportSelected: () => void
+  onArchiveSelected?: () => Promise<void>
 }
 
 export default function BulkActionsBar({
@@ -26,11 +27,13 @@ export default function BulkActionsBar({
   onAssignTags,
   onRemoveTags,
   onExportSelected,
+  onArchiveSelected,
 }: BulkActionsBarProps) {
   const [showTagsMenu, setShowTagsMenu] = useState(false)
   const [showRemoveTagsMenu, setShowRemoveTagsMenu] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
 
   const handleAssignTags = async () => {
     if (selectedTags.length === 0) return
@@ -217,6 +220,19 @@ export default function BulkActionsBar({
               )}
             </div>
 
+            {/* Archive Selected */}
+            {onArchiveSelected && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowArchiveConfirm(true)}
+                className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                <Archive className="w-4 h-4" />
+                <span className="hidden md:inline">Архивировать</span>
+              </Button>
+            )}
+
             {/* Export Selected */}
             <Button
               variant="outline"
@@ -229,6 +245,45 @@ export default function BulkActionsBar({
             </Button>
           </div>
         </div>
+
+        {/* Archive Confirmation Dialog */}
+        {showArchiveConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold mb-2">Архивировать участников?</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Будет архивировано {selectedCount} участников. Они будут скрыты из списков, но все данные сохранятся. Вы сможете восстановить их позже.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowArchiveConfirm(false)}
+                  disabled={isLoading}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (!onArchiveSelected) return;
+                    setIsLoading(true);
+                    try {
+                      await onArchiveSelected();
+                      setShowArchiveConfirm(false);
+                    } catch (error) {
+                      console.error('Error archiving participants:', error);
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Архивируем...' : 'Архивировать'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
