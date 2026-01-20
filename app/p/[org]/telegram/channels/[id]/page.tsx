@@ -8,17 +8,13 @@ import { createServiceLogger } from '@/lib/logger'
 import { 
   ArrowLeft, 
   Users, 
-  Eye, 
-  Heart, 
   MessageCircle, 
-  Share2, 
-  TrendingUp,
-  TrendingDown,
   Calendar,
-  ExternalLink
+  ExternalLink,
+  UserPlus
 } from 'lucide-react'
 import { ChannelAnalyticsCharts } from './channel-analytics-charts'
-import { TopPostsList } from './top-posts-list'
+import { NewParticipantsList } from './new-participants-list'
 import { ActiveReadersList } from './active-readers-list'
 
 interface ChannelStats {
@@ -94,31 +90,45 @@ export default async function ChannelDetailPage({
       return notFound()
     }
     
-    // Get stats
-    const { data: stats } = await adminSupabase
-      .rpc('get_channel_stats', {
-        p_channel_id: channelId,
-        p_days: days
-      })
-      .single() as { data: ChannelStats | null }
-    
-    // Get top posts
-    const { data: topPosts } = await adminSupabase
-      .rpc('get_channel_top_posts', {
-        p_channel_id: channelId,
-        p_limit: 10,
-        p_order_by: 'engagement'
-      })
-    
-    // Get daily stats for charts
-    const { data: dailyStats } = await adminSupabase
-      .from('channel_stats_daily')
-      .select('*')
+    // Get simple stats from actual data
+    const { data: postsData } = await adminSupabase
+      .from('channel_posts')
+      .select('id, views_count, reactions_count, forwards_count, comments_count')
       .eq('channel_id', channelId)
-      .gte('date', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-      .order('date', { ascending: true })
     
-    // Get active readers
+    const { data: subscribersData, count: subscribersCount } = await adminSupabase
+      .from('channel_subscribers')
+      .select('id, tg_user_id, comments_count, first_seen_at', { count: 'exact' })
+      .eq('channel_id', channelId)
+      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots
+    
+    // Calculate stats from real data
+    const totalPosts = postsData?.length || 0
+    const totalComments = subscribersData?.reduce((sum, s) => sum + (s.comments_count || 0), 0) || 0
+    const activeReadersCount = subscribersCount || 0
+    
+    // Get new participants (sorted by first_seen_at, recent first)
+    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    const { data: newParticipants } = await adminSupabase
+      .from('channel_subscribers')
+      .select(`
+        id,
+        tg_user_id,
+        username,
+        first_name,
+        last_name,
+        reactions_count,
+        comments_count,
+        first_seen_at,
+        last_activity_at
+      `)
+      .eq('channel_id', channelId)
+      .gte('first_seen_at', cutoffDate.toISOString())
+      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots
+      .order('first_seen_at', { ascending: false })
+      .limit(20)
+    
+    // Get active readers (most comments, excluding bots)
     const { data: activeReaders } = await adminSupabase
       .from('channel_subscribers')
       .select(`
@@ -132,23 +142,17 @@ export default async function ChannelDetailPage({
         last_activity_at
       `)
       .eq('channel_id', channelId)
-      .order('reactions_count', { ascending: false })
+      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots: Telegram, Channel_Bot, GroupAnonymousBot
+      .order('comments_count', { ascending: false })
       .limit(20)
     
-    const defaultStats: ChannelStats = {
-      total_posts: 0,
-      total_views: 0,
-      total_reactions: 0,
-      total_comments: 0,
-      total_forwards: 0,
-      avg_views_per_post: 0,
-      avg_engagement_rate: 0,
-      active_readers: 0,
+    // Use simple stats from actual data
+    const channelStats = {
       subscriber_count: channel.subscriber_count || 0,
-      subscriber_growth: 0
+      total_posts: totalPosts,
+      total_comments: totalComments,
+      active_readers: activeReadersCount
     }
-    
-    const channelStats: ChannelStats = stats ? { ...defaultStats, ...stats } : defaultStats
     
     return (
       <div className="p-6">
@@ -215,113 +219,57 @@ export default async function ChannelDetailPage({
           </div>
         </div>
         
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+        {/* Stats Cards - Simple 4 Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Users className="h-4 w-4" />
-                <span className="text-xs">Подписчики</span>
+            <CardContent className="pt-6 pb-6">
+              <div className="flex items-center gap-2 text-neutral-500 mb-2">
+                <Users className="h-5 w-5" />
+                <span className="text-sm">Подписчики</span>
               </div>
-              <p className="text-xl font-bold">{channelStats.subscriber_count.toLocaleString()}</p>
-              {channelStats.subscriber_growth !== 0 && (
-                <p className={`text-xs flex items-center gap-1 ${
-                  channelStats.subscriber_growth > 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {channelStats.subscriber_growth > 0 ? (
-                    <TrendingUp className="h-3 w-3" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3" />
-                  )}
-                  {channelStats.subscriber_growth > 0 ? '+' : ''}{channelStats.subscriber_growth}
-                </p>
-              )}
+              <p className="text-3xl font-bold">{channelStats.subscriber_count.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500 mt-1">Всего подписчиков канала</p>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Calendar className="h-4 w-4" />
-                <span className="text-xs">Постов</span>
+            <CardContent className="pt-6 pb-6">
+              <div className="flex items-center gap-2 text-neutral-500 mb-2">
+                <Calendar className="h-5 w-5" />
+                <span className="text-sm">Постов</span>
               </div>
-              <p className="text-xl font-bold">{channelStats.total_posts.toLocaleString()}</p>
+              <p className="text-3xl font-bold">{channelStats.total_posts.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500 mt-1">Опубликовано в канале</p>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Eye className="h-4 w-4" />
-                <span className="text-xs">Просмотры</span>
+            <CardContent className="pt-6 pb-6">
+              <div className="flex items-center gap-2 text-neutral-500 mb-2">
+                <MessageCircle className="h-5 w-5" />
+                <span className="text-sm">Комментарии</span>
               </div>
-              <p className="text-xl font-bold">{channelStats.total_views.toLocaleString()}</p>
-              <p className="text-xs text-neutral-500">
-                ~{Math.round(channelStats.avg_views_per_post).toLocaleString()} / пост
-              </p>
+              <p className="text-3xl font-bold">{channelStats.total_comments.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500 mt-1">В группе обсуждений</p>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Heart className="h-4 w-4" />
-                <span className="text-xs">Реакции</span>
+            <CardContent className="pt-6 pb-6">
+              <div className="flex items-center gap-2 text-neutral-500 mb-2">
+                <UserPlus className="h-5 w-5" />
+                <span className="text-sm">Активных</span>
               </div>
-              <p className="text-xl font-bold">{channelStats.total_reactions.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <MessageCircle className="h-4 w-4" />
-                <span className="text-xs">Комментарии</span>
-              </div>
-              <p className="text-xl font-bold">{channelStats.total_comments.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Share2 className="h-4 w-4" />
-                <span className="text-xs">Репосты</span>
-              </div>
-              <p className="text-xl font-bold">{channelStats.total_forwards.toLocaleString()}</p>
+              <p className="text-3xl font-bold">{channelStats.active_readers.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500 mt-1">Комментаторов (участников)</p>
             </CardContent>
           </Card>
         </div>
         
-        {/* Engagement Rate Banner */}
-        <Card className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-neutral-600">Средняя вовлечённость (ER)</p>
-                <p className="text-3xl font-bold text-blue-600">
-                  {(channelStats.avg_engagement_rate * 100).toFixed(2)}%
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-neutral-600">Активных читателей</p>
-                <p className="text-3xl font-bold text-purple-600">
-                  {channelStats.active_readers.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Charts */}
-        {dailyStats && dailyStats.length > 0 && (
-          <ChannelAnalyticsCharts dailyStats={dailyStats} />
-        )}
-        
-        {/* Two columns: Top Posts + Active Readers */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          <TopPostsList posts={topPosts || []} channelUsername={channel.username} />
-          <ActiveReadersList readers={activeReaders || []} />
+        {/* Two columns: New Participants + Active Readers */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <NewParticipantsList participants={newParticipants || []} orgId={orgId} />
+          <ActiveReadersList readers={activeReaders || []} orgId={orgId} />
         </div>
       </div>
     )

@@ -1,7 +1,9 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Heart, MessageCircle, Star, Clock } from 'lucide-react'
+import Link from 'next/link'
 
 interface Reader {
   id: string
@@ -16,9 +18,10 @@ interface Reader {
 
 interface ActiveReadersListProps {
   readers: Reader[]
+  orgId: string
 }
 
-export function ActiveReadersList({ readers }: ActiveReadersListProps) {
+export function ActiveReadersList({ readers, orgId }: ActiveReadersListProps) {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'Нет данных'
     const date = new Date(dateStr)
@@ -69,27 +72,29 @@ export function ActiveReadersList({ readers }: ActiveReadersListProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Самые активные читатели</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Star className="h-5 w-5" />
+          Самые активные комментаторы
+        </CardTitle>
+        <p className="text-sm text-neutral-500 mt-1">
+          Участники с наибольшим количеством комментариев
+        </p>
       </CardHeader>
       <CardContent>
         {readers.length === 0 ? (
           <div className="text-center py-8 text-neutral-500">
-            Нет данных об активных читателях
+            Нет данных об активных комментаторах
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {readers.map((reader, idx) => (
               <div 
                 key={reader.id}
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-neutral-50 transition-colors"
+                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-neutral-50 transition-colors"
               >
                 <div className="flex-shrink-0 w-6 text-center">
                   {idx < 3 ? (
-                    <span className={`text-lg ${
-                      idx === 0 ? 'text-amber-500' : 
-                      idx === 1 ? 'text-neutral-400' : 
-                      'text-amber-700'
-                    }`}>
+                    <span className="text-lg">
                       {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
                     </span>
                   ) : (
@@ -97,7 +102,7 @@ export function ActiveReadersList({ readers }: ActiveReadersListProps) {
                   )}
                 </div>
                 
-                <div className={`w-9 h-9 rounded-full ${getAvatarColor(reader.tg_user_id)} flex items-center justify-center text-white font-medium text-sm`}>
+                <div className={`w-10 h-10 rounded-full ${getAvatarColor(reader.tg_user_id)} flex items-center justify-center text-white font-medium`}>
                   {getInitials(reader)}
                 </div>
                 
@@ -110,27 +115,23 @@ export function ActiveReadersList({ readers }: ActiveReadersListProps) {
                       @{reader.username}
                     </p>
                   )}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="flex items-center gap-1 text-xs text-neutral-600" title="Комментарии">
+                      <MessageCircle className="h-3 w-3" />
+                      {reader.comments_count}
+                    </span>
+                    <span className="text-xs text-neutral-400">•</span>
+                    <span className="text-xs text-neutral-500" title="Последняя активность">
+                      {formatDate(reader.last_activity_at)}
+                    </span>
+                  </div>
                 </div>
                 
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1 text-pink-600" title="Реакции">
-                    <Heart className="h-3.5 w-3.5" />
-                    {reader.reactions_count}
-                  </span>
-                  <span className="flex items-center gap-1 text-purple-600" title="Комментарии">
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    {reader.comments_count}
-                  </span>
-                  <span className="flex items-center gap-1 text-amber-600 font-medium" title="Активность">
-                    <Star className="h-3.5 w-3.5" />
-                    {(reader.reactions_count + reader.comments_count)}
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-1 text-xs text-neutral-400" title="Последняя активность">
-                  <Clock className="h-3 w-3" />
-                  {formatDate(reader.last_activity_at)}
-                </div>
+                <Link href={`/p/${orgId}/participants?search=${reader.tg_user_id}`}>
+                  <Button variant="outline" size="sm">
+                    Карточка
+                  </Button>
+                </Link>
               </div>
             ))}
           </div>
