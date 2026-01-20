@@ -135,7 +135,14 @@ export async function GET(
     allEvents.forEach(event => {
       const userId = event.tg_user_id;
       if (!userId) return;
-      if (userId === 1087968824) return; // Skip anonymous bot
+      
+      // Filter out system accounts
+      const SYSTEM_ACCOUNT_IDS = [
+        777000,      // Telegram Service Notifications
+        136817688,   // @Channel_Bot
+        1087968824   // Group Anonymous Bot
+      ];
+      if (SYSTEM_ACCOUNT_IDS.includes(userId)) return;
       
       if (!userCounts[userId]) {
         userCounts[userId] = { 

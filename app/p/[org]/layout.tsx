@@ -110,9 +110,14 @@ export default async function PublicOrgLayout({
       `)
       .eq('org_id', org.id);
     
+    if (channelsError) {
+      logger.error({ error: channelsError, org_id: org.id }, 'Failed to load telegram channels');
+    }
+    
     if (!channelsError && channelsResult) {
-      // Transform to expected format
+      // Transform to expected format and filter out nulls
       telegramChannels = channelsResult
+        .filter((link: any) => link.telegram_channels) // Filter out broken links
         .map((link: any) => ({
           id: link.telegram_channels.id,
           tg_chat_id: link.telegram_channels.tg_chat_id,
@@ -126,6 +131,8 @@ export default async function PublicOrgLayout({
           const titleB = b.title || '';
           return titleA.localeCompare(titleB);
         });
+      
+      logger.debug({ org_id: org.id, channels_count: telegramChannels.length }, 'Loaded telegram channels');
     }
   }
 

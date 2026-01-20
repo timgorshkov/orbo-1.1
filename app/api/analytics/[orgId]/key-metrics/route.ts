@@ -184,44 +184,41 @@ export async function GET(
         org_id: orgId 
       }, 'Counting participants for specific group');
       
-      // Count only valid participants (not archived, not bots, not merged)
-      // First get all participant_ids from the group
-      const { data: groupParticipants, error: groupError } = await adminSupabase
-        .from('participant_groups')
-        .select('participant_id')
-        .eq('tg_group_id', numericChatId)
-        .eq('is_active', true);
+      // Use RPC function for accurate count
+      const { data: countResult, error: countError } = await adminSupabase
+        .rpc('count_valid_group_participants', {
+          p_tg_group_id: numericChatId,
+          p_org_id: orgId
+        });
       
-      if (groupError) {
+      if (countError) {
         logger.error({ 
-          error: groupError.message, 
+          error: countError.message, 
+          error_details: countError,
           tg_chat_id: numericChatId 
-        }, 'Error fetching group participants');
-      }
-      
-      if (groupParticipants && groupParticipants.length > 0) {
-        const participantIds = groupParticipants.map(pg => pg.participant_id);
+        }, 'Error counting group participants');
         
-        // Now count valid participants from those IDs
-        const { count: groupMembersCount, error: countError } = await adminSupabase
-          .from('participants')
-          .select('*', { count: 'exact', head: true })
-          .in('id', participantIds)
-          .eq('org_id', orgId)
-          .neq('source', 'bot')
-          .is('merged_into', null)
-          .neq('participant_status', 'excluded');
+        // Fallback: try direct query
+        const { count: fallbackCount, error: fallbackError } = await adminSupabase
+          .from('participant_groups')
+          .select(`
+            participant_id,
+            participants!inner(id)
+          `, { count: 'exact', head: true })
+          .eq('tg_group_id', numericChatId)
+          .eq('is_active', true)
+          .eq('participants.org_id', orgId)
+          .neq('participants.source', 'bot')
+          .is('participants.merged_into', null)
+          .neq('participants.participant_status', 'excluded');
         
-        if (countError) {
-          logger.error({ 
-            error: countError.message, 
-            tg_chat_id: numericChatId 
-          }, 'Error counting valid participants');
+        if (fallbackError) {
+          logger.error({ error: fallbackError.message }, 'Fallback count also failed');
         }
         
-        totalMembersInOrg = groupMembersCount || 0;
+        totalMembersInOrg = fallbackCount || 0;
       } else {
-        totalMembersInOrg = 0;
+        totalMembersInOrg = countResult || 0;
       }
       
       logger.debug({ 
