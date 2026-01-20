@@ -259,8 +259,17 @@ export async function processMessage(
   updateId?: number
 ): Promise<ProcessingResult> {
   const from = message.from;
-  if (!from || from.is_bot || from.id === 1087968824) {
-    return { success: true }; // Skip bots and anonymous
+  
+  // System accounts to skip (Telegram service, bots, anonymous)
+  const SYSTEM_ACCOUNT_IDS = [
+    777000,      // Telegram Service Notifications
+    136817688,   // @Channel_Bot
+    1087968824   // Group Anonymous Bot
+  ];
+  
+  if (!from || from.is_bot || SYSTEM_ACCOUNT_IDS.includes(from.id)) {
+    logger.debug({ user_id: from?.id, is_bot: from?.is_bot }, 'Skipping system account or bot');
+    return { success: true }; // Skip bots and system accounts
   }
   
   // Check idempotency if updateId provided

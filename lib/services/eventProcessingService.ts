@@ -374,8 +374,19 @@ export class EventProcessingService {
     const chatId = message.chat.id;
     this.logger.debug({ chat_id: chatId, chat_type: typeof chatId }, 'Processing message');
 
-    if (message.from && (message.from.id === 1087968824 || message.from.username === 'GroupAnonymousBot')) {
-      this.logger.debug({ chat_id: chatId }, 'Skipping message from GroupAnonymousBot');
+    // System accounts to skip (Telegram service, bots, anonymous)
+    const SYSTEM_ACCOUNT_IDS = [
+      777000,      // Telegram Service Notifications
+      136817688,   // @Channel_Bot
+      1087968824   // Group Anonymous Bot
+    ];
+
+    if (message.from && SYSTEM_ACCOUNT_IDS.includes(message.from.id)) {
+      this.logger.debug({ 
+        chat_id: chatId, 
+        user_id: message.from.id,
+        username: message.from.username
+      }, 'Skipping message from system account');
       return;
     }
 

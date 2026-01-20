@@ -326,17 +326,28 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           const firstName = body.message.from.first_name || null;
           const lastName = body.message.from.last_name || null;
           
-          logger.info({
-            chat_id: msgChatId,
-            channel_id: linkedChannel.tg_chat_id,
-            user_id: userId,
-            username,
-            first_name: firstName
-          }, '💬 [WEBHOOK] Channel comment detected');
+          // Filter out system accounts (Telegram service, bots, etc.)
+          const SYSTEM_ACCOUNT_IDS = [
+            777000,      // Telegram Service Notifications
+            136817688,   // @Channel_Bot
+            1087968824   // Group Anonymous Bot
+          ];
           
-          try {
-            // Update/create channel subscriber
-            await supabaseServiceRole.rpc('upsert_channel_subscriber_from_comment', {
+          if (SYSTEM_ACCOUNT_IDS.includes(userId)) {
+            logger.debug({ user_id: userId, username, first_name: firstName }, '⏭️ [WEBHOOK] Skipping system account');
+            // Skip system accounts - don't create participants or activity events
+          } else {
+            logger.info({
+              chat_id: msgChatId,
+              channel_id: linkedChannel.tg_chat_id,
+              user_id: userId,
+              username,
+              first_name: firstName
+            }, '💬 [WEBHOOK] Channel comment detected');
+            
+            try {
+              // Update/create channel subscriber
+              await supabaseServiceRole.rpc('upsert_channel_subscriber_from_comment', {
               p_channel_tg_id: linkedChannel.tg_chat_id,
               p_tg_user_id: userId,
               p_username: username,
@@ -371,13 +382,14 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               user_id: userId,
               org_id: orgId
             }, '✅ [WEBHOOK] Channel subscriber and activity_event updated');
-          } catch (error) {
-            logger.error({
-              error: error instanceof Error ? error.message : String(error),
-              channel_id: linkedChannel.tg_chat_id,
-              user_id: userId
-            }, '❌ [WEBHOOK] Failed to update channel subscriber');
-          }
+            } catch (error) {
+              logger.error({
+                error: error instanceof Error ? error.message : String(error),
+                channel_id: linkedChannel.tg_chat_id,
+                user_id: userId
+              }, '❌ [WEBHOOK] Failed to update channel subscriber');
+            }
+          } // Close else block
         }
       } else {
         logger.debug({
