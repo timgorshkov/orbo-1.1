@@ -100,7 +100,9 @@ export default async function ChannelDetailPage({
       .from('channel_subscribers')
       .select('id, tg_user_id, comments_count, first_seen_at', { count: 'exact' })
       .eq('channel_id', channelId)
-      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots
+      .neq('tg_user_id', 777000)        // Telegram service
+      .neq('tg_user_id', 136817688)     // Channel_Bot
+      .neq('tg_user_id', 1087968824)    // GroupAnonymousBot
     
     // Calculate stats from real data
     const totalPosts = postsData?.length || 0
@@ -124,7 +126,9 @@ export default async function ChannelDetailPage({
       `)
       .eq('channel_id', channelId)
       .gte('first_seen_at', cutoffDate.toISOString())
-      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots
+      .neq('tg_user_id', 777000)        // Telegram service
+      .neq('tg_user_id', 136817688)     // Channel_Bot
+      .neq('tg_user_id', 1087968824)    // GroupAnonymousBot
       .order('first_seen_at', { ascending: false })
       .limit(20)
     
@@ -142,7 +146,9 @@ export default async function ChannelDetailPage({
         last_activity_at
       `)
       .eq('channel_id', channelId)
-      .not('tg_user_id', 'in', '(777000,136817688,1087968824)') // Filter bots: Telegram, Channel_Bot, GroupAnonymousBot
+      .neq('tg_user_id', 777000)        // Telegram service
+      .neq('tg_user_id', 136817688)     // Channel_Bot
+      .neq('tg_user_id', 1087968824)    // GroupAnonymousBot
       .order('comments_count', { ascending: false })
       .limit(20)
     
