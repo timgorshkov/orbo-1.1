@@ -185,24 +185,44 @@ export async function GET(
       }, 'Counting participants for specific group');
       
       // Count only valid participants (not archived, not bots, not merged)
-      const { count: groupMembersCount, error: countError } = await adminSupabase
+      // First get all participant_ids from the group
+      const { data: groupParticipants, error: groupError } = await adminSupabase
         .from('participant_groups')
-        .select('participant_id, participants!inner(id)', { count: 'exact', head: true })
+        .select('participant_id')
         .eq('tg_group_id', numericChatId)
-        .eq('is_active', true)
-        .eq('participants.org_id', orgId)
-        .neq('participants.source', 'bot')
-        .is('participants.merged_into', null)
-        .neq('participants.participant_status', 'excluded');
+        .eq('is_active', true);
       
-      if (countError) {
+      if (groupError) {
         logger.error({ 
-          error: countError.message, 
+          error: groupError.message, 
           tg_chat_id: numericChatId 
-        }, 'Error counting group participants');
+        }, 'Error fetching group participants');
       }
       
-      totalMembersInOrg = groupMembersCount || 0;
+      if (groupParticipants && groupParticipants.length > 0) {
+        const participantIds = groupParticipants.map(pg => pg.participant_id);
+        
+        // Now count valid participants from those IDs
+        const { count: groupMembersCount, error: countError } = await adminSupabase
+          .from('participants')
+          .select('*', { count: 'exact', head: true })
+          .in('id', participantIds)
+          .eq('org_id', orgId)
+          .neq('source', 'bot')
+          .is('merged_into', null)
+          .neq('participant_status', 'excluded');
+        
+        if (countError) {
+          logger.error({ 
+            error: countError.message, 
+            tg_chat_id: numericChatId 
+          }, 'Error counting valid participants');
+        }
+        
+        totalMembersInOrg = groupMembersCount || 0;
+      } else {
+        totalMembersInOrg = 0;
+      }
       
       logger.debug({ 
         tg_chat_id: numericChatId, 

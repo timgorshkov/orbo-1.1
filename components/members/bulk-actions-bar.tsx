@@ -74,17 +74,17 @@ export default function BulkActionsBar({
   }
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)]">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 w-full sm:min-w-[400px] max-w-2xl">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-[95vw] sm:max-w-3xl">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex items-center justify-between gap-4">
           {/* Selected Count */}
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="text-sm font-medium text-gray-900 dark:text-white">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
               Выбрано: <span className="text-blue-600">{selectedCount}</span>
             </div>
             <button
               onClick={onClearSelection}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-auto sm:ml-0"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               title="Снять выделение"
             >
               <X className="w-5 h-5" />
@@ -92,7 +92,7 @@ export default function BulkActionsBar({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-end w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Assign Tags */}
             <div className="relative">
               <Button
@@ -102,10 +102,10 @@ export default function BulkActionsBar({
                   setShowTagsMenu(!showTagsMenu)
                   setShowRemoveTagsMenu(false)
                 }}
-                className="gap-2"
+                className="gap-1.5 text-xs sm:text-sm whitespace-nowrap"
               >
-                <Tag className="w-4 h-4" />
-                <span className="hidden md:inline">Назначить теги</span>
+                <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Теги</span>
               </Button>
 
               {showTagsMenu && (
@@ -165,10 +165,10 @@ export default function BulkActionsBar({
                   setShowRemoveTagsMenu(!showRemoveTagsMenu)
                   setShowTagsMenu(false)
                 }}
-                className="gap-2"
+                className="gap-1.5 text-xs sm:text-sm whitespace-nowrap"
               >
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden md:inline">Убрать теги</span>
+                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Убрать</span>
               </Button>
 
               {showRemoveTagsMenu && (
@@ -230,10 +230,10 @@ export default function BulkActionsBar({
                   setShowRemoveTagsMenu(false)
                   setShowArchiveConfirm(true)
                 }}
-                className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                className="gap-1.5 text-xs sm:text-sm whitespace-nowrap border-orange-300 text-orange-700 hover:bg-orange-50"
               >
-                <Archive className="w-4 h-4" />
-                <span className="hidden md:inline">Архивировать</span>
+                <Archive className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Архив</span>
               </Button>
             )}
 
@@ -242,10 +242,10 @@ export default function BulkActionsBar({
               variant="outline"
               size="sm"
               onClick={onExportSelected}
-              className="gap-2"
+              className="gap-1.5 text-xs sm:text-sm whitespace-nowrap"
             >
-              <Download className="w-4 h-4" />
-              <span className="hidden md:inline">Экспорт</span>
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Экспорт</span>
             </Button>
           </div>
         </div>
