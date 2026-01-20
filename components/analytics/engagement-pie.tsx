@@ -77,9 +77,10 @@ export default function EngagementPie({ orgId }: Props) {
   }
 
   // Prepare data for chart
+  // Convert count to number (PostgreSQL BIGINT may be returned as string)
   const chartData = data.map(item => ({
     name: CATEGORY_LABELS[item.category] || item.category,
-    value: item.count,
+    value: Number(item.count) || 0,  // Convert string to number
     category: item.category
   }));
 
