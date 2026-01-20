@@ -18,7 +18,10 @@ import {
   Home,
   Eye,
   Grid3x3,
-  Bell
+  Bell,
+  MessageCircle,
+  Radio,
+  Megaphone
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 import TelegramGroupsNav from '../telegram-groups-nav'
@@ -246,10 +249,82 @@ export default function MobileBottomNav({
                   )
                 })}
 
-                {/* ✅ Telegram Groups только для админов в режиме админа */}
-                {permissions.canManageTelegram && adminMode && telegramGroups && telegramGroups.length > 0 && (
+                {/* ✅ Анонсы для админов в режиме админа */}
+                {permissions.canManageSettings && adminMode && (
+                  <Link
+                    href={`/p/${orgId}/announcements`}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/announcements`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Megaphone className="h-5 w-5 flex-shrink-0" />
+                    <span>Анонсы</span>
+                  </Link>
+                )}
+
+                {/* ✅ Telegram Groups & Channels для админов в режиме админа */}
+                {permissions.canManageTelegram && adminMode && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <TelegramGroupsNav orgId={orgId} groups={telegramGroups} currentPath={pathname || ''} />
+                    <div className="px-3 mb-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase">Telegram</p>
+                    </div>
+                    
+                    {/* Main Telegram Settings */}
+                    <Link
+                      href={`/p/${orgId}/telegram`}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        pathname === `/p/${orgId}/telegram` || pathname === `/p/${orgId}/telegram/`
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                      <span>Настройки</span>
+                    </Link>
+
+                    {/* Telegram Groups */}
+                    {telegramGroups && telegramGroups.length > 0 && (
+                      <>
+                        <p className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase mt-2">Группы</p>
+                        {telegramGroups.map((group: any) => (
+                          <Link
+                            key={group.id}
+                            href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                              pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{group.title}</span>
+                          </Link>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Telegram Channels */}
+                    {telegramChannels && telegramChannels.length > 0 && (
+                      <>
+                        <p className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase mt-2">Каналы</p>
+                        {telegramChannels.map((channel: any) => (
+                          <Link
+                            key={channel.id}
+                            href={`/p/${orgId}/telegram/channels/${channel.id}`}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                              pathname === `/p/${orgId}/telegram/channels/${channel.id}`
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <Radio className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{channel.title}</span>
+                          </Link>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
 

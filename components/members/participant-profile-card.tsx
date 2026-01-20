@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
-import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity, Archive, RotateCcw, AlertTriangle } from 'lucide-react'
+import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity, Archive, RotateCcw, AlertTriangle, Copy, Check, MessageCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import PhotoUploadModal from './photo-upload-modal'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
@@ -44,6 +44,7 @@ export default function ParticipantProfileCard({
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState(participant.photo_url)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archivePending, setArchivePending] = useState(false)
+  const [telegramIdCopied, setTelegramIdCopied] = useState(false)
   
   const isArchived = participant.participant_status === 'excluded'
   
@@ -276,6 +277,18 @@ export default function ParticipantProfileCard({
     }
   }
 
+  const handleCopyTelegramId = async () => {
+    if (!participant.tg_user_id) return;
+    
+    try {
+      await navigator.clipboard.writeText(participant.tg_user_id.toString());
+      setTelegramIdCopied(true);
+      setTimeout(() => setTelegramIdCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }
+
   return (
     <Card className={`overflow-hidden ${isArchived ? 'opacity-75' : ''}`}>
       {/* Header with photo */}
@@ -463,21 +476,43 @@ export default function ParticipantProfileCard({
           {/* Contact Info - Compact vertical list */}
           <div className="space-y-2">
             {/* Telegram */}
-            <div className="flex items-center gap-3">
-              <AtSign className="h-4 w-4 text-blue-600 flex-shrink-0" />
+            <div className="flex items-start gap-3">
+              <MessageCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <span className="text-sm text-gray-500 w-20">Telegram</span>
-              {participant.username ? (
-                <a
-                  href={`https://t.me/${participant.username}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  @{participant.username}
-                </a>
-              ) : (
-                <span className="text-sm text-gray-400">Не указан</span>
-              )}
+              <div className="flex-1">
+                {participant.username ? (
+                  <a
+                    href={`https://t.me/${participant.username}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    @{participant.username}
+                  </a>
+                ) : participant.tg_user_id ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">ID: {participant.tg_user_id}</span>
+                      <button
+                        onClick={handleCopyTelegramId}
+                        className="p-1 rounded hover:bg-gray-100 transition-colors"
+                        title="Скопировать ID"
+                      >
+                        {telegramIdCopied ? (
+                          <Check className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <Copy className="h-3 w-3 text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Найти: откройте Telegram → Поиск → вставьте ID
+                    </p>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-400">Не указан</span>
+                )}
+              </div>
             </div>
 
             {/* Email */}
