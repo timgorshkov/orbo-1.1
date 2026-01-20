@@ -224,7 +224,7 @@ export default async function OrganizationSettingsPage({
     }
 
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="bg-gray-50">
         {/* Page Header */}
         <div className="bg-gray-50 pb-6">
           <div className="px-6 pt-6 pb-4">
@@ -236,7 +236,7 @@ export default async function OrganizationSettingsPage({
         </div>
 
         {/* Tab Content */}
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto max-w-7xl px-6 pb-6">
           {tabContent}
         </div>
       </div>
