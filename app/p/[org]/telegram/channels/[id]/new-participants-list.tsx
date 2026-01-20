@@ -71,7 +71,7 @@ export function NewParticipantsList({ participants, orgId }: NewParticipantsList
                   </div>
                   <div>
                     <p className="font-medium">{displayName}</p>
-                    {participant.username && (
+                    {participant.username ? (
                       <a 
                         href={`https://t.me/${participant.username}`}
                         target="_blank"
@@ -79,6 +79,15 @@ export function NewParticipantsList({ participants, orgId }: NewParticipantsList
                         className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                       >
                         @{participant.username}
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    ) : (
+                      <a 
+                        href={`tg://user?id=${participant.tg_user_id}`}
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        title="Открыть профиль в Telegram"
+                      >
+                        Написать в Telegram
                         <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     )}

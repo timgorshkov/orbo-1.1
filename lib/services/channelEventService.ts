@@ -10,6 +10,7 @@
 
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
+import { TelegramService } from './telegramService';
 
 const logger = createServiceLogger('ChannelEventService');
 
@@ -114,18 +115,33 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       hasMedia = true;
     }
     
+    // Get subscriber count (if bot is admin)
+    let subscriberCount: number | null = null;
+    try {
+      const telegramService = new TelegramService('main');
+      const memberCountResponse = await telegramService.getChatMembersCount(chatId);
+      if (memberCountResponse.ok && memberCountResponse.result) {
+        subscriberCount = memberCountResponse.result;
+        logger.info({ chat_id: chatId, subscriber_count: subscriberCount }, '👥 [CHANNEL] Got subscriber count');
+      }
+    } catch (error) {
+      logger.warn({ error, chat_id: chatId }, '⚠️ [CHANNEL] Failed to get subscriber count (bot may not be admin)');
+    }
+    
     // Upsert channel first
     logger.info({ 
       chat_id: chatId, 
       title: post.chat.title,
-      username: post.chat.username 
+      username: post.chat.username,
+      subscriber_count: subscriberCount
     }, '🔄 [CHANNEL] Upserting channel');
     
     const { data: rpcChannelResult, error: channelError } = await supabase
       .rpc('upsert_telegram_channel', {
         p_tg_chat_id: chatId,
         p_title: post.chat.title || `Channel ${chatId}`,
-        p_username: post.chat.username || null
+        p_username: post.chat.username || null,
+        p_subscriber_count: subscriberCount
       });
     
     if (channelError) {

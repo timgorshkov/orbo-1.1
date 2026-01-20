@@ -111,11 +111,24 @@ export function ActiveReadersList({ readers, orgId }: ActiveReadersListProps) {
                   <p className="font-medium text-sm text-neutral-800 truncate">
                     {getDisplayName(reader)}
                   </p>
-                  {reader.username && reader.first_name && (
-                    <p className="text-xs text-neutral-500 truncate">
+                  {reader.username && reader.first_name ? (
+                    <a 
+                      href={`https://t.me/${reader.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline"
+                    >
                       @{reader.username}
-                    </p>
-                  )}
+                    </a>
+                  ) : !reader.username ? (
+                    <a 
+                      href={`tg://user?id=${reader.tg_user_id}`}
+                      className="text-xs text-blue-600 hover:underline"
+                      title="Открыть профиль в Telegram"
+                    >
+                      Написать в Telegram
+                    </a>
+                  ) : null}
                   <div className="flex items-center gap-2 mt-1">
                     <span className="flex items-center gap-1 text-xs text-neutral-600" title="Комментарии">
                       <MessageCircle className="h-3 w-3" />
