@@ -92,18 +92,40 @@ export default async function PublicOrgLayout({
     }
   }
 
-  // Load telegram channels
+  // Load telegram channels (simple query without stats for performance)
   let telegramChannels: any[] = [];
   if (role === 'owner' || role === 'admin') {
     const { data: channelsResult, error: channelsError } = await adminSupabase
-      .rpc('get_org_channels', { p_org_id: org.id });
+      .from('org_telegram_channels')
+      .select(`
+        channel_id,
+        is_primary,
+        telegram_channels!inner(
+          id,
+          tg_chat_id,
+          title,
+          username,
+          bot_status
+        )
+      `)
+      .eq('org_id', org.id);
     
     if (!channelsError && channelsResult) {
-      telegramChannels = channelsResult.sort((a: any, b: any) => {
-        const titleA = a.title || '';
-        const titleB = b.title || '';
-        return titleA.localeCompare(titleB);
-      });
+      // Transform to expected format
+      telegramChannels = channelsResult
+        .map((link: any) => ({
+          id: link.telegram_channels.id,
+          tg_chat_id: link.telegram_channels.tg_chat_id,
+          title: link.telegram_channels.title,
+          username: link.telegram_channels.username,
+          bot_status: link.telegram_channels.bot_status,
+          is_primary: link.is_primary
+        }))
+        .sort((a: any, b: any) => {
+          const titleA = a.title || '';
+          const titleB = b.title || '';
+          return titleA.localeCompare(titleB);
+        });
     }
   }
 

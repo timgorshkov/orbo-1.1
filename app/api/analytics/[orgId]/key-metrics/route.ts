@@ -184,11 +184,16 @@ export async function GET(
         org_id: orgId 
       }, 'Counting participants for specific group');
       
+      // Count only valid participants (not archived, not bots, not merged)
       const { count: groupMembersCount, error: countError } = await adminSupabase
         .from('participant_groups')
-        .select('*', { count: 'exact', head: true })
+        .select('participant_id, participants!inner(id)', { count: 'exact', head: true })
         .eq('tg_group_id', numericChatId)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('participants.org_id', orgId)
+        .neq('participants.source', 'bot')
+        .is('participants.merged_into', null)
+        .neq('participants.participant_status', 'excluded');
       
       if (countError) {
         logger.error({ 
