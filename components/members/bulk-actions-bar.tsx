@@ -263,7 +263,8 @@ export default function BulkActionsBar({
                   Отмена
                 </Button>
                 <Button
-                  variant="destructive"
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
                   onClick={async () => {
                     if (!onArchiveSelected) return;
                     setIsLoading(true);
