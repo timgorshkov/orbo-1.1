@@ -9,7 +9,7 @@ export function Button({
   ...props 
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'default' | 'ghost' | 'outline' | 'secondary' | 'muted',
-  size?: 'sm' | 'md' | 'lg',
+  size?: 'sm' | 'md' | 'lg' | 'icon',
   asChild?: boolean
 }) {
   const base = "inline-flex items-center justify-center rounded-xl font-medium transition"
@@ -17,7 +17,8 @@ export function Button({
   const sizeStyles = {
     sm: "px-3 py-1.5 text-xs",
     md: "px-4 py-2 text-sm",
-    lg: "px-6 py-3 text-base"
+    lg: "px-6 py-3 text-base",
+    icon: "h-9 w-9 p-0"
   }
   
   const styles = {
