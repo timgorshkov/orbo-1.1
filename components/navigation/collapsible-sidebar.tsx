@@ -73,13 +73,27 @@ export default function CollapsibleSidebar({
   const [showMenuDropdown, setShowMenuDropdown] = useState(false)
   const [showTelegramDropdown, setShowTelegramDropdown] = useState(false)
   const [whatsappGroups, setWhatsappGroups] = useState<WhatsAppGroup[]>([])
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Mark component as mounted to avoid hydration mismatches
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Сохраняем состояние свёрнутости в localStorage
   useEffect(() => {
+    if (!isMounted) return
     const saved = localStorage.getItem(`sidebar-collapsed-${orgId}`)
     if (saved !== null) {
       setIsCollapsed(saved === 'true')
     }
+  }, [orgId, isMounted])
+  
+  // Reset dropdowns when organization changes
+  useEffect(() => {
+    setShowOrgDropdown(false)
+    setShowMenuDropdown(false)
+    setShowTelegramDropdown(false)
   }, [orgId])
   
   // Загружаем WhatsApp группы, отмеченные для показа в меню

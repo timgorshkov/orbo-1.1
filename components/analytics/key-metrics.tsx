@@ -111,12 +111,20 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
   const reactionsChange = calculateChange(data.current_reactions, data.previous_reactions);
   const replyRatioChange = data.current_reply_ratio - data.previous_reply_ratio;
 
+  // Helper to safely convert to number
+  const toNumber = (val: any): number => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') return parseInt(val, 10) || 0;
+    if (typeof val === 'bigint') return Number(val);
+    return 0;
+  };
+
   const metrics = [
     {
       label: 'Всего участников',
-      current: data.total_participants,
+      current: toNumber(data.total_participants),
       change: null, // Общее число не имеет изменения за период
-      format: (val: number) => val.toString(),
+      format: (val: number) => String(val),
       noChange: true,
     },
     {
@@ -141,15 +149,15 @@ export default function KeyMetrics({ orgId, tgChatId, periodDays = 14 }: KeyMetr
     },
     {
       label: 'Ответов',
-      current: data.current_replies,
+      current: toNumber(data.current_replies),
       change: repliesChange,
-      format: (val: number) => val.toString(),
+      format: (val: number) => String(val),
     },
     {
       label: 'Реакций',
-      current: data.current_reactions,
+      current: toNumber(data.current_reactions),
       change: reactionsChange,
-      format: (val: number) => val.toString(),
+      format: (val: number) => String(val),
     },
   ];
 

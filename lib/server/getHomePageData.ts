@@ -275,10 +275,9 @@ export async function getHomePageData(
     // 5. Get recent members (5 max)
     const { data: recentMembers } = await supabase
       .from('participants')
-      .select('id, full_name, username, photo_url, joined_at, created_at')
+      .select('id, full_name, username, photo_url, created_at')
       .eq('org_id', orgId)
       .is('merged_into', null)
-      .order('joined_at', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(5)
 
@@ -287,7 +286,7 @@ export async function getHomePageData(
       full_name: member.full_name || 'Участник',
       username: member.username,
       avatar_url: member.photo_url,
-      joined_at: member.joined_at || member.created_at
+      joined_at: member.created_at
     }))
 
     // 6. Get counts for organization stats
@@ -326,13 +325,13 @@ export async function getHomePageData(
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId)
         .is('merged_into', null)
-        .gte('joined_at', sinceDate.toISOString())
+        .gte('created_at', sinceDate.toISOString())
 
       const { count: newMaterialsCount } = await supabase
         .from('material_pages')
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId)
-        .eq('status', 'published')
+        .eq('is_published', true)
         .gte('created_at', sinceDate.toISOString())
 
       activitySummary = {

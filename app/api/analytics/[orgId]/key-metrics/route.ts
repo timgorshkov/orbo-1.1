@@ -218,28 +218,43 @@ export async function GET(
         
         totalMembersInOrg = fallbackCount || 0;
       } else {
-        // Handle RPC result - it can be a number, array, or object
+        // Handle RPC result - it can be a number, string (BIGINT), array, or object
         if (typeof countResult === 'number') {
           totalMembersInOrg = countResult;
+        } else if (typeof countResult === 'string') {
+          // BIGINT from PostgreSQL may come as string
+          totalMembersInOrg = parseInt(countResult, 10) || 0;
         } else if (Array.isArray(countResult) && countResult.length > 0) {
           // RPC may return an array with a single row
           const firstRow = countResult[0];
-          totalMembersInOrg = typeof firstRow === 'number' 
-            ? firstRow 
-            : (firstRow?.count_valid_group_participants ?? firstRow?.count ?? 0);
+          if (typeof firstRow === 'number') {
+            totalMembersInOrg = firstRow;
+          } else if (typeof firstRow === 'string') {
+            totalMembersInOrg = parseInt(firstRow, 10) || 0;
+          } else if (firstRow && typeof firstRow === 'object') {
+            const value = firstRow?.count_valid_group_participants ?? firstRow?.count ?? 0;
+            totalMembersInOrg = typeof value === 'string' ? parseInt(value, 10) || 0 : Number(value) || 0;
+          } else {
+            totalMembersInOrg = 0;
+          }
         } else if (countResult && typeof countResult === 'object') {
           // RPC may return an object with the result
-          totalMembersInOrg = (countResult as any).count_valid_group_participants ?? 
-                              (countResult as any).count ?? 
-                              (countResult as any).result ?? 0;
+          const value = (countResult as any).count_valid_group_participants ?? 
+                        (countResult as any).count ?? 
+                        (countResult as any).result ?? 0;
+          totalMembersInOrg = typeof value === 'string' ? parseInt(value, 10) || 0 : Number(value) || 0;
         } else {
           totalMembersInOrg = 0;
         }
         
+        // Ensure it's always a number
+        totalMembersInOrg = Number(totalMembersInOrg) || 0;
+        
         logger.debug({ 
           raw_count_result: countResult,
+          raw_type: typeof countResult,
           parsed_count: totalMembersInOrg,
-          result_type: typeof countResult
+          is_number: typeof totalMembersInOrg === 'number'
         }, 'Parsed RPC count result');
       }
       

@@ -144,8 +144,9 @@ export default async function PublicOrgLayout({
     }
   }
 
+  // Use key to force remount when organization changes, preventing React DOM mismatch errors
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div key={`org-layout-${org.id}`} className="flex h-screen overflow-hidden bg-gray-50">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <CollapsibleSidebar
