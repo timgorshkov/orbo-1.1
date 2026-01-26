@@ -144,8 +144,9 @@ export async function processJoinRequest(
       .single();
     
     // Auto-reject if spam score is too high
-    if (settings.spam_detection?.auto_reject_score && 
-        application?.spam_score >= settings.spam_detection.auto_reject_score) {
+    if (application && 
+        settings.spam_detection?.auto_reject_score && 
+        application.spam_score >= settings.spam_detection.auto_reject_score) {
       
       // Find spam stage
       const { data: spamStage } = await supabase
