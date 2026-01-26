@@ -41,29 +41,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
     
-    // Get pipelines with stats
+    // Get pipelines (no Supabase-style joins - PostgresQueryBuilder doesn't support them)
     const { data: pipelines, error } = await supabase
       .from('application_pipelines')
-      .select(`
-        id,
-        name,
-        description,
-        pipeline_type,
-        telegram_group_id,
-        is_default,
-        is_active,
-        created_at,
-        pipeline_stages (
-          id,
-          name,
-          slug,
-          color,
-          position,
-          is_initial,
-          is_terminal,
-          terminal_type
-        )
-      `)
+      .select('id, name, description, pipeline_type, telegram_group_id, is_default, is_active, created_at')
       .eq('org_id', orgId)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
@@ -72,6 +53,25 @@ export async function GET(request: NextRequest) {
       logger.error({ error, org_id: orgId }, 'Failed to get pipelines');
       return NextResponse.json({ error: 'Failed to get pipelines' }, { status: 500 });
     }
+    
+    // Get stages for all pipelines
+    const pipelineIds = (pipelines || []).map(p => p.id);
+    const { data: allStages } = pipelineIds.length
+      ? await supabase
+          .from('pipeline_stages')
+          .select('id, name, slug, color, position, is_initial, is_terminal, terminal_type, pipeline_id')
+          .in('pipeline_id', pipelineIds)
+          .order('position')
+      : { data: [] };
+    
+    // Group stages by pipeline
+    const stagesByPipeline: Record<string, any[]> = {};
+    (allStages || []).forEach((stage: any) => {
+      if (!stagesByPipeline[stage.pipeline_id]) {
+        stagesByPipeline[stage.pipeline_id] = [];
+      }
+      stagesByPipeline[stage.pipeline_id].push(stage);
+    });
     
     // Get application counts per pipeline
     const pipelinesWithCounts = await Promise.all(
@@ -86,7 +86,8 @@ export async function GET(request: NextRequest) {
         
         return {
           ...pipeline,
-          stages: pipeline.pipeline_stages,
+          stages: stagesByPipeline[pipeline.id] || [],
+          pipeline_stages: stagesByPipeline[pipeline.id] || [],
           total_applications: totalCount,
           pending_applications: pendingCount,
           stage_stats: stats
@@ -167,15 +168,17 @@ export async function POST(request: NextRequest) {
         .eq('id', pipelineId);
     }
     
-    // Get created pipeline with stages
-    const { data: pipeline } = await supabase
-      .from('application_pipelines')
-      .select(`
-        *,
-        pipeline_stages (*)
-      `)
-      .eq('id', pipelineId)
-      .single();
+    // Get created pipeline and stages separately (no Supabase-style joins)
+    const [{ data: pipelineData }, { data: stages }] = await Promise.all([
+      supabase.from('application_pipelines').select('*').eq('id', pipelineId).single(),
+      supabase.from('pipeline_stages').select('*').eq('pipeline_id', pipelineId).order('position')
+    ]);
+    
+    const pipeline = {
+      ...pipelineData,
+      pipeline_stages: stages || [],
+      stages: stages || []
+    };
     
     logger.info({ org_id, pipeline_id: pipelineId, type: pipeline_type }, 'Pipeline created');
     
