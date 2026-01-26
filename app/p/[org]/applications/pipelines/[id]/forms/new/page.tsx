@@ -81,19 +81,34 @@ const fieldTypes = [
   { type: 'phone', label: 'Телефон', icon: Phone },
 ] as const
 
-export default function NewFormPage() {
+interface NewFormPageProps {
+  orgId?: string
+  pipelineId?: string
+  existingForm?: any
+  isEdit?: boolean
+}
+
+export default function NewFormPage({ 
+  orgId: propsOrgId, 
+  pipelineId: propsPipelineId,
+  existingForm,
+  isEdit = false
+}: NewFormPageProps = {}) {
   const router = useRouter()
   const params = useParams()
-  const orgId = params.org as string
-  const pipelineId = params.id as string
+  const orgId = propsOrgId || (params.org as string)
+  const pipelineId = propsPipelineId || (params.id as string)
+  const formId = existingForm?.id
   
   const [activeTab, setActiveTab] = useState<'landing' | 'form' | 'success'>('landing')
-  const [name, setName] = useState('Форма заявки')
-  const [landing, setLanding] = useState<Landing>(defaultLanding)
-  const [formFields, setFormFields] = useState<FormField[]>([
-    { id: '1', type: 'text', label: 'Имя', placeholder: 'Ваше имя', required: true, prefill: 'telegram_name' },
-  ])
-  const [successPage, setSuccessPage] = useState<SuccessPage>(defaultSuccessPage)
+  const [name, setName] = useState(existingForm?.name || 'Форма заявки')
+  const [landing, setLanding] = useState<Landing>(existingForm?.landing || defaultLanding)
+  const [formFields, setFormFields] = useState<FormField[]>(
+    existingForm?.form_schema?.length > 0
+      ? existingForm.form_schema
+      : [{ id: '1', type: 'text', label: 'Имя', placeholder: 'Ваше имя', required: true, prefill: 'telegram_name' }]
+  )
+  const [successPage, setSuccessPage] = useState<SuccessPage>(existingForm?.success_page || defaultSuccessPage)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -142,30 +157,42 @@ export default function NewFormPage() {
     setError(null)
     
     try {
-      const res = await fetch('/api/applications/forms', {
-        method: 'POST',
+      const url = isEdit 
+        ? `/api/applications/forms/${formId}`
+        : '/api/applications/forms'
+      
+      const method = isEdit ? 'PATCH' : 'POST'
+      
+      const body: any = {
+        name: name.trim() || 'Форма заявки',
+        landing,
+        form_schema: formFields,
+        success_page: successPage,
+        settings: {
+          require_form: formFields.length > 0,
+          spam_detection: { enabled: true }
+        }
+      }
+      
+      if (!isEdit) {
+        body.org_id = orgId
+        body.pipeline_id = pipelineId
+      }
+      
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          org_id: orgId,
-          pipeline_id: pipelineId,
-          name: name.trim() || 'Форма заявки',
-          landing,
-          form_schema: formFields,
-          success_page: successPage,
-          settings: {
-            require_form: formFields.length > 0,
-            spam_detection: { enabled: true }
-          }
-        })
+        body: JSON.stringify(body)
       })
       
       const data = await res.json()
       
       if (!res.ok) {
-        throw new Error(data.error || 'Не удалось создать форму')
+        throw new Error(data.error || `Не удалось ${isEdit ? 'обновить' : 'создать'} форму`)
       }
       
-      router.push(`/p/${orgId}/applications/pipelines/${pipelineId}`)
+      router.push(`/p/${orgId}/applications/pipelines/${pipelineId}/forms`)
+      router.refresh()
     } catch (err: any) {
       setError(err.message)
     } finally {

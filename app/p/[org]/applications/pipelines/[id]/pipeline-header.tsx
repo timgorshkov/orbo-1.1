@@ -86,15 +86,13 @@ export default function PipelineHeader({
             </div>
           )}
           
-          {/* Create Form */}
-          {!hasForm && (
-            <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}/forms/new`}>
-              <Button variant="outline" size="sm">
-                <Plus className="w-4 h-4 mr-1" />
-                Создать форму
-              </Button>
-            </Link>
-          )}
+          {/* Manage Forms */}
+          <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}/forms`}>
+            <Button variant="outline" size="sm">
+              <Plus className="w-4 h-4 mr-1" />
+              {hasForm ? 'Управление формами' : 'Создать форму'}
+            </Button>
+          </Link>
           
           {/* Settings */}
           <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}/settings`}>
