@@ -22,29 +22,10 @@ export default async function PipelinePage({
     
     const supabase = createAdminServer()
     
-    // Get pipeline with stages
+    // Get pipeline base data
     const { data: pipeline, error } = await supabase
       .from('application_pipelines')
-      .select(`
-        id,
-        name,
-        description,
-        pipeline_type,
-        telegram_group_id,
-        is_active,
-        created_at,
-        pipeline_stages (
-          id,
-          name,
-          slug,
-          color,
-          position,
-          is_initial,
-          is_terminal,
-          terminal_type,
-          auto_actions
-        )
-      `)
+      .select('id, name, description, pipeline_type, telegram_group_id, is_active, created_at')
       .eq('id', pipelineId)
       .eq('org_id', orgId)
       .single()
@@ -53,8 +34,14 @@ export default async function PipelinePage({
       return notFound()
     }
     
-    // Sort stages by position
-    const stages = (pipeline.pipeline_stages || []).sort((a: any, b: any) => a.position - b.position)
+    // Get stages for this pipeline separately
+    const { data: stagesData } = await supabase
+      .from('pipeline_stages')
+      .select('id, name, slug, color, position, is_initial, is_terminal, terminal_type, auto_actions')
+      .eq('pipeline_id', pipelineId)
+      .order('position')
+    
+    const stages = stagesData || []
     
     // Get forms for this pipeline
     const { data: forms } = await supabase
@@ -63,29 +50,36 @@ export default async function PipelinePage({
       .eq('pipeline_id', pipelineId)
       .eq('is_active', true)
     
-    // Get applications grouped by stage
-    const { data: applications } = await supabase
-      .from('applications')
-      .select(`
-        id,
-        stage_id,
-        tg_user_id,
-        tg_user_data,
-        form_data,
-        form_filled_at,
-        spam_score,
-        spam_reasons,
-        created_at,
-        participant:participants (
-          id,
-          username,
-          full_name,
-          photo_url
-        )
-      `)
-      .eq('org_id', orgId)
-      .in('form_id', forms?.map(f => f.id) || [])
-      .order('created_at', { ascending: false })
+    // Get applications (without participant join)
+    const formIds = forms?.map(f => f.id) || []
+    const { data: applicationsData } = formIds.length
+      ? await supabase
+          .from('applications')
+          .select('id, stage_id, tg_user_id, tg_user_data, form_data, form_filled_at, spam_score, spam_reasons, created_at, participant_id')
+          .eq('org_id', orgId)
+          .in('form_id', formIds)
+          .order('created_at', { ascending: false })
+      : { data: [] }
+    
+    // Get participants separately
+    let applications: any[] = applicationsData || []
+    if (applications.length) {
+      const participantIds = Array.from(new Set(applications.map(a => a.participant_id).filter(Boolean)))
+      if (participantIds.length) {
+        const { data: participants } = await supabase
+          .from('participants')
+          .select('id, username, full_name, photo_url')
+          .in('id', participantIds)
+        
+        const participantsMap = Object.fromEntries((participants || []).map(p => [p.id, p]))
+        applications = applications.map(app => ({
+          ...app,
+          participant: app.participant_id ? participantsMap[app.participant_id] || null : null
+        }))
+      } else {
+        applications = applications.map(app => ({ ...app, participant: null }))
+      }
+    }
     
     // Group applications by stage
     const applicationsByStage: Record<string, any[]> = {}

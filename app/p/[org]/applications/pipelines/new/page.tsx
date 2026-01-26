@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { ArrowLeft, Users, FileText, Sparkles, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,13 +60,11 @@ const pipelineTypes: PipelineType[] = [
   }
 ]
 
-export default function NewPipelinePage({
-  params
-}: {
-  params: Promise<{ org: string }>
-}) {
+export default function NewPipelinePage() {
   const router = useRouter()
+  const params = useParams()
   const searchParams = useSearchParams()
+  const orgId = params.org as string
   const preselectedType = searchParams.get('type') as 'join_request' | 'service' | 'custom' | null
   
   const [step, setStep] = useState<'type' | 'details'>(preselectedType ? 'details' : 'type')
@@ -77,12 +75,6 @@ export default function NewPipelinePage({
   const [description, setDescription] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [orgId, setOrgId] = useState<string | null>(null)
-
-  // Resolve params
-  useState(() => {
-    params.then(p => setOrgId(p.org))
-  })
 
   const handleSelectType = (type: PipelineType) => {
     setSelectedType(type)
@@ -91,7 +83,7 @@ export default function NewPipelinePage({
   }
 
   const handleCreate = async () => {
-    if (!selectedType || !orgId) return
+    if (!selectedType) return
     
     setIsLoading(true)
     setError(null)
@@ -121,14 +113,6 @@ export default function NewPipelinePage({
     } finally {
       setIsLoading(false)
     }
-  }
-
-  if (!orgId) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
-      </div>
-    )
   }
 
   return (

@@ -76,25 +76,34 @@ export default async function ApplicationsPage({
       })
     )
     
-    // Get recent applications
-    const { data: recentApplications } = await adminSupabase
+    // Get recent applications (PostgresQueryBuilder doesn't support Supabase-style joins)
+    const { data: apps } = await adminSupabase
       .from('applications')
-      .select(`
-        id,
-        tg_user_data,
-        spam_score,
-        created_at,
-        stage:pipeline_stages (
-          name,
-          color
-        ),
-        form:application_forms (
-          name
-        )
-      `)
+      .select('id, tg_user_data, spam_score, created_at, stage_id, form_id')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(5)
+    
+    // Get related stages and forms separately
+    let applicationsData: any[] = []
+    if (apps?.length) {
+      const stageIds = Array.from(new Set(apps.map(a => a.stage_id).filter(Boolean)))
+      const formIds = Array.from(new Set(apps.map(a => a.form_id).filter(Boolean)))
+      
+      const [{ data: stages }, { data: forms }] = await Promise.all([
+        stageIds.length ? adminSupabase.from('pipeline_stages').select('id, name, color').in('id', stageIds) : { data: [] },
+        formIds.length ? adminSupabase.from('application_forms').select('id, name').in('id', formIds) : { data: [] }
+      ])
+      
+      const stagesMap = Object.fromEntries((stages || []).map(s => [s.id, s]))
+      const formsMap = Object.fromEntries((forms || []).map(f => [f.id, f]))
+      
+      applicationsData = apps.map(app => ({
+        ...app,
+        stage: stagesMap[app.stage_id] || null,
+        form: formsMap[app.form_id] || null
+      }))
+    }
     
     const hasPipelines = pipelinesWithStats.length > 0
     
@@ -198,14 +207,14 @@ export default async function ApplicationsPage({
             </div>
             
             {/* Recent Applications */}
-            {recentApplications && recentApplications.length > 0 && (
+            {applicationsData && applicationsData.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Последние заявки</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {recentApplications.map((app: any) => {
+                    {applicationsData.map((app: any) => {
                       const userData = app.tg_user_data || {}
                       const displayName = [userData.first_name, userData.last_name].filter(Boolean).join(' ') 
                         || userData.username 

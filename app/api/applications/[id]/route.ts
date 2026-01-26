@@ -28,52 +28,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     
     const supabase = createAdminServer();
     
-    // Get application with related data
-    const { data: application, error } = await supabase
+    // Get application base data (no Supabase-style joins - PostgresQueryBuilder doesn't support them)
+    const { data: appData, error } = await supabase
       .from('applications')
-      .select(`
-        *,
-        form:application_forms (
-          id,
-          name,
-          pipeline_id,
-          form_schema
-        ),
-        stage:pipeline_stages (
-          id,
-          name,
-          slug,
-          color,
-          is_terminal,
-          terminal_type
-        ),
-        participant:participants (
-          id,
-          tg_user_id,
-          username,
-          full_name,
-          photo_url,
-          email,
-          phone,
-          bio
-        ),
-        source:application_sources (
-          id,
-          code,
-          utm_source,
-          utm_medium,
-          utm_campaign,
-          name
-        ),
-        processed_by_user:users!applications_processed_by_fkey (
-          id,
-          email
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .single();
     
-    if (error) {
+    if (error || !appData) {
       logger.error({ error, application_id: id }, 'Failed to get application');
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
@@ -82,7 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { data: membership } = await supabase
       .from('memberships')
       .select('role')
-      .eq('org_id', application.org_id)
+      .eq('org_id', appData.org_id)
       .eq('user_id', user.id)
       .single();
     
@@ -90,27 +52,47 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
     
-    // Get event history
-    const { data: events } = await supabase
-      .from('application_events')
-      .select(`
-        id,
-        event_type,
-        actor_type,
-        actor_id,
-        data,
-        created_at
-      `)
-      .eq('application_id', id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    // Get related data separately
+    const [
+      { data: form },
+      { data: stage },
+      { data: participant },
+      { data: source },
+      { data: events }
+    ] = await Promise.all([
+      appData.form_id 
+        ? supabase.from('application_forms').select('id, name, pipeline_id, form_schema').eq('id', appData.form_id).single()
+        : { data: null },
+      appData.stage_id
+        ? supabase.from('pipeline_stages').select('id, name, slug, color, is_terminal, terminal_type').eq('id', appData.stage_id).single()
+        : { data: null },
+      appData.participant_id
+        ? supabase.from('participants').select('id, tg_user_id, username, full_name, photo_url, email, phone, bio').eq('id', appData.participant_id).single()
+        : { data: null },
+      appData.source_id
+        ? supabase.from('application_sources').select('id, code, utm_source, utm_medium, utm_campaign, name').eq('id', appData.source_id).single()
+        : { data: null },
+      supabase.from('application_events').select('id, event_type, actor_type, actor_id, data, created_at').eq('application_id', id).order('created_at', { ascending: false }).limit(50)
+    ]);
+    
+    // Compose application object
+    const application = {
+      ...appData,
+      form,
+      stage,
+      participant,
+      source
+    };
     
     // Get available stages for this pipeline
-    const { data: availableStages } = await supabase
-      .from('pipeline_stages')
-      .select('id, name, slug, color, position, is_terminal, terminal_type')
-      .eq('pipeline_id', application.form.pipeline_id)
-      .order('position');
+    const pipelineId = form?.pipeline_id;
+    const { data: availableStages } = pipelineId
+      ? await supabase
+          .from('pipeline_stages')
+          .select('id, name, slug, color, position, is_terminal, terminal_type')
+          .eq('pipeline_id', pipelineId)
+          .order('position')
+      : { data: [] };
     
     logger.info({ application_id: id }, 'Application fetched');
     

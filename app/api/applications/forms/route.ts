@@ -42,25 +42,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
     
-    // Build query
+    // Build query (no Supabase-style joins - PostgresQueryBuilder doesn't support them)
     let query = supabase
       .from('application_forms')
-      .select(`
-        id,
-        name,
-        slug,
-        landing,
-        form_schema,
-        success_page,
-        settings,
-        is_active,
-        created_at,
-        pipeline:application_pipelines (
-          id,
-          name,
-          pipeline_type
-        )
-      `)
+      .select('id, name, slug, landing, form_schema, success_page, settings, is_active, created_at, pipeline_id')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false });
     
@@ -68,16 +53,25 @@ export async function GET(request: NextRequest) {
       query = query.eq('pipeline_id', pipelineId);
     }
     
-    const { data: forms, error } = await query;
+    const { data: formsRaw, error } = await query;
     
     if (error) {
       logger.error({ error, org_id: orgId }, 'Failed to get forms');
       return NextResponse.json({ error: 'Failed to get forms' }, { status: 500 });
     }
     
+    const forms = formsRaw || [];
+    
+    // Get pipelines separately
+    const pipelineIds = Array.from(new Set(forms.map(f => f.pipeline_id).filter(Boolean)));
+    const { data: pipelines } = pipelineIds.length
+      ? await supabase.from('application_pipelines').select('id, name, pipeline_type').in('id', pipelineIds)
+      : { data: [] };
+    const pipelinesMap = Object.fromEntries((pipelines || []).map((p: any) => [p.id, p]));
+    
     // Get application counts per form
     const formsWithCounts = await Promise.all(
-      (forms || []).map(async (form) => {
+      forms.map(async (form) => {
         const { count } = await supabase
           .from('applications')
           .select('id', { count: 'exact', head: true })
@@ -85,12 +79,13 @@ export async function GET(request: NextRequest) {
         
         return {
           ...form,
+          pipeline: pipelinesMap[form.pipeline_id] || null,
           applications_count: count || 0
         };
       })
     );
     
-    logger.info({ org_id: orgId, count: forms?.length }, 'Forms fetched');
+    logger.info({ org_id: orgId, count: forms.length }, 'Forms fetched');
     
     return NextResponse.json({ forms: formsWithCounts });
   } catch (error) {
