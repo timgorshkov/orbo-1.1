@@ -43,8 +43,13 @@ function calculateRiskScore(lastActivity: string | null | undefined, fallback?: 
   return 95
 }
 
-const BOT_USER_IDS = new Set<number>([1087968824])
-const BOT_USERNAMES = new Set<string>(['groupanonymousbot', 'orbo_community_bot', 'orbocommunitybot'])
+// System accounts and bots to filter out from participant lists
+const BOT_USER_IDS = new Set<number>([
+  1087968824,  // Group Anonymous Bot
+  777000,      // Telegram Service Notifications
+  136817688,   // @Channel_Bot
+])
+const BOT_USERNAMES = new Set<string>(['groupanonymousbot', 'orbo_community_bot', 'orbocommunitybot', 'channel_bot'])
 
 const normalizeUsername = (username?: string | null) => {
   if (!username) return null

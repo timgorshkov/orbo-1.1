@@ -72,10 +72,31 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [mapLink, setMapLink] = useState(initialEvent?.map_link || '')
   
   // Helper to format date for input (handles ISO format)
-  const formatDateForInput = (dateStr: string | null | undefined): string => {
+  const formatDateForInput = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return ''
+    
+    // If it's a Date object, convert to ISO string first
+    if (dateStr instanceof Date) {
+      return dateStr.toISOString().split('T')[0]
+    }
+    
+    // If it's not a string, try to convert it
+    if (typeof dateStr !== 'string') {
+      try {
+        // Handle potential object with date-like structure
+        const dateObj = new Date(dateStr as any)
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj.toISOString().split('T')[0]
+        }
+      } catch {
+        // Ignore conversion errors
+      }
+      return ''
+    }
+    
     // If it's already in YYYY-MM-DD format, return as is
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr
+    
     // Otherwise, extract just the date part
     return dateStr.split('T')[0]
   }
@@ -86,6 +107,21 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   // Helper to format time for input (handles HH:MM:SS format)
   const formatTimeForInput = (timeStr: string | null | undefined): string => {
     if (!timeStr) return ''
+    
+    // If it's not a string, try to handle it
+    if (typeof timeStr !== 'string') {
+      // If it's a Date object, extract time
+      if (timeStr instanceof Date) {
+        return timeStr.toTimeString().substring(0, 5)
+      }
+      // Try to convert to string
+      const converted = String(timeStr)
+      if (converted && converted.length >= 5) {
+        return converted.substring(0, 5)
+      }
+      return ''
+    }
+    
     // Return first 5 characters (HH:MM)
     return timeStr.substring(0, 5)
   }

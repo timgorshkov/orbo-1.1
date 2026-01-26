@@ -218,7 +218,29 @@ export async function GET(
         
         totalMembersInOrg = fallbackCount || 0;
       } else {
-        totalMembersInOrg = countResult || 0;
+        // Handle RPC result - it can be a number, array, or object
+        if (typeof countResult === 'number') {
+          totalMembersInOrg = countResult;
+        } else if (Array.isArray(countResult) && countResult.length > 0) {
+          // RPC may return an array with a single row
+          const firstRow = countResult[0];
+          totalMembersInOrg = typeof firstRow === 'number' 
+            ? firstRow 
+            : (firstRow?.count_valid_group_participants ?? firstRow?.count ?? 0);
+        } else if (countResult && typeof countResult === 'object') {
+          // RPC may return an object with the result
+          totalMembersInOrg = (countResult as any).count_valid_group_participants ?? 
+                              (countResult as any).count ?? 
+                              (countResult as any).result ?? 0;
+        } else {
+          totalMembersInOrg = 0;
+        }
+        
+        logger.debug({ 
+          raw_count_result: countResult,
+          parsed_count: totalMembersInOrg,
+          result_type: typeof countResult
+        }, 'Parsed RPC count result');
       }
       
       logger.debug({ 
