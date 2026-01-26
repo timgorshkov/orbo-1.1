@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown, Phone } from 'lucide-react';
+import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown, Phone, MessageCircle } from 'lucide-react';
 
 interface ParticipantActivityTimelineProps {
   detail: ParticipantDetailResult;
@@ -57,7 +57,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
   };
 
   // Get event icon based on type and source
-  const getEventIcon = (eventType: string, source?: string) => {
+  const getEventIcon = (eventType: string, source?: string, reactionEmoji?: string) => {
     // WhatsApp has special icon
     if (source === 'whatsapp') {
       return <Phone className="h-3.5 w-3.5 text-green-600" />;
@@ -66,26 +66,37 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
     switch (eventType) {
       case 'message':
         return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />;
+      case 'channel_comment':
+        return <MessageCircle className="h-3.5 w-3.5 text-purple-500" />;
       case 'join':
         return <UserPlus className="h-3.5 w-3.5 text-green-500" />;
       case 'leave':
         return <UserMinus className="h-3.5 w-3.5 text-red-500" />;
       case 'reaction':
+        // Show reaction emoji instead of heart icon if available
+        if (reactionEmoji) {
+          return <span className="text-sm">{reactionEmoji}</span>;
+        }
         return <Heart className="h-3.5 w-3.5 text-pink-500" />;
       default:
-        return <div className="h-1.5 w-1.5 rounded-full bg-gray-400" />;
+        return <MessageSquare className="h-3.5 w-3.5 text-gray-400" />;
     }
   };
 
-  // Get label only for non-message events
-  const getEventLabel = (eventType: string) => {
+  // Get label only for non-message events (returns null for messages so text is shown)
+  const getEventLabel = (eventType: string, reactionEmoji?: string, targetText?: string) => {
     switch (eventType) {
       case 'join':
         return 'Вступил в группу';
       case 'leave':
         return 'Вышел из группы';
       case 'reaction':
-        return 'Поставил реакцию';
+        // Show what was reacted to
+        if (targetText) {
+          const truncated = targetText.length > 50 ? targetText.slice(0, 50) + '...' : targetText;
+          return `на «${truncated}»`;
+        }
+        return null; // Just show emoji icon without label
       default:
         return null; // No label for messages - text is enough
     }
@@ -125,14 +136,39 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           // Extract useful info from meta
           let messageText = '';
           let replyIndicator = '';
+          let reactionEmoji = '';
+          let reactionTargetText = '';
           const source = event.meta?.source as string | undefined;
           const isWhatsApp = source === 'whatsapp' || event.tg_chat_id === 'whatsapp';
           
           if (event.meta) {
+            // Extract reaction emoji and target message for reaction events
+            if (event.event_type === 'reaction') {
+              // Try multiple locations for reaction emoji
+              reactionEmoji = event.meta.emoji || 
+                              event.meta.reaction?.emoji ||
+                              // reaction_types is an array of emojis
+                              (Array.isArray(event.meta.reaction?.reaction_types) && event.meta.reaction.reaction_types[0]) ||
+                              (Array.isArray(event.meta.reaction_types) && event.meta.reaction_types[0]) ||
+                              // delta shows what was added
+                              (event.meta.reaction?.delta > 0 && event.meta.reaction?.new_reactions?.[0]?.emoji) ||
+                              '👍';
+              // Try to get the message that was reacted to
+              reactionTargetText = event.meta.target_text || 
+                                   event.meta.message_text ||
+                                   event.meta.original_message?.text ||
+                                   event.meta.text_preview || '';
+            }
+            
             // Try to get message text - check multiple locations
             // WhatsApp stores in meta.text directly
             if (event.meta.text) {
               const text = String(event.meta.text);
+              messageText = text.slice(0, 80);
+              if (text.length > 80) messageText += '...';
+            } else if (event.meta.text_preview) {
+              // Channel comments and other events store text here
+              const text = String(event.meta.text_preview);
               messageText = text.slice(0, 80);
               if (text.length > 80) messageText += '...';
             } else if (event.meta.message?.text_preview) {
@@ -149,11 +185,14 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
             }
           }
 
-          // Get group name: first from map, then from meta, then show nothing
+          // Get group/channel name: first from map, then from meta, then show nothing
           let groupName = '';
           if (isWhatsApp) {
             // WhatsApp: get group name from meta
             groupName = event.meta?.group_name || 'WhatsApp';
+          } else if (event.event_type === 'channel_comment' && event.meta?.channel_title) {
+            // Channel comment: show channel name
+            groupName = String(event.meta.channel_title);
           } else if (event.tg_chat_id) {
             groupName = groupNamesMap.get(String(event.tg_chat_id)) || '';
           }
@@ -163,12 +202,12 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
             groupName = String(event.meta.chat.title);
           }
 
-          const eventLabel = getEventLabel(event.event_type);
+          const eventLabel = getEventLabel(event.event_type, reactionEmoji, reactionTargetText);
 
           return (
             <div key={event.id} className="flex items-center gap-2 text-sm py-1 hover:bg-gray-50 rounded px-2 -mx-2">
               <div className="flex-shrink-0">
-                {getEventIcon(event.event_type, isWhatsApp ? 'whatsapp' : undefined)}
+                {getEventIcon(event.event_type, isWhatsApp ? 'whatsapp' : undefined, reactionEmoji)}
               </div>
               <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{formatted}</span>
               {groupName && (
@@ -177,9 +216,16 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
               {replyIndicator && (
                 <span className="text-xs text-blue-500 flex-shrink-0">{replyIndicator}</span>
               )}
-              {eventLabel ? (
+              {event.event_type === 'reaction' ? (
+                // For reactions: show label with target text if available
+                eventLabel ? (
+                  <span className="text-gray-600 truncate flex-1">{eventLabel}</span>
+                ) : null
+              ) : eventLabel ? (
+                // For join/leave events
                 <span className="text-gray-600 truncate">{eventLabel}</span>
               ) : messageText ? (
+                // For messages and channel comments
                 <span className="text-gray-700 truncate flex-1">{messageText}</span>
               ) : null}
             </div>
