@@ -99,6 +99,60 @@ export class TelegramService {
     return this.callApi('getChatMemberCount', { chat_id: chatId });
   }
 
+  /**
+   * Одобрить запрос на вступление в группу
+   */
+  async approveChatJoinRequest(chatId: number, userId: number) {
+    return this.callApi('approveChatJoinRequest', {
+      chat_id: chatId,
+      user_id: userId
+    });
+  }
+
+  /**
+   * Отклонить запрос на вступление в группу
+   */
+  async declineChatJoinRequest(chatId: number, userId: number) {
+    return this.callApi('declineChatJoinRequest', {
+      chat_id: chatId,
+      user_id: userId
+    });
+  }
+
+  /**
+   * Забанить пользователя в чате
+   */
+  async banChatMember(chatId: number, userId: number, untilDate?: number) {
+    return this.callApi('banChatMember', {
+      chat_id: chatId,
+      user_id: userId,
+      until_date: untilDate
+    });
+  }
+
+  /**
+   * Разбанить пользователя в чате
+   */
+  async unbanChatMember(chatId: number, userId: number, onlyIfBanned: boolean = true) {
+    return this.callApi('unbanChatMember', {
+      chat_id: chatId,
+      user_id: userId,
+      only_if_banned: onlyIfBanned
+    });
+  }
+
+  /**
+   * Ограничить права пользователя в чате
+   */
+  async restrictChatMember(chatId: number, userId: number, permissions: any, untilDate?: number) {
+    return this.callApi('restrictChatMember', {
+      chat_id: chatId,
+      user_id: userId,
+      permissions,
+      until_date: untilDate
+    });
+  }
+
   async getAllChats() {
     // Получаем все обновления
     const updates = await this.getUpdates()

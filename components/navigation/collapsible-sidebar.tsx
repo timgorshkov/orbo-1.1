@@ -191,6 +191,17 @@ export default function CollapsibleSidebar({
     })
   }
 
+  // Заявки (только для owner и admin в режиме админа)
+  if (isAdmin && adminMode) {
+    navItems.push({
+      key: 'applications',
+      label: 'Заявки',
+      icon: FileText,
+      href: `/p/${orgId}/applications`,
+      active: pathname?.startsWith(`/p/${orgId}/applications`),
+    })
+  }
+
   // Участники (для всех, кроме guest)
   if (role !== 'guest') {
     navItems.push({

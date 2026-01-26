@@ -1438,6 +1438,7 @@ export class EventProcessingService {
     const userId = request.from.id;
 
     for (const orgId of orgIds) {
+      // Log activity event (legacy)
       await this.supabase.from('activity_events').insert({
         org_id: orgId,
         event_type: 'service',
@@ -1453,6 +1454,29 @@ export class EventProcessingService {
           bio: request.bio
         }
       });
+      
+      // Process through new application system
+      try {
+        const { processJoinRequest } = await import('./applicationService');
+        
+        await processJoinRequest(orgId, {
+          chatId,
+          userId,
+          username: request.from.username,
+          firstName: request.from.first_name,
+          lastName: request.from.last_name,
+          bio: request.bio,
+          date: request.date,
+          inviteLink: request.invite_link?.invite_link
+        });
+      } catch (err) {
+        // Non-critical - log and continue
+        this.logger.warn({ 
+          error: err, 
+          org_id: orgId, 
+          user_id: userId 
+        }, 'Failed to process join request through application system');
+      }
     }
   }
   
