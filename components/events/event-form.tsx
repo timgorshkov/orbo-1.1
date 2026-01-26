@@ -105,16 +105,16 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [endDate, setEndDate] = useState(formatDateForInput(initialEvent?.end_date) || formatDateForInput(initialEvent?.event_date))
   
   // Helper to format time for input (handles HH:MM:SS format)
-  const formatTimeForInput = (timeStr: string | null | undefined): string => {
+  const formatTimeForInput = (timeStr: string | Date | null | undefined): string => {
     if (!timeStr) return ''
     
-    // If it's not a string, try to handle it
+    // If it's a Date object, extract time
+    if (timeStr instanceof Date) {
+      return timeStr.toTimeString().substring(0, 5)
+    }
+    
+    // If it's not a string, try to convert
     if (typeof timeStr !== 'string') {
-      // If it's a Date object, extract time
-      if (timeStr instanceof Date) {
-        return timeStr.toTimeString().substring(0, 5)
-      }
-      // Try to convert to string
       const converted = String(timeStr)
       if (converted && converted.length >= 5) {
         return converted.substring(0, 5)
