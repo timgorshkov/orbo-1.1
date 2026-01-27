@@ -46,6 +46,16 @@ interface SuccessPage {
   additional_buttons?: { text: string; url: string }[];
 }
 
+interface ExistingApplication {
+  id: string;
+  form_data: Record<string, string>;
+  created_at: string;
+  stage_name: string;
+  is_approved: boolean;
+  is_rejected: boolean;
+  is_pending: boolean;
+}
+
 interface FormData {
   form_id: string;
   org_id: string;
@@ -59,9 +69,10 @@ interface FormData {
   source_id?: string;
   utm_source?: string;
   utm_campaign?: string;
+  existing_application?: ExistingApplication;
 }
 
-type PageState = 'loading' | 'landing' | 'form' | 'submitting' | 'success' | 'error';
+type PageState = 'loading' | 'landing' | 'status' | 'form' | 'submitting' | 'success' | 'error';
 
 export default function ApplicationFormPage() {
   const params = useParams();
@@ -96,11 +107,17 @@ export default function ApplicationFormPage() {
 
   // Fetch form data
   useEffect(() => {
-    if (!formId) return;
+    if (!formId || !isWebAppReady) return;
     
     async function fetchForm() {
       try {
-        const url = `/api/applications/forms/${formId}/public${sourceCode ? `?source=${sourceCode}` : ''}`;
+        // Build URL with tg_user_id to check for existing application
+        const params = new URLSearchParams();
+        if (sourceCode) params.set('source', sourceCode);
+        if (tgUser?.id) params.set('tg_user_id', String(tgUser.id));
+        
+        const queryString = params.toString();
+        const url = `/api/applications/forms/${formId}/public${queryString ? `?${queryString}` : ''}`;
         const res = await fetch(url);
         const data = await res.json();
         
@@ -111,19 +128,35 @@ export default function ApplicationFormPage() {
         }
         
         setFormData(data);
-        setPageState('landing');
         
-        // Prefill form values from Telegram user
-        if (data.form_schema && tgUser) {
-          const prefilled: Record<string, string> = {};
-          data.form_schema.forEach((field: FormField) => {
-            if (field.prefill === 'telegram_name') {
-              prefilled[field.id] = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
-            } else if (field.prefill === 'telegram_username') {
-              prefilled[field.id] = tgUser.username || '';
-            }
-          });
-          setFormValues(prefilled);
+        // Check if user already has an application
+        if (data.existing_application) {
+          const app = data.existing_application;
+          
+          // Prefill form with existing data
+          if (app.form_data && typeof app.form_data === 'object') {
+            setFormValues(app.form_data);
+          }
+          
+          // Show status page for existing application
+          setPageState('status');
+          setApplicationId(app.id);
+        } else {
+          // New application - show landing
+          setPageState('landing');
+          
+          // Prefill form values from Telegram user
+          if (data.form_schema && tgUser) {
+            const prefilled: Record<string, string> = {};
+            data.form_schema.forEach((field: FormField) => {
+              if (field.prefill === 'telegram_name') {
+                prefilled[field.id] = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
+              } else if (field.prefill === 'telegram_username') {
+                prefilled[field.id] = tgUser.username || '';
+              }
+            });
+            setFormValues(prefilled);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch form:', err);
@@ -133,7 +166,7 @@ export default function ApplicationFormPage() {
     }
     
     fetchForm();
-  }, [formId, sourceCode, tgUser]);
+  }, [formId, sourceCode, tgUser, isWebAppReady]);
 
   // Handle Main Button
   const handleMainButtonClick = useCallback(async () => {
@@ -150,6 +183,13 @@ export default function ApplicationFormPage() {
       } else {
         // No form, submit immediately
         await submitApplication();
+      }
+    } else if (pageState === 'status') {
+      // User wants to edit existing application
+      if (formData.form_schema && formData.form_schema.length > 0) {
+        setPageState('form');
+        webApp.MainButton.setText('Сохранить изменения');
+        webApp.BackButton.show();
       }
     } else if (pageState === 'form') {
       // Validate required fields
@@ -241,10 +281,20 @@ export default function ApplicationFormPage() {
       mainButton.setText(buttonText);
       mainButton.show();
       mainButton.onClick(handleMainButtonClick);
+    } else if (pageState === 'status' && formData) {
+      // For existing applications that are still pending - allow to edit
+      const app = formData.existing_application;
+      if (app?.is_pending && formData.form_schema?.length > 0) {
+        mainButton.setText('Редактировать заявку');
+        mainButton.show();
+        mainButton.onClick(handleMainButtonClick);
+      } else {
+        mainButton.hide();
+      }
     } else if (pageState === 'form') {
-      mainButton.setText('Отправить заявку');
+      mainButton.setText('Сохранить изменения');
       mainButton.show();
-      mainButton.onClick(handleMainButtonClick); // Important: re-attach handler for form state
+      mainButton.onClick(handleMainButtonClick);
     } else if (pageState === 'submitting' || pageState === 'success') {
       mainButton.hide();
     }
@@ -263,10 +313,21 @@ export default function ApplicationFormPage() {
     
     const handleBack = () => {
       if (pageState === 'form') {
-        setPageState('landing');
+        // Go back to status if existing application, otherwise to landing
+        if (formData?.existing_application) {
+          setPageState('status');
+          const app = formData.existing_application;
+          if (app.is_pending && formData.form_schema?.length > 0) {
+            webApp.MainButton.setText('Редактировать заявку');
+          } else {
+            webApp.MainButton.hide();
+          }
+        } else {
+          setPageState('landing');
+          webApp.MainButton.setText(formData?.landing?.cta_button_text || 'Подать заявку');
+        }
         setError(null);
         backButton.hide();
-        webApp.MainButton.setText(formData?.landing?.cta_button_text || 'Подать заявку');
       }
     };
     
@@ -314,6 +375,117 @@ export default function ApplicationFormPage() {
   const accentColor = landing.accent_color || '#4f46e5';
   const bgColor = landing.background_color || '#ffffff';
   const textColor = landing.text_color || '#1f2937';
+
+  // Render status page for existing applications
+  if (pageState === 'status' && formData.existing_application) {
+    const app = formData.existing_application;
+    const createdAt = new Date(app.created_at);
+    const dateStr = createdAt.toLocaleDateString('ru-RU', { 
+      day: 'numeric', 
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    return (
+      <>
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <div className="min-h-screen bg-gray-50">
+          {/* Header with org info */}
+          <div className="bg-white border-b px-4 py-4">
+            <div className="flex items-center gap-3">
+              {formData.org_logo && (
+                <img 
+                  src={formData.org_logo} 
+                  alt={formData.org_name}
+                  className="w-12 h-12 rounded-xl object-cover"
+                />
+              )}
+              <div>
+                <h1 className="font-semibold">{formData.org_name}</h1>
+                <p className="text-sm text-gray-500">{landing.title || 'Заявка'}</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Status Card */}
+          <div className="p-4">
+            <div className="bg-white rounded-2xl border overflow-hidden">
+              {/* Status Header */}
+              <div 
+                className={`px-4 py-3 ${
+                  app.is_approved ? 'bg-green-50 text-green-700' :
+                  app.is_rejected ? 'bg-red-50 text-red-700' :
+                  'bg-blue-50 text-blue-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {app.is_approved ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : app.is_rejected ? (
+                    <AlertCircle className="w-5 h-5" />
+                  ) : (
+                    <Loader2 className="w-5 h-5" />
+                  )}
+                  <span className="font-medium">
+                    {app.is_approved ? 'Заявка одобрена' :
+                     app.is_rejected ? 'Заявка отклонена' :
+                     'Заявка на рассмотрении'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Status Details */}
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Подана</span>
+                  <span>{dateStr}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Статус</span>
+                  <span>{app.stage_name}</span>
+                </div>
+              </div>
+              
+              {/* Filled Data Preview */}
+              {app.form_data && Object.keys(app.form_data).length > 0 && formData.form_schema && (
+                <div className="border-t px-4 py-3">
+                  <p className="text-sm text-gray-500 mb-2">Ваши данные:</p>
+                  <div className="space-y-2">
+                    {formData.form_schema.map((field) => {
+                      const value = app.form_data[field.id];
+                      if (!value) return null;
+                      return (
+                        <div key={field.id} className="text-sm">
+                          <span className="text-gray-500">{field.label}: </span>
+                          <span>{value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Info text for pending */}
+            {app.is_pending && (
+              <p className="text-center text-sm text-gray-500 mt-4">
+                Мы рассмотрим вашу заявку и свяжемся с вами
+              </p>
+            )}
+            
+            {/* Close button */}
+            <button
+              onClick={() => window.Telegram?.WebApp?.close()}
+              className="w-full mt-6 py-3 text-gray-500 text-sm"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   // Render landing page
   if (pageState === 'landing') {

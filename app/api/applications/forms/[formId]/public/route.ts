@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { searchParams } = new URL(request.url);
     const sourceCode = searchParams.get('source') || searchParams.get('s');
+    const tgUserId = searchParams.get('tg_user_id');
     
     const supabase = createAdminServer();
     
@@ -32,19 +33,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       })
       .single();
     
-    // Detailed logging for debugging
-    logger.info({ 
-      form_id: formId, 
-      source: sourceCode,
-      has_error: !!error,
-      error_message: error?.message,
-      rpc_data_type: typeof rpcData,
-      rpc_data_is_null: rpcData === null,
-      rpc_data_is_undefined: rpcData === undefined,
-      rpc_data_keys: rpcData && typeof rpcData === 'object' ? Object.keys(rpcData) : [],
-      rpc_data_stringified: rpcData ? JSON.stringify(rpcData).substring(0, 500) : 'null'
-    }, 'RPC result raw');
-    
     if (error) {
       logger.error({ error, form_id: formId }, 'Failed to get form');
       return NextResponse.json({ error: 'Failed to get form' }, { status: 500 });
@@ -53,22 +41,65 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // RPC returns JSONB directly, so rpcData is the form object
     const data = rpcData as any;
     
-    // Log final data structure
-    logger.info({ 
-      form_id: formId, 
-      has_form_schema: !!data?.form_schema,
-      form_schema_is_array: Array.isArray(data?.form_schema),
-      form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 'not_array',
-      form_schema_sample: data?.form_schema ? JSON.stringify(data.form_schema).substring(0, 200) : 'null',
-      landing_title: data?.landing?.title,
-      org_name: data?.org_name
-    }, 'Public form processed');
-    
     if (data?.error) {
       return NextResponse.json({ error: data.error }, { status: 404 });
     }
     
-    return NextResponse.json(data);
+    // Check if user already has an application
+    let existingApplication = null;
+    if (tgUserId) {
+      const { data: appData } = await supabase
+        .from('applications')
+        .select(`
+          id,
+          form_data,
+          created_at,
+          stage_id
+        `)
+        .eq('form_id', formId)
+        .eq('tg_user_id', tgUserId)
+        .single();
+      
+      if (appData) {
+        // Get stage info
+        const { data: stageData } = await supabase
+          .from('pipeline_stages')
+          .select('name, is_terminal, terminal_type')
+          .eq('id', appData.stage_id)
+          .single();
+        
+        existingApplication = {
+          id: appData.id,
+          form_data: appData.form_data,
+          created_at: appData.created_at,
+          stage_name: stageData?.name || 'На рассмотрении',
+          is_approved: stageData?.terminal_type === 'approved',
+          is_rejected: stageData?.terminal_type === 'rejected',
+          is_pending: !stageData?.is_terminal
+        };
+        
+        logger.info({ 
+          form_id: formId, 
+          tg_user_id: tgUserId,
+          application_id: appData.id,
+          stage_name: existingApplication.stage_name,
+          is_pending: existingApplication.is_pending
+        }, 'Existing application found for user');
+      }
+    }
+    
+    logger.info({ 
+      form_id: formId, 
+      has_form_schema: !!data?.form_schema,
+      form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 0,
+      has_existing_application: !!existingApplication,
+      org_name: data?.org_name
+    }, 'Public form processed');
+    
+    return NextResponse.json({
+      ...data,
+      existing_application: existingApplication
+    });
   } catch (error) {
     logger.error({ error, form_id: formId }, 'Error in GET public form');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
