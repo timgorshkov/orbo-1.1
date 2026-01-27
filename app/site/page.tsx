@@ -39,11 +39,11 @@ export default function HomePage() {
         
         <div className="hero-orb-section__content">
           <h1 className="hero-orb-section__title">
-            CRM для групп и сообществ<br />в мессенджерах
+            CRM участников и событий<br />для Telegram-сообществ
           </h1>
           
           <p className="hero-orb-section__subtitle">
-            Аналитика, события, уведомления — всё в одном месте
+            Повышайте доходимость на мероприятия. Обрабатывайте заявки без хаоса. Знайте своих людей.
           </p>
           
           <div className="hero-orb-section__actions">
@@ -87,17 +87,33 @@ export default function HomePage() {
           <div className="features-grid">
             <div className="audience-card">
               <div className="audience-card__icon">
-                <Users size={28} />
+                <Calendar size={28} />
               </div>
-              <h3 className="audience-card__title">Владельцы сообществ</h3>
-              <p className="audience-card__subtitle">IT-группы, клубы, профессиональные сообщества</p>
+              <h3 className="audience-card__title">Клубы с мероприятиями</h3>
+              <p className="audience-card__subtitle">Бизнес-клубы, профессиональные комьюнити, нетворкинг</p>
               <p className="audience-card__text">
-                Telegram не даёт аналитику. Вы не видите, кто активен, кто уходит, какие темы волнуют участников.
+                Люди не доходят до событий. База участников теряется. Не видите, кто реально активен.
               </p>
               <ul className="audience-card__features">
-                <li>AI-профили с интересами участников</li>
-                <li>Зоны внимания: новички, отток</li>
-                <li>Аналитика активности</li>
+                <li>Регистрация и напоминания в Telegram</li>
+                <li>Профиль с историей посещений</li>
+                <li>Аналитика «ядра» сообщества</li>
+              </ul>
+            </div>
+            
+            <div className="audience-card">
+              <div className="audience-card__icon">
+                <Users size={28} />
+              </div>
+              <h3 className="audience-card__title">Сообщества с заявками</h3>
+              <p className="audience-card__subtitle">Закрытые группы, join-by-request, клиентские чаты</p>
+              <p className="audience-card__text">
+                Десятки заявок в день. Боты, спам, непонятные профили. Тратите время на ручную проверку.
+              </p>
+              <ul className="audience-card__features">
+                <li>Заявки с анкетой через MiniApp</li>
+                <li>Автоматический spam-score</li>
+                <li>Воронка со статусами</li>
               </ul>
             </div>
             
@@ -105,31 +121,15 @@ export default function HomePage() {
               <div className="audience-card__icon">
                 <Building2 size={28} />
               </div>
-              <h3 className="audience-card__title">Агентства и команды</h3>
-              <p className="audience-card__subtitle">SMM, performance, production-студии</p>
+              <h3 className="audience-card__title">Авторы каналов</h3>
+              <p className="audience-card__subtitle">Эксперты, консультанты, образовательные проекты</p>
               <p className="audience-card__text">
-                20–50 клиентских чатов — руководитель не успевает следить. О проблеме узнаёт, когда клиент уже кричит.
+                Не видите подписчиков канала. Теряете контакты активной аудитории. Клиенты уходят.
               </p>
               <ul className="audience-card__features">
-                <li>AI-алерты о негативе</li>
-                <li>Контроль времени ответа (SLA)</li>
-                <li>«Сейф» договорённостей</li>
-              </ul>
-            </div>
-            
-            <div className="audience-card">
-              <div className="audience-card__icon">
-                <Calendar size={28} />
-              </div>
-              <h3 className="audience-card__title">Организаторы событий</h3>
-              <p className="audience-card__subtitle">Мастермайнды, бизнес-завтраки, клубы</p>
-              <p className="audience-card__text">
-                Проверка скриншотов оплаты в личке — рутина. Анонс → Форма → Оплата → Чат — потеря конверсии.
-              </p>
-              <ul className="audience-card__features">
-                <li>Регистрация прямо в Telegram</li>
-                <li>Управление оплатами</li>
-                <li>CRM участников событий</li>
+                <li>Профили комментаторов</li>
+                <li>События как способ сбора контактов</li>
+                <li>CRM ценной аудитории</li>
               </ul>
             </div>
           </div>
@@ -156,18 +156,18 @@ export default function HomePage() {
           <div className="features-grid features-grid--4col">
             <div className="feature-card">
               <div className="feature-card__icon">
-                <BarChart3 size={24} />
+                <UserCircle size={24} />
               </div>
-              <h4 className="feature-card__title">Аналитика</h4>
-              <p className="feature-card__text">Метрики активности, тепловая карта, категории участников</p>
+              <h4 className="feature-card__title">CRM участников</h4>
+              <p className="feature-card__text">Профили, AI-интересы, история, импорт</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon">
-                <Bell size={24} />
+                <Users size={24} />
               </div>
-              <h4 className="feature-card__title">AI-уведомления</h4>
-              <p className="feature-card__text">Негатив, неотвеченные вопросы, тишина в группах</p>
+              <h4 className="feature-card__title">Заявки и воронки</h4>
+              <p className="feature-card__text">Анкеты MiniApp, spam-score, статусы</p>
             </div>
             
             <div className="feature-card">
@@ -175,15 +175,15 @@ export default function HomePage() {
                 <Calendar size={24} />
               </div>
               <h4 className="feature-card__title">События</h4>
-              <p className="feature-card__text">Регистрация, оплаты, Telegram MiniApp</p>
+              <p className="feature-card__text">Регистрация, оплаты, напоминания</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon">
-                <UserCircle size={24} />
+                <Bell size={24} />
               </div>
-              <h4 className="feature-card__title">CRM</h4>
-              <p className="feature-card__text">Профили, AI-интересы, импорт WhatsApp</p>
+              <h4 className="feature-card__title">AI-уведомления</h4>
+              <p className="feature-card__text">Негатив, вопросы, неактивность</p>
             </div>
           </div>
           

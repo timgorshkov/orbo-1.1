@@ -65,7 +65,7 @@ export default function EventsPage() {
               <ul className="audience-card__features">
                 <li><strong>Регистрация в 2 клика</strong> — прямо в Telegram, без переходов</li>
                 <li><strong>Оплата через бот</strong> — профессиональный вид</li>
-                <li><strong>Напоминания там, где человек</strong> — в Telegram 24/7</li>
+                <li><strong>Автоматические напоминания</strong> — за 24 часа и за 1 час</li>
                 <li><strong>Профили заранее</strong> — знаете, кто придёт</li>
                 <li><strong>CRM участников</strong> — данные сохраняются для следующих событий</li>
               </ul>
@@ -230,7 +230,7 @@ export default function EventsPage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Интеграция</span>
-            <h2 className="section-header__title">Публикация в Telegram</h2>
+            <h2 className="section-header__title">Публикация и напоминания</h2>
           </div>
           
           <div className="features-grid">
@@ -240,8 +240,21 @@ export default function EventsPage() {
               </div>
               <h3 className="audience-card__title">Анонс в группах</h3>
               <p className="audience-card__text">
-                Выберите группы для публикации. Бот отправит красивый анонс с обложкой и кнопкой «Зарегистрироваться».
+                Выберите группы для публикации. Бот отправит анонс с обложкой и кнопкой «Зарегистрироваться».
               </p>
+            </div>
+            
+            <div className="audience-card">
+              <div className="audience-card__icon">
+                <CalendarCheck size={28} />
+              </div>
+              <h3 className="audience-card__title">Автоматические напоминания</h3>
+              <p className="audience-card__text">
+                При создании события автоматически планируются напоминания: за 24 часа и за 1 час до начала.
+              </p>
+              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--website-bg-alt)', borderRadius: 'var(--website-radius-md)', fontSize: '0.875rem' }}>
+                Тексты можно редактировать или отменять
+              </div>
             </div>
             
             <div className="audience-card">
@@ -251,19 +264,6 @@ export default function EventsPage() {
               <h3 className="audience-card__title">Telegram MiniApp</h3>
               <p className="audience-card__text">
                 Регистрация без выхода из Telegram. Данные подставляются автоматически. Бот: @orbo_event_bot
-              </p>
-              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--website-bg-alt)', borderRadius: 'var(--website-radius-md)', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                t.me/orbo_event_bot?startapp=e-ID
-              </div>
-            </div>
-            
-            <div className="audience-card">
-              <div className="audience-card__icon">
-                <CalendarCheck size={28} />
-              </div>
-              <h3 className="audience-card__title">Календарь событий</h3>
-              <p className="audience-card__text">
-                Участники могут добавить событие в свой календарь или подписаться на календарь организации.
               </p>
             </div>
           </div>

@@ -24,10 +24,10 @@ export default function CRMPage() {
         <div className="hero-floating__content">
           <span className="hero-floating__eyebrow">CRM</span>
           <h1 className="hero-floating__title">
-            Знайте своих<br />участников
+            Знайте своих<br />людей
           </h1>
           <p className="hero-floating__subtitle">
-            Профили с AI-анализом интересов. Импорт истории из Telegram и WhatsApp
+            Профили участников, комментаторов и заявителей. AI-анализ интересов. Вся история в одном месте.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -53,9 +53,9 @@ export default function CRMPage() {
               <h3 className="audience-card__title" style={{ color: '#dc2626' }}>❌ Типичные проблемы</h3>
               <ul className="audience-card__features">
                 <li><strong>«Кто все эти люди?»</strong> — 500 участников в группе, вы не знаете никого</li>
-                <li><strong>Нет истории</strong> — человек написал год назад, вы не помните контекст</li>
-                <li><strong>Telegram не даёт данных</strong> — ни аналитики, ни профилей, ни поиска</li>
-                <li><strong>WhatsApp ещё хуже</strong> — переписка заперта в телефоне</li>
+                <li><strong>Заявки без контекста</strong> — человек подал заявку, а вы не знаете, кто он</li>
+                <li><strong>Комментаторы — незнакомцы</strong> — активная аудитория канала, но без профилей</li>
+                <li><strong>Нет истории</strong> — человек был на событии год назад, вы не помните</li>
                 <li><strong>Кто реально активен?</strong> — вы не знаете, кто ядро, а кто «мёртвая душа»</li>
               </ul>
             </div>
@@ -63,10 +63,10 @@ export default function CRMPage() {
             <div className="audience-card" style={{ borderLeft: '4px solid #22c55e' }}>
               <h3 className="audience-card__title" style={{ color: '#16a34a' }}>✅ С Orbo</h3>
               <ul className="audience-card__features">
-                <li><strong>Профиль каждого</strong> — фото, контакты, история активности</li>
+                <li><strong>Единый профиль</strong> — сообщения, заявки, события, комментарии</li>
                 <li><strong>AI-интересы</strong> — автоматически: «ищет разработчика», «предлагает услуги»</li>
-                <li><strong>Импорт истории</strong> — загрузите архив Telegram или WhatsApp</li>
-                <li><strong>Поиск по базе</strong> — найдите нужного человека за секунду</li>
+                <li><strong>Связка с заявками</strong> — данные анкеты сохраняются в профиль</li>
+                <li><strong>Комментаторы канала</strong> — профили тех, кто взаимодействует</li>
                 <li><strong>Категоризация</strong> — ядро, новички, опытные, молчуны</li>
               </ul>
             </div>
@@ -289,9 +289,9 @@ export default function CRMPage() {
               <div className="audience-card__icon">
                 <Users size={28} />
               </div>
-              <h3 className="audience-card__title">Нетворкинг-клубы</h3>
+              <h3 className="audience-card__title">Клубы с мероприятиями</h3>
               <p className="audience-card__text">
-                Знаете интересы каждого члена. Можете соединять людей с релевантными запросами.
+                История посещений каждого участника. Видите, кто реально ходит, а кто «мёртвая душа».
               </p>
             </div>
             
@@ -299,9 +299,9 @@ export default function CRMPage() {
               <div className="audience-card__icon">
                 <Sparkles size={28} />
               </div>
-              <h3 className="audience-card__title">Профессиональные сообщества</h3>
+              <h3 className="audience-card__title">Сообщества с заявками</h3>
               <p className="audience-card__text">
-                Видите экспертизу участников. Находите спикеров, менторов, потенциальных партнёров.
+                Данные анкеты сохраняются в профиль. Принимаете решения с полным контекстом.
               </p>
             </div>
             
@@ -309,9 +309,9 @@ export default function CRMPage() {
               <div className="audience-card__icon">
                 <Database size={28} />
               </div>
-              <h3 className="audience-card__title">Образовательные проекты</h3>
+              <h3 className="audience-card__title">Авторы каналов</h3>
               <p className="audience-card__text">
-                База выпускников с историей обучения. Понимаете, кто готов к следующему курсу.
+                Профили комментаторов. Конвертируете активную аудиторию в базу через события.
               </p>
             </div>
           </div>

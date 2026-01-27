@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { 
-  Users, Building2, GraduationCap, BarChart3, Bell, Calendar, 
+  Users, Building2, GraduationCap, Bell, Calendar, 
   UserCircle, ArrowRight, Bot, MessageSquare, Ticket 
 } from 'lucide-react';
 import { Header, Footer, BrowserFrame, ProductFloatingCards } from '@/components/website';
@@ -23,10 +23,10 @@ export default function ProductPage() {
         <div className="hero-floating__content">
           <span className="hero-floating__eyebrow">Платформа</span>
           <h1 className="hero-floating__title">
-            Orbo — CRM для<br />сообществ
+            CRM участников<br />и событий
           </h1>
           <p className="hero-floating__subtitle">
-            Понимайте аудиторию, автоматизируйте рутину, развивайте сообщество
+            Повышайте доходимость. Обрабатывайте заявки. Знайте своих людей.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -57,24 +57,41 @@ export default function ProductPage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Для кого</span>
-            <h2 className="section-header__title">Три сценария использования</h2>
+            <h2 className="section-header__title">Три типа пользователей</h2>
           </div>
           
           <div className="features-grid">
             <div className="audience-card">
               <div className="audience-card__icon">
-                <Users size={28} />
+                <GraduationCap size={28} />
               </div>
-              <h3 className="audience-card__title">Владельцы онлайн-сообществ</h3>
-              <p className="audience-card__subtitle">Тематические группы, профессиональные сообщества, фан-клубы</p>
+              <h3 className="audience-card__title">Клубы с мероприятиями</h3>
+              <p className="audience-card__subtitle">Бизнес-клубы, профессиональные комьюнити, нетворкинг-хабы</p>
               <p className="audience-card__text">
-                Telegram не даёт аналитику по группе. Вы не видите, кто активен, кто уходит, какие темы волнуют участников.
+                Люди не доходят до мероприятий и не остаются в контакте. Не видите историю участия конкретных людей.
               </p>
               <ul className="audience-card__features">
-                <li>Аналитика активности: кто пишет, когда, на какие темы</li>
-                <li>AI-профили участников с определением интересов</li>
-                <li>Зоны внимания: новички, участники на грани оттока</li>
-                <li>Единый дашборд для всех групп</li>
+                <li>Регистрация и напоминания прямо в Telegram</li>
+                <li>QR-чекин и фиксация факта участия</li>
+                <li>Профиль участника с историей посещений</li>
+                <li>Аналитика «ядра» — кто реально ходит</li>
+              </ul>
+            </div>
+            
+            <div className="audience-card">
+              <div className="audience-card__icon">
+                <Users size={28} />
+              </div>
+              <h3 className="audience-card__title">Сообщества с заявками</h3>
+              <p className="audience-card__subtitle">Закрытые группы, join-by-request, клиентские сообщества</p>
+              <p className="audience-card__text">
+                Десятки заявок в день. Боты и спам. Тратите время на проверку, не понимая, кто перед вами.
+              </p>
+              <ul className="audience-card__features">
+                <li>Заявки со статусами и настраиваемой воронкой</li>
+                <li>Анкета через MiniApp, данные сохраняются в профиль</li>
+                <li>Автоматический spam-score по признакам профиля</li>
+                <li>Ручной override без тупой автоматики</li>
               </ul>
             </div>
             
@@ -82,33 +99,16 @@ export default function ProductPage() {
               <div className="audience-card__icon">
                 <Building2 size={28} />
               </div>
-              <h3 className="audience-card__title">Рабочие команды и агентства</h3>
-              <p className="audience-card__subtitle">SMM-агентства, performance-команды, production-студии</p>
+              <h3 className="audience-card__title">Авторы каналов</h3>
+              <p className="audience-card__subtitle">Эксперты, консультанты, образовательные проекты, личные бренды</p>
               <p className="audience-card__text">
-                Руководитель ведёт 20–50 проектов и не успевает читать все чаты. О проблеме узнаёт, только когда клиент уже кричит.
+                Не видите подписчиков канала. Теряете контакты с активной аудиторией после первых касаний.
               </p>
               <ul className="audience-card__features">
-                <li>«Светофор» статусов проектов — зелёные и красные чаты</li>
-                <li>AI-уведомления о негативе и неотвеченных вопросах</li>
-                <li>Контроль SLA — как быстро отвечает команда</li>
-                <li>«Сейф» договорённостей — история для защиты от претензий</li>
-              </ul>
-            </div>
-            
-            <div className="audience-card">
-              <div className="audience-card__icon">
-                <GraduationCap size={28} />
-              </div>
-              <h3 className="audience-card__title">Организаторы мероприятий</h3>
-              <p className="audience-card__subtitle">Бизнес-завтраки, мастермайнды, нетворкинг, образование</p>
-              <p className="audience-card__text">
-                Проверка скриншотов оплаты в личке — рутина. Связка «анонс → форма → оплата → чат» теряет конверсию.
-              </p>
-              <ul className="audience-card__features">
-                <li>Регистрация и оплата в 2 клика — прямо в Telegram</li>
-                <li>Профессиональный вид — оплата через бот</li>
-                <li>CRM участников — данные для следующих анонсов</li>
-                <li>Аналитика «ядра» — кто реально ходит</li>
+                <li>Профили комментаторов вашего канала</li>
+                <li>События как легальный способ сбора контактов</li>
+                <li>История активности и касаний</li>
+                <li>Работа с 5–15% самой ценной аудитории</li>
               </ul>
             </div>
           </div>
@@ -124,25 +124,25 @@ export default function ProductPage() {
           </div>
           
           <div className="features-grid features-grid--4col">
-            <Link href="/product/analytics" className="feature-card">
+            <Link href="/crm" className="feature-card">
               <div className="feature-card__icon">
-                <BarChart3 size={24} />
+                <UserCircle size={24} />
               </div>
-              <h4 className="feature-card__title">Аналитика сообщества</h4>
+              <h4 className="feature-card__title">CRM участников</h4>
               <p className="feature-card__text">
-                Метрики активности, тепловая карта, категоризация участников, зоны внимания
+                Профили, AI-анализ интересов, история активности, импорт данных
               </p>
             </Link>
             
-            <Link href="/notifications" className="feature-card">
+            <div className="feature-card">
               <div className="feature-card__icon">
-                <Bell size={24} />
+                <Users size={24} />
               </div>
-              <h4 className="feature-card__title">Умные уведомления</h4>
+              <h4 className="feature-card__title">Заявки и воронки</h4>
               <p className="feature-card__text">
-                AI-детекция негатива, неотвеченные вопросы, неактивность группы
+                Анкеты через MiniApp, spam-score, настраиваемые этапы, UTM-метки
               </p>
-            </Link>
+            </div>
             
             <Link href="/events" className="feature-card">
               <div className="feature-card__icon">
@@ -150,17 +150,17 @@ export default function ProductPage() {
               </div>
               <h4 className="feature-card__title">События и регистрации</h4>
               <p className="feature-card__text">
-                Онлайн и офлайн события, гибкая форма, управление оплатами, MiniApp
+                MiniApp регистрация, оплаты, автоматические напоминания
               </p>
             </Link>
             
-            <Link href="/crm" className="feature-card">
+            <Link href="/notifications" className="feature-card">
               <div className="feature-card__icon">
-                <UserCircle size={24} />
+                <Bell size={24} />
               </div>
-              <h4 className="feature-card__title">CRM участников</h4>
+              <h4 className="feature-card__title">AI-уведомления</h4>
               <p className="feature-card__text">
-                Профили, AI-анализ интересов, импорт истории, поиск и фильтрация
+                Негатив, неотвеченные вопросы, неактивность, зоны внимания
               </p>
             </Link>
           </div>
