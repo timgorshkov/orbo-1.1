@@ -22,11 +22,22 @@ export default async function EditFormPage({
     // Get form
     const { data: form, error } = await supabase
       .from('application_forms')
-      .select('*, pipeline:application_pipelines(id, name, org_id)')
+      .select('*')
       .eq('id', formId)
       .single()
     
-    if (error || !form || form.pipeline.org_id !== orgId) {
+    if (error || !form) {
+      return notFound()
+    }
+    
+    // Verify form belongs to this org's pipeline
+    const { data: pipeline } = await supabase
+      .from('application_pipelines')
+      .select('id, name, org_id')
+      .eq('id', form.pipeline_id)
+      .single()
+    
+    if (!pipeline || pipeline.org_id !== orgId) {
       return notFound()
     }
 

@@ -153,7 +153,7 @@ export default function ApplicationFormPage() {
       }
     } else if (pageState === 'form') {
       // Validate required fields
-      const missingFields = formData.form_schema
+      const missingFields = (formData.form_schema || [])
         .filter(f => f.required && !formValues[f.id])
         .map(f => f.label);
       
@@ -412,7 +412,7 @@ export default function ApplicationFormPage() {
           
           {/* Form Fields */}
           <div className="p-4 space-y-4">
-            {formData.form_schema.map((field) => (
+            {(formData.form_schema || []).map((field) => (
               <div key={field.id}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {field.label}
