@@ -3,6 +3,9 @@
 -- (Telegram WebApp doesn't expose bio field)
 -- ============================================
 
+-- Drop existing function first (signature changed - added default values)
+DROP FUNCTION IF EXISTS create_application(uuid, uuid, bigint, bigint, jsonb, jsonb, text, jsonb);
+
 CREATE OR REPLACE FUNCTION create_application(
   p_org_id UUID,
   p_form_id UUID,

@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
     if (body.message_reaction_count) updateTypes.push('message_reaction_count');
     if (body.my_chat_member) updateTypes.push('my_chat_member');
     if (body.chat_member) updateTypes.push('chat_member');
+    if (body.chat_join_request) updateTypes.push('chat_join_request');
     if (body.callback_query) updateTypes.push('callback_query');
     if (body.inline_query) updateTypes.push('inline_query');
     
@@ -565,6 +566,101 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               }
             }
           }
+        }
+      }
+    }
+    
+    // ========================================
+    // STEP 2.6.1: Обработка заявок на вступление (chat_join_request)
+    // ========================================
+    if (body.chat_join_request) {
+      const joinRequest = body.chat_join_request;
+      const requestChatId = joinRequest.chat?.id;
+      const userId = joinRequest.from?.id;
+      const inviteLink = joinRequest.invite_link;
+      
+      logger.info({
+        chat_id: requestChatId,
+        user_id: userId,
+        username: joinRequest.from?.username,
+        first_name: joinRequest.from?.first_name,
+        bio: joinRequest.bio?.substring(0, 50),
+        invite_link: inviteLink?.invite_link
+      }, '📥 [WEBHOOK] Received chat_join_request');
+      
+      if (requestChatId && userId) {
+        try {
+          // Find pipeline linked to this group
+          const { data: pipeline } = await supabaseServiceRole
+            .from('application_pipelines')
+            .select(`
+              id,
+              org_id,
+              application_forms!inner(id)
+            `)
+            .eq('telegram_group_id', requestChatId)
+            .eq('pipeline_type', 'join_request')
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (pipeline && pipeline.application_forms && pipeline.application_forms.length > 0) {
+            const formId = pipeline.application_forms[0].id;
+            
+            // Prepare tg_user_data with bio (available in join_request)
+            const tgUserData = {
+              first_name: joinRequest.from?.first_name || '',
+              last_name: joinRequest.from?.last_name || null,
+              username: joinRequest.from?.username || null,
+              photo_url: null, // Not available in join_request
+              bio: joinRequest.bio || null // Bio IS available in join_request!
+            };
+            
+            // Create application via RPC
+            const { data: applicationId, error: createError } = await supabaseServiceRole.rpc(
+              'create_application',
+              {
+                p_org_id: pipeline.org_id,
+                p_form_id: formId,
+                p_tg_user_id: userId,
+                p_tg_chat_id: requestChatId,
+                p_tg_user_data: tgUserData,
+                p_form_data: {},
+                p_source_code: inviteLink?.name || null, // Use invite link name as source
+                p_utm_data: {
+                  source: 'join_request',
+                  invite_link: inviteLink?.invite_link || null
+                }
+              }
+            );
+            
+            if (createError) {
+              logger.error({
+                error: createError.message,
+                chat_id: requestChatId,
+                user_id: userId,
+                pipeline_id: pipeline.id
+              }, '❌ [WEBHOOK] Failed to create application from join_request');
+            } else {
+              logger.info({
+                application_id: applicationId,
+                chat_id: requestChatId,
+                user_id: userId,
+                pipeline_id: pipeline.id,
+                form_id: formId
+              }, '✅ [WEBHOOK] Application created from join_request');
+            }
+          } else {
+            logger.debug({
+              chat_id: requestChatId,
+              user_id: userId
+            }, '⏭️ [WEBHOOK] No pipeline linked to this group for join_request');
+          }
+        } catch (joinRequestError) {
+          logger.error({
+            error: joinRequestError instanceof Error ? joinRequestError.message : String(joinRequestError),
+            chat_id: requestChatId,
+            user_id: userId
+          }, '❌ [WEBHOOK] Exception processing chat_join_request');
         }
       }
     }
