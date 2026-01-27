@@ -24,29 +24,49 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     
     const supabase = createAdminServer();
     
-    // Use RPC function to get form data
-    const { data, error } = await supabase
+    // Use RPC function to get form data (use .single() to get object, not array)
+    const { data: rpcData, error } = await supabase
       .rpc('get_application_form_public', {
         p_form_id: formId,
         p_source_code: sourceCode
-      });
+      })
+      .single();
+    
+    // Detailed logging for debugging
+    logger.info({ 
+      form_id: formId, 
+      source: sourceCode,
+      has_error: !!error,
+      error_message: error?.message,
+      rpc_data_type: typeof rpcData,
+      rpc_data_is_null: rpcData === null,
+      rpc_data_is_undefined: rpcData === undefined,
+      rpc_data_keys: rpcData && typeof rpcData === 'object' ? Object.keys(rpcData) : [],
+      rpc_data_stringified: rpcData ? JSON.stringify(rpcData).substring(0, 500) : 'null'
+    }, 'RPC result raw');
     
     if (error) {
       logger.error({ error, form_id: formId }, 'Failed to get form');
       return NextResponse.json({ error: 'Failed to get form' }, { status: 500 });
     }
     
+    // RPC returns JSONB directly, so rpcData is the form object
+    const data = rpcData as any;
+    
+    // Log final data structure
+    logger.info({ 
+      form_id: formId, 
+      has_form_schema: !!data?.form_schema,
+      form_schema_is_array: Array.isArray(data?.form_schema),
+      form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 'not_array',
+      form_schema_sample: data?.form_schema ? JSON.stringify(data.form_schema).substring(0, 200) : 'null',
+      landing_title: data?.landing?.title,
+      org_name: data?.org_name
+    }, 'Public form processed');
+    
     if (data?.error) {
       return NextResponse.json({ error: data.error }, { status: 404 });
     }
-    
-    logger.info({ 
-      form_id: formId, 
-      source: sourceCode,
-      has_form_schema: !!data?.form_schema,
-      form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 'not_array',
-      landing_title: data?.landing?.title
-    }, 'Public form fetched');
     
     return NextResponse.json(data);
   } catch (error) {

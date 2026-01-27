@@ -829,6 +829,8 @@ export class PostgresDbClient implements DbClient {
     params?: Record<string, any>,
     options?: { count?: 'exact' | 'planned' | 'estimated' }
   ): { single: () => Promise<DbResult<T>>; maybeSingle: () => Promise<DbResult<T | null>>; then: <TResult>(onfulfilled?: (value: DbResult<T[]>) => TResult | PromiseLike<TResult>) => Promise<TResult> } {
+    const logger = createServiceLogger('PostgresRPC');
+    
     const executeRpc = async (): Promise<{ rows: T[]; rowCount: number }> => {
       await this.ensureInitialized();
       
@@ -840,18 +842,34 @@ export class PostgresDbClient implements DbClient {
       const sql = `SELECT * FROM ${functionName}(${placeholders})`;
       const result = await this.pool.query(sql, paramValues);
       
+      // Логируем сырой результат для отладки
+      if (result.rows.length > 0) {
+        const firstRow = result.rows[0];
+        const keys = Object.keys(firstRow);
+        logger.info({
+          function: functionName,
+          row_count: result.rows.length,
+          first_row_keys: keys,
+          first_row_key_types: keys.map(k => ({ key: k, type: typeof firstRow[k] }))
+        }, 'RPC raw result');
+      }
+      
       // Для функций возвращающих скалярное значение (JSONB, UUID, TEXT и т.д.)
       // PostgreSQL возвращает { functionname: value }
       // Нужно распаковать это значение
       const unwrappedRows = result.rows.map((row: any) => {
         const keys = Object.keys(row);
-        // Если одна колонка и её имя совпадает с именем функции - распаковываем
-        if (keys.length === 1 && keys[0].toLowerCase() === functionName.toLowerCase()) {
-          return row[keys[0]];
-        }
-        // Если одна колонка с generic именем (например result) - тоже распаковываем
-        if (keys.length === 1 && (keys[0] === 'result' || keys[0] === functionName)) {
-          return row[keys[0]];
+        // Если одна колонка - всегда распаковываем (это скалярный результат)
+        if (keys.length === 1) {
+          const value = row[keys[0]];
+          logger.info({
+            function: functionName,
+            unwrapping: true,
+            key: keys[0],
+            value_type: typeof value,
+            is_object: typeof value === 'object' && value !== null
+          }, 'RPC unwrapping scalar');
+          return value;
         }
         return row;
       });

@@ -15,8 +15,7 @@ import {
   Phone,
   Plus,
   Trash2,
-  GripVertical,
-  Eye
+  GripVertical
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -242,20 +241,14 @@ export default function NewFormPage({
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm">
-                <Eye className="w-4 h-4 mr-2" />
-                Предпросмотр
-              </Button>
-              <Button onClick={handleSave} disabled={isLoading}>
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                Сохранить
-              </Button>
-            </div>
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              Сохранить
+            </Button>
           </div>
           
           {/* Tabs */}
@@ -382,35 +375,12 @@ export default function NewFormPage({
                   <CardTitle>Настройки</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Показывать лого организации</Label>
-                      <Switch
-                        checked={landing.show_org_logo}
-                        onCheckedChange={(checked) => setLanding({ ...landing, show_org_logo: checked })}
-                      />
-                    </div>
-                    {landing.show_org_logo && (
-                      <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-lg">
-                        {orgLogoUrl ? (
-                          <img 
-                            src={orgLogoUrl} 
-                            alt={orgName}
-                            className="w-12 h-12 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-500 text-xs">
-                            Нет лого
-                          </div>
-                        )}
-                        <div className="text-sm">
-                          <div className="font-medium">{orgName || 'Организация'}</div>
-                          <div className="text-neutral-500 text-xs">
-                            {orgLogoUrl ? 'Логотип будет показан' : 'Загрузите логотип в настройках организации'}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  <div className="flex items-center justify-between">
+                    <Label>Показывать лого организации</Label>
+                    <Switch
+                      checked={landing.show_org_logo}
+                      onCheckedChange={(checked) => setLanding({ ...landing, show_org_logo: checked })}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <Label>Показывать количество участников</Label>
