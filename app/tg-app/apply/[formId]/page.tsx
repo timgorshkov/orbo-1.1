@@ -207,7 +207,14 @@ export default function ApplicationFormPage() {
       
       setApplicationId(data.application_id);
       setPageState('success');
-      webApp.HapticFeedback?.notificationOccurred('success');
+      
+      // Different feedback for new vs existing application
+      if (data.is_existing) {
+        webApp.HapticFeedback?.notificationOccurred('warning');
+      } else {
+        webApp.HapticFeedback?.notificationOccurred('success');
+      }
+      
       webApp.MainButton.hide();
       webApp.BackButton.hide();
       
@@ -237,6 +244,7 @@ export default function ApplicationFormPage() {
     } else if (pageState === 'form') {
       mainButton.setText('Отправить заявку');
       mainButton.show();
+      mainButton.onClick(handleMainButtonClick); // Important: re-attach handler for form state
     } else if (pageState === 'submitting' || pageState === 'success') {
       mainButton.hide();
     }

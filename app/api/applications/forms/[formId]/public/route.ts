@@ -90,7 +90,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       utm_data
     } = body;
     
+    logger.info({ 
+      form_id: formId, 
+      tg_user_id,
+      has_form_data: !!form_data,
+      form_data_keys: form_data ? Object.keys(form_data) : [],
+      source_code
+    }, 'POST application request received');
+    
     if (!tg_user_id) {
+      logger.warn({ form_id: formId }, 'Missing tg_user_id');
       return NextResponse.json(
         { error: 'tg_user_id is required' },
         { status: 400 }
@@ -108,36 +117,76 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .single();
     
     if (formError || !form) {
+      logger.warn({ form_id: formId, error: formError }, 'Form not found or inactive');
       return NextResponse.json({ error: 'Form not found' }, { status: 404 });
     }
     
     // Check if application already exists
     const { data: existingApp } = await supabase
       .from('applications')
-      .select('id, stage_id')
+      .select('id, stage_id, updated_at')
       .eq('form_id', formId)
       .eq('tg_user_id', tg_user_id)
       .single();
     
     if (existingApp) {
+      logger.info({ 
+        form_id: formId, 
+        application_id: existingApp.id, 
+        tg_user_id,
+        has_form_data: !!form_data && Object.keys(form_data).length > 0
+      }, 'Existing application found');
+      
+      // Rate limiting: allow update only once per minute
+      const lastUpdate = new Date(existingApp.updated_at);
+      const now = new Date();
+      const secondsSinceUpdate = (now.getTime() - lastUpdate.getTime()) / 1000;
+      
+      if (secondsSinceUpdate < 60) {
+        logger.info({ 
+          form_id: formId, 
+          application_id: existingApp.id,
+          seconds_since_update: secondsSinceUpdate
+        }, 'Rate limited - too frequent updates');
+        
+        // Still return success to avoid confusion in UI
+        return NextResponse.json({
+          success: true,
+          application_id: existingApp.id,
+          is_existing: true,
+          message: 'Заявка уже подана'
+        });
+      }
+      
       // If form_data provided, update existing application
       if (form_data && Object.keys(form_data).length > 0) {
-        const { data: updated } = await supabase
+        const { data: updated, error: updateError } = await supabase
           .rpc('submit_application_form', {
             p_application_id: existingApp.id,
             p_form_data: form_data
-          });
+          })
+          .single();
+        
+        if (updateError) {
+          logger.error({ 
+            error: updateError, 
+            form_id: formId,
+            application_id: existingApp.id 
+          }, 'Failed to update application');
+          return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
+        }
         
         logger.info({ 
           form_id: formId, 
           application_id: existingApp.id, 
           tg_user_id 
-        }, 'Existing application form submitted');
+        }, 'Existing application updated');
         
         return NextResponse.json({
           success: true,
           application_id: existingApp.id,
-          is_existing: true
+          is_existing: true,
+          updated: true
         });
       }
       
@@ -145,11 +194,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         success: true,
         application_id: existingApp.id,
         is_existing: true,
-        message: 'Application already exists'
+        message: 'Заявка уже подана'
       });
     }
     
     // Create new application
+    logger.info({ form_id: formId, tg_user_id }, 'Creating new application');
+    
     const { data: applicationId, error: createError } = await supabase
       .rpc('create_application', {
         p_org_id: form.org_id,
@@ -160,10 +211,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         p_form_data: form_data || {},
         p_source_code: source_code || null,
         p_utm_data: utm_data || {}
-      });
+      })
+      .single();
     
     if (createError) {
-      logger.error({ error: createError, form_id: formId }, 'Failed to create application');
+      logger.error({ 
+        error: createError, 
+        error_code: createError.code,
+        error_message: createError.message,
+        form_id: formId 
+      }, 'Failed to create application');
       return NextResponse.json({ error: 'Failed to create application' }, { status: 500 });
     }
     
@@ -179,8 +236,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       application_id: applicationId,
       is_existing: false
     }, { status: 201 });
-  } catch (error) {
-    logger.error({ error, form_id: formId }, 'Error in POST public form');
+  } catch (error: any) {
+    logger.error({ 
+      error: error.message, 
+      stack: error.stack,
+      form_id: formId 
+    }, 'Error in POST public form');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
