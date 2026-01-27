@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, telegram_group_id } = body;
     
     const supabase = createAdminServer();
     
@@ -57,6 +57,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updates: any = { updated_at: new Date().toISOString() };
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
+    if (telegram_group_id !== undefined) updates.telegram_group_id = telegram_group_id;
     
     const { error: updateError } = await supabase
       .from('application_pipelines')

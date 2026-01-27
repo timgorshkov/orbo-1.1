@@ -16,6 +16,7 @@ interface PipelineSettingsProps {
   stages: any[]
   formsCount: number
   applicationsCount: number
+  orgGroups: Array<{ tg_chat_id: number; title: string; username?: string }>
 }
 
 export default function PipelineSettings({
@@ -23,11 +24,13 @@ export default function PipelineSettings({
   pipeline,
   stages,
   formsCount,
-  applicationsCount
+  applicationsCount,
+  orgGroups
 }: PipelineSettingsProps) {
   const router = useRouter()
   const [name, setName] = useState(pipeline.name)
   const [description, setDescription] = useState(pipeline.description || '')
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(pipeline.telegram_group_id || null)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -39,13 +42,20 @@ export default function PipelineSettings({
     setError(null)
     
     try {
+      const updateData: any = {
+        name: name.trim(),
+        description: description.trim() || null
+      }
+      
+      // Only include telegram_group_id for join_request pipelines
+      if (pipeline.pipeline_type === 'join_request') {
+        updateData.telegram_group_id = selectedGroupId
+      }
+      
       const res = await fetch(`/api/applications/pipelines/${pipeline.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || null
-        })
+        body: JSON.stringify(updateData)
       })
       
       if (!res.ok) {
@@ -131,6 +141,29 @@ export default function PipelineSettings({
                 rows={3}
               />
             </div>
+            
+            {/* Telegram Group Selection (only for join_request) */}
+            {pipeline.pipeline_type === 'join_request' && (
+              <div className="space-y-2">
+                <Label htmlFor="telegram_group">Telegram группа</Label>
+                <select
+                  id="telegram_group"
+                  value={selectedGroupId || ''}
+                  onChange={(e) => setSelectedGroupId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Не выбрана</option>
+                  {orgGroups.map((group) => (
+                    <option key={group.tg_chat_id} value={group.tg_chat_id}>
+                      {group.title}{group.username ? ` (@${group.username})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-neutral-500">
+                  Заявки на вступление в эту группу будут попадать в данную воронку
+                </p>
+              </div>
+            )}
             
             {error && !showDeleteConfirm && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

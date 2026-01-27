@@ -55,6 +55,13 @@ export default async function PipelineSettingsPage({
           .select('id')
           .eq('pipeline_id', pipelineId)
       ).data?.map(f => f.id) || [])
+    
+    // Get org's telegram groups (for join_request pipeline type)
+    const { data: orgGroups } = await supabase
+      .from('telegram_groups')
+      .select('tg_chat_id, title, username')
+      .eq('org_id', orgId)
+      .order('title')
 
     return (
       <PipelineSettings 
@@ -63,6 +70,7 @@ export default async function PipelineSettingsPage({
         stages={stages || []}
         formsCount={formsCount || 0}
         applicationsCount={applicationsCount || 0}
+        orgGroups={orgGroups || []}
       />
     )
   } catch (error) {
