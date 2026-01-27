@@ -5,6 +5,8 @@ interface FormEditorProps {
   pipelineId: string
   existingForm?: any
   isEdit?: boolean
+  orgName?: string
+  orgLogoUrl?: string | null
 }
 
 export default function FormEditor(props: FormEditorProps) {

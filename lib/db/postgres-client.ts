@@ -838,7 +838,25 @@ export class PostgresDbClient implements DbClient {
       const placeholders = paramNames.map((name, i) => `${name} := $${i + 1}`).join(', ');
       
       const sql = `SELECT * FROM ${functionName}(${placeholders})`;
-      return await this.pool.query(sql, paramValues);
+      const result = await this.pool.query(sql, paramValues);
+      
+      // Для функций возвращающих скалярное значение (JSONB, UUID, TEXT и т.д.)
+      // PostgreSQL возвращает { functionname: value }
+      // Нужно распаковать это значение
+      const unwrappedRows = result.rows.map((row: any) => {
+        const keys = Object.keys(row);
+        // Если одна колонка и её имя совпадает с именем функции - распаковываем
+        if (keys.length === 1 && keys[0].toLowerCase() === functionName.toLowerCase()) {
+          return row[keys[0]];
+        }
+        // Если одна колонка с generic именем (например result) - тоже распаковываем
+        if (keys.length === 1 && (keys[0] === 'result' || keys[0] === functionName)) {
+          return row[keys[0]];
+        }
+        return row;
+      });
+      
+      return { rows: unwrappedRows, rowCount: result.rowCount };
     };
     
     return {

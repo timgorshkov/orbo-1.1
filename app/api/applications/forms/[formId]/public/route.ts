@@ -40,7 +40,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: data.error }, { status: 404 });
     }
     
-    logger.info({ form_id: formId, source: sourceCode }, 'Public form fetched');
+    logger.info({ 
+      form_id: formId, 
+      source: sourceCode,
+      has_form_schema: !!data?.form_schema,
+      form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 'not_array',
+      landing_title: data?.landing?.title
+    }, 'Public form fetched');
     
     return NextResponse.json(data);
   } catch (error) {

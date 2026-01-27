@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, User, Clock, ChevronRight, MoreHorizontal } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AlertTriangle, User, Clock, ChevronRight, MoreHorizontal, Loader2 } from 'lucide-react'
 
 interface Stage {
   id: string
@@ -45,11 +46,17 @@ export default function PipelineKanban({
   orgId,
   pipelineId,
   stages,
-  applicationsByStage,
-  stageStats
+  applicationsByStage: initialApplicationsByStage,
+  stageStats: initialStageStats
 }: PipelineKanbanProps) {
+  const router = useRouter()
   const [draggedApp, setDraggedApp] = useState<Application | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
+  const [movingAppId, setMovingAppId] = useState<string | null>(null)
+  
+  // Local state for optimistic updates
+  const [applicationsByStage, setApplicationsByStage] = useState(initialApplicationsByStage)
+  const [stageStats, setStageStats] = useState(initialStageStats)
 
   const handleDragStart = (app: Application) => {
     setDraggedApp(app)
@@ -73,7 +80,7 @@ export default function PipelineKanban({
       return
     }
     
-    // Check if target stage is terminal and current stage is also terminal
+    // Check if current stage is terminal
     const currentStage = stages.find(s => s.id === draggedApp.stage_id)
     if (currentStage?.is_terminal) {
       // Can't move from terminal stage
@@ -81,22 +88,69 @@ export default function PipelineKanban({
       return
     }
     
+    const sourceStageId = draggedApp.stage_id
+    const appToMove = draggedApp
+    
+    // Optimistic update
+    setMovingAppId(appToMove.id)
+    setApplicationsByStage(prev => {
+      const newState = { ...prev }
+      // Remove from source
+      newState[sourceStageId] = (newState[sourceStageId] || []).filter(a => a.id !== appToMove.id)
+      // Add to target
+      const movedApp = { ...appToMove, stage_id: targetStageId }
+      newState[targetStageId] = [movedApp, ...(newState[targetStageId] || [])]
+      return newState
+    })
+    setStageStats(prev => ({
+      ...prev,
+      [sourceStageId]: Math.max(0, (prev[sourceStageId] || 0) - 1),
+      [targetStageId]: (prev[targetStageId] || 0) + 1
+    }))
+    
+    setDraggedApp(null)
+    
     try {
-      const res = await fetch(`/api/applications/${draggedApp.id}`, {
+      const res = await fetch(`/api/applications/${appToMove.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage_id: targetStageId })
       })
       
-      if (res.ok) {
-        // Refresh page to show updated data
-        window.location.reload()
+      if (!res.ok) {
+        // Revert on error
+        setApplicationsByStage(prev => {
+          const newState = { ...prev }
+          newState[targetStageId] = (newState[targetStageId] || []).filter(a => a.id !== appToMove.id)
+          newState[sourceStageId] = [appToMove, ...(newState[sourceStageId] || [])]
+          return newState
+        })
+        setStageStats(prev => ({
+          ...prev,
+          [sourceStageId]: (prev[sourceStageId] || 0) + 1,
+          [targetStageId]: Math.max(0, (prev[targetStageId] || 0) - 1)
+        }))
+      } else {
+        // Refresh server data in background
+        router.refresh()
       }
     } catch (err) {
       console.error('Failed to move application:', err)
+      // Revert on error
+      setApplicationsByStage(prev => {
+        const newState = { ...prev }
+        newState[targetStageId] = (newState[targetStageId] || []).filter(a => a.id !== appToMove.id)
+        newState[sourceStageId] = [appToMove, ...(newState[sourceStageId] || [])]
+        return newState
+      })
+      setStageStats(prev => ({
+        ...prev,
+        [sourceStageId]: (prev[sourceStageId] || 0) + 1,
+        [targetStageId]: Math.max(0, (prev[targetStageId] || 0) - 1)
+      }))
+    } finally {
+      setMovingAppId(null)
     }
-    
-    setDraggedApp(null)
   }
 
   const formatTimeAgo = (date: string) => {

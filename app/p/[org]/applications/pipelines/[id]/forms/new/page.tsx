@@ -86,13 +86,17 @@ interface NewFormPageProps {
   pipelineId?: string
   existingForm?: any
   isEdit?: boolean
+  orgName?: string
+  orgLogoUrl?: string | null
 }
 
 export default function NewFormPage({ 
   orgId: propsOrgId, 
   pipelineId: propsPipelineId,
   existingForm,
-  isEdit = false
+  isEdit = false,
+  orgName: propsOrgName,
+  orgLogoUrl: propsOrgLogoUrl
 }: NewFormPageProps = {}) {
   const router = useRouter()
   const params = useParams()
@@ -111,6 +115,22 @@ export default function NewFormPage({
   const [successPage, setSuccessPage] = useState<SuccessPage>(existingForm?.success_page || defaultSuccessPage)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [orgName, setOrgName] = useState(propsOrgName || '')
+  const [orgLogoUrl, setOrgLogoUrl] = useState(propsOrgLogoUrl || null)
+  
+  // Fetch org data if not provided (for new form page)
+  useEffect(() => {
+    if (!propsOrgName && orgId) {
+      fetch(`/api/organizations/${orgId}`)
+        .then(res => res.json())
+        .then(data => {
+          const org = data.organization
+          if (org?.name) setOrgName(org.name)
+          if (org?.logo_url) setOrgLogoUrl(org.logo_url)
+        })
+        .catch(() => {})
+    }
+  }, [orgId, propsOrgName])
 
   const handleAddField = (type: FormField['type']) => {
     const newField: FormField = {
@@ -278,7 +298,18 @@ export default function NewFormPage({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Заголовок</Label>
+                    <Label>Служебное название формы</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Форма заявки"
+                    />
+                    <p className="text-xs text-neutral-500">
+                      Это название видно только вам в списке форм
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Заголовок (для пользователя)</Label>
                     <Input
                       value={landing.title}
                       onChange={(e) => setLanding({ ...landing, title: e.target.value })}
@@ -351,12 +382,35 @@ export default function NewFormPage({
                   <CardTitle>Настройки</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Показывать лого организации</Label>
-                    <Switch
-                      checked={landing.show_org_logo}
-                      onCheckedChange={(checked) => setLanding({ ...landing, show_org_logo: checked })}
-                    />
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Показывать лого организации</Label>
+                      <Switch
+                        checked={landing.show_org_logo}
+                        onCheckedChange={(checked) => setLanding({ ...landing, show_org_logo: checked })}
+                      />
+                    </div>
+                    {landing.show_org_logo && (
+                      <div className="flex items-center gap-3 p-3 bg-neutral-50 rounded-lg">
+                        {orgLogoUrl ? (
+                          <img 
+                            src={orgLogoUrl} 
+                            alt={orgName}
+                            className="w-12 h-12 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-neutral-200 flex items-center justify-center text-neutral-500 text-xs">
+                            Нет лого
+                          </div>
+                        )}
+                        <div className="text-sm">
+                          <div className="font-medium">{orgName || 'Организация'}</div>
+                          <div className="text-neutral-500 text-xs">
+                            {orgLogoUrl ? 'Логотип будет показан' : 'Загрузите логотип в настройках организации'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
                     <Label>Показывать количество участников</Label>

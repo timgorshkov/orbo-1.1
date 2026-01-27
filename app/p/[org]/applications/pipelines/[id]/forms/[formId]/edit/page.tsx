@@ -40,6 +40,13 @@ export default async function EditFormPage({
     if (!pipeline || pipeline.org_id !== orgId) {
       return notFound()
     }
+    
+    // Get organization for logo preview
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('name, logo_url')
+      .eq('id', orgId)
+      .single()
 
     return (
       <FormEditor 
@@ -47,6 +54,8 @@ export default async function EditFormPage({
         pipelineId={pipelineId}
         existingForm={form}
         isEdit={true}
+        orgName={org?.name}
+        orgLogoUrl={org?.logo_url}
       />
     )
   } catch (error) {
