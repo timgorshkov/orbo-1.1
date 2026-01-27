@@ -68,13 +68,37 @@ export default function TelegramAppHome() {
   };
 
   const processStartParam = (startParam: string) => {
-    // Parse start_param: e-{event_id}
+    // Parse start_param: e-{event_id} for events
     if (startParam.startsWith('e-')) {
       const eventId = startParam.substring(2);
       if (eventId && eventId.length > 0) {
         setStatus('redirecting');
         router.replace(`/tg-app/events/${eventId}`);
         return;
+      }
+    }
+    
+    // Parse start_param: apply-{form_id} or apply-{form_id}-{source_code} for applications
+    if (startParam.startsWith('apply-')) {
+      const rest = startParam.substring(6); // Remove 'apply-'
+      // UUID is 36 characters, so form_id is first 36 chars
+      // Format: apply-{formId} or apply-{formId}-{sourceCode}
+      const parts = rest.split('-');
+      
+      // UUID has format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (5 parts)
+      // So formId is first 5 parts joined by '-'
+      if (parts.length >= 5) {
+        const formId = parts.slice(0, 5).join('-');
+        const sourceCode = parts.length > 5 ? parts.slice(5).join('-') : null;
+        
+        if (formId && formId.length === 36) {
+          setStatus('redirecting');
+          const url = sourceCode 
+            ? `/tg-app/apply/${formId}?s=${sourceCode}`
+            : `/tg-app/apply/${formId}`;
+          router.replace(url);
+          return;
+        }
       }
     }
     
@@ -102,19 +126,20 @@ export default function TelegramAppHome() {
           {status === 'redirecting' && (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
-              <p className="text-gray-600">Переход к событию...</p>
+              <p className="text-gray-600">Загрузка...</p>
             </>
           )}
 
           {status === 'no-event' && (
             <div className="space-y-4">
-              <div className="text-6xl">📅</div>
-              <h1 className="text-xl font-bold text-gray-900">Orbo Events</h1>
+              <div className="text-6xl">🚀</div>
+              <h1 className="text-xl font-bold text-gray-900">Orbo</h1>
               <p className="text-gray-600">
-                Используйте ссылку на конкретное событие для регистрации
+                Используйте ссылку для перехода к нужному разделу
               </p>
               <p className="text-sm text-gray-400">
-                Формат: t.me/orbo_event_bot?startapp=e-EVENT_ID
+                События: ?startapp=e-EVENT_ID<br />
+                Заявки: ?startapp=apply-FORM_ID
               </p>
             </div>
           )}

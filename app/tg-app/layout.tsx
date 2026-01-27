@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Orbo Events',
-  description: 'Регистрация на события через Telegram',
+  title: 'Orbo',
+  description: 'Управление сообществом через Telegram',
   robots: 'noindex, nofollow', // Don't index MiniApp pages
 };
 
