@@ -16,7 +16,7 @@ interface PipelineSettingsProps {
   stages: any[]
   formsCount: number
   applicationsCount: number
-  orgGroups: Array<{ tg_chat_id: number; title: string; username?: string }>
+  orgGroups: Array<{ tg_chat_id: string | number; title: string; username?: string }>
 }
 
 export default function PipelineSettings({
@@ -30,7 +30,9 @@ export default function PipelineSettings({
   const router = useRouter()
   const [name, setName] = useState(pipeline.name)
   const [description, setDescription] = useState(pipeline.description || '')
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(pipeline.telegram_group_id || null)
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(
+    pipeline.telegram_group_id ? String(pipeline.telegram_group_id) : ''
+  )
   const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -49,7 +51,7 @@ export default function PipelineSettings({
       
       // Only include telegram_group_id for join_request pipelines
       if (pipeline.pipeline_type === 'join_request') {
-        updateData.telegram_group_id = selectedGroupId
+        updateData.telegram_group_id = selectedGroupId ? Number(selectedGroupId) : null
       }
       
       const res = await fetch(`/api/applications/pipelines/${pipeline.id}`, {
@@ -148,8 +150,8 @@ export default function PipelineSettings({
                 <Label htmlFor="telegram_group">Telegram группа</Label>
                 <select
                   id="telegram_group"
-                  value={selectedGroupId || ''}
-                  onChange={(e) => setSelectedGroupId(e.target.value ? Number(e.target.value) : null)}
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
                   className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Не выбрана</option>

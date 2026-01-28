@@ -57,11 +57,23 @@ export default async function PipelineSettingsPage({
       ).data?.map(f => f.id) || [])
     
     // Get org's telegram groups (for join_request pipeline type)
-    const { data: orgGroups } = await supabase
-      .from('telegram_groups')
-      .select('tg_chat_id, title, username')
+    // Groups are linked via org_telegram_groups table
+    const { data: orgGroupBindings } = await supabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
       .eq('org_id', orgId)
-      .order('title')
+    
+    const orgGroupIds = orgGroupBindings?.map(g => String(g.tg_chat_id)) || []
+    
+    let orgGroups: Array<{ tg_chat_id: number; title: string; username?: string }> = []
+    if (orgGroupIds.length > 0) {
+      const { data: groups } = await supabase
+        .from('telegram_groups')
+        .select('tg_chat_id, title, username')
+        .in('tg_chat_id', orgGroupIds)
+        .order('title')
+      orgGroups = groups || []
+    }
 
     return (
       <PipelineSettings 
