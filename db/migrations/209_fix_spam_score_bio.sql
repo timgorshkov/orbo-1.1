@@ -79,8 +79,9 @@ BEGIN
   
   -- Spam detection
   IF COALESCE((v_form_settings->'spam_detection'->>'enabled')::boolean, true) THEN
-    -- Нет фото
-    IF p_tg_user_data->>'photo_url' IS NULL OR p_tg_user_data->>'photo_url' = '' THEN
+    -- Нет фото - ONLY check if photo_url field was actually provided in request
+    -- (join_request webhook doesn't provide photo_url, so we shouldn't penalize)
+    IF p_tg_user_data ? 'photo_url' AND (p_tg_user_data->>'photo_url' IS NULL OR p_tg_user_data->>'photo_url' = '') THEN
       v_spam_score := v_spam_score + COALESCE((v_form_settings->'spam_detection'->'checks'->>'no_photo')::int, 30);
       v_spam_reasons := array_append(v_spam_reasons, 'no_photo');
     END IF;

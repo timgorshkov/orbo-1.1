@@ -284,6 +284,13 @@ export default function ApplicationDetail({
                     </div>
                   </div>
                   
+                  {/* Bio */}
+                  {(participant?.bio || userData.bio) && (
+                    <div className="text-sm text-neutral-600 italic border-l-2 border-neutral-200 pl-3">
+                      "{participant?.bio || userData.bio}"
+                    </div>
+                  )}
+                  
                   {/* Spam Score */}
                   {application.spam_score > 0 && (
                     <div className={`flex items-center gap-2 p-2 rounded-lg ${
@@ -308,7 +315,7 @@ export default function ApplicationDetail({
           </Card>
 
           {/* Form Data */}
-          {application.form_data && Object.keys(application.form_data).length > 0 && (
+          {application.form_data && Object.keys(application.form_data).length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -323,17 +330,63 @@ export default function ApplicationDetail({
               </CardHeader>
               <CardContent>
                 <dl className="space-y-3">
-                  {Object.entries(application.form_data).map(([key, value]) => (
-                    <div key={key}>
-                      <dt className="text-sm font-medium text-neutral-500 capitalize">
-                        {key.replace(/_/g, ' ')}
-                      </dt>
-                      <dd className="mt-0.5 text-neutral-900">
-                        {String(value)}
-                      </dd>
-                    </div>
-                  ))}
+                  {Object.entries(application.form_data).map(([key, value]) => {
+                    // Try to find label from form_schema
+                    const field = application.form?.form_schema?.find((f: any) => f.id === key || f.name === key)
+                    const label = field?.label || field?.name || key.replace(/_/g, ' ')
+                    
+                    return (
+                      <div key={key}>
+                        <dt className="text-sm font-medium text-neutral-500">
+                          {label}
+                        </dt>
+                        <dd className="mt-0.5 text-neutral-900">
+                          {String(value)}
+                        </dd>
+                      </div>
+                    )
+                  })}
                 </dl>
+              </CardContent>
+            </Card>
+          ) : (
+            /* Form not filled - show link to send */
+            <Card className="border-amber-200 bg-amber-50/50">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2 text-amber-800">
+                  <FileText className="w-5 h-5" />
+                  Анкета не заполнена
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-amber-700">
+                  Пользователь подал заявку, но ещё не заполнил анкету. 
+                  Отправьте ему ссылку на MiniApp в личные сообщения.
+                </p>
+                {application.form_id && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-amber-800">Ссылка для заполнения:</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}/app?startapp=form_${application.form_id}`}
+                        className="flex-1 px-3 py-2 text-sm bg-white border border-amber-200 rounded-lg"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const link = `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}/app?startapp=form_${application.form_id}`
+                          navigator.clipboard.writeText(link)
+                        }}
+                        className="border-amber-300 hover:bg-amber-100"
+                      >
+                        Копировать
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -368,6 +421,35 @@ export default function ApplicationDetail({
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Actions - moved to top */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Действия</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {participant && (
+                <Link href={`/p/${orgId}/members/${participant.id}`}>
+                  <Button variant="outline" className="w-full justify-start">
+                    <User className="w-4 h-4 mr-2" />
+                    Профиль участника
+                  </Button>
+                </Link>
+              )}
+              {username && (
+                <a 
+                  href={`https://t.me/${username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" className="w-full justify-start">
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Написать в Telegram
+                  </Button>
+                </a>
+              )}
+            </CardContent>
+          </Card>
+
           {/* UTM / Source */}
           {(source || Object.keys(utmData).length > 0) && (
             <Card>
@@ -441,35 +523,6 @@ export default function ApplicationDetail({
                     </div>
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Действия</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {participant && (
-                <Link href={`/p/${orgId}/members/${participant.id}`}>
-                  <Button variant="outline" className="w-full justify-start">
-                    <User className="w-4 h-4 mr-2" />
-                    Профиль участника
-                  </Button>
-                </Link>
-              )}
-              {username && (
-                <a 
-                  href={`https://t.me/${username}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Button variant="outline" className="w-full justify-start">
-                    <MessageCircle className="w-4 h-4 mr-2" />
-                    Написать в Telegram
-                  </Button>
-                </a>
               )}
             </CardContent>
           </Card>

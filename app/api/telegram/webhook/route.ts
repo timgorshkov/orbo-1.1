@@ -634,13 +634,17 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           
           if (pipeline && formId) {
             // Prepare tg_user_data with bio (available in join_request)
-            const tgUserData = {
+            // Note: photo_url is not available in join_request, so we don't include it
+            // This way spam_score won't penalize for "no_photo"
+            const tgUserData: Record<string, any> = {
               first_name: joinRequest.from?.first_name || '',
               last_name: joinRequest.from?.last_name || null,
-              username: joinRequest.from?.username || null,
-              photo_url: null, // Not available in join_request
-              bio: joinRequest.bio || null // Bio IS available in join_request!
+              username: joinRequest.from?.username || null
             };
+            // Only add bio if it exists (bio IS available in join_request!)
+            if (joinRequest.bio) {
+              tgUserData.bio = joinRequest.bio;
+            }
             
             // Create application via RPC
             const { data: applicationId, error: createError } = await supabaseServiceRole.rpc(
