@@ -16,7 +16,7 @@ interface PipelineSettingsProps {
   stages: any[]
   formsCount: number
   applicationsCount: number
-  orgGroups: Array<{ tg_chat_id: string | number; title: string; username?: string }>
+  orgGroups: Array<{ tg_chat_id: string | number; title: string }>
 }
 
 export default function PipelineSettings({
@@ -156,8 +156,8 @@ export default function PipelineSettings({
                 >
                   <option value="">Не выбрана</option>
                   {orgGroups.map((group) => (
-                    <option key={group.tg_chat_id} value={group.tg_chat_id}>
-                      {group.title}{group.username ? ` (@${group.username})` : ''}
+                    <option key={String(group.tg_chat_id)} value={String(group.tg_chat_id)}>
+                      {group.title}
                     </option>
                   ))}
                 </select>

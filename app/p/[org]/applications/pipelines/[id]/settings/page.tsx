@@ -65,11 +65,11 @@ export default async function PipelineSettingsPage({
     
     const orgGroupIds = orgGroupBindings?.map(g => String(g.tg_chat_id)) || []
     
-    let orgGroups: Array<{ tg_chat_id: number; title: string; username?: string }> = []
+    let orgGroups: Array<{ tg_chat_id: string | number; title: string }> = []
     if (orgGroupIds.length > 0) {
       const { data: groups } = await supabase
         .from('telegram_groups')
-        .select('tg_chat_id, title, username')
+        .select('tg_chat_id, title')
         .in('tg_chat_id', orgGroupIds)
         .order('title')
       orgGroups = groups || []
