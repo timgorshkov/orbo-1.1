@@ -163,7 +163,7 @@ BEGIN
   RETURNING id INTO v_application_id;
   
   -- Записать событие создания
-  INSERT INTO application_events (application_id, event_type, actor_type, event_data)
+  INSERT INTO application_events (application_id, event_type, actor_type, data)
   VALUES (
     v_application_id,
     'created',
