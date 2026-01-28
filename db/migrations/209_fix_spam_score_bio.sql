@@ -115,11 +115,12 @@ BEGIN
     AND (SELECT COUNT(*) FROM jsonb_object_keys(p_form_data)) > 0;
   
   -- Создать заявку
+  -- Note: pipeline_id is derived from form_id -> application_forms.pipeline_id
+  -- The applications table does NOT have pipeline_id column
   INSERT INTO applications (
     org_id,
     form_id,
     participant_id,
-    pipeline_id,
     stage_id,
     tg_user_id,
     tg_chat_id,
@@ -135,7 +136,6 @@ BEGIN
     p_org_id,
     p_form_id,
     v_participant_id,
-    v_pipeline_id,
     v_initial_stage_id,
     p_tg_user_id,
     p_tg_chat_id,
