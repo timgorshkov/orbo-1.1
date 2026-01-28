@@ -591,21 +591,48 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       if (requestChatId && userId) {
         try {
           // Find pipeline linked to this group
-          const { data: pipeline } = await supabaseServiceRole
+          // Note: telegram_group_id is BIGINT, requestChatId is number
+          const { data: pipeline, error: pipelineError } = await supabaseServiceRole
             .from('application_pipelines')
-            .select(`
-              id,
-              org_id,
-              application_forms!inner(id)
-            `)
+            .select('id, org_id')
             .eq('telegram_group_id', requestChatId)
             .eq('pipeline_type', 'join_request')
             .eq('is_active', true)
             .maybeSingle();
           
-          if (pipeline && pipeline.application_forms && pipeline.application_forms.length > 0) {
-            const formId = pipeline.application_forms[0].id;
+          logger.debug({
+            chat_id: requestChatId,
+            pipeline_found: !!pipeline,
+            pipeline_error: pipelineError?.message,
+            pipeline_id: pipeline?.id
+          }, '🔍 [WEBHOOK] Pipeline lookup result');
+          
+          if (!pipeline) {
+            logger.debug({
+              chat_id: requestChatId
+            }, '⏭️ [WEBHOOK] No pipeline linked to this group for join_request');
+          }
+          
+          // Get form for this pipeline
+          let formId: string | null = null;
+          if (pipeline) {
+            const { data: form } = await supabaseServiceRole
+              .from('application_forms')
+              .select('id')
+              .eq('pipeline_id', pipeline.id)
+              .limit(1)
+              .maybeSingle();
             
+            formId = form?.id || null;
+            
+            logger.debug({
+              pipeline_id: pipeline.id,
+              form_found: !!form,
+              form_id: formId
+            }, '🔍 [WEBHOOK] Form lookup result');
+          }
+          
+          if (pipeline && formId) {
             // Prepare tg_user_data with bio (available in join_request)
             const tgUserData = {
               first_name: joinRequest.from?.first_name || '',
@@ -649,11 +676,6 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 form_id: formId
               }, '✅ [WEBHOOK] Application created from join_request');
             }
-          } else {
-            logger.debug({
-              chat_id: requestChatId,
-              user_id: userId
-            }, '⏭️ [WEBHOOK] No pipeline linked to this group for join_request');
           }
         } catch (joinRequestError) {
           logger.error({
