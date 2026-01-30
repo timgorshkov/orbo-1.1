@@ -43,7 +43,7 @@ export default function HomePage() {
           </h1>
           
           <p className="hero-orb-section__subtitle">
-            Повышайте доходимость на мероприятия. Обрабатывайте заявки без хаоса. Знайте своих людей.
+            Повышайте доходимость на мероприятия, принимайте людей без хаоса и сохраняйте историю участия
           </p>
           
           <div className="hero-orb-section__actions">
@@ -78,9 +78,9 @@ export default function HomePage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Для кого</span>
-            <h2 className="section-header__title">Решаем боли разных команд</h2>
+            <h2 className="section-header__title">Знакомые ситуации?</h2>
             <p className="section-header__subtitle">
-              От владельцев сообществ до агентств с десятками клиентских чатов
+              Orbo помогает тем, кто строит и развивает сообщества в Telegram
             </p>
           </div>
           
@@ -89,15 +89,15 @@ export default function HomePage() {
               <div className="audience-card__icon">
                 <Calendar size={28} />
               </div>
-              <h3 className="audience-card__title">Клубы с мероприятиями</h3>
-              <p className="audience-card__subtitle">Бизнес-клубы, профессиональные комьюнити, нетворкинг</p>
+              <h3 className="audience-card__title">Клубы и сообщества с мероприятиями</h3>
+              <p className="audience-card__subtitle">Бизнес-клубы, профессиональные комьюнити, нетворкинг-хабы</p>
               <p className="audience-card__text">
-                Люди не доходят до событий. База участников теряется. Не видите, кто реально активен.
+                Люди регистрируются, но не доходят. Теряете деньги и время на тех, кто не участвует.
               </p>
               <ul className="audience-card__features">
-                <li>Регистрация и напоминания в Telegram</li>
-                <li>Профиль с историей посещений</li>
-                <li>Аналитика «ядра» сообщества</li>
+                <li>Напоминания повышают доходимость</li>
+                <li>Карточка участника с историей посещений</li>
+                <li>Видите, кто реально ходит и платит</li>
               </ul>
             </div>
             
@@ -122,14 +122,14 @@ export default function HomePage() {
                 <Building2 size={28} />
               </div>
               <h3 className="audience-card__title">Авторы каналов</h3>
-              <p className="audience-card__subtitle">Эксперты, консультанты, образовательные проекты</p>
+              <p className="audience-card__subtitle">Эксперты, консультанты, личные бренды</p>
               <p className="audience-card__text">
-                Не видите подписчиков канала. Теряете контакты активной аудитории. Клиенты уходят.
+                Комментаторы и участники событий — ваше ценное ядро. Но вы теряете с ними контакт.
               </p>
               <ul className="audience-card__features">
-                <li>Профили комментаторов</li>
-                <li>События как способ сбора контактов</li>
-                <li>CRM ценной аудитории</li>
+                <li>Карточки комментаторов и участников</li>
+                <li>События для сбора контактов</li>
+                <li>Работа с активной аудиторией</li>
               </ul>
             </div>
           </div>
@@ -149,8 +149,8 @@ export default function HomePage() {
       <section className="website-section website-section--alt">
         <div className="website-container">
           <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Возможности</span>
-            <h2 className="section-header__title">Всё для управления сообществом</h2>
+            <span className="section-header__eyebrow">Что внутри</span>
+            <h2 className="section-header__title">Участники, события, контроль</h2>
           </div>
           
           <div className="features-grid features-grid--4col">
@@ -158,32 +158,32 @@ export default function HomePage() {
               <div className="feature-card__icon">
                 <UserCircle size={24} />
               </div>
-              <h4 className="feature-card__title">CRM участников</h4>
-              <p className="feature-card__text">Профили, AI-интересы, история, импорт</p>
+              <h4 className="feature-card__title">Карточки участников</h4>
+              <p className="feature-card__text">История активности, интересы, посещения</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon">
                 <Users size={24} />
               </div>
-              <h4 className="feature-card__title">Заявки и воронки</h4>
-              <p className="feature-card__text">Анкеты MiniApp, spam-score, статусы</p>
+              <h4 className="feature-card__title">Заявки на вступление</h4>
+              <p className="feature-card__text">Анкеты, spam-score, статусы</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon">
                 <Calendar size={24} />
               </div>
-              <h4 className="feature-card__title">События</h4>
-              <p className="feature-card__text">Регистрация, оплаты, напоминания</p>
+              <h4 className="feature-card__title">События и регистрации</h4>
+              <p className="feature-card__text">Оплаты, напоминания, чекин</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon">
                 <Bell size={24} />
               </div>
-              <h4 className="feature-card__title">AI-уведомления</h4>
-              <p className="feature-card__text">Негатив, вопросы, неактивность</p>
+              <h4 className="feature-card__title">Умные уведомления</h4>
+              <p className="feature-card__text">Негатив, вопросы, тишина в чатах</p>
             </div>
           </div>
           
@@ -204,7 +204,7 @@ export default function HomePage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Как начать</span>
-            <h2 className="section-header__title">Три шага к порядку</h2>
+            <h2 className="section-header__title">Три шага — и вы в курсе</h2>
           </div>
           
           <div className="steps-grid">
@@ -212,21 +212,21 @@ export default function HomePage() {
               <div className="step-card__number">1</div>
               <h4 className="step-card__title">Подключите группу</h4>
               <p className="step-card__text">
-                Добавьте бота @orbo_community_bot в Telegram-группу как администратора
+                Добавьте бота в Telegram-группу — участники начнут появляться автоматически
               </p>
             </div>
             <div className="step-card">
               <div className="step-card__number">2</div>
-              <h4 className="step-card__title">Настройте уведомления</h4>
+              <h4 className="step-card__title">Создайте первое событие</h4>
               <p className="step-card__text">
-                Выберите, о чём получать алерты: негатив, вопросы, тишина
+                Регистрация через Telegram, напоминания, сбор оплат — всё в одном месте
               </p>
             </div>
             <div className="step-card">
               <div className="step-card__number">3</div>
-              <h4 className="step-card__title">Управляйте сообществом</h4>
+              <h4 className="step-card__title">Знайте своих людей</h4>
               <p className="step-card__text">
-                Изучайте аналитику, проводите события, знайте своих участников
+                Карточки участников с историей посещений, активностью и контактами
               </p>
             </div>
           </div>

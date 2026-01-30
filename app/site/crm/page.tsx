@@ -8,8 +8,8 @@ import {
 import { Header, Footer, BrowserFrame, CRMFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
-  title: 'CRM участников',
-  description: 'Профили участников с AI-анализом интересов. Импорт истории из Telegram и WhatsApp.',
+  title: 'Карточки участников',
+  description: 'Карточки участников с историей активности и событий. AI-анализ интересов. Импорт из Telegram и WhatsApp.',
 };
 
 export default function CRMPage() {
@@ -22,12 +22,12 @@ export default function CRMPage() {
         <CRMFloatingCards />
         
         <div className="hero-floating__content">
-          <span className="hero-floating__eyebrow">CRM</span>
+          <span className="hero-floating__eyebrow">Участники</span>
           <h1 className="hero-floating__title">
             Знайте своих<br />людей
           </h1>
           <p className="hero-floating__subtitle">
-            Профили участников, комментаторов и заявителей. AI-анализ интересов. Вся история в одном месте.
+            Карточки участников с историей посещений, активностью и контактами. Не теряйте людей после первого касания.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -78,33 +78,33 @@ export default function CRMPage() {
       <section className="website-section">
         <div className="website-container">
           <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Профили</span>
-            <h2 className="section-header__title">Что хранится в профиле</h2>
+            <span className="section-header__eyebrow">Карточка участника</span>
+            <h2 className="section-header__title">Что внутри карточки</h2>
           </div>
           
           <div className="features-grid features-grid--4col">
             <div className="feature-card">
               <div className="feature-card__icon"><UserCircle size={24} /></div>
-              <h4 className="feature-card__title">Контактные данные</h4>
+              <h4 className="feature-card__title">Контакты</h4>
               <p className="feature-card__text">Имя, фото, username, телефон, email</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon"><MessageSquare size={24} /></div>
-              <h4 className="feature-card__title">История активности</h4>
-              <p className="feature-card__text">Когда вступил, сколько сообщений, в каких группах</p>
+              <h4 className="feature-card__title">История участия</h4>
+              <p className="feature-card__text">Посещённые события, группы, активность</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon"><Brain size={24} /></div>
               <h4 className="feature-card__title">AI-интересы</h4>
-              <p className="feature-card__text">Запросы, предложения, темы — извлечены из сообщений</p>
+              <p className="feature-card__text">Что ищет, что предлагает, о чём пишет</p>
             </div>
             
             <div className="feature-card">
               <div className="feature-card__icon"><Tag size={24} /></div>
-              <h4 className="feature-card__title">Метки и заметки</h4>
-              <p className="feature-card__text">Добавляйте свои теги и комментарии</p>
+              <h4 className="feature-card__title">Заметки и теги</h4>
+              <p className="feature-card__text">Ваши пометки для работы с участником</p>
             </div>
           </div>
         </div>
@@ -280,8 +280,8 @@ export default function CRMPage() {
       <section className="website-section website-section--alt">
         <div className="website-container">
           <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Применение</span>
-            <h2 className="section-header__title">Как используют CRM</h2>
+            <span className="section-header__eyebrow">Как это работает</span>
+            <h2 className="section-header__title">Результат для сообщества</h2>
           </div>
           
           <div className="features-grid">
@@ -291,7 +291,7 @@ export default function CRMPage() {
               </div>
               <h3 className="audience-card__title">Клубы с мероприятиями</h3>
               <p className="audience-card__text">
-                История посещений каждого участника. Видите, кто реально ходит, а кто «мёртвая душа».
+                Карточка участника с историей посещений. Видите, кто реально ходит и приносит ценность.
               </p>
             </div>
             
@@ -301,7 +301,7 @@ export default function CRMPage() {
               </div>
               <h3 className="audience-card__title">Сообщества с заявками</h3>
               <p className="audience-card__text">
-                Данные анкеты сохраняются в профиль. Принимаете решения с полным контекстом.
+                Данные анкеты сохраняются в карточку. Принимаете решения, понимая кто перед вами.
               </p>
             </div>
             
@@ -311,7 +311,7 @@ export default function CRMPage() {
               </div>
               <h3 className="audience-card__title">Авторы каналов</h3>
               <p className="audience-card__text">
-                Профили комментаторов. Конвертируете активную аудиторию в базу через события.
+                Карточки комментаторов и участников событий. Работа с активной аудиторией.
               </p>
             </div>
           </div>
@@ -321,9 +321,9 @@ export default function CRMPage() {
       {/* CTA */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Знайте своих людей</h2>
+          <h2 className="cta-section__title">Не теряйте своих людей</h2>
           <p className="cta-section__text">
-            Подключите группы и начните строить базу участников
+            Подключите группы — карточки участников появятся автоматически
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">

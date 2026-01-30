@@ -24,10 +24,10 @@ export default function EventsPage() {
         <div className="hero-floating__content">
           <span className="hero-floating__eyebrow">События</span>
           <h1 className="hero-floating__title">
-            Мероприятия<br />без хаоса
+            Люди доходят<br />до мероприятий
           </h1>
           <p className="hero-floating__subtitle">
-            Регистрация, оплата и напоминания — всё прямо в Telegram
+            Регистрация, напоминания и история участия. Чем выше доходимость — тем ценнее каждый участник.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -64,10 +64,10 @@ export default function EventsPage() {
               <h3 className="audience-card__title" style={{ color: '#16a34a' }}>✅ С Orbo</h3>
               <ul className="audience-card__features">
                 <li><strong>Регистрация в 2 клика</strong> — прямо в Telegram, без переходов</li>
-                <li><strong>Оплата через бот</strong> — профессиональный вид</li>
-                <li><strong>Автоматические напоминания</strong> — за 24 часа и за 1 час</li>
-                <li><strong>Профили заранее</strong> — знаете, кто придёт</li>
-                <li><strong>CRM участников</strong> — данные сохраняются для следующих событий</li>
+                <li><strong>Напоминания повышают доходимость</strong> — за 24 часа и за 1 час</li>
+                <li><strong>Карточки участников</strong> — история посещений и контакты</li>
+                <li><strong>Знаете, кто ценен</strong> — видите, кто реально ходит</li>
+                <li><strong>Оплата профессионально</strong> — через бот, не «скинь на Сбер»</li>
               </ul>
             </div>
           </div>
@@ -321,9 +321,9 @@ export default function EventsPage() {
       {/* CTA */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Проведите первое событие</h2>
+          <h2 className="cta-section__title">Повысьте доходимость</h2>
           <p className="cta-section__text">
-            Создайте аккаунт и запустите регистрацию за 5 минут
+            Создайте событие — люди придут, а карточки участников сохранятся для следующих мероприятий
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">

@@ -21,12 +21,12 @@ export default function ProductPage() {
         <ProductFloatingCards />
         
         <div className="hero-floating__content">
-          <span className="hero-floating__eyebrow">Платформа</span>
+          <span className="hero-floating__eyebrow">Orbo</span>
           <h1 className="hero-floating__title">
             CRM участников<br />и событий
           </h1>
           <p className="hero-floating__subtitle">
-            Повышайте доходимость. Обрабатывайте заявки. Знайте своих людей.
+            Люди регистрируются, но не доходят? Теряете контакты после первого касания? Orbo это исправляет.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -57,7 +57,7 @@ export default function ProductPage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Для кого</span>
-            <h2 className="section-header__title">Три типа пользователей</h2>
+            <h2 className="section-header__title">Знакомые ситуации?</h2>
           </div>
           
           <div className="features-grid">
@@ -65,16 +65,16 @@ export default function ProductPage() {
               <div className="audience-card__icon">
                 <GraduationCap size={28} />
               </div>
-              <h3 className="audience-card__title">Клубы с мероприятиями</h3>
+              <h3 className="audience-card__title">Клубы и сообщества с мероприятиями</h3>
               <p className="audience-card__subtitle">Бизнес-клубы, профессиональные комьюнити, нетворкинг-хабы</p>
               <p className="audience-card__text">
-                Люди не доходят до мероприятий и не остаются в контакте. Не видите историю участия конкретных людей.
+                Люди регистрируются, но не доходят. Теряете деньги на тех, кто не участвует. Не видите, кто реально ценен.
               </p>
               <ul className="audience-card__features">
-                <li>Регистрация и напоминания прямо в Telegram</li>
-                <li>QR-чекин и фиксация факта участия</li>
-                <li>Профиль участника с историей посещений</li>
-                <li>Аналитика «ядра» — кто реально ходит</li>
+                <li>Напоминания повышают доходимость</li>
+                <li>QR-чекин фиксирует факт участия</li>
+                <li>Карточка участника с историей посещений</li>
+                <li>Видите, кто реально ходит и платит</li>
               </ul>
             </div>
             
@@ -88,10 +88,10 @@ export default function ProductPage() {
                 Десятки заявок в день. Боты и спам. Тратите время на проверку, не понимая, кто перед вами.
               </p>
               <ul className="audience-card__features">
-                <li>Заявки со статусами и настраиваемой воронкой</li>
-                <li>Анкета через MiniApp, данные сохраняются в профиль</li>
-                <li>Автоматический spam-score по признакам профиля</li>
-                <li>Ручной override без тупой автоматики</li>
+                <li>Заявки со статусами и воронкой</li>
+                <li>Анкета сохраняется в карточку участника</li>
+                <li>Spam-score помогает фильтровать</li>
+                <li>Вы принимаете решение, не автоматика</li>
               </ul>
             </div>
             
@@ -100,15 +100,15 @@ export default function ProductPage() {
                 <Building2 size={28} />
               </div>
               <h3 className="audience-card__title">Авторы каналов</h3>
-              <p className="audience-card__subtitle">Эксперты, консультанты, образовательные проекты, личные бренды</p>
+              <p className="audience-card__subtitle">Эксперты, консультанты, личные бренды</p>
               <p className="audience-card__text">
-                Не видите подписчиков канала. Теряете контакты с активной аудиторией после первых касаний.
+                Комментаторы и участники событий — ваше ценное ядро. Но контакт с ними теряется после первого касания.
               </p>
               <ul className="audience-card__features">
-                <li>Профили комментаторов вашего канала</li>
-                <li>События как легальный способ сбора контактов</li>
-                <li>История активности и касаний</li>
-                <li>Работа с 5–15% самой ценной аудитории</li>
+                <li>Карточки комментаторов канала</li>
+                <li>События для сбора контактов</li>
+                <li>История касаний и активности</li>
+                <li>Работа с активной аудиторией</li>
               </ul>
             </div>
           </div>
@@ -119,8 +119,8 @@ export default function ProductPage() {
       <section className="website-section">
         <div className="website-container">
           <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Возможности</span>
-            <h2 className="section-header__title">Ключевые функции платформы</h2>
+            <span className="section-header__eyebrow">Что внутри</span>
+            <h2 className="section-header__title">Участники, события, контроль</h2>
           </div>
           
           <div className="features-grid features-grid--4col">
@@ -128,9 +128,9 @@ export default function ProductPage() {
               <div className="feature-card__icon">
                 <UserCircle size={24} />
               </div>
-              <h4 className="feature-card__title">CRM участников</h4>
+              <h4 className="feature-card__title">Карточки участников</h4>
               <p className="feature-card__text">
-                Профили, AI-анализ интересов, история активности, импорт данных
+                Не знаете, кто перед вами? Карточка с историей участия, активностью и контактами
               </p>
             </Link>
             
@@ -138,9 +138,9 @@ export default function ProductPage() {
               <div className="feature-card__icon">
                 <Users size={24} />
               </div>
-              <h4 className="feature-card__title">Заявки и воронки</h4>
+              <h4 className="feature-card__title">Заявки на вступление</h4>
               <p className="feature-card__text">
-                Анкеты через MiniApp, spam-score, настраиваемые этапы, UTM-метки
+                Устали от ботов и спама? Анкеты, spam-score и воронка со статусами
               </p>
             </div>
             
@@ -150,7 +150,7 @@ export default function ProductPage() {
               </div>
               <h4 className="feature-card__title">События и регистрации</h4>
               <p className="feature-card__text">
-                MiniApp регистрация, оплаты, автоматические напоминания
+                Люди не доходят? Напоминания, сбор оплат и история посещений
               </p>
             </Link>
             
@@ -158,9 +158,9 @@ export default function ProductPage() {
               <div className="feature-card__icon">
                 <Bell size={24} />
               </div>
-              <h4 className="feature-card__title">AI-уведомления</h4>
+              <h4 className="feature-card__title">Умные уведомления</h4>
               <p className="feature-card__text">
-                Негатив, неотвеченные вопросы, неактивность, зоны внимания
+                Пропускаете важное? AI находит негатив, вопросы и тишину в чатах
               </p>
             </Link>
           </div>
