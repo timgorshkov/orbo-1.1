@@ -70,7 +70,7 @@ export default function ApplicationDetail({
   const photoUrl = participant?.photo_url || userData.photo_url
 
   const handleStageChange = async (newStageId: string) => {
-    if (newStageId === application.stage_id || currentStage.is_terminal) return
+    if (newStageId === application.stage_id || currentStage?.is_terminal) return
     
     setIsUpdating(true)
     try {
@@ -81,6 +81,8 @@ export default function ApplicationDetail({
       })
       
       if (res.ok) {
+        // Optimistic update - update local state immediately
+        setSelectedStage(newStageId)
         router.refresh()
       }
     } catch (err) {
@@ -90,6 +92,11 @@ export default function ApplicationDetail({
       setShowStageDropdown(false)
     }
   }
+  
+  // Get display stage - use selectedStage if it differs from original (optimistic update)
+  const displayStage = selectedStage !== application.stage_id 
+    ? availableStages.find(s => s.id === selectedStage) || currentStage
+    : currentStage
 
   const handleSaveNotes = async () => {
     setIsUpdating(true)
@@ -163,32 +170,33 @@ export default function ApplicationDetail({
         {/* Stage Selector */}
         <div className="relative">
           <button
-            onClick={() => !currentStage.is_terminal && setShowStageDropdown(!showStageDropdown)}
-            disabled={currentStage.is_terminal || isUpdating}
+            onClick={() => !displayStage?.is_terminal && setShowStageDropdown(!showStageDropdown)}
+            disabled={displayStage?.is_terminal || isUpdating}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-              currentStage.is_terminal 
+              displayStage?.is_terminal 
                 ? 'cursor-not-allowed opacity-75'
                 : 'hover:bg-neutral-50 cursor-pointer'
             }`}
-            style={{ borderColor: currentStage.color }}
+            style={{ borderColor: displayStage?.color }}
           >
             <div 
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: currentStage.color }}
+              style={{ backgroundColor: displayStage?.color }}
             />
-            <span className="font-medium">{currentStage.name}</span>
-            {!currentStage.is_terminal && (
+            <span className="font-medium">{displayStage?.name}</span>
+            {!displayStage?.is_terminal && (
               <ChevronDown className={`w-4 h-4 transition-transform ${showStageDropdown ? 'rotate-180' : ''}`} />
             )}
-            {currentStage.is_terminal && (
+            {displayStage?.is_terminal && (
               <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
-                currentStage.terminal_type === 'success' 
+                displayStage?.terminal_type === 'success' 
                   ? 'bg-green-100 text-green-700'
                   : 'bg-red-100 text-red-700'
               }`}>
-                {currentStage.terminal_type === 'success' ? 'Финал' : 'Отказ'}
+                {displayStage?.terminal_type === 'success' ? 'Финал' : 'Отказ'}
               </span>
             )}
+            {isUpdating && <Loader2 className="w-4 h-4 animate-spin ml-1" />}
           </button>
           
           {showStageDropdown && (
@@ -202,9 +210,9 @@ export default function ApplicationDetail({
                   <button
                     key={stage.id}
                     onClick={() => handleStageChange(stage.id)}
-                    disabled={stage.id === currentStage.id}
+                    disabled={stage.id === selectedStage}
                     className={`w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-neutral-50 ${
-                      stage.id === currentStage.id ? 'bg-neutral-50' : ''
+                      stage.id === selectedStage ? 'bg-neutral-50' : ''
                     }`}
                   >
                     <div 

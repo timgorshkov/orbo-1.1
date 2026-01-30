@@ -306,7 +306,7 @@ export async function getHomePageData(
       .from('material_pages')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
-      .eq('status', 'published')
+      .eq('is_published', true)
 
     // 7. Get activity summary if inactive
     let activitySummary = undefined
