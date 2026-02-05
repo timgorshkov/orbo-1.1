@@ -103,20 +103,56 @@ export class TelegramService {
    * Одобрить запрос на вступление в группу
    */
   async approveChatJoinRequest(chatId: number, userId: number) {
-    return this.callApi('approveChatJoinRequest', {
+    logger.info({
+      bot_type: this.botType,
+      chat_id: chatId,
+      user_id: userId,
+      method: 'approveChatJoinRequest'
+    }, '📞 [TG-SERVICE] Calling Telegram API approveChatJoinRequest');
+    
+    const result = await this.callApi('approveChatJoinRequest', {
       chat_id: chatId,
       user_id: userId
     });
+    
+    logger.info({
+      bot_type: this.botType,
+      chat_id: chatId,
+      user_id: userId,
+      ok: result.ok,
+      error_code: result.error_code,
+      description: result.description
+    }, result.ok ? '✅ [TG-SERVICE] approveChatJoinRequest succeeded' : '❌ [TG-SERVICE] approveChatJoinRequest failed');
+    
+    return result;
   }
 
   /**
    * Отклонить запрос на вступление в группу
    */
   async declineChatJoinRequest(chatId: number, userId: number) {
-    return this.callApi('declineChatJoinRequest', {
+    logger.info({
+      bot_type: this.botType,
+      chat_id: chatId,
+      user_id: userId,
+      method: 'declineChatJoinRequest'
+    }, '📞 [TG-SERVICE] Calling Telegram API declineChatJoinRequest');
+    
+    const result = await this.callApi('declineChatJoinRequest', {
       chat_id: chatId,
       user_id: userId
     });
+    
+    logger.info({
+      bot_type: this.botType,
+      chat_id: chatId,
+      user_id: userId,
+      ok: result.ok,
+      error_code: result.error_code,
+      description: result.description
+    }, result.ok ? '✅ [TG-SERVICE] declineChatJoinRequest succeeded' : '❌ [TG-SERVICE] declineChatJoinRequest failed');
+    
+    return result;
   }
 
   /**
@@ -344,6 +380,17 @@ async getChatMember(chatId: number, userId: number) {
   private async callApi(method: string, params: any = {}) {
     const url = `${this.apiBase}${this.token}/${method}`;
     
+    // Log critical methods like join request approval
+    const criticalMethods = ['approveChatJoinRequest', 'declineChatJoinRequest'];
+    if (criticalMethods.includes(method)) {
+      logger.info({
+        bot_type: this.botType,
+        method,
+        params,
+        url_masked: `${this.apiBase}***/${method}`
+      }, '🔧 [TG-API] Calling critical Telegram method');
+    }
+    
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -353,12 +400,39 @@ async getChatMember(chatId: number, userId: number) {
         body: JSON.stringify(params),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Telegram API Error: ${errorData.description || response.statusText}`);
+      const responseData = await response.json();
+      
+      if (criticalMethods.includes(method)) {
+        logger.info({
+          bot_type: this.botType,
+          method,
+          ok: responseData.ok,
+          error_code: responseData.error_code,
+          description: responseData.description,
+          http_status: response.status
+        }, '📥 [TG-API] Telegram API response received');
       }
 
-      return await response.json();
+      if (!response.ok || !responseData.ok) {
+        logger.error({
+          bot_type: this.botType,
+          method,
+          params,
+          http_status: response.status,
+          ok: responseData.ok,
+          error_code: responseData.error_code,
+          description: responseData.description
+        }, '❌ [TG-API] Telegram API returned error');
+        
+        // Return error response instead of throwing
+        return {
+          ok: false,
+          error_code: responseData.error_code,
+          description: responseData.description || response.statusText
+        };
+      }
+
+      return responseData;
     } catch (error: any) {
       // Gracefully handle expected errors (don't log as ERROR)
       const errorMessage = error?.message || String(error);
@@ -383,7 +457,12 @@ async getChatMember(chatId: number, userId: number) {
         }, 'Error calling Telegram API');
       }
       
-      throw error;
+      // Return error response format
+      return {
+        ok: false,
+        error_code: 500,
+        description: errorMessage
+      };
     }
   }
 }

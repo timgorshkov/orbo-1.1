@@ -238,23 +238,49 @@ export async function processJoinRequest(
  * Approve a join request in Telegram
  */
 export async function approveJoinRequest(chatId: number, userId: number): Promise<boolean> {
+  logger.info({ 
+    chat_id: chatId, 
+    user_id: userId 
+  }, '🔄 [TELEGRAM-API] Attempting to approve join request');
+  
   try {
     const telegramService = new TelegramService('main');
+    
+    logger.info({ 
+      chat_id: chatId, 
+      user_id: userId,
+      method: 'approveChatJoinRequest'
+    }, '📞 [TELEGRAM-API] Calling Telegram API');
+    
     const result = await telegramService.approveChatJoinRequest(chatId, userId);
     
+    logger.info({ 
+      chat_id: chatId, 
+      user_id: userId,
+      ok: result.ok,
+      error_code: result.error_code,
+      description: result.description,
+      result: result.result
+    }, result.ok ? '✅ [TELEGRAM-API] Join request approved successfully' : '❌ [TELEGRAM-API] Failed to approve join request');
+    
     if (result.ok) {
-      logger.info({ chat_id: chatId, user_id: userId }, '✅ Join request approved in Telegram');
       return true;
     } else {
-      logger.warn({ 
+      logger.error({ 
         chat_id: chatId, 
         user_id: userId,
-        error: result.description
-      }, '⚠️ Failed to approve join request');
+        error_code: result.error_code,
+        error_description: result.description
+      }, '⚠️ [TELEGRAM-API] API returned error');
       return false;
     }
   } catch (error) {
-    logger.error({ error, chat_id: chatId, user_id: userId }, 'Error approving join request');
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      chat_id: chatId, 
+      user_id: userId 
+    }, '💥 [TELEGRAM-API] Exception while approving join request');
     return false;
   }
 }
@@ -322,6 +348,15 @@ export async function executeStageAutoActions(
     }, '📋 [AUTO-ACTIONS] Application data loaded');
     
     // Execute Telegram actions
+    logger.info({
+      application_id: applicationId,
+      has_approve_telegram: !!autoActions.approve_telegram,
+      has_tg_chat_id: !!application.tg_chat_id,
+      has_tg_user_id: !!application.tg_user_id,
+      tg_chat_id: application.tg_chat_id,
+      tg_user_id: application.tg_user_id
+    }, '🔍 [AUTO-ACTIONS] Checking Telegram approval conditions');
+    
     if (autoActions.approve_telegram && application.tg_chat_id && application.tg_user_id) {
       logger.info({
         application_id: applicationId,
@@ -333,7 +368,9 @@ export async function executeStageAutoActions(
       
       logger.info({
         application_id: applicationId,
-        approved
+        approved,
+        tg_chat_id: application.tg_chat_id,
+        tg_user_id: application.tg_user_id
       }, approved ? '✅ [AUTO-ACTIONS] Telegram join request approved' : '⚠️ [AUTO-ACTIONS] Failed to approve Telegram join request');
       
       // Log event
@@ -341,7 +378,7 @@ export async function executeStageAutoActions(
         application_id: applicationId,
         event_type: 'tg_approved',
         actor_type: 'automation',
-        data: { chat_id: application.tg_chat_id, success: approved }
+        data: { chat_id: application.tg_chat_id, user_id: application.tg_user_id, success: approved }
       });
       
       // Save form data to participant profile on approval
@@ -354,6 +391,13 @@ export async function executeStageAutoActions(
           application.form_id
         );
       }
+    } else {
+      logger.warn({
+        application_id: applicationId,
+        approve_telegram: autoActions.approve_telegram,
+        tg_chat_id: application.tg_chat_id,
+        tg_user_id: application.tg_user_id
+      }, '⚠️ [AUTO-ACTIONS] Telegram approval skipped - missing conditions');
     }
     
     if (autoActions.reject_telegram && application.tg_chat_id && application.tg_user_id) {

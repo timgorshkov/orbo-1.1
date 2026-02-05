@@ -171,37 +171,68 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         new_stage_id: stage_id,
         is_terminal: result.is_terminal,
         terminal_type: result.terminal_type,
-        auto_actions: result.auto_actions
-      }, 'Application stage changed');
+        auto_actions: result.auto_actions,
+        auto_actions_type: typeof result.auto_actions,
+        auto_actions_keys: result.auto_actions ? Object.keys(result.auto_actions) : []
+      }, '📋 [API] Application stage changed - RPC response');
       
       // Determine auto-actions to execute
       // Fallback: if terminal stage has no auto_actions, derive from terminal_type
       let actionsToExecute = result.auto_actions || {};
+      
+      logger.info({
+        application_id: id,
+        is_terminal: result.is_terminal,
+        terminal_type: result.terminal_type,
+        has_auto_actions: !!result.auto_actions,
+        auto_actions_empty: Object.keys(actionsToExecute).length === 0
+      }, '🔍 [API] Checking if fallback auto-actions needed');
+      
       if (result.is_terminal && Object.keys(actionsToExecute).length === 0) {
         if (result.terminal_type === 'success') {
           actionsToExecute = { approve_telegram: true };
-          logger.info({ application_id: id }, 'Using fallback approve_telegram action');
+          logger.info({ application_id: id }, '🔄 [API] Using fallback approve_telegram action');
         } else if (result.terminal_type === 'failure') {
           actionsToExecute = { reject_telegram: true };
-          logger.info({ application_id: id }, 'Using fallback reject_telegram action');
+          logger.info({ application_id: id }, '🔄 [API] Using fallback reject_telegram action');
         }
       }
+      
+      logger.info({
+        application_id: id,
+        actions_to_execute: actionsToExecute,
+        actions_count: Object.keys(actionsToExecute).length
+      }, '📦 [API] Final auto-actions to execute');
       
       // Execute auto-actions (approve/reject in Telegram, etc.)
       if (Object.keys(actionsToExecute).length > 0) {
         try {
+          logger.info({ 
+            application_id: id, 
+            stage_id: stage_id,
+            auto_actions: actionsToExecute 
+          }, '🚀 [API] Calling executeStageAutoActions');
+          
           await executeStageAutoActions(id, stage_id, actionsToExecute);
+          
           logger.info({ 
             application_id: id, 
             auto_actions: actionsToExecute 
-          }, 'Auto-actions executed');
+          }, '✅ [API] Auto-actions executed successfully');
         } catch (autoError) {
           logger.error({ 
-            error: autoError, 
+            error: autoError instanceof Error ? autoError.message : String(autoError),
+            stack: autoError instanceof Error ? autoError.stack : undefined,
             application_id: id 
-          }, 'Failed to execute auto-actions');
+          }, '❌ [API] Failed to execute auto-actions');
           // Don't fail the request - stage change already succeeded
         }
+      } else {
+        logger.warn({
+          application_id: id,
+          is_terminal: result.is_terminal,
+          terminal_type: result.terminal_type
+        }, '⚠️ [API] No auto-actions to execute');
       }
       
       return NextResponse.json({
