@@ -289,6 +289,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Create new application
     logger.info({ form_id: formId, tg_user_id }, 'Creating new application');
     
+    // Add source type to utm_data for tracking
+    const enrichedUtmData = {
+      source: 'miniapp',
+      ...(utm_data || {})
+    };
+    
     const { data: applicationId, error: createError } = await supabase
       .rpc('create_application', {
         p_org_id: form.org_id,
@@ -298,7 +304,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         p_tg_user_data: tg_user_data || {},
         p_form_data: form_data || {},
         p_source_code: source_code || null,
-        p_utm_data: utm_data || {}
+        p_utm_data: enrichedUtmData
       })
       .single();
     

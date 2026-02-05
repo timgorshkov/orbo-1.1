@@ -613,31 +613,14 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             }, '⏭️ [WEBHOOK] No pipeline linked to this group for join_request');
           }
           
-          // Get form for this pipeline
-          let formId: string | null = null;
           if (pipeline) {
-            const { data: form } = await supabaseServiceRole
-              .from('application_forms')
-              .select('id')
-              .eq('pipeline_id', pipeline.id)
-              .limit(1)
-              .maybeSingle();
-            
-            formId = form?.id || null;
-            
-            logger.debug({
-              pipeline_id: pipeline.id,
-              form_found: !!form,
-              form_id: formId
-            }, '🔍 [WEBHOOK] Form lookup result');
-          }
-          
-          if (pipeline && formId) {
-            // Check for existing application from this user for this form
+            // Check for existing application from this user for THIS GROUP (not just form)
+            // This prevents duplicates when user clicks join request button multiple times
+            // or when there are multiple forms for the same pipeline
             const { data: existingApp } = await supabaseServiceRole
               .from('applications')
-              .select('id')
-              .eq('form_id', formId)
+              .select('id, form_id')
+              .eq('tg_chat_id', requestChatId)
               .eq('tg_user_id', userId)
               .maybeSingle();
             
@@ -645,9 +628,34 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               logger.info({
                 chat_id: requestChatId,
                 user_id: userId,
-                existing_application_id: existingApp.id
-              }, '⏭️ [WEBHOOK] Application already exists for this user, skipping duplicate');
+                existing_application_id: existingApp.id,
+                existing_form_id: existingApp.form_id
+              }, '⏭️ [WEBHOOK] Application already exists for this user and group, skipping duplicate');
               // Skip creation - application already exists
+            } else {
+            // Get first form for this pipeline (for backwards compatibility)
+            // Native join requests don't require a specific form, but RPC needs form_id
+            const { data: form } = await supabaseServiceRole
+              .from('application_forms')
+              .select('id')
+              .eq('pipeline_id', pipeline.id)
+              .order('created_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            
+            const formId = form?.id || null;
+            
+            logger.debug({
+              pipeline_id: pipeline.id,
+              form_found: !!form,
+              form_id: formId
+            }, '🔍 [WEBHOOK] Form lookup result for native join request');
+            
+            if (!formId) {
+              logger.warn({
+                chat_id: requestChatId,
+                pipeline_id: pipeline.id
+              }, '⚠️ [WEBHOOK] Pipeline has no forms, cannot create application');
             } else {
             // Prepare tg_user_data with bio (available in join_request)
             // Note: photo_url is not available in join_request, so we don't include it
@@ -674,8 +682,10 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 p_form_data: {},
                 p_source_code: inviteLink?.name || null, // Use invite link name as source
                 p_utm_data: {
-                  source: 'join_request',
-                  invite_link: inviteLink?.invite_link || null
+                  source: 'native_telegram',
+                  type: 'join_request',
+                  invite_link: inviteLink?.invite_link || null,
+                  invite_link_name: inviteLink?.name || null
                 }
               }
             );
@@ -693,9 +703,11 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 chat_id: requestChatId,
                 user_id: userId,
                 pipeline_id: pipeline.id,
-                form_id: formId
-              }, '✅ [WEBHOOK] Application created from join_request');
+                form_id: formId,
+                source: 'native_telegram'
+              }, '✅ [WEBHOOK] Application created from native Telegram join_request');
             }
+            } // Close else block for formId check
             } // Close else block for existing app check
           }
         } catch (joinRequestError) {

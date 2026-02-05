@@ -5,7 +5,6 @@ export interface OrgTelegramGroup {
   id: number;
   tg_chat_id: string;
   title: string | null;
-  invite_link?: string | null;
   bot_status?: string | null;
   member_count?: number | null;
   new_members_count?: number | null;
@@ -92,7 +91,6 @@ export async function getOrgTelegramGroups(orgId: string): Promise<OrgTelegramGr
       id: payload.id ?? existing?.id ?? 0,
       tg_chat_id: chatId,
       title: payload.title ?? existing?.title ?? null,
-      invite_link: payload.invite_link ?? existing?.invite_link ?? null,
       bot_status: payload.bot_status ?? existing?.bot_status ?? null,
       member_count: payload.member_count ?? existing?.member_count ?? null,
       new_members_count: payload.new_members_count ?? existing?.new_members_count ?? null,

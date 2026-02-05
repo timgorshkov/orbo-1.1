@@ -35,6 +35,7 @@ interface Stage {
   position: number
   is_terminal: boolean
   terminal_type: string | null
+  is_visible?: boolean
 }
 
 interface PipelineForm {
@@ -258,7 +259,9 @@ export default function ApplicationDetail({
                 onClick={() => setShowStageDropdown(false)}
               />
               <div className="absolute right-0 mt-2 w-56 bg-white border rounded-lg shadow-lg z-20 py-1">
-                {availableStages.map((stage) => (
+                {availableStages
+                  .filter(stage => stage.is_visible !== false)
+                  .map((stage) => (
                   <button
                     key={stage.id}
                     onClick={() => handleStageChange(stage.id)}
@@ -622,48 +625,81 @@ export default function ApplicationDetail({
           </Card>
 
           {/* UTM / Source */}
-          {(source || Object.keys(utmData).length > 0) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Tag className="w-5 h-5" />
-                  Источник
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {source?.name && (
-                  <div>
-                    <span className="text-neutral-500">Кампания: </span>
-                    {source.name}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Tag className="w-5 h-5" />
+                Источник
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {/* Native Telegram join request */}
+              {utmData.source === 'native_telegram' && (
+                <div className="p-2 bg-blue-50 rounded border border-blue-100 mb-3">
+                  <div className="flex items-center gap-2 text-blue-700 font-medium">
+                    <MessageCircle className="w-4 h-4" />
+                    Нативная заявка Telegram
                   </div>
-                )}
-                {(utmData.utm_source || source?.utm_source) && (
-                  <div>
-                    <span className="text-neutral-500">utm_source: </span>
-                    {utmData.utm_source || source?.utm_source}
+                  <div className="text-xs text-blue-600 mt-1">
+                    Пользователь нажал кнопку &quot;Вступить&quot; в Telegram
                   </div>
-                )}
-                {(utmData.utm_medium || source?.utm_medium) && (
-                  <div>
-                    <span className="text-neutral-500">utm_medium: </span>
-                    {utmData.utm_medium || source?.utm_medium}
+                </div>
+              )}
+              {/* MiniApp source */}
+              {utmData.source === 'miniapp' && (
+                <div className="p-2 bg-purple-50 rounded border border-purple-100 mb-3">
+                  <div className="flex items-center gap-2 text-purple-700 font-medium">
+                    <FileText className="w-4 h-4" />
+                    Анкета MiniApp
                   </div>
-                )}
-                {(utmData.utm_campaign || source?.utm_campaign) && (
-                  <div>
-                    <span className="text-neutral-500">utm_campaign: </span>
-                    {utmData.utm_campaign || source?.utm_campaign}
-                  </div>
-                )}
-                {utmData.ref_code && (
-                  <div>
-                    <span className="text-neutral-500">ref_code: </span>
-                    {utmData.ref_code}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </div>
+              )}
+              {/* Campaign source */}
+              {source?.name && (
+                <div>
+                  <span className="text-neutral-500">Кампания: </span>
+                  {source.name}
+                </div>
+              )}
+              {/* Invite link name from native request */}
+              {utmData.invite_link_name && (
+                <div>
+                  <span className="text-neutral-500">Invite link: </span>
+                  {utmData.invite_link_name}
+                </div>
+              )}
+              {(utmData.utm_source || source?.utm_source) && (
+                <div>
+                  <span className="text-neutral-500">utm_source: </span>
+                  {utmData.utm_source || source?.utm_source}
+                </div>
+              )}
+              {(utmData.utm_medium || source?.utm_medium) && (
+                <div>
+                  <span className="text-neutral-500">utm_medium: </span>
+                  {utmData.utm_medium || source?.utm_medium}
+                </div>
+              )}
+              {(utmData.utm_campaign || source?.utm_campaign) && (
+                <div>
+                  <span className="text-neutral-500">utm_campaign: </span>
+                  {utmData.utm_campaign || source?.utm_campaign}
+                </div>
+              )}
+              {utmData.ref_code && (
+                <div>
+                  <span className="text-neutral-500">ref_code: </span>
+                  {utmData.ref_code}
+                </div>
+              )}
+              {/* Show message if no source info */}
+              {!source && !utmData.source && !utmData.utm_source && !utmData.utm_campaign && !utmData.ref_code && (
+                <div className="text-neutral-400 text-sm">
+                  Источник не определён
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Event History */}
           <Card>

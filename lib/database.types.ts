@@ -485,32 +485,41 @@ export type Database = {
         Row: {
           bot_status: string | null
           id: number
-          invite_link: string | null
           last_sync_at: string | null
-          org_id: string
           tg_chat_id: number
           title: string | null
-          added_by_user_id: string | null // Новое поле
+          member_count: number | null
+          new_members_count: number | null
+          migrated_to: string | null
+          migrated_from: string | null
+          is_archived: boolean | null
+          archived_reason: string | null
         }
         Insert: {
           bot_status?: string | null
           id?: number
-          invite_link?: string | null
           last_sync_at?: string | null
-          org_id: string
           tg_chat_id: number
           title?: string | null
-          added_by_user_id?: string | null // Новое поле
+          member_count?: number | null
+          new_members_count?: number | null
+          migrated_to?: string | null
+          migrated_from?: string | null
+          is_archived?: boolean | null
+          archived_reason?: string | null
         }
         Update: {
           bot_status?: string | null
           id?: number
-          invite_link?: string | null
           last_sync_at?: string | null
-          org_id?: string
           tg_chat_id?: number
           title?: string | null
-          added_by_user_id?: string | null // Новое поле
+          member_count?: number | null
+          new_members_count?: number | null
+          migrated_to?: string | null
+          migrated_from?: string | null
+          is_archived?: boolean | null
+          archived_reason?: string | null
         }
         Relationships: [
           {

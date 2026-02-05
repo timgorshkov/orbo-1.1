@@ -79,7 +79,7 @@ export default async function ApplicationPage({
     const { data: availableStages } = pipelineId
       ? await supabase
           .from('pipeline_stages')
-          .select('id, name, slug, color, position, is_terminal, terminal_type')
+          .select('id, name, slug, color, position, is_terminal, terminal_type, is_visible')
           .eq('pipeline_id', pipelineId)
           .order('position')
       : { data: [] }
@@ -96,10 +96,12 @@ export default async function ApplicationPage({
     // Get participant's group memberships for this org
     let participantGroups: { id: string; title: string }[] = []
     if (participant?.id) {
+      // Note: participant_groups uses tg_group_id, not tg_chat_id
       const { data: groupMemberships } = await supabase
         .from('participant_groups')
-        .select('tg_chat_id')
+        .select('tg_group_id')
         .eq('participant_id', participant.id)
+        .eq('is_active', true)
       
       if (groupMemberships?.length) {
         // Get org's telegram groups
@@ -108,8 +110,8 @@ export default async function ApplicationPage({
           .select('tg_chat_id')
           .eq('org_id', orgId)
         
-        const orgChatIds = new Set((orgGroups || []).map(g => g.tg_chat_id))
-        const participantChatIds = groupMemberships.map(g => g.tg_chat_id).filter(id => orgChatIds.has(id))
+        const orgChatIds = new Set((orgGroups || []).map(g => String(g.tg_chat_id)))
+        const participantChatIds = groupMemberships.map(g => String(g.tg_group_id)).filter(id => orgChatIds.has(id))
         
         if (participantChatIds.length) {
           const { data: groups } = await supabase
