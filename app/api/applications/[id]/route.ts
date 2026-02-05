@@ -19,6 +19,16 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+interface MoveApplicationResult {
+  success: boolean;
+  error?: string;
+  application_id: string;
+  new_stage_id: string;
+  is_terminal: boolean;
+  terminal_type: string | null;
+  auto_actions: Record<string, any> | null;
+}
+
 // GET - Get application details
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const logger = createAPILogger(request);
@@ -188,13 +198,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         })
         .single();
       
+      // Cast result for proper access to JSONB fields
+      const rpcResult = result as MoveApplicationResult | null;
+      
       logger.info({
         application_id: id,
         rpc_error: moveError,
-        rpc_result: result,
-        result_type: typeof result,
-        result_success: result?.success,
-        result_success_type: typeof result?.success
+        rpc_result: rpcResult,
+        result_type: typeof rpcResult,
+        result_success: rpcResult?.success,
+        result_success_type: typeof rpcResult?.success
       }, moveError ? '❌ [API] RPC move_application_to_stage failed' : '✅ [API] RPC move_application_to_stage succeeded');
       
       if (moveError) {
@@ -202,44 +215,44 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
       }
       
-      if (!result || result.success !== true) {
+      if (!rpcResult || rpcResult.success !== true) {
         logger.error({ 
-          result, 
+          result: rpcResult, 
           application_id: id,
-          result_success: result?.success,
-          result_success_type: typeof result?.success,
-          result_success_strict: result?.success === true
+          result_success: rpcResult?.success,
+          result_success_type: typeof rpcResult?.success,
+          result_success_strict: rpcResult?.success === true
         }, 'RPC returned no result or success not true');
-        return NextResponse.json({ error: result?.error || 'Failed to move application' }, { status: 400 });
+        return NextResponse.json({ error: rpcResult?.error || 'Failed to move application' }, { status: 400 });
       }
       
       logger.info({ 
         application_id: id, 
         new_stage_id: stage_id,
-        is_terminal: result.is_terminal,
-        terminal_type: result.terminal_type,
-        auto_actions: result.auto_actions,
-        auto_actions_type: typeof result.auto_actions,
-        auto_actions_keys: result.auto_actions ? Object.keys(result.auto_actions) : []
+        is_terminal: rpcResult.is_terminal,
+        terminal_type: rpcResult.terminal_type,
+        auto_actions: rpcResult.auto_actions,
+        auto_actions_type: typeof rpcResult.auto_actions,
+        auto_actions_keys: rpcResult.auto_actions ? Object.keys(rpcResult.auto_actions) : []
       }, '📋 [API] Application stage changed - RPC response');
       
       // Determine auto-actions to execute
       // Fallback: if terminal stage has no auto_actions, derive from terminal_type
-      let actionsToExecute = result.auto_actions || {};
+      let actionsToExecute = rpcResult.auto_actions || {};
       
       logger.info({
         application_id: id,
-        is_terminal: result.is_terminal,
-        terminal_type: result.terminal_type,
-        has_auto_actions: !!result.auto_actions,
+        is_terminal: rpcResult.is_terminal,
+        terminal_type: rpcResult.terminal_type,
+        has_auto_actions: !!rpcResult.auto_actions,
         auto_actions_empty: Object.keys(actionsToExecute).length === 0
       }, '🔍 [API] Checking if fallback auto-actions needed');
       
-      if (result.is_terminal && Object.keys(actionsToExecute).length === 0) {
-        if (result.terminal_type === 'success') {
+      if (rpcResult.is_terminal && Object.keys(actionsToExecute).length === 0) {
+        if (rpcResult.terminal_type === 'success') {
           actionsToExecute = { approve_telegram: true };
           logger.info({ application_id: id }, '🔄 [API] Using fallback approve_telegram action');
-        } else if (result.terminal_type === 'failure') {
+        } else if (rpcResult.terminal_type === 'failure') {
           actionsToExecute = { reject_telegram: true };
           logger.info({ application_id: id }, '🔄 [API] Using fallback reject_telegram action');
         }
@@ -277,14 +290,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       } else {
         logger.warn({
           application_id: id,
-          is_terminal: result.is_terminal,
-          terminal_type: result.terminal_type
+          is_terminal: rpcResult.is_terminal,
+          terminal_type: rpcResult.terminal_type
         }, '⚠️ [API] No auto-actions to execute');
       }
       
       return NextResponse.json({
         success: true,
-        auto_actions: result.auto_actions
+        auto_actions: rpcResult.auto_actions
       });
     }
     
