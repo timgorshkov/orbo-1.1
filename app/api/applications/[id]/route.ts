@@ -12,6 +12,9 @@ import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { executeStageAutoActions } from '@/lib/services/applicationService';
 
+// Force dynamic rendering - don't cache API responses
+export const dynamic = 'force-dynamic';
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -113,14 +116,34 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const logger = createAPILogger(request);
   const { id } = await params;
   
+  logger.info({ 
+    application_id: id,
+    method: 'PATCH',
+    endpoint: '/api/applications/[id]'
+  }, '🔧 [API] PATCH request received');
+  
   try {
     const user = await getUnifiedUser();
     if (!user) {
+      logger.warn({ application_id: id }, '⚠️ [API] Unauthorized - no user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
+    logger.info({ 
+      application_id: id,
+      user_id: user.id,
+      user_email: user.email
+    }, '✅ [API] User authenticated');
+    
     const body = await request.json();
     const { stage_id, notes, rejection_reason } = body;
+    
+    logger.info({
+      application_id: id,
+      stage_id,
+      has_notes: !!notes,
+      has_rejection_reason: !!rejection_reason
+    }, '📦 [API] Request body parsed');
     
     const supabase = createAdminServer();
     
@@ -149,6 +172,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     
     // If moving to new stage
     if (stage_id && stage_id !== application.stage_id) {
+      logger.info({
+        application_id: id,
+        old_stage_id: application.stage_id,
+        new_stage_id: stage_id,
+        actor_id: user.id
+      }, '🔄 [API] Calling RPC move_application_to_stage');
+      
       const { data: result, error: moveError } = await supabase
         .rpc('move_application_to_stage', {
           p_application_id: id,
@@ -157,12 +187,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           p_notes: notes || null
         });
       
+      logger.info({
+        application_id: id,
+        rpc_error: moveError,
+        rpc_result: result
+      }, moveError ? '❌ [API] RPC move_application_to_stage failed' : '✅ [API] RPC move_application_to_stage succeeded');
+      
       if (moveError) {
         logger.error({ error: moveError, application_id: id }, 'Failed to move application');
         return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
       }
       
       if (!result.success) {
+        logger.error({ result, application_id: id }, 'RPC returned success=false');
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
       

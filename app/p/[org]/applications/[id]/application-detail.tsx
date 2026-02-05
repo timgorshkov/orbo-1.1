@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -89,16 +89,49 @@ export default function ApplicationDetail({
   const username = participant?.username || userData.username
   const photoUrl = participant?.photo_url || userData.photo_url
 
+  // Debug logging on mount
+  useEffect(() => {
+    console.log('[APPLICATION-DETAIL] Component mounted', {
+      application_id: application.id,
+      org_id: orgId,
+      current_stage: currentStage?.name,
+      current_stage_id: application.stage_id,
+      selected_stage_id: selectedStageId,
+      available_stages_count: availableStages.length,
+      available_stages: availableStages.map(s => ({ id: s.id, name: s.name, slug: s.slug })),
+      is_terminal: currentStage?.is_terminal,
+      tg_chat_id: application.tg_chat_id,
+      tg_user_id: application.tg_user_id
+    })
+  }, [])
+
   const handleStageChange = async (newStageId: string) => {
     const prevStageId = selectedStageId
     
+    console.log('[APPLICATION-DETAIL] handleStageChange called', {
+      application_id: application.id,
+      current_stage_id: selectedStageId,
+      new_stage_id: newStageId,
+      display_stage_is_terminal: displayStage?.is_terminal
+    })
+    
     // Check if we can move from current display stage
-    if (newStageId === selectedStageId || displayStage?.is_terminal) return
+    if (newStageId === selectedStageId || displayStage?.is_terminal) {
+      console.log('[APPLICATION-DETAIL] Stage change prevented', {
+        reason: newStageId === selectedStageId ? 'same_stage' : 'terminal_stage'
+      })
+      return
+    }
     
     // Optimistic update - update local state immediately BEFORE the request
     setSelectedStageId(newStageId)
     setIsUpdating(true)
     setShowStageDropdown(false)
+    
+    console.log('[APPLICATION-DETAIL] Sending PATCH request', {
+      url: `/api/applications/${application.id}`,
+      stage_id: newStageId
+    })
     
     try {
       const res = await fetch(`/api/applications/${application.id}`, {
@@ -107,17 +140,28 @@ export default function ApplicationDetail({
         body: JSON.stringify({ stage_id: newStageId })
       })
       
+      console.log('[APPLICATION-DETAIL] PATCH response received', {
+        ok: res.ok,
+        status: res.status,
+        statusText: res.statusText
+      })
+      
       if (!res.ok) {
         // Revert on error
         setSelectedStageId(prevStageId)
         const data = await res.json()
-        console.error('Failed to change stage:', data.error)
+        console.error('[APPLICATION-DETAIL] Failed to change stage:', data.error)
+      } else {
+        const data = await res.json()
+        console.log('[APPLICATION-DETAIL] Stage change successful', {
+          response: data
+        })
       }
       // Don't call router.refresh() - we already updated local state
     } catch (err) {
       // Revert on error
       setSelectedStageId(prevStageId)
-      console.error('Failed to change stage:', err)
+      console.error('[APPLICATION-DETAIL] Exception during stage change:', err)
     } finally {
       setIsUpdating(false)
     }
@@ -263,7 +307,14 @@ export default function ApplicationDetail({
                   .map((stage) => (
                   <button
                     key={stage.id}
-                    onClick={() => handleStageChange(stage.id)}
+                    onClick={() => {
+                      console.log('[APPLICATION-DETAIL] Stage button clicked', {
+                        stage_id: stage.id,
+                        stage_name: stage.name,
+                        stage_slug: stage.slug
+                      })
+                      handleStageChange(stage.id)
+                    }}
                     disabled={stage.id === selectedStageId}
                     className={`w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-neutral-50 ${
                       stage.id === selectedStageId ? 'bg-neutral-50' : ''
