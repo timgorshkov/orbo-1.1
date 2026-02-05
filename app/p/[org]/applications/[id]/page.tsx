@@ -92,6 +92,35 @@ export default async function ApplicationPage({
           .eq('pipeline_id', pipelineId)
           .order('created_at')
       : { data: [] }
+    
+    // Get participant's group memberships for this org
+    let participantGroups: { id: string; title: string }[] = []
+    if (participant?.id) {
+      const { data: groupMemberships } = await supabase
+        .from('participant_groups')
+        .select('tg_chat_id')
+        .eq('participant_id', participant.id)
+      
+      if (groupMemberships?.length) {
+        // Get org's telegram groups
+        const { data: orgGroups } = await supabase
+          .from('org_telegram_groups')
+          .select('tg_chat_id')
+          .eq('org_id', orgId)
+        
+        const orgChatIds = new Set((orgGroups || []).map(g => g.tg_chat_id))
+        const participantChatIds = groupMemberships.map(g => g.tg_chat_id).filter(id => orgChatIds.has(id))
+        
+        if (participantChatIds.length) {
+          const { data: groups } = await supabase
+            .from('telegram_groups')
+            .select('tg_chat_id, title')
+            .in('tg_chat_id', participantChatIds)
+          
+          participantGroups = (groups || []).map(g => ({ id: String(g.tg_chat_id), title: g.title }))
+        }
+      }
+    }
 
     return (
       <ApplicationDetail 
@@ -100,6 +129,7 @@ export default async function ApplicationPage({
         events={events || []}
         availableStages={availableStages || []}
         pipelineForms={pipelineForms || []}
+        participantGroups={participantGroups}
       />
     )
   } catch (error) {

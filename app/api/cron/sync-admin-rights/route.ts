@@ -191,10 +191,10 @@ export async function GET(request: NextRequest) {
                   .maybeSingle();
                 
                 if (!existingNew) {
-                  // Получаем данные старой группы
+                  // Получаем данные старой группы (invite_link removed in migration 071)
                   const { data: oldGroup } = await supabaseService
                     .from('telegram_groups')
-                    .select('title, member_count, invite_link')
+                    .select('title, member_count')
                     .eq('tg_chat_id', chatId)
                     .maybeSingle();
                   
@@ -214,7 +214,6 @@ export async function GET(request: NextRequest) {
                         title: oldGroup.title,
                         bot_status: 'connected',
                         member_count: oldGroup.member_count,
-                        invite_link: oldGroup.invite_link,
                         migrated_from: chatId,
                         last_sync_at: new Date().toISOString()
                       });

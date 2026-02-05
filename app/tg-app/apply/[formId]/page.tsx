@@ -48,7 +48,7 @@ interface SuccessPage {
 
 interface TelegramGroup {
   title: string;
-  invite_link?: string;
+  // Note: invite_link column was removed from database
 }
 
 interface ExistingApplication {
@@ -489,25 +489,12 @@ export default function ApplicationFormPage() {
                   <p className="text-green-800 font-medium mb-2">
                     🎉 Добро пожаловать!
                   </p>
-                  {group?.invite_link ? (
-                    <a
-                      href={group.invite_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-full py-3 px-4 bg-green-600 text-white text-center rounded-xl font-medium hover:bg-green-700 transition-colors"
-                    >
-                      Перейти в группу «{group.title}»
-                    </a>
-                  ) : group?.title ? (
-                    <p className="text-sm text-green-700">
-                      Ваша заявка одобрена! Теперь вы можете вступить в группу «{group.title}».
-                      Перейдите в чат группы — ваша заявка на вступление уже подтверждена.
-                    </p>
-                  ) : (
-                    <p className="text-sm text-green-700">
-                      Ваша заявка одобрена! Теперь вы можете вступить в группу.
-                    </p>
-                  )}
+                  <p className="text-sm text-green-700">
+                    {group?.title 
+                      ? `Ваша заявка одобрена! Теперь вы можете вступить в группу «${group.title}». Перейдите в чат группы — ваша заявка на вступление уже подтверждена.`
+                      : 'Ваша заявка одобрена! Теперь вы можете вступить в группу.'
+                    }
+                  </p>
                 </div>
               );
             })()}

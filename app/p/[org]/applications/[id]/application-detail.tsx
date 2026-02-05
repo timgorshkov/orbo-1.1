@@ -42,12 +42,18 @@ interface PipelineForm {
   name: string
 }
 
+interface ParticipantGroup {
+  id: string
+  title: string
+}
+
 interface ApplicationDetailProps {
   orgId: string
   application: any
   events: any[]
   availableStages: Stage[]
   pipelineForms: PipelineForm[]
+  participantGroups: ParticipantGroup[]
 }
 
 export default function ApplicationDetail({
@@ -55,15 +61,19 @@ export default function ApplicationDetail({
   application,
   events,
   availableStages,
-  pipelineForms
+  pipelineForms,
+  participantGroups
 }: ApplicationDetailProps) {
   const router = useRouter()
-  const [selectedStage, setSelectedStage] = useState(application.stage_id)
+  const [selectedStageId, setSelectedStageId] = useState(application.stage_id)
   const [notes, setNotes] = useState(application.notes || '')
   const [isUpdating, setIsUpdating] = useState(false)
   const [showStageDropdown, setShowStageDropdown] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Find the current display stage from availableStages based on selectedStageId
+  const displayStage = availableStages.find(s => s.id === selectedStageId) || application.stage
 
   const userData = application.tg_user_data || {}
   const participant = application.participant
@@ -79,18 +89,14 @@ export default function ApplicationDetail({
   const username = participant?.username || userData.username
   const photoUrl = participant?.photo_url || userData.photo_url
 
-  // Get display stage from local state (selectedStage) - must be defined before handleStageChange
-  const displayStage = availableStages.find(s => s.id === selectedStage) || currentStage
-
   const handleStageChange = async (newStageId: string) => {
-    const prevStageId = selectedStage
-    const currentDisplayStage = availableStages.find(s => s.id === selectedStage) || currentStage
+    const prevStageId = selectedStageId
     
     // Check if we can move from current display stage
-    if (newStageId === selectedStage || currentDisplayStage?.is_terminal) return
+    if (newStageId === selectedStageId || displayStage?.is_terminal) return
     
     // Optimistic update - update local state immediately BEFORE the request
-    setSelectedStage(newStageId)
+    setSelectedStageId(newStageId)
     setIsUpdating(true)
     setShowStageDropdown(false)
     
@@ -103,14 +109,14 @@ export default function ApplicationDetail({
       
       if (!res.ok) {
         // Revert on error
-        setSelectedStage(prevStageId)
+        setSelectedStageId(prevStageId)
         const data = await res.json()
         console.error('Failed to change stage:', data.error)
       }
       // Don't call router.refresh() - we already updated local state
     } catch (err) {
       // Revert on error
-      setSelectedStage(prevStageId)
+      setSelectedStageId(prevStageId)
       console.error('Failed to change stage:', err)
     } finally {
       setIsUpdating(false)
@@ -256,9 +262,9 @@ export default function ApplicationDetail({
                   <button
                     key={stage.id}
                     onClick={() => handleStageChange(stage.id)}
-                    disabled={stage.id === selectedStage}
+                    disabled={stage.id === selectedStageId}
                     className={`w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-neutral-50 ${
-                      stage.id === selectedStage ? 'bg-neutral-50' : ''
+                      stage.id === selectedStageId ? 'bg-neutral-50' : ''
                     }`}
                   >
                     <div 
@@ -361,6 +367,41 @@ export default function ApplicationDetail({
                           ({application.spam_reasons.join(', ')})
                         </span>
                       )}
+                    </div>
+                  )}
+                  
+                  {/* Participant Profile Info */}
+                  {participant && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                      <div className="flex items-center gap-2 text-blue-700 mb-2">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="font-medium text-sm">Уже есть в организации</span>
+                      </div>
+                      <Link 
+                        href={`/p/${orgId}/members/${participant.id}`}
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        Открыть профиль участника →
+                      </Link>
+                    </div>
+                  )}
+                  
+                  {/* Participant Groups */}
+                  {participantGroups.length > 0 && (
+                    <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-100">
+                      <div className="text-green-700 text-sm font-medium mb-2">
+                        Состоит в группах организации:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {participantGroups.map(group => (
+                          <span 
+                            key={group.id}
+                            className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full"
+                          >
+                            {group.title}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -169,16 +169,31 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       logger.info({ 
         application_id: id, 
         new_stage_id: stage_id,
+        is_terminal: result.is_terminal,
+        terminal_type: result.terminal_type,
         auto_actions: result.auto_actions
       }, 'Application stage changed');
       
+      // Determine auto-actions to execute
+      // Fallback: if terminal stage has no auto_actions, derive from terminal_type
+      let actionsToExecute = result.auto_actions || {};
+      if (result.is_terminal && Object.keys(actionsToExecute).length === 0) {
+        if (result.terminal_type === 'success') {
+          actionsToExecute = { approve_telegram: true };
+          logger.info({ application_id: id }, 'Using fallback approve_telegram action');
+        } else if (result.terminal_type === 'failure') {
+          actionsToExecute = { reject_telegram: true };
+          logger.info({ application_id: id }, 'Using fallback reject_telegram action');
+        }
+      }
+      
       // Execute auto-actions (approve/reject in Telegram, etc.)
-      if (result.auto_actions && Object.keys(result.auto_actions).length > 0) {
+      if (Object.keys(actionsToExecute).length > 0) {
         try {
-          await executeStageAutoActions(id, stage_id, result.auto_actions);
+          await executeStageAutoActions(id, stage_id, actionsToExecute);
           logger.info({ 
             application_id: id, 
-            auto_actions: result.auto_actions 
+            auto_actions: actionsToExecute 
           }, 'Auto-actions executed');
         } catch (autoError) {
           logger.error({ 

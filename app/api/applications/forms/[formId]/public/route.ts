@@ -122,16 +122,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .single();
       
       if (pipelineData?.telegram_group_id) {
+        // Note: invite_link column was removed in migration 071
         const { data: groupData } = await supabase
           .from('telegram_groups')
-          .select('title, invite_link')
+          .select('title')
           .eq('tg_chat_id', pipelineData.telegram_group_id)
           .single();
         
         if (groupData) {
           telegramGroup = {
-            title: groupData.title,
-            invite_link: groupData.invite_link
+            title: groupData.title
           };
         }
       }

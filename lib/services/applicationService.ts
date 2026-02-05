@@ -294,37 +294,87 @@ export async function executeStageAutoActions(
 ): Promise<void> {
   const supabase = createAdminServer();
   
+  logger.info({
+    application_id: applicationId,
+    stage_id: stageId,
+    auto_actions: autoActions
+  }, '🔄 [AUTO-ACTIONS] Starting execution');
+  
   try {
-    // Get application data
-    const { data: application } = await supabase
+    // Get application data with form data
+    const { data: application, error: appError } = await supabase
       .from('applications')
-      .select('tg_user_id, tg_chat_id, participant_id')
+      .select('tg_user_id, tg_chat_id, participant_id, org_id, form_data, form_id')
       .eq('id', applicationId)
       .single();
     
-    if (!application) return;
+    if (appError || !application) {
+      logger.error({ error: appError, application_id: applicationId }, '❌ [AUTO-ACTIONS] Failed to get application');
+      return;
+    }
+    
+    logger.info({
+      application_id: applicationId,
+      tg_user_id: application.tg_user_id,
+      tg_chat_id: application.tg_chat_id,
+      participant_id: application.participant_id,
+      has_form_data: !!application.form_data
+    }, '📋 [AUTO-ACTIONS] Application data loaded');
     
     // Execute Telegram actions
     if (autoActions.approve_telegram && application.tg_chat_id && application.tg_user_id) {
-      await approveJoinRequest(application.tg_chat_id, application.tg_user_id);
+      logger.info({
+        application_id: applicationId,
+        tg_chat_id: application.tg_chat_id,
+        tg_user_id: application.tg_user_id
+      }, '🔄 [AUTO-ACTIONS] Approving Telegram join request');
+      
+      const approved = await approveJoinRequest(application.tg_chat_id, application.tg_user_id);
+      
+      logger.info({
+        application_id: applicationId,
+        approved
+      }, approved ? '✅ [AUTO-ACTIONS] Telegram join request approved' : '⚠️ [AUTO-ACTIONS] Failed to approve Telegram join request');
       
       // Log event
       await supabase.from('application_events').insert({
         application_id: applicationId,
         event_type: 'tg_approved',
         actor_type: 'automation',
-        data: { chat_id: application.tg_chat_id }
+        data: { chat_id: application.tg_chat_id, success: approved }
       });
+      
+      // Save form data to participant profile on approval
+      if (approved && application.participant_id && application.form_data) {
+        await saveFormDataToParticipant(
+          supabase, 
+          application.participant_id, 
+          application.org_id,
+          application.form_data,
+          application.form_id
+        );
+      }
     }
     
     if (autoActions.reject_telegram && application.tg_chat_id && application.tg_user_id) {
-      await rejectJoinRequest(application.tg_chat_id, application.tg_user_id);
+      logger.info({
+        application_id: applicationId,
+        tg_chat_id: application.tg_chat_id,
+        tg_user_id: application.tg_user_id
+      }, '🔄 [AUTO-ACTIONS] Rejecting Telegram join request');
+      
+      const rejected = await rejectJoinRequest(application.tg_chat_id, application.tg_user_id);
+      
+      logger.info({
+        application_id: applicationId,
+        rejected
+      }, rejected ? '✅ [AUTO-ACTIONS] Telegram join request rejected' : '⚠️ [AUTO-ACTIONS] Failed to reject Telegram join request');
       
       await supabase.from('application_events').insert({
         application_id: applicationId,
         event_type: 'tg_rejected',
         actor_type: 'automation',
-        data: { chat_id: application.tg_chat_id }
+        data: { chat_id: application.tg_chat_id, success: rejected }
       });
     }
     
@@ -359,7 +409,72 @@ export async function executeStageAutoActions(
       }, 'Would notify admins');
     }
     
+    logger.info({ application_id: applicationId }, '✅ [AUTO-ACTIONS] Execution completed');
+    
   } catch (error) {
-    logger.error({ error, application_id: applicationId }, 'Error executing auto-actions');
+    logger.error({ error, application_id: applicationId }, '❌ [AUTO-ACTIONS] Error executing auto-actions');
+  }
+}
+
+/**
+ * Save form data to participant's custom fields
+ */
+async function saveFormDataToParticipant(
+  supabase: any,
+  participantId: string,
+  orgId: string,
+  formData: Record<string, any>,
+  formId: string
+): Promise<void> {
+  try {
+    // Get form schema to get field labels
+    const { data: form } = await supabase
+      .from('application_forms')
+      .select('form_schema')
+      .eq('id', formId)
+      .single();
+    
+    const formSchema = form?.form_schema || [];
+    
+    // Get existing participant data
+    const { data: participant } = await supabase
+      .from('participants')
+      .select('custom_fields')
+      .eq('id', participantId)
+      .single();
+    
+    const existingCustomFields = participant?.custom_fields || {};
+    
+    // Build new custom fields from form data
+    const newCustomFields: Record<string, any> = { ...existingCustomFields };
+    
+    for (const [fieldId, value] of Object.entries(formData)) {
+      if (!value) continue;
+      
+      // Find field label from schema
+      const field = formSchema.find((f: any) => f.id === fieldId);
+      const fieldLabel = field?.label || fieldId;
+      
+      // Store with label as key (for admin visibility)
+      newCustomFields[`application_${fieldLabel}`] = value;
+    }
+    
+    // Update participant
+    await supabase
+      .from('participants')
+      .update({ 
+        custom_fields: newCustomFields,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', participantId);
+    
+    logger.info({
+      participant_id: participantId,
+      org_id: orgId,
+      fields_count: Object.keys(formData).length
+    }, '✅ [AUTO-ACTIONS] Form data saved to participant profile');
+    
+  } catch (error) {
+    logger.error({ error, participant_id: participantId }, '⚠️ [AUTO-ACTIONS] Failed to save form data to participant');
   }
 }
