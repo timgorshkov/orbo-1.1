@@ -57,6 +57,10 @@ export default function PipelineKanban({
   // Local state for optimistic updates
   const [applicationsByStage, setApplicationsByStage] = useState(initialApplicationsByStage)
   const [stageStats, setStageStats] = useState(initialStageStats)
+  
+  // Hide 'pending_form' stage by default (it's redundant - form status is shown as badge)
+  const hiddenStageSlugs = ['pending_form']
+  const visibleStages = stages.filter(s => !hiddenStageSlugs.includes(s.slug))
 
   const handleDragStart = (app: Application) => {
     setDraggedApp(app)
@@ -185,7 +189,7 @@ export default function PipelineKanban({
   return (
     <div className="h-full overflow-x-auto p-4">
       <div className="flex gap-4 h-full min-w-max">
-        {stages.map((stage) => {
+        {visibleStages.map((stage) => {
           const apps = applicationsByStage[stage.id] || []
           const count = stageStats[stage.id] || 0
           const isDropTarget = dragOverStage === stage.id && draggedApp?.stage_id !== stage.id

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Edit, Trash2, Copy, ExternalLink, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react'
+import { Edit, Trash2, Copy, ExternalLink, ToggleLeft, ToggleRight, Loader2, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -34,18 +34,11 @@ export default function FormsListClient({
   const router = useRouter()
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState<string | null>(null)
 
-  const handleDelete = async (formId: string, appCount: number) => {
-    if (appCount > 0) {
-      alert(`Невозможно удалить форму с ${appCount} заявками`)
-      return
-    }
-    
-    if (!confirm('Удалить эту форму? Это действие необратимо.')) {
-      return
-    }
-    
+  const handleDelete = async (formId: string) => {
     setDeletingId(formId)
+    setShowDeleteDialog(null)
     
     try {
       const res = await fetch(`/api/applications/forms/${formId}`, {
@@ -190,8 +183,8 @@ export default function FormsListClient({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => handleDelete(form.id, form.applications_count)}
-                    disabled={deletingId === form.id || form.applications_count > 0}
+                    onClick={() => setShowDeleteDialog(form.id)}
+                    disabled={deletingId === form.id || (form.applications_count || 0) > 0}
                     className="text-red-600 hover:bg-red-50 border-red-200"
                   >
                     {deletingId === form.id ? (
@@ -202,6 +195,46 @@ export default function FormsListClient({
                     Удалить
                   </Button>
                 </div>
+                
+                {/* Delete Confirmation Dialog */}
+                {showDeleteDialog === form.id && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-red-900 mb-2">
+                          Удалить форму "{form.name}"?
+                        </h4>
+                        <p className="text-sm text-red-700 mb-3">
+                          <strong>Внимание!</strong> После удаления формы:
+                        </p>
+                        <ul className="text-sm text-red-700 list-disc list-inside mb-4 space-y-1">
+                          <li>Ссылка на форму перестанет работать</li>
+                          <li>Если ссылка была добавлена в описание Telegram-группы или опубликована где-либо — она станет недействительной</li>
+                          <li>Пользователи, перешедшие по этой ссылке, увидят ошибку</li>
+                          <li>Это действие невозможно отменить</li>
+                        </ul>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowDeleteDialog(null)}
+                          >
+                            Отмена
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleDelete(form.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Да, удалить форму
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

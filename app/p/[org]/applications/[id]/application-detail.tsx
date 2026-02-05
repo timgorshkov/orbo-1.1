@@ -20,7 +20,8 @@ import {
   FileText,
   Tag,
   Loader2,
-  Send
+  Send,
+  Trash2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,8 @@ export default function ApplicationDetail({
   const [notes, setNotes] = useState(application.notes || '')
   const [isUpdating, setIsUpdating] = useState(false)
   const [showStageDropdown, setShowStageDropdown] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const userData = application.tg_user_data || {}
   const participant = application.participant
@@ -69,10 +72,21 @@ export default function ApplicationDetail({
   const username = participant?.username || userData.username
   const photoUrl = participant?.photo_url || userData.photo_url
 
+  // Get display stage from local state (selectedStage) - must be defined before handleStageChange
+  const displayStage = availableStages.find(s => s.id === selectedStage) || currentStage
+
   const handleStageChange = async (newStageId: string) => {
-    if (newStageId === application.stage_id || currentStage?.is_terminal) return
+    const prevStageId = selectedStage
+    const currentDisplayStage = availableStages.find(s => s.id === selectedStage) || currentStage
     
+    // Check if we can move from current display stage
+    if (newStageId === selectedStage || currentDisplayStage?.is_terminal) return
+    
+    // Optimistic update - update local state immediately BEFORE the request
+    setSelectedStage(newStageId)
     setIsUpdating(true)
+    setShowStageDropdown(false)
+    
     try {
       const res = await fetch(`/api/applications/${application.id}`, {
         method: 'PATCH',
@@ -80,23 +94,21 @@ export default function ApplicationDetail({
         body: JSON.stringify({ stage_id: newStageId })
       })
       
-      if (res.ok) {
-        // Optimistic update - update local state immediately
-        setSelectedStage(newStageId)
-        router.refresh()
+      if (!res.ok) {
+        // Revert on error
+        setSelectedStage(prevStageId)
+        const data = await res.json()
+        console.error('Failed to change stage:', data.error)
       }
+      // Don't call router.refresh() - we already updated local state
     } catch (err) {
+      // Revert on error
+      setSelectedStage(prevStageId)
       console.error('Failed to change stage:', err)
     } finally {
       setIsUpdating(false)
-      setShowStageDropdown(false)
     }
   }
-  
-  // Get display stage - use selectedStage if it differs from original (optimistic update)
-  const displayStage = selectedStage !== application.stage_id 
-    ? availableStages.find(s => s.id === selectedStage) || currentStage
-    : currentStage
 
   const handleSaveNotes = async () => {
     setIsUpdating(true)
@@ -111,6 +123,33 @@ export default function ApplicationDetail({
       console.error('Failed to save notes:', err)
     } finally {
       setIsUpdating(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/applications/${application.id}`, {
+        method: 'DELETE'
+      })
+      
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Ошибка удаления')
+      }
+      
+      // Redirect to pipeline page
+      const pipelineId = application.form?.pipeline_id
+      if (pipelineId) {
+        router.push(`/p/${orgId}/applications/pipelines/${pipelineId}`)
+      } else {
+        router.push(`/p/${orgId}/applications`)
+      }
+    } catch (err: any) {
+      console.error('Failed to delete application:', err)
+      alert(err.message)
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -378,14 +417,14 @@ export default function ApplicationDetail({
                       <input
                         type="text"
                         readOnly
-                        value={`https://t.me/orbo_community_bot?startapp=form_${application.form_id}`}
+                        value={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}?startapp=apply-${application.form_id}`}
                         className="flex-1 px-3 py-2 text-sm bg-white border border-amber-200 rounded-lg"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const link = `https://t.me/orbo_community_bot?startapp=form_${application.form_id}`
+                          const link = `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}?startapp=apply-${application.form_id}`
                           navigator.clipboard.writeText(link)
                         }}
                         className="border-amber-300 hover:bg-amber-100"
@@ -454,6 +493,50 @@ export default function ApplicationDetail({
                     Написать в Telegram
                   </Button>
                 </a>
+              )}
+              
+              {/* Delete button */}
+              {!showDeleteConfirm ? (
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start text-red-600 hover:bg-red-50 border-red-200"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Удалить заявку
+                </Button>
+              ) : (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-red-700">
+                      Удалить эту заявку? Это действие необратимо.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                    >
+                      Отмена
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4 mr-1" />
+                      )}
+                      Удалить
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
