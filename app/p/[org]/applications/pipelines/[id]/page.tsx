@@ -97,13 +97,13 @@ export default async function PipelinePage({
       stageStats[stage.id] = applicationsByStage[stage.id]?.length || 0
     })
     
-    // Get Telegram group name
+    // Get Telegram group name (telegram_group_id is tg_chat_id bigint)
     let telegramGroupName: string | null = null
     if (pipeline.telegram_group_id) {
       const { data: groupData } = await supabase
         .from('telegram_groups')
         .select('title')
-        .eq('id', pipeline.telegram_group_id)
+        .eq('tg_chat_id', pipeline.telegram_group_id)
         .single()
       telegramGroupName = groupData?.title || null
     }

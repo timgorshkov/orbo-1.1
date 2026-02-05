@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { executeStageAutoActions } from '@/lib/services/applicationService';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -170,6 +171,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         new_stage_id: stage_id,
         auto_actions: result.auto_actions
       }, 'Application stage changed');
+      
+      // Execute auto-actions (approve/reject in Telegram, etc.)
+      if (result.auto_actions && Object.keys(result.auto_actions).length > 0) {
+        try {
+          await executeStageAutoActions(id, stage_id, result.auto_actions);
+          logger.info({ 
+            application_id: id, 
+            auto_actions: result.auto_actions 
+          }, 'Auto-actions executed');
+        } catch (autoError) {
+          logger.error({ 
+            error: autoError, 
+            application_id: id 
+          }, 'Failed to execute auto-actions');
+          // Don't fail the request - stage change already succeeded
+        }
+      }
       
       return NextResponse.json({
         success: true,

@@ -46,6 +46,11 @@ interface SuccessPage {
   additional_buttons?: { text: string; url: string }[];
 }
 
+interface TelegramGroup {
+  title: string;
+  invite_link?: string;
+}
+
 interface ExistingApplication {
   id: string;
   form_data: Record<string, string>;
@@ -54,10 +59,7 @@ interface ExistingApplication {
   is_approved: boolean;
   is_rejected: boolean;
   is_pending: boolean;
-  telegram_group?: {
-    title: string;
-    invite_link?: string;
-  } | null;
+  telegram_group?: TelegramGroup | null;
 }
 
 interface FormData {
@@ -74,6 +76,7 @@ interface FormData {
   utm_source?: string;
   utm_campaign?: string;
   existing_application?: ExistingApplication;
+  telegram_group?: TelegramGroup | null;
 }
 
 type PageState = 'loading' | 'landing' | 'status' | 'form' | 'submitting' | 'success' | 'error';
@@ -479,32 +482,35 @@ export default function ApplicationFormPage() {
             )}
             
             {/* Approved - show group info */}
-            {app.is_approved && (
-              <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
-                <p className="text-green-800 font-medium mb-2">
-                  🎉 Добро пожаловать!
-                </p>
-                {app.telegram_group?.invite_link ? (
-                  <a
-                    href={app.telegram_group.invite_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-full py-3 px-4 bg-green-600 text-white text-center rounded-xl font-medium hover:bg-green-700 transition-colors"
-                  >
-                    Перейти в группу «{app.telegram_group.title}»
-                  </a>
-                ) : app.telegram_group?.title ? (
-                  <p className="text-sm text-green-700">
-                    Ваша заявка одобрена! Теперь вы можете вступить в группу «{app.telegram_group.title}».
-                    Перейдите в чат группы — ваша заявка на вступление уже подтверждена.
+            {app.is_approved && (() => {
+              const group = app.telegram_group || formData?.telegram_group;
+              return (
+                <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                  <p className="text-green-800 font-medium mb-2">
+                    🎉 Добро пожаловать!
                   </p>
-                ) : (
-                  <p className="text-sm text-green-700">
-                    Ваша заявка одобрена! Теперь вы можете вступить в группу.
-                  </p>
-                )}
-              </div>
-            )}
+                  {group?.invite_link ? (
+                    <a
+                      href={group.invite_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full py-3 px-4 bg-green-600 text-white text-center rounded-xl font-medium hover:bg-green-700 transition-colors"
+                    >
+                      Перейти в группу «{group.title}»
+                    </a>
+                  ) : group?.title ? (
+                    <p className="text-sm text-green-700">
+                      Ваша заявка одобрена! Теперь вы можете вступить в группу «{group.title}».
+                      Перейдите в чат группы — ваша заявка на вступление уже подтверждена.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-green-700">
+                      Ваша заявка одобрена! Теперь вы можете вступить в группу.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             
             {/* Rejected - show info */}
             {app.is_rejected && (

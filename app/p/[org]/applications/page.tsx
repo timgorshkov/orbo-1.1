@@ -38,15 +38,15 @@ export default async function ApplicationsPage({
       .eq('is_active', true)
       .order('created_at', { ascending: false })
     
-    // Get telegram group names for pipelines
+    // Get telegram group names for pipelines (telegram_group_id is tg_chat_id bigint)
     const groupIds = Array.from(new Set((pipelines || []).map(p => p.telegram_group_id).filter(Boolean)))
     let telegramGroupsMap: Record<string, string> = {}
     if (groupIds.length) {
       const { data: groups } = await adminSupabase
         .from('telegram_groups')
-        .select('id, title')
-        .in('id', groupIds)
-      telegramGroupsMap = Object.fromEntries((groups || []).map(g => [g.id, g.title]))
+        .select('tg_chat_id, title')
+        .in('tg_chat_id', groupIds)
+      telegramGroupsMap = Object.fromEntries((groups || []).map(g => [String(g.tg_chat_id), g.title]))
     }
     
     // Get counts per pipeline
@@ -83,7 +83,7 @@ export default async function ApplicationsPage({
           ...pipeline,
           total_applications: totalCount || 0,
           pending_applications: pendingCount || 0,
-          telegram_group_name: pipeline.telegram_group_id ? telegramGroupsMap[pipeline.telegram_group_id] || null : null
+          telegram_group_name: pipeline.telegram_group_id ? telegramGroupsMap[String(pipeline.telegram_group_id)] || null : null
         }
       })
     )

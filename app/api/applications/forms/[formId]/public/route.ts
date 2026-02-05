@@ -82,34 +82,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Get stage info
         const { data: stageData } = await supabase
           .from('pipeline_stages')
-          .select('name, is_terminal, terminal_type, pipeline_id')
+          .select('name, is_terminal, terminal_type')
           .eq('id', appData.stage_id)
           .single();
-        
-        // Get telegram group info for approved applications
-        let telegramGroupInfo = null;
-        if (stageData?.terminal_type === 'success' && stageData?.pipeline_id) {
-          const { data: pipelineData } = await supabase
-            .from('application_pipelines')
-            .select('telegram_group_id')
-            .eq('id', stageData.pipeline_id)
-            .single();
-          
-          if (pipelineData?.telegram_group_id) {
-            const { data: groupData } = await supabase
-              .from('telegram_groups')
-              .select('title, invite_link, tg_chat_id')
-              .eq('tg_chat_id', pipelineData.telegram_group_id)
-              .single();
-            
-            if (groupData) {
-              telegramGroupInfo = {
-                title: groupData.title,
-                invite_link: groupData.invite_link
-              };
-            }
-          }
-        }
         
         existingApplication = {
           id: appData.id,
@@ -118,8 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           stage_name: stageData?.name || 'На рассмотрении',
           is_approved: stageData?.terminal_type === 'success',
           is_rejected: stageData?.terminal_type === 'failure',
-          is_pending: !stageData?.is_terminal,
-          telegram_group: telegramGroupInfo
+          is_pending: !stageData?.is_terminal
         };
         
         logger.info({ 
@@ -132,17 +106,55 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
     
+    // Get telegram group info for the pipeline
+    let telegramGroup = null;
+    const { data: formData } = await supabase
+      .from('application_forms')
+      .select('pipeline_id')
+      .eq('id', formId)
+      .single();
+    
+    if (formData?.pipeline_id) {
+      const { data: pipelineData } = await supabase
+        .from('application_pipelines')
+        .select('telegram_group_id')
+        .eq('id', formData.pipeline_id)
+        .single();
+      
+      if (pipelineData?.telegram_group_id) {
+        const { data: groupData } = await supabase
+          .from('telegram_groups')
+          .select('title, invite_link')
+          .eq('tg_chat_id', pipelineData.telegram_group_id)
+          .single();
+        
+        if (groupData) {
+          telegramGroup = {
+            title: groupData.title,
+            invite_link: groupData.invite_link
+          };
+        }
+      }
+    }
+    
+    // Add telegram_group to existing_application if present
+    if (existingApplication && telegramGroup) {
+      existingApplication.telegram_group = telegramGroup;
+    }
+    
     logger.info({ 
       form_id: formId, 
       has_form_schema: !!data?.form_schema,
       form_schema_length: Array.isArray(data?.form_schema) ? data.form_schema.length : 0,
       has_existing_application: !!existingApplication,
-      org_name: data?.org_name
+      org_name: data?.org_name,
+      has_telegram_group: !!telegramGroup
     }, 'Public form processed');
     
     return NextResponse.json({
       ...data,
-      existing_application: existingApplication
+      existing_application: existingApplication,
+      telegram_group: telegramGroup
     });
   } catch (error) {
     logger.error({ error, form_id: formId }, 'Error in GET public form');
