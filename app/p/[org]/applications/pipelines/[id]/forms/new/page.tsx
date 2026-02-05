@@ -226,7 +226,7 @@ export default function NewFormPage({
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}`}>
+              <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}/forms`}>
                 <Button variant="ghost" size="icon">
                   <ArrowLeft className="w-5 h-5" />
                 </Button>

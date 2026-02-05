@@ -29,14 +29,25 @@ export default async function ApplicationsPage({
       .select(`
         id,
         name,
-        description,
         pipeline_type,
+        telegram_group_id,
         is_default,
         created_at
       `)
       .eq('org_id', orgId)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
+    
+    // Get telegram group names for pipelines
+    const groupIds = Array.from(new Set((pipelines || []).map(p => p.telegram_group_id).filter(Boolean)))
+    let telegramGroupsMap: Record<string, string> = {}
+    if (groupIds.length) {
+      const { data: groups } = await adminSupabase
+        .from('telegram_groups')
+        .select('id, title')
+        .in('id', groupIds)
+      telegramGroupsMap = Object.fromEntries((groups || []).map(g => [g.id, g.title]))
+    }
     
     // Get counts per pipeline
     const pipelinesWithStats = await Promise.all(
@@ -71,7 +82,8 @@ export default async function ApplicationsPage({
         return {
           ...pipeline,
           total_applications: totalCount || 0,
-          pending_applications: pendingCount || 0
+          pending_applications: pendingCount || 0,
+          telegram_group_name: pipeline.telegram_group_id ? telegramGroupsMap[pipeline.telegram_group_id] || null : null
         }
       })
     )
@@ -179,9 +191,9 @@ export default async function ApplicationsPage({
                             : 'Кастомная'}
                         </span>
                       </div>
-                      {pipeline.description && (
+                      {pipeline.telegram_group_name && (
                         <CardDescription className="line-clamp-2">
-                          {pipeline.description}
+                          Группа: {pipeline.telegram_group_name}
                         </CardDescription>
                       )}
                     </CardHeader>

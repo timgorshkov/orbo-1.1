@@ -378,14 +378,14 @@ export default function ApplicationDetail({
                       <input
                         type="text"
                         readOnly
-                        value={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}/app?startapp=form_${application.form_id}`}
+                        value={`https://t.me/orbo_community_bot?startapp=form_${application.form_id}`}
                         className="flex-1 px-3 py-2 text-sm bg-white border border-amber-200 rounded-lg"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const link = `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}/app?startapp=form_${application.form_id}`
+                          const link = `https://t.me/orbo_community_bot?startapp=form_${application.form_id}`
                           navigator.clipboard.writeText(link)
                         }}
                         className="border-amber-300 hover:bg-amber-100"

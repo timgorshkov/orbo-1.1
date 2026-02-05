@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Settings, Plus, Link as LinkIcon, Copy, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Settings, LayoutGrid } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface PipelineHeaderProps {
@@ -9,8 +9,7 @@ interface PipelineHeaderProps {
   pipelineId: string
   pipelineName: string
   pipelineType: string
-  description?: string
-  miniAppLink: string | null
+  telegramGroupName?: string | null
   hasForm: boolean
 }
 
@@ -19,16 +18,9 @@ export default function PipelineHeader({
   pipelineId,
   pipelineName,
   pipelineType,
-  description,
-  miniAppLink,
+  telegramGroupName,
   hasForm
 }: PipelineHeaderProps) {
-  const handleCopyLink = () => {
-    if (miniAppLink) {
-      navigator.clipboard.writeText(miniAppLink)
-    }
-  }
-
   return (
     <div className="flex-shrink-0 border-b bg-white px-6 py-4">
       <div className="flex items-center justify-between">
@@ -53,43 +45,17 @@ export default function PipelineHeader({
                   : 'Кастомная'}
               </span>
             </h1>
-            {description && (
-              <p className="text-sm text-neutral-500">{description}</p>
+            {telegramGroupName && (
+              <p className="text-sm text-neutral-500">Группа: {telegramGroupName}</p>
             )}
           </div>
         </div>
         
         <div className="flex items-center gap-2">
-          {/* MiniApp Link */}
-          {miniAppLink && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 rounded-lg border">
-              <LinkIcon className="w-4 h-4 text-neutral-400" />
-              <code className="text-xs text-neutral-600 max-w-[200px] truncate">
-                {miniAppLink}
-              </code>
-              <button 
-                className="p-1 hover:bg-neutral-200 rounded"
-                title="Копировать ссылку"
-                onClick={handleCopyLink}
-              >
-                <Copy className="w-3.5 h-3.5 text-neutral-500" />
-              </button>
-              <a 
-                href={miniAppLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-1 hover:bg-neutral-200 rounded"
-                title="Открыть"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-neutral-500" />
-              </a>
-            </div>
-          )}
-          
           {/* Manage Forms */}
           <Link href={`/p/${orgId}/applications/pipelines/${pipelineId}/forms`}>
             <Button variant="outline" size="sm">
-              <Plus className="w-4 h-4 mr-1" />
+              <LayoutGrid className="w-4 h-4 mr-1" />
               {hasForm ? 'Управление формами' : 'Создать форму'}
             </Button>
           </Link>

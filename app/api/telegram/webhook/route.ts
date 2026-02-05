@@ -633,6 +633,22 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           }
           
           if (pipeline && formId) {
+            // Check for existing application from this user for this form
+            const { data: existingApp } = await supabaseServiceRole
+              .from('applications')
+              .select('id')
+              .eq('form_id', formId)
+              .eq('tg_user_id', userId)
+              .maybeSingle();
+            
+            if (existingApp) {
+              logger.info({
+                chat_id: requestChatId,
+                user_id: userId,
+                existing_application_id: existingApp.id
+              }, '⏭️ [WEBHOOK] Application already exists for this user, skipping duplicate');
+              // Skip creation - application already exists
+            } else {
             // Prepare tg_user_data with bio (available in join_request)
             // Note: photo_url is not available in join_request, so we don't include it
             // This way spam_score won't penalize for "no_photo"
@@ -680,6 +696,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 form_id: formId
               }, '✅ [WEBHOOK] Application created from join_request');
             }
+            } // Close else block for existing app check
           }
         } catch (joinRequestError) {
           logger.error({

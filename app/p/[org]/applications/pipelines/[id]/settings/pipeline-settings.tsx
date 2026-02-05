@@ -8,8 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-
 interface PipelineSettingsProps {
   orgId: string
   pipeline: any
@@ -29,7 +27,6 @@ export default function PipelineSettings({
 }: PipelineSettingsProps) {
   const router = useRouter()
   const [name, setName] = useState(pipeline.name)
-  const [description, setDescription] = useState(pipeline.description || '')
   const [selectedGroupId, setSelectedGroupId] = useState<string>(
     pipeline.telegram_group_id ? String(pipeline.telegram_group_id) : ''
   )
@@ -45,8 +42,7 @@ export default function PipelineSettings({
     
     try {
       const updateData: any = {
-        name: name.trim(),
-        description: description.trim() || null
+        name: name.trim()
       }
       
       // Only include telegram_group_id for join_request pipelines
@@ -130,17 +126,6 @@ export default function PipelineSettings({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Название..."
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="description">Описание</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Описание воронки..."
-                rows={3}
               />
             </div>
             

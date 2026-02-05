@@ -97,11 +97,18 @@ export default async function PipelinePage({
       stageStats[stage.id] = applicationsByStage[stage.id]?.length || 0
     })
     
-    // Build MiniApp link
-    const form = forms?.[0]
-    const miniAppLink = form 
-      ? `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}?startapp=apply-${form.id}`
-      : null
+    // Get Telegram group name
+    let telegramGroupName: string | null = null
+    if (pipeline.telegram_group_id) {
+      const { data: groupData } = await supabase
+        .from('telegram_groups')
+        .select('title')
+        .eq('id', pipeline.telegram_group_id)
+        .single()
+      telegramGroupName = groupData?.title || null
+    }
+    
+    const hasForm = forms && forms.length > 0
 
     return (
       <div className="h-full flex flex-col">
@@ -111,9 +118,8 @@ export default async function PipelinePage({
           pipelineId={pipelineId}
           pipelineName={pipeline.name}
           pipelineType={pipeline.pipeline_type}
-          description={pipeline.description}
-          miniAppLink={miniAppLink}
-          hasForm={!!form}
+          telegramGroupName={telegramGroupName}
+          hasForm={!!hasForm}
         />
         
         {/* Kanban Board */}
