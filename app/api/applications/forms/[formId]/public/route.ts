@@ -93,7 +93,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           stage_name: stageData?.name || 'На рассмотрении',
           is_approved: stageData?.terminal_type === 'success',
           is_rejected: stageData?.terminal_type === 'failure',
-          is_pending: !stageData?.is_terminal
+          is_pending: !stageData?.is_terminal,
+          telegram_group: null as { title: string } | null
         };
         
         logger.info({ 
