@@ -185,12 +185,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           p_new_stage_id: stage_id,
           p_actor_id: user.id,
           p_notes: notes || null
-        });
+        })
+        .single();
       
       logger.info({
         application_id: id,
         rpc_error: moveError,
-        rpc_result: result
+        rpc_result: result,
+        result_type: typeof result,
+        result_success: result?.success,
+        result_success_type: typeof result?.success
       }, moveError ? '❌ [API] RPC move_application_to_stage failed' : '✅ [API] RPC move_application_to_stage succeeded');
       
       if (moveError) {
@@ -198,9 +202,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
       }
       
-      if (!result.success) {
-        logger.error({ result, application_id: id }, 'RPC returned success=false');
-        return NextResponse.json({ error: result.error }, { status: 400 });
+      if (!result || result.success !== true) {
+        logger.error({ 
+          result, 
+          application_id: id,
+          result_success: result?.success,
+          result_success_type: typeof result?.success,
+          result_success_strict: result?.success === true
+        }, 'RPC returned no result or success not true');
+        return NextResponse.json({ error: result?.error || 'Failed to move application' }, { status: 400 });
       }
       
       logger.info({ 
