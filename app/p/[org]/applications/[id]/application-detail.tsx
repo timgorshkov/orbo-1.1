@@ -35,7 +35,6 @@ interface Stage {
   position: number
   is_terminal: boolean
   terminal_type: string | null
-  is_visible?: boolean
 }
 
 interface PipelineForm {
@@ -260,7 +259,7 @@ export default function ApplicationDetail({
               />
               <div className="absolute right-0 mt-2 w-56 bg-white border rounded-lg shadow-lg z-20 py-1">
                 {availableStages
-                  .filter(stage => stage.is_visible !== false)
+                  .filter(stage => stage.slug !== 'pending_form')
                   .map((stage) => (
                   <button
                     key={stage.id}

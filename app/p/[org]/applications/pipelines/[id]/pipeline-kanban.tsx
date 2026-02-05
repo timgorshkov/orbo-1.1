@@ -237,14 +237,14 @@ export default function PipelineKanban({
                 ) : (
                   apps.map((app) => (
                     <Link
-                      key={app.id}
+                      key={`${app.id}-${app.stage_id}`}
                       href={`/p/${orgId}/applications/${app.id}`}
                       draggable={!stages.find(s => s.id === app.stage_id)?.is_terminal}
                       onDragStart={() => handleDragStart(app)}
                       onDragEnd={() => setDraggedApp(null)}
                       className={`block bg-white rounded-lg border p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${
                         draggedApp?.id === app.id ? 'opacity-50' : ''
-                      }`}
+                      } ${movingAppId === app.id ? 'ring-2 ring-blue-300' : ''}`}
                     >
                       <div className="flex items-start gap-3">
                         {/* Avatar */}

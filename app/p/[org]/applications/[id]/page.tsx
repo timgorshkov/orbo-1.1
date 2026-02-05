@@ -79,7 +79,7 @@ export default async function ApplicationPage({
     const { data: availableStages } = pipelineId
       ? await supabase
           .from('pipeline_stages')
-          .select('id, name, slug, color, position, is_terminal, terminal_type, is_visible')
+          .select('id, name, slug, color, position, is_terminal, terminal_type')
           .eq('pipeline_id', pipelineId)
           .order('position')
       : { data: [] }
