@@ -61,7 +61,7 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch tags' }, { status: 500 });
     }
 
-    logger.info({ participantId, tagCount: tags?.length || 0 }, 'Participant tags fetched successfully');
+    logger.debug({ participantId, tagCount: tags?.length || 0 }, 'Participant tags fetched successfully');
 
     return NextResponse.json({
       tags: tags || [],

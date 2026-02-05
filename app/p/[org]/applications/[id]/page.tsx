@@ -83,6 +83,15 @@ export default async function ApplicationPage({
           .eq('pipeline_id', pipelineId)
           .order('position')
       : { data: [] }
+    
+    // Get all forms for this pipeline
+    const { data: pipelineForms } = pipelineId
+      ? await supabase
+          .from('application_forms')
+          .select('id, name')
+          .eq('pipeline_id', pipelineId)
+          .order('created_at')
+      : { data: [] }
 
     return (
       <ApplicationDetail 
@@ -90,6 +99,7 @@ export default async function ApplicationPage({
         application={application}
         events={events || []}
         availableStages={availableStages || []}
+        pipelineForms={pipelineForms || []}
       />
     )
   } catch (error) {

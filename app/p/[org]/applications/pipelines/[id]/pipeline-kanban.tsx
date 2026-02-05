@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, User, Clock, ChevronRight, MoreHorizontal, Loader2 } from 'lucide-react'
@@ -57,6 +57,7 @@ export default function PipelineKanban({
   // Local state for optimistic updates
   const [applicationsByStage, setApplicationsByStage] = useState(initialApplicationsByStage)
   const [stageStats, setStageStats] = useState(initialStageStats)
+  
   
   // Hide 'pending_form' stage by default (it's redundant - form status is shown as badge)
   const hiddenStageSlugs = ['pending_form']
@@ -134,10 +135,8 @@ export default function PipelineKanban({
           [sourceStageId]: (prev[sourceStageId] || 0) + 1,
           [targetStageId]: Math.max(0, (prev[targetStageId] || 0) - 1)
         }))
-      } else {
-        // Refresh server data in background
-        router.refresh()
       }
+      // Don't call router.refresh() - optimistic update already done
     } catch (err) {
       console.error('Failed to move application:', err)
       // Revert on error

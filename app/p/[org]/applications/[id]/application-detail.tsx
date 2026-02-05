@@ -37,18 +37,25 @@ interface Stage {
   terminal_type: string | null
 }
 
+interface PipelineForm {
+  id: string
+  name: string
+}
+
 interface ApplicationDetailProps {
   orgId: string
   application: any
   events: any[]
   availableStages: Stage[]
+  pipelineForms: PipelineForm[]
 }
 
 export default function ApplicationDetail({
   orgId,
   application,
   events,
-  availableStages
+  availableStages,
+  pipelineForms
 }: ApplicationDetailProps) {
   const router = useRouter()
   const [selectedStage, setSelectedStage] = useState(application.stage_id)
@@ -397,7 +404,7 @@ export default function ApplicationDetail({
               </CardContent>
             </Card>
           ) : (
-            /* Form not filled - show link to send */
+            /* Form not filled - show links to all pipeline forms */
             <Card className="border-amber-200 bg-amber-50/50">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2 text-amber-800">
@@ -410,7 +417,39 @@ export default function ApplicationDetail({
                   Пользователь подал заявку, но ещё не заполнил анкету. 
                   Отправьте ему ссылку на MiniApp в личные сообщения.
                 </p>
-                {application.form_id && (
+                {pipelineForms.length > 0 ? (
+                  <div className="space-y-3">
+                    <label className="text-xs font-medium text-amber-800">
+                      {pipelineForms.length === 1 ? 'Ссылка для заполнения:' : 'Ссылки на формы заявок:'}
+                    </label>
+                    {pipelineForms.map(form => (
+                      <div key={form.id} className="space-y-1">
+                        {pipelineForms.length > 1 && (
+                          <span className="text-xs text-amber-700 font-medium">{form.name}</span>
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}?startapp=apply-${form.id}`}
+                            className="flex-1 px-3 py-2 text-sm bg-white border border-amber-200 rounded-lg"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const link = `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}?startapp=apply-${form.id}`
+                              navigator.clipboard.writeText(link)
+                            }}
+                            className="border-amber-300 hover:bg-amber-100"
+                          >
+                            Копировать
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : application.form_id && (
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-amber-800">Ссылка для заполнения:</label>
                     <div className="flex gap-2">

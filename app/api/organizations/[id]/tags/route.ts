@@ -63,7 +63,7 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch tags' }, { status: 500 });
     }
 
-    logger.info({ orgId, tagCount: tagStats?.length || 0 }, 'Tags fetched successfully');
+    logger.debug({ orgId, tagCount: tagStats?.length || 0 }, 'Tags fetched successfully');
 
     return NextResponse.json({
       tags: tagStats || [],

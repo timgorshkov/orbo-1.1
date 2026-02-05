@@ -842,11 +842,11 @@ export class PostgresDbClient implements DbClient {
       const sql = `SELECT * FROM ${functionName}(${placeholders})`;
       const result = await this.pool.query(sql, paramValues);
       
-      // Логируем сырой результат для отладки
+      // Логируем сырой результат для отладки (debug level)
       if (result.rows.length > 0) {
         const firstRow = result.rows[0];
         const keys = Object.keys(firstRow);
-        logger.info({
+        logger.debug({
           function: functionName,
           row_count: result.rows.length,
           first_row_keys: keys,
@@ -862,7 +862,7 @@ export class PostgresDbClient implements DbClient {
         // Если одна колонка - всегда распаковываем (это скалярный результат)
         if (keys.length === 1) {
           const value = row[keys[0]];
-          logger.info({
+          logger.debug({
             function: functionName,
             unwrapping: true,
             key: keys[0],

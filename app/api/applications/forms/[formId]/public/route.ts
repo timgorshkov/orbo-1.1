@@ -13,12 +13,25 @@ interface RouteParams {
   params: Promise<{ formId: string }>;
 }
 
+// UUID regex for validation
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // GET - Get form data for MiniApp (public, no auth required)
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const logger = createAPILogger(request);
   const { formId } = await params;
   
   try {
+    // Validate formId format
+    if (!formId || !UUID_REGEX.test(formId)) {
+      logger.warn({ 
+        form_id: formId,
+        referrer: request.headers.get('referer'),
+        user_agent: request.headers.get('user-agent')
+      }, '❌ [MINIAPP] Invalid form_id format');
+      return NextResponse.json({ error: 'Форма не найдена (неверный формат ID)' }, { status: 404 });
+    }
+    
     const { searchParams } = new URL(request.url);
     const sourceCode = searchParams.get('source') || searchParams.get('s');
     const tgUserId = searchParams.get('tg_user_id');
@@ -42,6 +55,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const data = rpcData as any;
     
     if (data?.error) {
+      logger.warn({ 
+        form_id: formId,
+        error: data.error,
+        tg_user_id: tgUserId
+      }, '❌ [MINIAPP] Form not found or error in RPC');
       return NextResponse.json({ error: data.error }, { status: 404 });
     }
     
@@ -64,18 +82,44 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Get stage info
         const { data: stageData } = await supabase
           .from('pipeline_stages')
-          .select('name, is_terminal, terminal_type')
+          .select('name, is_terminal, terminal_type, pipeline_id')
           .eq('id', appData.stage_id)
           .single();
+        
+        // Get telegram group info for approved applications
+        let telegramGroupInfo = null;
+        if (stageData?.terminal_type === 'success' && stageData?.pipeline_id) {
+          const { data: pipelineData } = await supabase
+            .from('application_pipelines')
+            .select('telegram_group_id')
+            .eq('id', stageData.pipeline_id)
+            .single();
+          
+          if (pipelineData?.telegram_group_id) {
+            const { data: groupData } = await supabase
+              .from('telegram_groups')
+              .select('title, invite_link, tg_chat_id')
+              .eq('tg_chat_id', pipelineData.telegram_group_id)
+              .single();
+            
+            if (groupData) {
+              telegramGroupInfo = {
+                title: groupData.title,
+                invite_link: groupData.invite_link
+              };
+            }
+          }
+        }
         
         existingApplication = {
           id: appData.id,
           form_data: appData.form_data,
           created_at: appData.created_at,
           stage_name: stageData?.name || 'На рассмотрении',
-          is_approved: stageData?.terminal_type === 'approved',
-          is_rejected: stageData?.terminal_type === 'rejected',
-          is_pending: !stageData?.is_terminal
+          is_approved: stageData?.terminal_type === 'success',
+          is_rejected: stageData?.terminal_type === 'failure',
+          is_pending: !stageData?.is_terminal,
+          telegram_group: telegramGroupInfo
         };
         
         logger.info({ 

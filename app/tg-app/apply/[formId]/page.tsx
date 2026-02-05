@@ -54,6 +54,10 @@ interface ExistingApplication {
   is_approved: boolean;
   is_rejected: boolean;
   is_pending: boolean;
+  telegram_group?: {
+    title: string;
+    invite_link?: string;
+  } | null;
 }
 
 interface FormData {
@@ -472,6 +476,44 @@ export default function ApplicationFormPage() {
               <p className="text-center text-sm text-gray-500 mt-4">
                 Мы рассмотрим вашу заявку и свяжемся с вами
               </p>
+            )}
+            
+            {/* Approved - show group info */}
+            {app.is_approved && (
+              <div className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                <p className="text-green-800 font-medium mb-2">
+                  🎉 Добро пожаловать!
+                </p>
+                {app.telegram_group?.invite_link ? (
+                  <a
+                    href={app.telegram_group.invite_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-3 px-4 bg-green-600 text-white text-center rounded-xl font-medium hover:bg-green-700 transition-colors"
+                  >
+                    Перейти в группу «{app.telegram_group.title}»
+                  </a>
+                ) : app.telegram_group?.title ? (
+                  <p className="text-sm text-green-700">
+                    Ваша заявка одобрена! Теперь вы можете вступить в группу «{app.telegram_group.title}».
+                    Перейдите в чат группы — ваша заявка на вступление уже подтверждена.
+                  </p>
+                ) : (
+                  <p className="text-sm text-green-700">
+                    Ваша заявка одобрена! Теперь вы можете вступить в группу.
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Rejected - show info */}
+            {app.is_rejected && (
+              <div className="mt-4 p-4 bg-red-50 rounded-xl border border-red-200">
+                <p className="text-sm text-red-700">
+                  К сожалению, ваша заявка была отклонена. 
+                  Если вы считаете это ошибкой, свяжитесь с администратором сообщества.
+                </p>
+              </div>
             )}
             
             {/* Close button */}

@@ -68,7 +68,7 @@ export default async function MembersPage({ params, searchParams }: {
       first_message_at: p.first_message_at
     }))
 
-    logger.info({ 
+    logger.debug({ 
       participant_count: participants.length,
       org_id: orgId,
       method: 'optimized_rpc'
