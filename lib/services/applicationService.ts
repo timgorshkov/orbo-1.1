@@ -483,14 +483,14 @@ async function saveFormDataToParticipant(
     // Get existing participant data
     const { data: participant } = await supabase
       .from('participants')
-      .select('custom_fields')
+      .select('custom_attributes')
       .eq('id', participantId)
       .single();
     
-    const existingCustomFields = participant?.custom_fields || {};
+    const existingCustomAttrs = participant?.custom_attributes || {};
     
-    // Build new custom fields from form data
-    const newCustomFields: Record<string, any> = { ...existingCustomFields };
+    // Build new custom attributes from form data
+    const newCustomAttrs: Record<string, any> = { ...existingCustomAttrs };
     
     for (const [fieldId, value] of Object.entries(formData)) {
       if (!value) continue;
@@ -500,14 +500,14 @@ async function saveFormDataToParticipant(
       const fieldLabel = field?.label || fieldId;
       
       // Store with label as key (for admin visibility)
-      newCustomFields[`application_${fieldLabel}`] = value;
+      newCustomAttrs[`application_${fieldLabel}`] = value;
     }
     
     // Update participant
     await supabase
       .from('participants')
       .update({ 
-        custom_fields: newCustomFields,
+        custom_attributes: newCustomAttrs,
         updated_at: new Date().toISOString()
       })
       .eq('id', participantId);

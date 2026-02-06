@@ -158,16 +158,16 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Материалы (для всех, кроме guest)
-  if (role !== 'guest') {
-    navItems.push({
-      key: 'materials',
-      label: 'Материалы',
-      icon: FileText,
-      href: `/p/${orgId}/materials`,
-      active: pathname?.startsWith(`/p/${orgId}/materials`),
-    })
-  }
+  // Материалы - временно скрыты из основного меню
+  // if (role !== 'guest') {
+  //   navItems.push({
+  //     key: 'materials',
+  //     label: 'Материалы',
+  //     icon: FileText,
+  //     href: `/p/${orgId}/materials`,
+  //     active: pathname?.startsWith(`/p/${orgId}/materials`),
+  //   })
+  // }
 
   // События (для всех, кроме guest)
   if (role !== 'guest') {

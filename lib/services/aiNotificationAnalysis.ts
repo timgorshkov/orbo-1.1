@@ -150,7 +150,20 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
 
 Порог серьёзности: "${severityThreshold}" (уведомлять только при >= этого уровня)`;
 
+  logger.info({
+    rule_id: ruleId,
+    org_id: orgId,
+    messages_count: messages.length,
+    severity_threshold: severityThreshold
+  }, '🔄 [AI-ANALYSIS] Starting negativity analysis');
+
   try {
+    logger.info({
+      rule_id: ruleId,
+      model: 'gpt-4o-mini',
+      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
+    }, '📞 [AI-ANALYSIS] Calling OpenAI API');
+    
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -162,6 +175,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       response_format: { type: 'json_object' }
     });
 
+    logger.info({
+      rule_id: ruleId,
+      has_response: !!completion.choices[0]?.message?.content,
+      usage: completion.usage
+    }, '✅ [AI-ANALYSIS] OpenAI API response received');
+
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) {
       throw new Error('Empty AI response');
@@ -172,6 +191,14 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
     const completionTokens = completion.usage?.completion_tokens || 0;
     const totalTokens = completion.usage?.total_tokens || 0;
     const costUsd = calculateCost(promptTokens, completionTokens);
+
+    logger.info({
+      rule_id: ruleId,
+      has_negative: result.has_negative,
+      severity: result.severity,
+      tokens: totalTokens,
+      cost_usd: costUsd
+    }, '📊 [AI-ANALYSIS] Analysis result');
 
     // Log API call
     await logAICall({
@@ -193,13 +220,6 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       .map((i: number) => messages[i]?.text.slice(0, 100))
       .filter(Boolean);
 
-    logger.debug({
-      rule_id: ruleId,
-      has_negative: result.has_negative,
-      severity: result.severity,
-      tokens: totalTokens
-    }, 'AI analysis done');
-
     return {
       has_negative: result.has_negative,
       severity: result.severity,
@@ -209,7 +229,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       cost_usd: costUsd,
     };
   } catch (error) {
-    logger.error({ error, rule_id: ruleId }, 'Negativity analysis failed');
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      rule_id: ruleId,
+      org_id: orgId
+    }, '❌ [AI-ANALYSIS] Negativity analysis failed');
     return {
       has_negative: false,
       severity: 'low',
@@ -237,6 +262,13 @@ export async function analyzeUnansweredQuestions(
       cost_usd: 0,
     };
   }
+
+  logger.info({
+    rule_id: ruleId,
+    org_id: orgId,
+    messages_count: messages.length,
+    timeout_hours: timeoutHours
+  }, '🔄 [AI-ANALYSIS] Starting unanswered questions analysis');
 
   const systemPrompt = `Ты - аналитик сообщества. Найди вопросы, которые остались без ответа.
 
@@ -268,6 +300,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
 Таймаут ответа: ${timeoutHours} часов`;
 
   try {
+    logger.info({
+      rule_id: ruleId,
+      model: 'gpt-4o-mini',
+      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
+    }, '📞 [AI-ANALYSIS] Calling OpenAI API for questions');
+    
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -278,6 +316,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       max_tokens: 400,
       response_format: { type: 'json_object' }
     });
+
+    logger.info({
+      rule_id: ruleId,
+      has_response: !!completion.choices[0]?.message?.content,
+      usage: completion.usage
+    }, '✅ [AI-ANALYSIS] OpenAI API response received for questions');
 
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) {
@@ -319,11 +363,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       })
       .filter(Boolean);
 
-    logger.debug({
+    logger.info({
       rule_id: ruleId,
       unanswered_count: questions.length,
-      tokens: totalTokens
-    }, 'Question analysis done');
+      tokens: totalTokens,
+      cost_usd: costUsd
+    }, '📊 [AI-ANALYSIS] Questions analysis result');
 
     return {
       questions,
@@ -331,7 +376,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       cost_usd: costUsd,
     };
   } catch (error) {
-    logger.error({ error, rule_id: ruleId }, 'Question analysis failed');
+    logger.error({ 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      rule_id: ruleId,
+      org_id: orgId
+    }, '❌ [AI-ANALYSIS] Questions analysis failed');
     return {
       questions: [],
       tokens_used: 0,

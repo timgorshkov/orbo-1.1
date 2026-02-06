@@ -80,6 +80,19 @@ export default function MobileBottomNav({
     setIsMenuOpen(false)
   }, [pathname])
 
+  // Управляем классом на body для helpdesk виджета
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.classList.add('mobile-menu-open')
+    } else {
+      document.body.classList.remove('mobile-menu-open')
+    }
+    
+    return () => {
+      document.body.classList.remove('mobile-menu-open')
+    }
+  }, [isMenuOpen])
+
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
 
@@ -106,13 +119,14 @@ export default function MobileBottomNav({
     })
   }
 
-  if (permissions.canViewMaterials) {
+  // Applications (Заявки) for admins in admin mode
+  if (permissions.canManageSettings && adminMode) {
     mainNavItems.push({
-      key: 'materials',
-      label: 'Материалы',
+      key: 'applications',
+      label: 'Заявки',
       icon: FileText,
-      href: `/p/${orgId}/materials`,
-      active: pathname?.startsWith(`/p/${orgId}/materials`),
+      href: `/p/${orgId}/applications`,
+      active: pathname?.startsWith(`/p/${orgId}/applications`),
     })
   }
 
@@ -231,6 +245,21 @@ export default function MobileBottomNav({
 
               {/* Дополнительные пункты */}
               <nav className="px-2 py-4 space-y-1">
+                {/* Материалы в выдвижном меню (скрыты из нижней панели) */}
+                {permissions.canViewMaterials && (
+                  <Link
+                    href={`/p/${orgId}/materials`}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/materials`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <FileText className="h-5 w-5 flex-shrink-0" />
+                    <span>Материалы</span>
+                  </Link>
+                )}
+
                 {menuItems.map((item) => {
                   const Icon = item.icon
                   return (
