@@ -48,7 +48,7 @@ export default function HomePage() {
           
           <div className="hero-orb-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--sm">
-              Начать бесплатно
+              Создать регистрацию бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost btn-pill--sm">
               Записаться на демо
@@ -236,13 +236,13 @@ export default function HomePage() {
       {/* ========== CTA ========== */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Готовы навести порядок?</h2>
+          <h2 className="cta-section__title">Повысьте доходимость на следующем событии</h2>
           <p className="cta-section__text">
-            Подключите первую группу бесплатно и оцените возможности Orbo
+            Создайте регистрацию, поделитесь ссылкой и соберите контакты участников
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
-              Начать бесплатно
+              Создать регистрацию бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost-dark">
               Записаться на демо

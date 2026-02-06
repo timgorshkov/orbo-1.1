@@ -137,38 +137,38 @@ export default function SignUp() {
             className="mb-8"
           />
           <h2 className="text-3xl font-bold">
-            CRM для групп и сообществ в мессенджерах
+            Люди доходят до мероприятий и остаются в контакте
           </h2>
           <ul className="space-y-4 text-lg">
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>AI-профили участников с интересами и запросами</span>
+              <span>Регистрация и напоминания повышают доходимость</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>События с регистрацией и сбором оплат</span>
+              <span>Карточки участников с историей посещений</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Уведомления о негативе и неответах</span>
+              <span>Оплаты, статусы и анонсы — без ручной работы</span>
             </li>
             <li className="flex items-start gap-3">
               <svg className="w-6 h-6 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Аналитика активности и удержания</span>
+              <span>Заявки на вступление с анкетой и воронкой</span>
             </li>
           </ul>
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-4 mt-8">
-            <p className="text-lg font-semibold">Freemium до 50 участников</p>
+            <p className="text-lg font-semibold">Бесплатно для сообществ до 500 участников</p>
             <p className="text-blue-100 text-sm mt-1">
-              Telegram, WhatsApp, Max — всё в одном месте
+              Telegram, WhatsApp — всё в одном месте
             </p>
           </div>
         </div>
@@ -192,7 +192,7 @@ export default function SignUp() {
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Начните бесплатно</h1>
               <p className="text-sm text-gray-600">
-                Создайте аккаунт и подключите первую группу за 2 минуты
+                Создайте пространство и проведите первое событие за 5 минут
               </p>
             </div>
             

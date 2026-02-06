@@ -69,16 +69,15 @@ export const QUALIFICATION_STEPS: QualificationStep[] = [
     subtitle: 'Поможет подобрать нужные инструменты',
     questions: [
       {
-        id: 'groups_count',
-        question: 'Сколько групп/чатов вы ведёте?',
+        id: 'team_size',
+        question: 'Сколько человек управляет сообществом?',
         type: 'single',
         required: true,
         options: [
-          { value: '1-2', label: '1-2 группы', icon: '1️⃣' },
-          { value: '3-5', label: '3-5 групп', icon: '🔢' },
-          { value: '6-10', label: '6-10 групп', icon: '📊' },
-          { value: '11-20', label: '11-20 групп', icon: '📈' },
-          { value: '20+', label: 'Более 20 групп', icon: '🚀' },
+          { value: 'solo', label: 'Я один(а)', icon: '👤' },
+          { value: '2-3', label: '2–3 человека', icon: '👥' },
+          { value: '4-10', label: 'Небольшая команда (4–10)', icon: '👨‍👩‍👧‍👦' },
+          { value: '10+', label: 'Команда больше 10', icon: '🏢' },
         ],
       },
       {
@@ -175,6 +174,13 @@ export const RESPONSE_LABELS: Record<string, Record<string, string>> = {
     internal: 'Внутренние коммуникации',
     other: 'Другое',
   },
+  team_size: {
+    'solo': 'Один',
+    '2-3': '2–3',
+    '4-10': '4–10',
+    '10+': '10+',
+  },
+  // Legacy - for backward compatibility
   groups_count: {
     '1-2': '1-2',
     '3-5': '3-5',

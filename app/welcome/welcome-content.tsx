@@ -88,40 +88,71 @@ export function WelcomeContent({
     );
   }
 
+  // Determine personalized content based on qualification responses
+  const communityType = initialResponses.community_type as string;
+  const painPoints = initialResponses.pain_points as string[];
+  
+  // Check if user needs events-first onboarding
+  const isEventsFocused = 
+    communityType === 'business_club' || 
+    communityType === 'education' ||
+    communityType === 'local_hub' ||
+    painPoints?.includes('low_attendance') ||
+    painPoints?.includes('event_registration');
+  
+  // Check if user is channel author
+  const isChannelAuthor = 
+    communityType === 'expert_brand' || 
+    communityType === 'channel_author' ||
+    painPoints?.includes('no_subscriber_data');
+
   // Show welcome screen after qualification (only for users without organizations)
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-2xl border-0 shadow-lg">
         <CardHeader className="text-center pb-2">
           <CardTitle className="text-3xl mb-2">
-            {qualificationDone ? '🎉 Отлично!' : 'Добро пожаловать в Orbo!'}
+            {qualificationDone ? '🎉 Всё готово!' : 'Добро пожаловать в Orbo!'}
           </CardTitle>
           <CardDescription className="text-lg">
-            Платформа для управления сообществами через Telegram
+            Через пару минут вы будете знать своих участников и управлять событиями
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
-            <div className="flex items-start gap-4 p-4 rounded-lg bg-blue-50/50">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <MessageSquare className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Подключите Telegram-группы</h3>
-                <p className="text-sm text-gray-600">
-                  Привяжите свои Telegram-группы к пространству и начните управлять участниками
-                </p>
-              </div>
-            </div>
-
+            {/* Default: Events first */}
             <div className="flex items-start gap-4 p-4 rounded-lg bg-purple-50/50">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
                 <Calendar className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Создавайте события</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">
+                  {isEventsFocused 
+                    ? 'Создайте первое событие' 
+                    : 'Проведите событие'}
+                </h3>
                 <p className="text-sm text-gray-600">
-                  Организуйте мероприятия, регистрируйте участников и отслеживайте активность
+                  {isEventsFocused
+                    ? 'Регистрация и напоминания заработают автоматически. Доходимость повысится.'
+                    : 'Регистрация прямо в Telegram, автоматические напоминания и сбор контактов'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4 p-4 rounded-lg bg-blue-50/50">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <MessageSquare className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">
+                  {isChannelAuthor 
+                    ? 'Подключите канал' 
+                    : 'Подключите группу'}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {isChannelAuthor
+                    ? 'Комментаторы канала станут карточками участников с историей активности'
+                    : 'Участники появятся автоматически, карточки с историей и контактами'}
                 </p>
               </div>
             </div>
@@ -131,9 +162,15 @@ export function WelcomeContent({
                 <BarChart3 className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Анализируйте активность</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">
+                  {isEventsFocused
+                    ? 'Видите, кто реально ходит'
+                    : 'Карточки участников'}
+                </h3>
                 <p className="text-sm text-gray-600">
-                  Получайте аналитику по сообщениям, участникам и событиям в вашем сообществе
+                  {isEventsFocused
+                    ? 'История посещений, статусы оплат, ценность каждого участника'
+                    : 'История активности, посещённые события, интересы и контакты'}
                 </p>
               </div>
             </div>
@@ -141,7 +178,7 @@ export function WelcomeContent({
 
           <div className="pt-4 border-t">
             <p className="text-sm text-gray-600 mb-4 text-center">
-              Готовы начать? Создайте своё первое пространство
+              Начните с создания пространства для вашего сообщества
             </p>
             <div className="flex gap-3">
               <Button
@@ -156,7 +193,9 @@ export function WelcomeContent({
               </Button>
             </div>
             <p className="text-xs text-gray-500 text-center mt-3">
-              После создания пространства вы сможете добавить Telegram-группы и начать работу
+              {isEventsFocused
+                ? 'Создайте событие, поделитесь ссылкой и получите первые регистрации'
+                : 'Подключите группы и начните работу с участниками'}
             </p>
           </div>
         </CardContent>
