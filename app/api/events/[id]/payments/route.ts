@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Check user access to org
     const { data: membership } = await supabase
-      .from('organization_members')
+      .from('memberships')
       .select('role')
       .eq('org_id', event.org_id)
       .eq('user_id', user.id)
@@ -48,30 +48,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Build query for registrations with payment data
+    // Fetch registrations
     let query = supabase
       .from('event_registrations')
-      .select(`
-        id,
-        participant_id,
-        status,
-        registered_at,
-        price,
-        payment_status,
-        payment_method,
-        paid_at,
-        paid_amount,
-        payment_notes,
-        payment_updated_at,
-        payment_deadline,
-        participants:participant_id (
-          id,
-          full_name,
-          username,
-          tg_user_id,
-          photo_url
-        )
-      `)
+      .select('id, participant_id, status, registered_at, price, payment_status, payment_method, paid_at, paid_amount, payment_notes, payment_updated_at')
       .eq('event_id', eventId)
       .neq('status', 'cancelled');
 
@@ -80,16 +60,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       query = query.eq('payment_status', statusFilter);
     }
 
-    const { data: registrations, error: regError } = await query.order('registered_at', { ascending: false });
+    const { data: registrationsRaw, error: regError } = await query.order('registered_at', { ascending: false });
 
     if (regError) {
       logger.error({ error: regError.message }, 'Failed to fetch registrations');
       return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
     }
 
+    // Fetch participants data separately
+    const participantIds = (registrationsRaw || []).map((r: any) => r.participant_id).filter(Boolean);
+    let participantsMap = new Map();
+
+    if (participantIds.length > 0) {
+      const { data: participants } = await supabase
+        .from('participants')
+        .select('id, full_name, username, tg_user_id, photo_url')
+        .in('id', participantIds);
+
+      participants?.forEach((p: any) => {
+        participantsMap.set(p.id, p);
+      });
+    }
+
     // Calculate payment_deadline and overdue status
     const now = new Date();
-    const enrichedRegistrations = (registrations || []).map((reg: any) => {
+    const enrichedRegistrations = (registrationsRaw || []).map((reg: any) => {
       let payment_deadline: string | null = null;
       
       // Calculate deadline: event_date - payment_deadline_days
@@ -107,7 +102,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return {
         ...reg,
         payment_deadline,
-        is_overdue
+        is_overdue,
+        participants: participantsMap.get(reg.participant_id) || null
       };
     });
 
@@ -175,7 +171,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Check user access to org
     const { data: membership } = await supabase
-      .from('organization_members')
+      .from('memberships')
       .select('role')
       .eq('org_id', orgId)
       .eq('user_id', user.id)

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Check user access to org
     const { data: membership } = await supabase
-      .from('organization_members')
+      .from('memberships')
       .select('role')
       .eq('org_id', event.org_id)
       .eq('user_id', user.id)
