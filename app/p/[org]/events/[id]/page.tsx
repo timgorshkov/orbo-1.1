@@ -178,7 +178,7 @@ export default async function EventDetailPage({
     // Получаем регистрации
     const { data: registrations } = await adminSupabase
       .from('event_registrations')
-      .select('id, status, registered_at, payment_status, registration_data, participant_id')
+      .select('id, status, registered_at, payment_status, paid_amount, quantity, price, registration_data, participant_id')
       .eq('event_id', eventId);
     
     if (registrations && registrations.length > 0) {

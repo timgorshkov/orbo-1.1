@@ -1,137 +1,123 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createAdminServer } from '@/lib/server/supabaseServer'
-import { createAPILogger } from '@/lib/logger'
-import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { NextRequest, NextResponse } from 'next/server';
+import { createAdminServer } from '@/lib/server/supabaseServer';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { createAPILogger } from '@/lib/logger';
 
-/**
- * GET /api/events/[id]/payments/stats
- * 
- * Get payment statistics for an event.
- * Only accessible by admins of the organization.
- * 
- * Returns:
- * - total_registrations: number of registrations requiring payment
- * - total_expected_amount: sum of all prices
- * - total_paid_amount: sum of all paid amounts
- * - paid_count: number of paid registrations
- * - pending_count: number of pending payments
- * - overdue_count: number of overdue payments
- * - payment_completion_percent: percentage of paid registrations
- * - breakdown_by_status: count per each payment status
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments/stats' });
-  let eventId: string | undefined;
+export const dynamic = 'force-dynamic';
+
+type RouteParams = {
+  params: Promise<{ id: string }>;
+};
+
+// GET /api/events/[id]/payments/stats - Get payment statistics for an event
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { id: eventId } = await params;
+  const logger = createAPILogger(request, { endpoint: '/api/events/[id]/payments/stats', event_id: eventId });
+
   try {
-    const paramsData = await params;
-    eventId = paramsData.id;
-    const supabaseAdmin = createAdminServer()
-
-    // Check authentication via unified auth
-    const user = await getUnifiedUser()
+    const user = await getUnifiedUser();
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get event and check if user is admin (use admin client to bypass RLS)
-    const { data: event, error: eventError } = await supabaseAdmin
+    const supabase = createAdminServer();
+
+    // Get event and check org access
+    const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, org_id, requires_payment, default_price, currency')
+      .select('id, org_id, requires_payment, default_price')
       .eq('id', eventId)
-      .single()
+      .single();
 
     if (eventError || !event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Check admin rights (use admin client to bypass RLS)
-    const { data: membership } = await supabaseAdmin
-      .from('memberships')
+    // Check user access to org
+    const { data: membership } = await supabase
+      .from('organization_members')
       .select('role')
-      .eq('user_id', user.id)
       .eq('org_id', event.org_id)
-      .single()
+      .eq('user_id', user.id)
+      .single();
 
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
-      return NextResponse.json(
-        { error: 'Only admins can view payment statistics' },
-        { status: 403 }
-      )
+    const role = membership?.role || 'guest';
+    if (role !== 'owner' && role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Use the PostgreSQL function to get stats (use admin client to bypass RLS)
-    const { data: stats, error: statsError } = await supabaseAdmin
-      .rpc('get_event_payment_stats', { p_event_id: eventId })
-      .single()
-
-    if (statsError) {
-      logger.error({ error: statsError.message, event_id: eventId }, 'Error fetching payment stats');
-      return NextResponse.json({ error: statsError.message }, { status: 500 })
-    }
-
-    // Type assertion for RPC result
-    interface PaymentStats {
-      total_registrations: number
-      total_expected_amount: number
-      total_paid_amount: number
-      paid_count: number
-      pending_count: number
-      overdue_count: number
-      payment_completion_percent: number
-    }
-    
-    const paymentStats = stats as PaymentStats | null
-
-    // Get breakdown by status (more detailed) (use admin client to bypass RLS)
-    const { data: statusBreakdown, error: breakdownError } = await supabaseAdmin
+    // Fetch all active registrations (not cancelled)
+    const { data: registrations, error: regError } = await supabase
       .from('event_registrations')
-      .select('payment_status')
+      .select('price, payment_status, paid_amount, quantity')
       .eq('event_id', eventId)
-      .not('price', 'is', null)
+      .neq('status', 'cancelled');
 
-    if (breakdownError) {
-      logger.error({ error: breakdownError.message, event_id: eventId }, 'Error fetching status breakdown');
+    if (regError) {
+      logger.error({ error: regError.message }, 'Failed to fetch registrations for stats');
+      return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
     }
 
-    // Count by status
-    const breakdownCounts: Record<string, number> = {}
-    statusBreakdown?.forEach((reg: any) => {
-      const status = reg.payment_status || 'pending'
-      breakdownCounts[status] = (breakdownCounts[status] || 0) + 1
-    })
+    const regs = registrations || [];
 
-    return NextResponse.json({
-      event: {
-        id: event.id,
-        title: event.title,
-        requires_payment: event.requires_payment,
-        default_price: event.default_price,
-        currency: event.currency
-      },
-      stats: {
-        total_registrations: paymentStats?.total_registrations || 0,
-        total_expected_amount: paymentStats?.total_expected_amount || 0,
-        total_paid_amount: paymentStats?.total_paid_amount || 0,
-        paid_count: paymentStats?.paid_count || 0,
-        pending_count: paymentStats?.pending_count || 0,
-        overdue_count: paymentStats?.overdue_count || 0,
-        payment_completion_percent: paymentStats?.payment_completion_percent || 0,
-        breakdown_by_status: breakdownCounts
-      }
-    })
+    // Calculate statistics
+    const total_registrations = regs.length;
+    
+    // Calculate expected amount (sum of price * quantity for each registration)
+    const total_expected_amount = regs.reduce((sum, reg) => {
+      const price = reg.price || event.default_price || 0;
+      const quantity = reg.quantity || 1;
+      return sum + (price * quantity);
+    }, 0);
+
+    // Calculate paid amount
+    const total_paid_amount = regs.reduce((sum, reg) => {
+      return sum + (reg.paid_amount || 0);
+    }, 0);
+
+    // Count by payment status
+    const paid_count = regs.filter(r => r.payment_status === 'paid').length;
+    const pending_count = regs.filter(r => r.payment_status === 'pending').length;
+    const overdue_count = regs.filter(r => r.payment_status === 'overdue').length;
+
+    // Payment completion percentage
+    const payment_completion_percent = total_expected_amount > 0
+      ? Math.round((total_paid_amount / total_expected_amount) * 100)
+      : 0;
+
+    // Breakdown by status
+    const breakdown_by_status: Record<string, number> = {};
+    regs.forEach(reg => {
+      const status = reg.payment_status || 'pending';
+      breakdown_by_status[status] = (breakdown_by_status[status] || 0) + 1;
+    });
+
+    const stats = {
+      total_registrations,
+      total_expected_amount,
+      total_paid_amount,
+      paid_count,
+      pending_count,
+      overdue_count,
+      payment_completion_percent,
+      breakdown_by_status
+    };
+
+    logger.info({ 
+      event_id: eventId,
+      stats
+    }, 'Payment stats calculated');
+
+    return NextResponse.json({ stats });
+
   } catch (error: any) {
     logger.error({ 
       error: error.message || String(error),
-      stack: error.stack,
-      event_id: eventId || 'unknown'
+      stack: error.stack
     }, 'Error in GET /api/events/[id]/payments/stats');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
-    )
+    );
   }
 }
-

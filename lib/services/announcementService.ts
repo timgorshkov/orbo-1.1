@@ -161,18 +161,28 @@ export async function createEventReminders(
   targetGroups: string[]
 ): Promise<void> {
   const supabase = createAdminServer();
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+  const eventUrl = `${baseUrl}/e/${eventId}`;
   
-  // Формируем текст напоминания
-  let reminderContent = `🗓 *Напоминание: ${eventTitle}*\n\n`;
-  reminderContent += `📅 ${formatDateTime(eventStartTime)}\n`;
-  
+  // Формируем текст напоминания за 24 часа
+  let content24h = `🗓 *Напоминание: ${eventTitle}*\n\n`;
+  content24h += `📅 Завтра, ${formatDateTime(eventStartTime)}\n`;
   if (eventLocation) {
-    reminderContent += `📍 ${eventLocation}\n`;
+    content24h += `📍 ${eventLocation}\n`;
   }
-  
   if (eventDescription) {
-    reminderContent += `\n${eventDescription}`;
+    const shortDesc = eventDescription.length > 200 ? eventDescription.slice(0, 200) + '...' : eventDescription;
+    content24h += `\n${shortDesc}\n`;
   }
+  content24h += `\n🔗 [Подробнее и регистрация](${eventUrl})`;
+
+  // Формируем текст напоминания за 1 час
+  let content1h = `⏰ *Через час начинается: ${eventTitle}*\n\n`;
+  content1h += `🕐 Начало в ${formatDateTime(eventStartTime).split(', ').pop()}\n`;
+  if (eventLocation) {
+    content1h += `📍 ${eventLocation}\n`;
+  }
+  content1h += `\n🔗 [Подробнее](${eventUrl})`;
   
   const now = new Date();
   const announcements: Array<{
@@ -192,7 +202,7 @@ export async function createEventReminders(
     announcements.push({
       org_id: orgId,
       title: `Напоминание за 24ч: ${eventTitle}`,
-      content: reminderContent,
+      content: content24h,
       event_id: eventId,
       reminder_type: '24h',
       target_groups: targetGroups,
@@ -207,7 +217,7 @@ export async function createEventReminders(
     announcements.push({
       org_id: orgId,
       title: `Напоминание за 1ч: ${eventTitle}`,
-      content: reminderContent,
+      content: content1h,
       event_id: eventId,
       reminder_type: '1h',
       target_groups: targetGroups,

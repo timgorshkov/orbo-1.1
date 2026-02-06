@@ -414,15 +414,34 @@ async getChatMember(chatId: number, userId: number) {
       }
 
       if (!response.ok || !responseData.ok) {
-        logger.error({
-          bot_type: this.botType,
-          method,
-          params,
-          http_status: response.status,
-          ok: responseData.ok,
-          error_code: responseData.error_code,
-          description: responseData.description
-        }, '❌ [TG-API] Telegram API returned error');
+        // Check if this is an expected/normal error (don't log as ERROR)
+        const isExpectedError = 
+          (responseData.error_code === 400 && responseData.description?.includes('user not found')) ||
+          (responseData.error_code === 400 && responseData.description?.includes('chat not found')) ||
+          (responseData.error_code === 403 && responseData.description?.includes('bot was blocked')) ||
+          (responseData.error_code === 403 && responseData.description?.includes('user is deactivated'));
+
+        if (isExpectedError) {
+          logger.warn({
+            bot_type: this.botType,
+            method,
+            params,
+            http_status: response.status,
+            ok: responseData.ok,
+            error_code: responseData.error_code,
+            description: responseData.description
+          }, '⚠️ [TG-API] Expected Telegram API error (user/chat unavailable)');
+        } else {
+          logger.error({
+            bot_type: this.botType,
+            method,
+            params,
+            http_status: response.status,
+            ok: responseData.ok,
+            error_code: responseData.error_code,
+            description: responseData.description
+          }, '❌ [TG-API] Telegram API returned error');
+        }
         
         // Return error response instead of throwing
         return {

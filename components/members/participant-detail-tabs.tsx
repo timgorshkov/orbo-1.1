@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import ParticipantProfileCard from './participant-profile-card'
 import ParticipantActivityTimeline from './participant-activity-timeline'
 import ParticipantDuplicatesCard from './participant-duplicates-card'
+import ParticipantEventsCard from './participant-events-card'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
@@ -32,10 +33,17 @@ export default function ParticipantDetailTabs({
     }
   }
 
+  const eventRegistrationCount = editableDetail.eventRegistrations?.length || 0
+
   return (
     <Tabs defaultValue="profile" className="space-y-6">
       <TabsList>
         <TabsTrigger value="profile">Профиль</TabsTrigger>
+        {isAdmin && (
+          <TabsTrigger value="events">
+            События{eventRegistrationCount > 0 ? ` (${eventRegistrationCount})` : ''}
+          </TabsTrigger>
+        )}
         {isAdmin && <TabsTrigger value="activity">Активность</TabsTrigger>}
         {isAdmin && <TabsTrigger value="duplicates">Дубликаты</TabsTrigger>}
       </TabsList>
@@ -49,6 +57,12 @@ export default function ParticipantDetailTabs({
           isAdmin={isAdmin}
         />
       </TabsContent>
+
+      {isAdmin && (
+        <TabsContent value="events">
+          <ParticipantEventsCard orgId={orgId} detail={editableDetail} />
+        </TabsContent>
+      )}
 
       {isAdmin && (
         <TabsContent value="activity">

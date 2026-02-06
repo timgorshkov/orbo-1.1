@@ -53,11 +53,18 @@ curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-
 EOF
 chmod +x ~/orbo/cron-send-announcements.sh
 
+# Create cron script for send-event-reminders (hourly, personal DMs)
+cat > ~/orbo/cron-send-event-reminders.sh << EOF
+#!/bin/bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-event-reminders" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-send-event-reminders.sh
+
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -67,6 +74,7 @@ cat >> "$CRONTAB_FILE" << CRON
 */15 * * * * ~/orbo/cron-notification-rules.sh
 0 * * * * ~/orbo/cron-sync-attention-zones.sh
 * * * * * ~/orbo/cron-send-announcements.sh
+0 * * * * ~/orbo/cron-send-event-reminders.sh
 CRON
 
 # Install crontab from file
@@ -99,6 +107,10 @@ echo ""
 echo "📢 Send Announcements:"
 echo "   Schedule: Every minute"
 echo "   Command: ~/orbo/cron-send-announcements.sh"
+echo ""
+echo "🔔 Send Event Reminders (Personal DMs via @orbo_community_bot):"
+echo "   Schedule: Every hour at :00"
+echo "   Command: ~/orbo/cron-send-event-reminders.sh"
 echo ""
 echo "📋 Management:"
 echo "   View logs: tail -f /var/log/orbo-cron.log"

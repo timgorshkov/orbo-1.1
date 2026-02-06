@@ -16,6 +16,7 @@ import EventParticipantsList from './event-participants-list'
 import AddParticipantDialog from './add-participant-dialog'
 import EditParticipantDialog from './edit-participant-dialog'
 import EventShareOptions from './event-share-options'
+import EventAnalyticsTab from './event-analytics-tab'
 
 type Event = {
   id: string
@@ -477,6 +478,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 Оплаты
               </TabsTrigger>
             )}
+            <TabsTrigger value="analytics">Аналитика</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -927,6 +929,23 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
               />
             </TabsContent>
           )}
+
+          <TabsContent value="analytics">
+            <EventAnalyticsTab
+              eventId={event.id}
+              eventDate={event.event_date}
+              requiresPayment={event.requires_payment ?? event.is_paid ?? false}
+              defaultPrice={event.default_price ?? null}
+              capacity={event.capacity}
+              registrations={(event.event_registrations || []).map(r => ({
+                id: r.id,
+                status: r.status,
+                registered_at: r.registered_at,
+                payment_status: r.payment_status,
+                participants: r.participants
+              }))}
+            />
+          </TabsContent>
         </Tabs>
       ) : (
         /* Non-admin view: show content directly without tabs */

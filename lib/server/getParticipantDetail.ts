@@ -7,7 +7,8 @@ import type {
   ParticipantRecord,
   ParticipantTimelineEvent,
   ParticipantExternalId,
-  ParticipantAuditRecord
+  ParticipantAuditRecord,
+  ParticipantEventRegistration
 } from '@/lib/types/participant';
 
 export async function getParticipantDetail(orgId: string, participantId: string): Promise<ParticipantDetailResult | null> {
@@ -526,6 +527,49 @@ export async function getParticipantDetail(orgId: string, participantId: string)
   // Audit log feature was removed in migration 072
   const auditLog: ParticipantAuditRecord[] = [];
 
+  // Load event registrations for participant
+  let eventRegistrations: ParticipantEventRegistration[] = [];
+  try {
+    const { data: registrations, error: regError } = await supabase
+      .from('event_registrations')
+      .select(`
+        id, event_id, status, registered_at, payment_status, paid_amount, quantity, qr_token,
+        events (id, title, event_date, end_date, start_time, end_time, status, location, event_type, requires_payment, default_price, cover_image_url)
+      `)
+      .eq('participant_id', canonicalId)
+      .order('registered_at', { ascending: false });
+
+    if (regError) {
+      logger.warn({
+        error: regError.message,
+        participant_id: participantId,
+        canonical_id: canonicalId
+      }, 'Error loading event registrations');
+    } else if (registrations) {
+      eventRegistrations = registrations.map((reg: any) => ({
+        id: reg.id,
+        event_id: reg.event_id,
+        status: reg.status,
+        registered_at: reg.registered_at,
+        payment_status: reg.payment_status,
+        paid_amount: reg.paid_amount,
+        quantity: reg.quantity || 1,
+        qr_token: reg.qr_token,
+        event: reg.events || null
+      }));
+      logger.debug({
+        participant_id: canonicalId,
+        registration_count: eventRegistrations.length
+      }, 'Loaded event registrations for participant');
+    }
+  } catch (regError) {
+    logger.error({
+      error: regError instanceof Error ? regError.message : String(regError),
+      participant_id: participantId,
+      canonical_id: canonicalId
+    }, 'Error loading event registrations');
+  }
+
   // Calculate real_join_date and real_last_activity from events
   // This ensures correct engagement category for WhatsApp participants
   let realJoinDate = participantRecord.created_at;
@@ -568,6 +612,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     traits: (traitsData || []) as ParticipantTrait[],
     groups,
     events: eventsData,
+    eventRegistrations,
     externalIds,
     auditLog
   };

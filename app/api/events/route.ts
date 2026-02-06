@@ -283,15 +283,8 @@ export async function POST(request: NextRequest) {
           .eq('status', 'active');
         
         if (orgGroups && orgGroups.length > 0) {
-          const chatIds = orgGroups.map(g => g.tg_chat_id);
-          
-          // Get telegram_groups.id for each tg_chat_id
-          const { data: telegramGroups } = await adminSupabase
-            .from('telegram_groups')
-            .select('id')
-            .in('tg_chat_id', chatIds);
-          
-          const targetGroups = (telegramGroups || []).map(g => String(g.id));
+          // target_groups stores tg_chat_id (BIGINT[]) for the announcements table
+          const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
           
           if (targetGroups.length > 0) {
             await createEventReminders(

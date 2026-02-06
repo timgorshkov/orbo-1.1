@@ -81,6 +81,31 @@ export interface ParticipantAuditRecord {
   created_at: string;
 }
 
+export interface ParticipantEventRegistration {
+  id: string;
+  event_id: string;
+  status: string; // 'registered' | 'attended' | 'cancelled' | 'no_show'
+  registered_at: string;
+  payment_status: string | null;
+  paid_amount: number | null;
+  quantity: number;
+  qr_token: string | null;
+  event: {
+    id: string;
+    title: string;
+    event_date: string | null;
+    end_date: string | null;
+    start_time: string | null;
+    end_time: string | null;
+    status: string;
+    location: string | null;
+    event_type: string | null;
+    requires_payment: boolean;
+    default_price: number | null;
+    cover_image_url: string | null;
+  } | null;
+}
+
 export interface ParticipantDetailResult {
   participant: ParticipantRecord;
   canonicalParticipantId: string;
@@ -89,6 +114,7 @@ export interface ParticipantDetailResult {
   traits: ParticipantTrait[];
   groups: ParticipantGroupLink[];
   events: ParticipantTimelineEvent[];
+  eventRegistrations?: ParticipantEventRegistration[];
   externalIds?: ParticipantExternalId[];
   auditLog?: ParticipantAuditRecord[];
 }
