@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       success: true,
       message: `Sent ${totalSent} personal reminders`,
       sent: totalSent,
-      breakdown: { sent_24h, sent_1h, sent_followup: sentFollowUp },
+      breakdown: { sent_24h: sent24h, sent_1h: sent1h, sent_followup: sentFollowUp },
       errors: errors.length > 0 ? errors.slice(0, 10) : undefined
     });
 
@@ -149,7 +149,7 @@ async function sendRemindersForWindow({
   let totalSent = 0;
 
   for (const event of eventsRaw) {
-    const org = orgsMap.get(event.org_id);
+    const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
       adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType, errors
     });
@@ -194,7 +194,7 @@ async function sendOneHourReminders({
   let totalSent = 0;
 
   for (const event of eventsRaw) {
-    const org = orgsMap.get(event.org_id);
+    const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
       adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType: '1h', errors
     });
@@ -250,7 +250,7 @@ async function sendPostEventFollowUps({
         .eq('event_id', event.id)
         .eq('status', 'registered'); // Still "registered" = didn't check in
 
-      const org = orgsMap.get(event.org_id);
+      const org = orgsMap.get(event.org_id) as any;
       const orgName = org?.name || '';
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
 
@@ -351,7 +351,7 @@ async function sendReminderToParticipants({
     // Filter valid registrations
     const validRegs = regsRaw
       .filter((r: any) => {
-        const p = participantsMap.get(r.participant_id);
+        const p = participantsMap.get(r.participant_id) as any;
         return p && p.tg_user_id;
       });
 
@@ -369,7 +369,7 @@ async function sendReminderToParticipants({
 
     for (const reg of validRegs) {
       try {
-        const participant = participantsMap.get(reg.participant_id);
+        const participant = participantsMap.get(reg.participant_id) as any;
         if (!participant?.tg_user_id) continue;
 
         const eventDate = new Date(event.event_date);
