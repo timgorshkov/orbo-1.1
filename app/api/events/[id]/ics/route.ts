@@ -74,15 +74,24 @@ export async function GET(
     }
 
     // Combine date and time - ensure we're working with valid dates
-    const eventDate = new Date(event.event_date + 'T00:00:00Z')
-    const [startHour, startMin] = event.start_time.split(':').map(Number)
-    const [endHour, endMin] = event.end_time.split(':').map(Number)
+    if (!event.event_date) {
+      return NextResponse.json({ error: 'Event date is required' }, { status: 400 })
+    }
 
-    const startDateTime = new Date(eventDate)
-    startDateTime.setUTCHours(startHour, startMin, 0, 0)
-
-    const endDateTime = new Date(eventDate)
-    endDateTime.setUTCHours(endHour, endMin, 0, 0)
+    // Parse date and time safely with MSK timezone (+03:00)
+    const dateStr = event.event_date // "2026-02-10"
+    const startTimeStr = event.start_time || '10:00:00'
+    const endTimeStr = event.end_time || '12:00:00'
+    
+    // Create datetime in MSK timezone
+    const startDateTime = new Date(`${dateStr}T${startTimeStr}+03:00`)
+    const endDateTime = new Date(`${dateStr}T${endTimeStr}+03:00`)
+    
+    // Validate dates
+    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+      logger.error({ event_date: dateStr, start_time: startTimeStr, end_time: endTimeStr }, 'Invalid date/time values')
+      return NextResponse.json({ error: 'Invalid date or time' }, { status: 400 })
+    }
 
     // Generate unique ID for the event
     const uid = `${eventId}@orbo.app`

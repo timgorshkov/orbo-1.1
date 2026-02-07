@@ -901,7 +901,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <h3 className="text-lg font-semibold mb-3">Автоматические напоминания</h3>
           <p className="text-sm text-gray-600 mb-4">
-            При создании события можно автоматически запланировать напоминания во все Telegram-группы организации:
+            При создании события можно автоматически запланировать напоминания участникам:
           </p>
           <div className="bg-blue-50 rounded-lg p-3 mb-4 text-sm space-y-2">
             <div className="flex items-center gap-2">
@@ -930,7 +930,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
             </div>
           </div>
           <p className="text-xs text-gray-500 mb-4">
-            Вы сможете отредактировать или отменить напоминания в разделе «Анонсы».
+            Вы сможете отредактировать текст анонсов, выбрать конкретные группы для отправки или отменить напоминания в разделе «Анонсы».
           </p>
           <div className="flex gap-3">
             <Button

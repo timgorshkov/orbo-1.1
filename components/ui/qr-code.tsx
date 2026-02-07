@@ -29,24 +29,20 @@ export default function QRCode({
 
   const handleDownload = useCallback(async () => {
     try {
-      // Create a canvas to render the QR for download
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.src = `https://quickchart.io/qr?text=${encodeURIComponent(value)}&size=${size * 2}&margin=1&format=png`
+      // Fetch QR image as blob to avoid CORS issues
+      const qrImageUrl = `https://quickchart.io/qr?text=${encodeURIComponent(value)}&size=${size * 2}&margin=1&format=png`
+      const response = await fetch(qrImageUrl)
+      const blob = await response.blob()
       
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = size * 2
-        canvas.height = size * 2
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, size * 2, size * 2)
-          const link = document.createElement('a')
-          link.download = `${downloadFileName}.png`
-          link.href = canvas.toDataURL('image/png')
-          link.click()
-        }
-      }
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.download = `${downloadFileName}.png`
+      link.href = url
+      link.click()
+      
+      // Cleanup
+      setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch (err) {
       console.error('Failed to download QR code:', err)
     }

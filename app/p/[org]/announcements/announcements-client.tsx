@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown';
 import {
   Dialog,
   DialogContent,
@@ -300,6 +301,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   
   const days = getDaysInMonth(currentDate);
+  const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1);
+  const daysNextMonth = getDaysInMonth(nextMonth);
   const today = new Date();
   
   const scheduledAnnouncements = announcements.filter(a => a.status === 'scheduled');
@@ -408,6 +411,47 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                       </button>
                     );
                   })}
+                </div>
+                
+                {/* Следующий месяц */}
+                <div className="mt-4 pt-3 border-t">
+                  <div className="text-xs font-medium text-gray-600 mb-2 px-1">
+                    {monthNames[nextMonth.getMonth()]} {nextMonth.getFullYear()}
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5">
+                    {dayNames.map(day => (
+                      <div key={`next-${day}`} className="text-center text-xs font-medium text-gray-400 py-1">
+                        {day}
+                      </div>
+                    ))}
+                    {daysNextMonth.map((day, index) => {
+                      if (!day) {
+                        return <div key={`empty-next-${index}`} className="h-7" />;
+                      }
+                      
+                      const dayAnnouncements = getAnnouncementsForDate(day);
+                      const isSelected = selectedDate?.toDateString() === day.toDateString();
+                      const hasAnnouncements = dayAnnouncements.length > 0;
+                      
+                      return (
+                        <button
+                          key={day.toISOString()}
+                          onClick={() => setSelectedDate(day)}
+                          className={`
+                            h-7 rounded text-xs relative flex items-center justify-center
+                            hover:bg-gray-100 transition-colors
+                            ${isSelected ? 'ring-2 ring-blue-500 ring-inset' : ''}
+                            ${hasAnnouncements ? 'bg-blue-50' : ''}
+                          `}
+                        >
+                          {day.getDate()}
+                          {hasAnnouncements && (
+                            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 
                 {/* Выбранная дата под календарём (мобильная версия) */}
@@ -624,11 +668,11 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                 id="content"
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Поддерживается Telegram Markdown: *жирный*, _курсив_, `код`"
+                placeholder="Поддерживается Telegram Markdown: **жирный**, *курсив*, `код`"
                 rows={5}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Поддерживается форматирование: *жирный*, _курсив_, `код`, [ссылка](url)
+                Поддерживается форматирование: **жирный**, *курсив*, `код`, [ссылка](url)
               </p>
             </div>
             
@@ -793,7 +837,9 @@ function AnnouncementCard({
               <h3 className="font-medium truncate">{announcement.title}</h3>
               {getStatusBadge(announcement.status)}
             </div>
-            <p className="text-sm text-gray-500 mt-1 line-clamp-2">{announcement.content}</p>
+            <div className="text-sm text-gray-500 mt-1 line-clamp-2">
+              {renderTelegramMarkdownText(announcement.content)}
+            </div>
             <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
