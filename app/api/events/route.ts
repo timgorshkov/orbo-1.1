@@ -290,18 +290,22 @@ export async function POST(request: NextRequest) {
           const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
           
           if (targetGroups.length > 0 && event.event_date) {
+            // Normalize event_date: extract YYYY-MM-DD from ISO string or plain date
+            // event_date can be "2026-02-10" or "2026-02-10T00:00:00.000Z"
+            const dateStr = typeof event.event_date === 'string' 
+              ? event.event_date.split('T')[0] 
+              : new Date(event.event_date).toISOString().split('T')[0];
+            
             // Combine event_date + start_time for correct timezone handling
-            // event_date is like "2026-02-10", start_time is like "10:00:00"
             let eventStartTime: Date;
             if (event.start_time) {
               // Parse as Moscow time (UTC+3) since all our events are in MSK
-              const dateStr = event.event_date; // "2026-02-10"
               const timeStr = event.start_time.substring(0, 5); // "10:00" from "10:00:00"
               // Create date in MSK timezone
               eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`);
             } else {
               // Fallback: use event_date at 10:00 MSK
-              eventStartTime = new Date(`${event.event_date}T10:00:00+03:00`);
+              eventStartTime = new Date(`${dateStr}T10:00:00+03:00`);
             }
             
             // Validate date

@@ -115,6 +115,7 @@ export async function GET(
     // Check if user is already registered and get payment status
     let isRegistered = false;
     let paymentStatus: string | null = null;
+    let userRegistration: { id: string; status: string; payment_status: string | null; qr_token: string | null } | null = null;
     if (telegramUser) {
       // Find participant by telegram_user_id
       const { data: participant } = await adminSupabase
@@ -128,14 +129,20 @@ export async function GET(
       if (participant) {
         const { data: registration } = await adminSupabase
           .from('event_registrations')
-          .select('id, status, payment_status')
+          .select('id, status, payment_status, qr_token')
           .eq('event_id', eventId)
           .eq('participant_id', participant.id)
-          .eq('status', 'registered')
+          .in('status', ['registered', 'attended'])
           .maybeSingle();
         
         isRegistered = !!registration;
         paymentStatus = registration?.payment_status || null;
+        userRegistration = registration ? {
+          id: registration.id,
+          status: registration.status,
+          payment_status: registration.payment_status,
+          qr_token: registration.qr_token
+        } : null;
       }
     }
     
@@ -170,6 +177,7 @@ export async function GET(
       isRegistered,
       isValidated,
       paymentStatus,
+      userRegistration,
     };
     
     return NextResponse.json(response);

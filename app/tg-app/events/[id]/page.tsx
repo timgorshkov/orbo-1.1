@@ -56,6 +56,7 @@ export default function TelegramEventPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +186,7 @@ export default function TelegramEventPage() {
         setFields(data.fields || []);
         setIsRegistered(data.isRegistered || false);
         setPaymentStatus(data.paymentStatus || null);
+        setQrToken(data.userRegistration?.qr_token || null);
         
         // Pre-fill form with Telegram user data
         let tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -448,6 +450,38 @@ export default function TelegramEventPage() {
               </>
             )}
           </div>
+          
+          {/* QR Code Ticket */}
+          {qrToken && (
+            <div className="mt-6 bg-gray-50 p-6 rounded-xl text-center">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Ваш электронный билет</h3>
+              <div className="bg-white p-3 rounded-xl inline-block shadow-sm">
+                <img
+                  src={`https://quickchart.io/qr?text=${encodeURIComponent(
+                    `${window.location.origin}/checkin?token=${qrToken}`
+                  )}&size=300&margin=1&format=svg`}
+                  alt="QR код для check-in"
+                  className="w-48 h-48"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-3">
+                Покажите этот QR-код на входе
+              </p>
+            </div>
+          )}
+          
+          {/* Add to Calendar button */}
+          {event && (
+            <div className="mt-4">
+              <a
+                href={`/api/events/${event.id}/ics`}
+                download
+                className="flex items-center justify-center gap-2 w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium"
+              >
+                📅 Добавить в календарь
+              </a>
+            </div>
+          )}
           
           {/* Payment section for paid events */}
           {event?.requires_payment && (
