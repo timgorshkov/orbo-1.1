@@ -161,8 +161,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create pipeline' }, { status: 500 });
     }
     
-    // Extract pipeline ID (RPC returns UUID as string)
-    const pipelineId = typeof pipelineResult === 'string' ? pipelineResult : pipelineResult.id || pipelineResult;
+    // Extract pipeline ID (RPC returns UUID as string or object)
+    const pipelineId = typeof pipelineResult === 'string' 
+      ? pipelineResult 
+      : (pipelineResult as any).id || (pipelineResult as any).pipeline_id || String(pipelineResult);
     
     // Update description if provided
     if (description) {
