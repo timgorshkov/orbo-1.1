@@ -79,7 +79,11 @@ export async function GET(
     }
 
     // Parse date and time safely with MSK timezone (+03:00)
-    const dateStr = event.event_date // "2026-02-10"
+    // Normalize event_date: extract YYYY-MM-DD from ISO string or plain date
+    const dateStr = typeof event.event_date === 'string' 
+      ? event.event_date.split('T')[0] 
+      : new Date(event.event_date).toISOString().split('T')[0]
+    
     const startTimeStr = event.start_time || '10:00:00'
     const endTimeStr = event.end_time || '12:00:00'
     

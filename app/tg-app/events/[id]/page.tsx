@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import ReactMarkdown from 'react-markdown';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
-import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X, Download } from 'lucide-react';
 
 // Telegram WebApp types are defined in @/lib/types/telegram-webapp.d.ts
 
@@ -470,15 +470,49 @@ export default function TelegramEventPage() {
             </div>
           )}
           
-          {/* Add to Calendar button */}
+          {/* Add to Calendar buttons */}
           {event && (
-            <div className="mt-4">
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <a
                 href={`/api/events/${event.id}/ics`}
                 download
-                className="flex items-center justify-center gap-2 w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium"
+                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
               >
-                📅 Добавить в календарь
+                <Download className="w-4 h-4" />
+                iCal
+              </a>
+              <a
+                href={(() => {
+                  const dateStr = event.event_date.split('T')[0]
+                  const startTimeStr = event.start_time?.substring(0, 5) || '10:00'
+                  const endTimeStr = event.end_time?.substring(0, 5) || '12:00'
+                  const startDate = new Date(`${dateStr}T${startTimeStr}:00+03:00`)
+                  const endDate = new Date(`${dateStr}T${endTimeStr}:00+03:00`)
+                  const formatGoogleDate = (date: Date) => date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+                  const googleDates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`
+                  
+                  let description = event.description || ''
+                  if (event.event_type === 'online' && event.location_info) {
+                    description += `\n\nСсылка: ${event.location_info}`
+                  }
+                  
+                  const location = event.event_type === 'online' ? (event.location_info || 'Online') : (event.location_info || '')
+                  const params = new URLSearchParams({
+                    action: 'TEMPLATE',
+                    text: event.title,
+                    dates: googleDates,
+                    details: description,
+                    location: location
+                  })
+                  
+                  return `https://calendar.google.com/calendar/render?${params.toString()}`
+                })()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
+              >
+                <Calendar className="w-4 h-4" />
+                Google
               </a>
             </div>
           )}

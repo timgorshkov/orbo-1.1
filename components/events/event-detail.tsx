@@ -241,6 +241,52 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
     window.open(`/api/events/${event.id}/ics`, '_blank')
   }
 
+  const handleAddToGoogleCalendar = () => {
+    // Format dates for Google Calendar (YYYYMMDDTHHmmssZ in UTC)
+    const dateStr = typeof event.event_date === 'string' 
+      ? event.event_date.split('T')[0] 
+      : event.event_date
+    
+    const startTimeStr = event.start_time?.substring(0, 5) || '10:00'
+    const endTimeStr = event.end_time?.substring(0, 5) || '12:00'
+    
+    // Create Date objects in MSK timezone
+    const startDate = new Date(`${dateStr}T${startTimeStr}:00+03:00`)
+    const endDate = new Date(`${dateStr}T${endTimeStr}:00+03:00`)
+    
+    // Format to Google Calendar format (YYYYMMDDTHHmmssZ)
+    const formatGoogleDate = (date: Date) => {
+      return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+    }
+    
+    const googleDates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`
+    
+    // Build description with link to online stream or map
+    let description = event.description || ''
+    if (event.event_type === 'online' && event.location_info) {
+      description += `\n\nСсылка на трансляцию: ${event.location_info}`
+    }
+    if (event.event_type === 'offline' && event.map_link) {
+      description += `\n\nМесто на карте: ${event.map_link}`
+    }
+    
+    const location = event.event_type === 'online' 
+      ? (event.location_info || 'Online')
+      : (event.location_info || '')
+    
+    // Construct Google Calendar URL
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: event.title,
+      dates: googleDates,
+      details: description,
+      location: location
+    })
+    
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?${params.toString()}`
+    window.open(googleCalendarUrl, '_blank')
+  }
+
   const handleExportParticipants = () => {
     // Generate CSV from participants data
     const headers = ['ФИО', 'Username', 'Email', 'Телефон', 'Кратко о себе', 'Статус оплаты', 'Дата регистрации']
@@ -635,14 +681,26 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleDownloadICS}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Добавить в календарь
-                          </Button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={handleDownloadICS}
+                              title="Скачать .ics файл"
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              <span className="text-xs sm:text-sm">iCal</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={handleAddToGoogleCalendar}
+                              title="Добавить в Google Calendar"
+                            >
+                              <Calendar className="w-4 h-4 mr-1" />
+                              <span className="text-xs sm:text-sm">Google</span>
+                            </Button>
+                          </div>
                           <Button
                             variant="outline"
                             className="w-full"
@@ -1130,14 +1188,26 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleDownloadICS}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Добавить в календарь
-                          </Button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={handleDownloadICS}
+                              title="Скачать .ics файл"
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              <span className="text-xs sm:text-sm">iCal</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={handleAddToGoogleCalendar}
+                              title="Добавить в Google Calendar"
+                            >
+                              <Calendar className="w-4 h-4 mr-1" />
+                              <span className="text-xs sm:text-sm">Google</span>
+                            </Button>
+                          </div>
                           <Button
                             variant="outline"
                             className="w-full"
