@@ -1456,8 +1456,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 Отмена
               </Button>
               <Button
-                variant="destructive"
-                className="flex-1"
+                variant="default"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
                 onClick={handleDeleteEvent}
                 disabled={isDeleting}
               >
