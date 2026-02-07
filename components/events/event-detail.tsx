@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Link from 'next/link'
-import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft, Trash2 } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
 import EventForm from './event-form'
@@ -107,6 +107,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [showRegistrationForm, setShowRegistrationForm] = useState(false)
   const [showAddParticipantDialog, setShowAddParticipantDialog] = useState(false)
   const [showEditParticipantDialog, setShowEditParticipantDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [editingRegistration, setEditingRegistration] = useState<{
     id: string
     full_name: string
@@ -340,6 +342,28 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
     )
   }
 
+  const handleDeleteEvent = async () => {
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/events/${event.id}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Не удалось удалить событие')
+      }
+
+      // Success - redirect to events list
+      router.push(`/p/${orgId}/events`)
+    } catch (err: any) {
+      alert(err.message)
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+    }
+  }
+
   const participants = event.event_registrations
     ?.filter(reg => (reg.status === 'registered' || reg.status === 'attended') && reg.participants?.merged_into === null)
     .sort((a, b) => new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime())
@@ -398,6 +422,15 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             >
               <Edit className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Редактировать</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              className="sm:px-4 text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Удалить</span>
             </Button>
           </div>
         )}
@@ -1396,6 +1429,43 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             router.refresh()
           }}
         />
+      )}
+
+      {/* Delete Event Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Удалить событие
+            </h3>
+            <p className="text-sm text-gray-700 mb-4">
+              Вы уверены, что хотите удалить событие <strong>"{event.title}"</strong>?
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              Событие можно удалить только если на него ещё никто не зарегистрирован. 
+              Все связанные анонсы также будут удалены.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+              >
+                Отмена
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={handleDeleteEvent}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Удаление...' : 'Удалить'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

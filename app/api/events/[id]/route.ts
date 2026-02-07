@@ -411,7 +411,32 @@ export async function DELETE(
       )
     }
 
-    // Delete event (will cascade to registrations)
+    // Check if event has any registrations
+    const { data: registrations, error: regCheckError } = await adminSupabase
+      .from('event_registrations')
+      .select('id')
+      .eq('event_id', eventId)
+      .limit(1)
+    
+    if (regCheckError) {
+      logger.error({ error: regCheckError.message }, 'Error checking registrations');
+      return NextResponse.json({ error: 'Failed to check registrations' }, { status: 500 })
+    }
+    
+    if (registrations && registrations.length > 0) {
+      return NextResponse.json(
+        { error: 'Нельзя удалить событие с зарегистрированными участниками' },
+        { status: 400 }
+      )
+    }
+
+    // Delete event-related announcements first (no foreign key constraint)
+    await adminSupabase
+      .from('announcements')
+      .delete()
+      .eq('event_id', eventId)
+
+    // Delete event
     const { error } = await adminSupabase
       .from('events')
       .delete()
