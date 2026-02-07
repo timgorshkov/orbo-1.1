@@ -289,51 +289,48 @@ export async function POST(request: NextRequest) {
           // target_groups stores tg_chat_id (BIGINT[]) for the announcements table
           const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
           
-          if (targetGroups.length > 0) {
+          if (targetGroups.length > 0 && event.event_date) {
             // Combine event_date + start_time for correct timezone handling
             // event_date is like "2026-02-10", start_time is like "10:00:00"
             let eventStartTime: Date;
-            if (event.event_date && event.start_time) {
+            if (event.start_time) {
               // Parse as Moscow time (UTC+3) since all our events are in MSK
               const dateStr = event.event_date; // "2026-02-10"
               const timeStr = event.start_time.substring(0, 5); // "10:00" from "10:00:00"
               // Create date in MSK timezone
               eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`);
-            } else if (event.event_date) {
+            } else {
               // Fallback: use event_date at 10:00 MSK
               eventStartTime = new Date(`${event.event_date}T10:00:00+03:00`);
-            } else {
-              // No valid date - skip reminder creation
-              logger.warn({ event_id: event.id }, 'Skipping event reminders - no valid event_date');
-              continue;
             }
             
             // Validate date
-            if (isNaN(eventStartTime.getTime())) {
+            if (!isNaN(eventStartTime.getTime())) {
+              await createEventReminders(
+                event.id,
+                orgId,
+                event.title,
+                event.description,
+                eventStartTime,
+                event.location_info,
+                targetGroups
+              );
+              logger.info({ 
+                event_id: event.id, 
+                targetGroupsCount: targetGroups.length,
+                event_start_time: eventStartTime.toISOString(),
+                event_date: event.event_date,
+                start_time: event.start_time
+              }, 'Event reminders created');
+            } else {
               logger.error({ 
                 event_date: event.event_date, 
                 start_time: event.start_time,
                 event_id: event.id 
               }, 'Invalid date/time for event reminders');
-              continue;
             }
-            
-            await createEventReminders(
-              event.id,
-              orgId,
-              event.title,
-              event.description,
-              eventStartTime,
-              event.location_info,
-              targetGroups
-            );
-            logger.info({ 
-              event_id: event.id, 
-              targetGroupsCount: targetGroups.length,
-              event_start_time: eventStartTime.toISOString(),
-              event_date: event.event_date,
-              start_time: event.start_time
-            }, 'Event reminders created');
+          } else if (!event.event_date) {
+            logger.warn({ event_id: event.id }, 'Skipping event reminders - no valid event_date');
           }
         }
       } catch (reminderError: any) {
