@@ -146,19 +146,23 @@ export async function POST(request: NextRequest) {
     }
     
     // Create pipeline with default stages
-    const { data: pipelineId, error } = await supabase
+    const { data: pipelineResult, error } = await supabase
       .rpc('create_pipeline_with_default_stages', {
         p_org_id: org_id,
         p_name: name,
         p_pipeline_type: pipeline_type,
         p_telegram_group_id: telegram_group_id || null,
         p_created_by: user.id
-      });
+      })
+      .single();
     
-    if (error) {
+    if (error || !pipelineResult) {
       logger.error({ error, org_id }, 'Failed to create pipeline');
       return NextResponse.json({ error: 'Failed to create pipeline' }, { status: 500 });
     }
+    
+    // Extract pipeline ID (RPC returns UUID as string)
+    const pipelineId = typeof pipelineResult === 'string' ? pipelineResult : pipelineResult.id || pipelineResult;
     
     // Update description if provided
     if (description) {

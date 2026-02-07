@@ -127,9 +127,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   // Allow edit mode only if admin features are shown and edit mode is requested
   const canEdit = showAdminFeatures && isEditMode
 
-  // Load user's registration details if registered
+  // Load user's registration details if registered (for QR code and payment info)
   useEffect(() => {
-    if (!isRegistered || !event.requires_payment) return
+    if (!isRegistered) return
     
     setLoadingRegistration(true)
     fetch(`/api/events/${event.id}/my-registration`)
@@ -145,7 +145,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
       .finally(() => {
         setLoadingRegistration(false)
       })
-  }, [event.id, isRegistered, event.requires_payment])
+  }, [event.id, isRegistered])
 
   // Load participant profile for pre-filling registration form
   useEffect(() => {
@@ -193,23 +193,21 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
     setIsRegistered(true)
     setShowRegistrationForm(false)
     
-    // Load registration details if it's a paid event
-    if (event.requires_payment) {
-      setLoadingRegistration(true)
-      fetch(`/api/events/${event.id}/my-registration`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.registration) {
-            setUserRegistration(data.registration)
-          }
-        })
-        .catch(err => {
-          console.error('Error loading registration details:', err)
-        })
-        .finally(() => {
-          setLoadingRegistration(false)
-        })
-    }
+    // Load registration details (QR code and payment info)
+    setLoadingRegistration(true)
+    fetch(`/api/events/${event.id}/my-registration`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.registration) {
+          setUserRegistration(data.registration)
+        }
+      })
+      .catch(err => {
+        console.error('Error loading registration details:', err)
+      })
+      .finally(() => {
+        setLoadingRegistration(false)
+      })
     
     router.refresh()
   }

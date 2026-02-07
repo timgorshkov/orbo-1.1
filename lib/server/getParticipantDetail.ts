@@ -533,8 +533,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     const { data: registrations, error: regError } = await supabase
       .from('event_registrations')
       .select(`
-        id, event_id, status, registered_at, payment_status, paid_amount, quantity, qr_token, checked_in_at,
-        events (id, title, event_date, end_date, start_time, end_time, status, location_info, event_type, requires_payment, default_price, cover_image_url)
+        id, event_id, status, registered_at, payment_status, paid_amount, quantity, qr_token, checked_in_at
       `)
       .eq('participant_id', canonicalId)
       .order('registered_at', { ascending: false });
@@ -545,7 +544,16 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         participant_id: participantId,
         canonical_id: canonicalId
       }, 'Error loading event registrations');
-    } else if (registrations) {
+    } else if (registrations && registrations.length > 0) {
+      // Load events separately (no join in Supabase select)
+      const eventIds = registrations.map((r: any) => r.event_id);
+      const { data: events } = await supabase
+        .from('events')
+        .select('id, title, event_date, end_date, start_time, end_time, status, location_info, event_type, requires_payment, default_price, cover_image_url')
+        .in('id', eventIds);
+      
+      const eventsMap = new Map((events || []).map((e: any) => [e.id, e]));
+      
       eventRegistrations = registrations.map((reg: any) => ({
         id: reg.id,
         event_id: reg.event_id,
@@ -556,7 +564,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         quantity: reg.quantity || 1,
         qr_token: reg.qr_token || null,
         checked_in_at: reg.checked_in_at || null,
-        event: reg.events || null
+        event: eventsMap.get(reg.event_id) || null
       }));
       logger.debug({
         participant_id: canonicalId,

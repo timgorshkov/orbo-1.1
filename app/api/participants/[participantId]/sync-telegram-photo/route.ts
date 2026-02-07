@@ -98,7 +98,7 @@ export async function POST(
     
     try {
       if (!photosResponse || !photosResponse.result.photos.length) {
-        logger.info({ 
+        logger.debug({ 
           tg_user_id: participant.tg_user_id, 
           participant_id: participantId,
           bots_tried: botTypes.length

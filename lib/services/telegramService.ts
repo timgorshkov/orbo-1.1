@@ -422,7 +422,7 @@ async getChatMember(chatId: number, userId: number) {
           (responseData.error_code === 403 && responseData.description?.includes('user is deactivated'));
 
         if (isExpectedError) {
-          logger.warn({
+          logger.debug({
             bot_type: this.botType,
             method,
             params,
