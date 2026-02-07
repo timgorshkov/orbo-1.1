@@ -38,32 +38,49 @@ export async function GET(
       .select(`
         id,
         registered_at,
-        participants!inner (
-          id,
-          full_name,
-          bio,
-          photo_url,
-          merged_into
-        )
+        participant_id
       `)
       .eq('event_id', eventId)
       .in('status', ['registered', 'attended'])
-      .is('participants.merged_into', null)
       .order('registered_at', { ascending: true })
+    
+    if (!registrations || registrations.length === 0) {
+      return NextResponse.json({ participants: [] })
+    }
+    
+    // Get participants separately
+    const participantIds = registrations.map(r => r.participant_id).filter(Boolean)
+    const { data: participantsData } = await adminSupabase
+      .from('participants')
+      .select('id, full_name, bio, photo_url')
+      .in('id', participantIds)
+      .is('merged_into', null)
+    
+    // Create map for quick lookup
+    const participantsMap = new Map(
+      (participantsData || []).map(p => [p.id, p])
+    )
     
     // Check if user is authenticated to enable profile links
     const { data: { user } } = await supabase.auth.getUser()
     const isAuthenticated = !!user
     
-    // Format response
-    const participants = (registrations || []).map(reg => ({
-      id: reg.participants.id,
-      full_name: reg.participants.full_name || 'Участник',
-      bio: reg.participants.bio,
-      photo_url: reg.participants.photo_url,
-      registered_at: reg.registered_at,
-      is_authenticated: isAuthenticated
-    }))
+    // Format response - filter out registrations without valid participants
+    const participants = registrations
+      .map(reg => {
+        const participant = participantsMap.get(reg.participant_id)
+        if (!participant) return null
+        
+        return {
+          id: participant.id,
+          full_name: participant.full_name || 'Участник',
+          bio: participant.bio,
+          photo_url: participant.photo_url,
+          registered_at: reg.registered_at,
+          is_authenticated: isAuthenticated
+        }
+      })
+      .filter(Boolean)
     
     logger.info({ 
       event_id: eventId, 
