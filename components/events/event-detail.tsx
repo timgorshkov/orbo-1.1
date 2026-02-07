@@ -12,6 +12,7 @@ import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
+import QRCode from '@/components/ui/qr-code'
 import EventRegistrationForm from './event-registration-form'
 import EventParticipantsList from './event-participants-list'
 import AddParticipantDialog from './add-participant-dialog'
@@ -78,6 +79,7 @@ type UserRegistration = {
   quantity: number
   registered_at: string
   payment_deadline?: string | null
+  qr_token?: string | null
 }
 
 type Props = {
@@ -341,7 +343,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   }
 
   const participants = event.event_registrations
-    ?.filter(reg => reg.status === 'registered' && reg.participants?.merged_into === null)
+    ?.filter(reg => (reg.status === 'registered' || reg.status === 'attended') && reg.participants?.merged_into === null)
     .sort((a, b) => new Date(a.registered_at).getTime() - new Date(b.registered_at).getTime())
     || []
 
@@ -528,6 +530,18 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <div className="text-sm text-neutral-600 mb-3">
                             Мы напомним вам о событии
                           </div>
+                          {/* QR Ticket - admin tab */}
+                          {userRegistration?.qr_token && (
+                            <div className="mt-3 mb-3">
+                              <QRCode
+                                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}
+                                size={160}
+                                showDownload
+                                downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
+                              />
+                              <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
+                            </div>
+                          )}
                           
                           {/* Payment Info for Registered Users - min-height prevents CLS */}
                           {(event.requires_payment || event.is_paid) && (
@@ -815,6 +829,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                             Дата регистрации
                           </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-neutral-500 uppercase">
+                            Check-in
+                          </th>
                           {showAdminFeatures && (
                             <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">
                               Действия
@@ -882,6 +899,16 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               )}
                               <td className="px-4 py-3 text-sm text-neutral-500">
                                 {new Date(registration.registered_at).toLocaleString('ru-RU')}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-center">
+                                {registration.status === 'attended' ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                    <Check className="w-3 h-3" />
+                                    Прошёл
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-neutral-400">—</span>
+                                )}
                               </td>
                               {showAdminFeatures && (
                                 <td className="px-4 py-3 text-sm">
@@ -1001,6 +1028,18 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <div className="text-sm text-neutral-600 mb-3">
                             Мы напомним вам о событии
                           </div>
+                          {/* QR Ticket - public view */}
+                          {userRegistration?.qr_token && (
+                            <div className="mt-3 mb-3">
+                              <QRCode
+                                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}
+                                size={160}
+                                showDownload
+                                downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
+                              />
+                              <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
+                            </div>
+                          )}
                           
                           {/* Payment Info for Registered Users - min-height prevents CLS */}
                           {(event.requires_payment || event.is_paid) && (

@@ -26,7 +26,7 @@ function getStatusBadge(status: string) {
     case 'registered':
       return { label: 'Зарегистрирован', color: 'bg-blue-100 text-blue-700', icon: CheckCircle2 }
     case 'attended':
-      return { label: 'Присутствовал', color: 'bg-green-100 text-green-700', icon: CheckCircle2 }
+      return { label: 'Был на событии', color: 'bg-green-100 text-green-700', icon: CheckCircle2 }
     case 'cancelled':
       return { label: 'Отменил', color: 'bg-gray-100 text-gray-600', icon: XCircle }
     case 'no_show':

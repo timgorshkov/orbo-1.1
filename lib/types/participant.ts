@@ -90,6 +90,7 @@ export interface ParticipantEventRegistration {
   paid_amount: number | null;
   quantity: number;
   qr_token: string | null;
+  checked_in_at: string | null;
   event: {
     id: string;
     title: string;

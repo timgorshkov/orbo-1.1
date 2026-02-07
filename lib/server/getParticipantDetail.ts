@@ -533,7 +533,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     const { data: registrations, error: regError } = await supabase
       .from('event_registrations')
       .select(`
-        id, event_id, status, registered_at, payment_status, paid_amount, quantity,
+        id, event_id, status, registered_at, payment_status, paid_amount, quantity, qr_token, checked_in_at,
         events (id, title, event_date, end_date, start_time, end_time, status, location_info, event_type, requires_payment, default_price, cover_image_url)
       `)
       .eq('participant_id', canonicalId)
@@ -554,7 +554,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         payment_status: reg.payment_status,
         paid_amount: reg.paid_amount,
         quantity: reg.quantity || 1,
-        qr_token: null, // Column will be added in future migration for QR check-in
+        qr_token: reg.qr_token || null,
+        checked_in_at: reg.checked_in_at || null,
         event: reg.events || null
       }));
       logger.debug({

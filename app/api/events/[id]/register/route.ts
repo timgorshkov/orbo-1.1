@@ -331,7 +331,8 @@ export async function POST(
       registration_source: registrationRow.registration_source,
       registration_data: registrationRow.registration_data,
       quantity: registrationRow.registration_quantity,
-      registered_at: registrationRow.registration_registered_at
+      registered_at: registrationRow.registration_registered_at,
+      qr_token: registrationRow.registration_qr_token || null
     }
 
     return NextResponse.json({ registration }, { status: 201 })

@@ -247,11 +247,11 @@ export default async function EventDetailPage({
       const eventWithStats = {
         ...event,
         registered_count: event.event_registrations?.filter(
-          (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
+          (reg: any) => (reg.status === 'registered' || reg.status === 'attended') && reg.participants?.merged_into === null
         ).length || 0,
         available_spots: event.capacity
           ? Math.max(0, event.capacity - (event.event_registrations?.filter(
-              (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
+              (reg: any) => (reg.status === 'registered' || reg.status === 'attended') && reg.participants?.merged_into === null
             ).length || 0))
           : null,
         is_user_registered: false
@@ -340,7 +340,7 @@ export default async function EventDetailPage({
 
   // Calculate stats (exclude merged participants)
   const registeredCount = event.event_registrations?.filter(
-    (reg: any) => reg.status === 'registered' && reg.participants?.merged_into === null
+    (reg: any) => (reg.status === 'registered' || reg.status === 'attended') && reg.participants?.merged_into === null
   ).length || 0
 
   const availableSpots = event.capacity
@@ -413,7 +413,7 @@ export default async function EventDetailPage({
   const isUserRegistered = participant && event.event_registrations?.some(
     (reg: any) => 
       reg.participants?.id === participant.id && 
-      reg.status === 'registered'
+      (reg.status === 'registered' || reg.status === 'attended')
   )
 
   const eventWithStats = {

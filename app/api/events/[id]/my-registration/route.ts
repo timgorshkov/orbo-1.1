@@ -45,10 +45,10 @@ export async function GET(
     // Get user's registration for this event
     const { data: registration, error: regError } = await adminSupabase
       .from('event_registrations')
-      .select('id, status, payment_status, price, paid_amount, quantity, registered_at')
+      .select('id, status, payment_status, price, paid_amount, quantity, registered_at, qr_token')
       .eq('event_id', eventId)
       .eq('participant_id', participant.id)
-      .eq('status', 'registered')
+      .in('status', ['registered', 'attended'])
       .maybeSingle()
 
     if (regError) {
