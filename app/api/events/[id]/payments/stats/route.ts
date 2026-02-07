@@ -64,15 +64,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const total_registrations = regs.length;
     
     // Calculate expected amount (sum of price * quantity for each registration)
+    // Note: PostgreSQL NUMERIC columns may come as strings, so we parse explicitly
     const total_expected_amount = regs.reduce((sum, reg) => {
-      const price = reg.price || event.default_price || 0;
-      const quantity = reg.quantity || 1;
+      const price = Number(reg.price) || Number(event.default_price) || 0;
+      const quantity = Number(reg.quantity) || 1;
       return sum + (price * quantity);
     }, 0);
 
     // Calculate paid amount
     const total_paid_amount = regs.reduce((sum, reg) => {
-      return sum + (reg.paid_amount || 0);
+      return sum + (Number(reg.paid_amount) || 0);
     }, 0);
 
     // Count by payment status

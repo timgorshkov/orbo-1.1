@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -191,43 +191,14 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false)
+  const [pendingEventData, setPendingEventData] = useState<any>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setSuccess(false)
-
-    // Validation with specific error messages
-    const missingFields: string[] = []
-    if (!title) missingFields.push('Название')
-    if (!eventDate) missingFields.push('Дата начала')
-    if (!startTime) missingFields.push('Время начала')
-    if (!endTime) missingFields.push('Время окончания')
-    
-    if (missingFields.length > 0) {
-      setError(`Пожалуйста, заполните обязательные поля: ${missingFields.join(', ')}`)
-      return
-    }
-
-    // Validate date range
-    if (endDate && endDate < eventDate) {
-      setError('Дата окончания не может быть раньше даты начала')
-      return
-    }
-
-    // Validate time range
-    // If end_date is same as event_date, end_time must be after start_time
-    // If end_date is after event_date, end_time can be any time
-    const effectiveEndDate = endDate || eventDate
-    if (effectiveEndDate === eventDate && startTime >= endTime) {
-      setError('Время окончания должно быть позже времени начала')
-      return
-    }
-
+  const buildEventData = useCallback(() => {
     // Don't send blob: URLs to the server - they're invalid
     const actualCoverUrl = coverImageUrl?.startsWith('blob:') ? null : coverImageUrl
     
-    const eventData = {
+    return {
       orgId,
       title,
       description,
@@ -254,7 +225,9 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       isPublic,
       telegramGroupLink: telegramGroupLink || null
     }
+  }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, telegramGroupLink])
 
+  const submitEvent = async (eventData: any, createAnnouncements: boolean) => {
     startTransition(async () => {
       try {
         const url = mode === 'create' 
@@ -266,7 +239,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
         const response = await fetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(eventData)
+          body: JSON.stringify({ ...eventData, create_announcements: createAnnouncements })
         })
 
         const data = await response.json()
@@ -308,7 +281,51 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
     })
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setSuccess(false)
+
+    // Validation with specific error messages
+    const missingFields: string[] = []
+    if (!title) missingFields.push('Название')
+    if (!eventDate) missingFields.push('Дата начала')
+    if (!startTime) missingFields.push('Время начала')
+    if (!endTime) missingFields.push('Время окончания')
+    
+    if (missingFields.length > 0) {
+      setError(`Пожалуйста, заполните обязательные поля: ${missingFields.join(', ')}`)
+      return
+    }
+
+    // Validate date range
+    if (endDate && endDate < eventDate) {
+      setError('Дата окончания не может быть раньше даты начала')
+      return
+    }
+
+    // Validate time range
+    const effectiveEndDate = endDate || eventDate
+    if (effectiveEndDate === eventDate && startTime >= endTime) {
+      setError('Время окончания должно быть позже времени начала')
+      return
+    }
+
+    const eventData = buildEventData()
+
+    // For create mode, show announcement confirmation dialog
+    if (mode === 'create') {
+      setPendingEventData(eventData)
+      setShowAnnouncementDialog(true)
+      return
+    }
+
+    // For edit mode, just submit without announcements
+    await submitEvent(eventData, false)
+  }
+
   return (
+    <>
     <form onSubmit={handleSubmit}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Form */}
@@ -877,6 +894,71 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
         </div>
       </div>
     </form>
+
+    {/* Announcement Confirmation Dialog */}
+    {showAnnouncementDialog && pendingEventData && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <h3 className="text-lg font-semibold mb-3">Автоматические напоминания</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            При создании события можно автоматически запланировать напоминания во все Telegram-группы организации:
+          </p>
+          <div className="bg-blue-50 rounded-lg p-3 mb-4 text-sm space-y-2">
+            <div className="flex items-center gap-2">
+              <span>🔔</span>
+              <span>
+                <strong>За 24 часа</strong> — {pendingEventData.eventDate && pendingEventData.startTime 
+                  ? (() => {
+                      const d = new Date(`${pendingEventData.eventDate}T${pendingEventData.startTime}:00+03:00`);
+                      d.setDate(d.getDate() - 1);
+                      return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                    })()
+                  : '—'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span>⏰</span>
+              <span>
+                <strong>За 1 час</strong> — {pendingEventData.eventDate && pendingEventData.startTime 
+                  ? (() => {
+                      const d = new Date(`${pendingEventData.eventDate}T${pendingEventData.startTime}:00+03:00`);
+                      d.setHours(d.getHours() - 1);
+                      return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                    })()
+                  : '—'}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">
+            Вы сможете отредактировать или отменить напоминания в разделе «Анонсы».
+          </p>
+          <div className="flex gap-3">
+            <Button
+              className="flex-1"
+              onClick={async () => {
+                setShowAnnouncementDialog(false)
+                await submitEvent(pendingEventData, true)
+              }}
+              disabled={isPending}
+            >
+              Создать с напоминаниями
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={async () => {
+                setShowAnnouncementDialog(false)
+                await submitEvent(pendingEventData, false)
+              }}
+              disabled={isPending}
+            >
+              Без напоминаний
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 

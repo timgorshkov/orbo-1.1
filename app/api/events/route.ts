@@ -273,7 +273,10 @@ export async function POST(request: NextRequest) {
 
     // Create auto-announcements (reminders) for the event
     // Only for future events with event_date set
-    if (event?.id && event.event_date) {
+    // Only if client requests it (skip_announcements flag)
+    const shouldCreateAnnouncements = body.create_announcements !== false;
+    
+    if (event?.id && event.event_date && shouldCreateAnnouncements) {
       try {
         // Get all org groups for announcements (via org_telegram_groups -> telegram_groups)
         const { data: orgGroups } = await adminSupabase
@@ -287,16 +290,37 @@ export async function POST(request: NextRequest) {
           const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
           
           if (targetGroups.length > 0) {
+            // Combine event_date + start_time for correct timezone handling
+            // event_date is like "2026-02-10", start_time is like "10:00"
+            let eventStartTime: Date;
+            if (event.start_time) {
+              // Parse as Moscow time (UTC+3) since all our events are in MSK
+              const dateStr = event.event_date; // "2026-02-10"
+              const timeStr = event.start_time.substring(0, 5); // "10:00"
+              // Create date in MSK timezone by subtracting 3 hours from the specified time
+              const mskDate = new Date(`${dateStr}T${timeStr}:00+03:00`);
+              eventStartTime = mskDate;
+            } else {
+              // Fallback: use event_date at 10:00 MSK
+              eventStartTime = new Date(`${event.event_date}T10:00:00+03:00`);
+            }
+            
             await createEventReminders(
               event.id,
               orgId,
               event.title,
               event.description,
-              new Date(event.event_date),
+              eventStartTime,
               event.location_info,
               targetGroups
             );
-            logger.info({ event_id: event.id, targetGroupsCount: targetGroups.length }, 'Event reminders created');
+            logger.info({ 
+              event_id: event.id, 
+              targetGroupsCount: targetGroups.length,
+              event_start_time: eventStartTime.toISOString(),
+              event_date: event.event_date,
+              start_time: event.start_time
+            }, 'Event reminders created');
           }
         }
       } catch (reminderError: any) {

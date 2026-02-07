@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import Link from 'next/link'
 import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
@@ -849,7 +850,12 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           return (
                             <tr key={registration.id}>
                               <td className="px-4 py-3 text-sm">
-                                {regData.full_name || registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
+                                <Link 
+                                  href={`/p/${orgId}/members/${registration.participants.id}`}
+                                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                                >
+                                  {regData.full_name || registration.participants.full_name || `ID: ${registration.participants.tg_user_id}`}
+                                </Link>
                               </td>
                               <td className="px-4 py-3 text-sm text-neutral-500">
                                 {registration.participants.username ? `@${registration.participants.username}` : '—'}

@@ -241,10 +241,10 @@ function EventRegistrationRow({
                 {event.start_time && ` ${formatTime(event.start_time)}`}
               </span>
             )}
-            {event.location && (
+            {event.location_info && (
               <span className="flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
-                <span className="truncate max-w-[150px]">{event.location}</span>
+                <span className="truncate max-w-[150px]">{event.location_info}</span>
               </span>
             )}
           </div>

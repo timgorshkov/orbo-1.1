@@ -187,7 +187,7 @@ export default function PaymentsTab({ eventId, event }: Props) {
       KZT: '₸',
       BYN: 'Br'
     }
-    return `${amount.toLocaleString('ru-RU')} ${currencySymbols[event.currency] || event.currency}`
+    return `${Math.round(amount).toLocaleString('ru-RU')} ${currencySymbols[event.currency] || event.currency}`
   }
 
   const getStatusBadge = (status: string, isOverdue?: boolean) => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { BarChart3, TrendingUp, Users, CreditCard, AlertTriangle, CheckCircle2, XCircle, UserCheck } from 'lucide-react'
+import { BarChart3, Users, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface Registration {
@@ -126,108 +126,8 @@ export default function EventAnalyticsTab({
         />
       </div>
 
-      {/* Payment metrics (if applicable) */}
-      {requiresPayment && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              Финансы
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <div className="text-2xl font-bold text-green-600">
-                  {stats.totalRevenue.toLocaleString('ru-RU')} ₽
-                </div>
-                <div className="text-xs text-gray-500">Получено</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-400">
-                  {stats.expectedRevenue.toLocaleString('ru-RU')} ₽
-                </div>
-                <div className="text-xs text-gray-500">Ожидается</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-blue-600">{stats.paid}</div>
-                <div className="text-xs text-gray-500">Оплатили</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-yellow-600">{stats.pendingPayment + stats.overduePayment}</div>
-                <div className="text-xs text-gray-500">Ожидают оплаты</div>
-              </div>
-            </div>
-            {stats.paymentRate !== null && (
-              <div className="mt-4">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Конверсия в оплату</span>
-                  <span>{stats.paymentRate}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-green-500 h-2 rounded-full transition-all" 
-                    style={{ width: `${Math.min(stats.paymentRate, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Funnel */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Воронка события
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <FunnelRow 
-              label="Зарегистрировались" 
-              value={stats.activeRegistrations} 
-              total={stats.activeRegistrations} 
-              color="bg-blue-500" 
-            />
-            {requiresPayment && (
-              <FunnelRow 
-                label="Оплатили" 
-                value={stats.paid} 
-                total={stats.activeRegistrations} 
-                color="bg-indigo-500" 
-              />
-            )}
-            {stats.isPast && (
-              <>
-                <FunnelRow 
-                  label="Пришли (check-in)" 
-                  value={stats.attended} 
-                  total={stats.activeRegistrations} 
-                  color="bg-green-500" 
-                />
-                <FunnelRow 
-                  label="Не пришли" 
-                  value={stats.noShow} 
-                  total={stats.activeRegistrations} 
-                  color="bg-red-400" 
-                />
-              </>
-            )}
-            <FunnelRow 
-              label="Отменили" 
-              value={stats.cancelled} 
-              total={stats.total} 
-              color="bg-gray-400" 
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Registration timeline */}
-      {stats.registrationsByDay.size > 1 && (
+      {/* Registration timeline - vertical bars */}
+      {stats.registrationsByDay.size > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -236,29 +136,33 @@ export default function EventAnalyticsTab({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {Array.from(stats.registrationsByDay.entries())
+            {(() => {
+              const entries = Array.from(stats.registrationsByDay.entries())
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([day, count]) => {
-                  const maxCount = Math.max(...Array.from(stats.registrationsByDay.values()))
-                  const width = maxCount > 0 ? (count / maxCount) * 100 : 0
-                  return (
-                    <div key={day} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 w-20 flex-shrink-0">
-                        {new Date(day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                      </span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-4">
-                        <div
-                          className="bg-blue-500 h-4 rounded-full transition-all flex items-center justify-end pr-2"
-                          style={{ width: `${Math.max(width, 10)}%` }}
-                        >
-                          <span className="text-[10px] text-white font-medium">{count}</span>
-                        </div>
+              const maxCount = Math.max(...entries.map(([, c]) => c))
+              const barHeight = 160 // max bar height in px
+              
+              return (
+                <div className="flex items-end gap-1 sm:gap-2 overflow-x-auto pb-2" style={{ minHeight: barHeight + 40 }}>
+                  {entries.map(([day, count]) => {
+                    const height = maxCount > 0 ? Math.max((count / maxCount) * barHeight, 20) : 20
+                    return (
+                      <div key={day} className="flex flex-col items-center flex-shrink-0" style={{ minWidth: entries.length > 14 ? 28 : 40 }}>
+                        <span className="text-xs font-medium text-gray-700 mb-1">{count}</span>
+                        <div 
+                          className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600"
+                          style={{ height: `${height}px`, minWidth: entries.length > 14 ? 20 : 28 }}
+                          title={`${new Date(day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}: ${count} рег.`}
+                        />
+                        <span className="text-[10px] text-gray-500 mt-1 whitespace-nowrap">
+                          {new Date(day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                        </span>
                       </div>
-                    </div>
-                  )
-                })}
-            </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
       )}
@@ -292,26 +196,3 @@ function MetricCard({ icon: Icon, label, value, subtitle, color }: {
   )
 }
 
-function FunnelRow({ label, value, total, color }: {
-  label: string
-  value: number
-  total: number
-  color: string
-}) {
-  const percent = total > 0 ? Math.round((value / total) * 100) : 0
-
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-gray-700">{label}</span>
-        <span className="font-medium text-gray-900">{value} <span className="text-gray-400 text-xs">({percent}%)</span></span>
-      </div>
-      <div className="w-full bg-gray-100 rounded-full h-2.5">
-        <div 
-          className={`${color} h-2.5 rounded-full transition-all`} 
-          style={{ width: `${Math.max(percent, 2)}%` }}
-        />
-      </div>
-    </div>
-  )
-}

@@ -98,7 +98,7 @@ export interface ParticipantEventRegistration {
     start_time: string | null;
     end_time: string | null;
     status: string;
-    location: string | null;
+    location_info: string | null;
     event_type: string | null;
     requires_payment: boolean;
     default_price: number | null;
