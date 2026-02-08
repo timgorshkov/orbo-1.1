@@ -397,6 +397,15 @@ export default function NotificationRulesContent() {
         </div>
       )}
 
+      {/* Digest Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <Bell className="h-4 w-4" />
+          Еженедельный дайджест
+        </h3>
+        <DigestInlineSettings orgId={orgId} />
+      </div>
+
       {/* Custom Rules Section */}
       <div className="space-y-4">
         {rules.filter(r => !r.is_system).length > 0 && (
@@ -537,6 +546,145 @@ export default function NotificationRulesContent() {
             })}
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Inline digest settings component
+function DigestInlineSettings({ orgId }: { orgId: string }) {
+  const [loading, setLoading] = useState(true)
+  const [enabled, setEnabled] = useState(false)
+  const [day, setDay] = useState(1)
+  const [time, setTime] = useState('09:00:00')
+  const [lastSent, setLastSent] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const DAYS = [
+    { value: 0, label: 'Вс' },
+    { value: 1, label: 'Пн' },
+    { value: 2, label: 'Вт' },
+    { value: 3, label: 'Ср' },
+    { value: 4, label: 'Чт' },
+    { value: 5, label: 'Пт' },
+    { value: 6, label: 'Сб' },
+  ]
+
+  useEffect(() => {
+    loadDigestSettings()
+  }, [orgId])
+
+  const loadDigestSettings = async () => {
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/digest-settings`)
+      if (res.ok) {
+        const data = await res.json()
+        setEnabled(data.digest_enabled || false)
+        setDay(data.digest_day ?? 1)
+        setTime(data.digest_time || '09:00:00')
+        setLastSent(data.last_digest_sent_at)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSave = async (updates: Record<string, unknown>) => {
+    setSaving(true)
+    try {
+      await fetch(`/api/organizations/${orgId}/digest-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleEnabled = async () => {
+    const newEnabled = !enabled
+    setEnabled(newEnabled)
+    await handleSave({ digest_enabled: newEnabled })
+  }
+
+  if (loading) {
+    return <div className="border rounded-lg p-4 bg-gray-50 text-center text-sm text-gray-400">Загрузка...</div>
+  }
+
+  return (
+    <div className={`border rounded-lg p-4 ${enabled ? 'bg-white' : 'bg-gray-50 opacity-75'}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-3 flex-1">
+          <div className="p-2 rounded-lg bg-indigo-50">
+            <Bell className="h-5 w-5 text-indigo-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium">Еженедельный дайджест</h4>
+              {!enabled && (
+                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Отключено</span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 mt-0.5">
+              AI-отчёт с метриками активности, топ-участниками и рекомендациями
+            </p>
+            
+            {enabled && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-500">День:</span>
+                  <select 
+                    value={day}
+                    onChange={async (e) => { 
+                      const v = parseInt(e.target.value); 
+                      setDay(v); 
+                      await handleSave({ digest_day: v }) 
+                    }}
+                    className="border rounded px-1.5 py-0.5 text-xs"
+                  >
+                    {DAYS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-500">Время:</span>
+                  <input 
+                    type="time"
+                    value={time.slice(0, 5)}
+                    onChange={async (e) => { 
+                      const v = e.target.value + ':00'; 
+                      setTime(v); 
+                      await handleSave({ digest_time: v }) 
+                    }}
+                    className="border rounded px-1.5 py-0.5 text-xs"
+                  />
+                </div>
+                {lastSent && (
+                  <span className="text-gray-400">
+                    Отправлен: {formatTimeAgo(lastSent)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={toggleEnabled}
+          disabled={saving}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex-shrink-0 ${
+            enabled 
+              ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          {enabled ? 'Включено' : 'Включить'}
+        </button>
       </div>
     </div>
   )
