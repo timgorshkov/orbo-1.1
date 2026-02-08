@@ -39,11 +39,43 @@ export async function GET(
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
+    // First, get all event IDs for this org
+    const { data: orgEvents, error: eventsError } = await adminSupabase
+      .from('events')
+      .select('id')
+      .eq('org_id', orgId)
+
+    if (eventsError) {
+      logger.error({ error: eventsError, orgId }, 'Failed to fetch org events')
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    }
+
+    const eventIds = orgEvents?.map(e => e.id) || []
+    
+    // If no events, return empty data
+    if (eventIds.length === 0) {
+      const dateArray: string[] = []
+      const currentDate = new Date(startDate)
+      while (currentDate <= endDate) {
+        dateArray.push(currentDate.toISOString().split('T')[0])
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+      const emptyData = dateArray.map(date => ({
+        date,
+        registrations: 0,
+        payments: 0
+      }))
+      return NextResponse.json({
+        data: emptyData,
+        totals: { registrations: 0, payments: 0 }
+      })
+    }
+
     // Get registrations count by date
     const { data: registrations, error: regError } = await adminSupabase
       .from('event_registrations')
-      .select('registered_at, events!inner(org_id)')
-      .eq('events.org_id', orgId)
+      .select('registered_at, event_id')
+      .in('event_id', eventIds)
       .gte('registered_at', startDate.toISOString())
       .lte('registered_at', endDate.toISOString())
       .order('registered_at', { ascending: true })
@@ -56,8 +88,8 @@ export async function GET(
     // Get payments count by date
     const { data: payments, error: payError } = await adminSupabase
       .from('event_registrations')
-      .select('registered_at, payment_status, events!inner(org_id)')
-      .eq('events.org_id', orgId)
+      .select('registered_at, payment_status, event_id')
+      .in('event_id', eventIds)
       .eq('payment_status', 'paid')
       .gte('registered_at', startDate.toISOString())
       .lte('registered_at', endDate.toISOString())

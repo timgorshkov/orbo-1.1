@@ -167,8 +167,8 @@ export async function createEventReminders(
   let eventUrl: string;
   if (useMiniAppLink) {
     // MiniApp link format: https://t.me/orbo_event_bot/events?startapp=e-{eventId}
-    const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_event_bot';
-    eventUrl = `https://t.me/${botUsername}/events?startapp=e-${eventId}`;
+    // Fixed bot username for events (not community bot)
+    eventUrl = `https://t.me/orbo_event_bot/events?startapp=e-${eventId}`;
   } else {
     // Web link format: https://my.orbo.ru/e/{eventId}
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
