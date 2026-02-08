@@ -1021,25 +1021,51 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               </td>
                               {showAdminFeatures && (
                                 <td className="px-4 py-3 text-sm">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      const regData = registration.registration_data || {}
-                                      setEditingRegistration({
-                                        id: registration.id,
-                                        full_name: regData.full_name || registration.participants.full_name || '',
-                                        email: regData.email || registration.participants.email || null,
-                                        phone: regData.phone_number || regData.phone || registration.participants.phone || null,
-                                        bio: regData.bio || registration.participants.bio || null,
-                                        payment_status: registration.payment_status || null
-                                      })
-                                      setShowEditParticipantDialog(true)
-                                    }}
-                                    className="p-1.5 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                    title="Редактировать регистрацию"
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </button>
+                                  <div className="flex items-center gap-1">
+                                    {registration.status === 'registered' && (
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          try {
+                                            const response = await fetch(`/api/events/${event.id}/participants/${registration.id}/checkin`, {
+                                              method: 'POST',
+                                            })
+                                            if (response.ok) {
+                                              router.refresh()
+                                            } else {
+                                              alert('Не удалось отметить участника')
+                                            }
+                                          } catch (err) {
+                                            console.error('Check-in error:', err)
+                                            alert('Ошибка при отметке участника')
+                                          }
+                                        }}
+                                        className="p-1.5 text-neutral-500 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                        title="Отметить присутствие"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const regData = registration.registration_data || {}
+                                        setEditingRegistration({
+                                          id: registration.id,
+                                          full_name: regData.full_name || registration.participants.full_name || '',
+                                          email: regData.email || registration.participants.email || null,
+                                          phone: regData.phone_number || regData.phone || registration.participants.phone || null,
+                                          bio: regData.bio || registration.participants.bio || null,
+                                          payment_status: registration.payment_status || null
+                                        })
+                                        setShowEditParticipantDialog(true)
+                                      }}
+                                      className="p-1.5 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                      title="Редактировать регистрацию"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               )}
                             </tr>
