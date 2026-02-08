@@ -78,6 +78,7 @@ interface TelegramWebApp {
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
     selectionChanged: () => void;
   };
+  openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
 }
 
 interface Window {
