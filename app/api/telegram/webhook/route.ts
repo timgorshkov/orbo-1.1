@@ -263,9 +263,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           org_id: orgId,
           user_id: body.message?.from?.id,
           username: body.message?.from?.username,
-          first_name: body.message?.from?.first_name,
           chat_type: body.message.chat.type,
-          message_text: body.message.text?.substring(0, 50)
         }, '📝 [WEBHOOK] Processing message from org group');
         
         // Use optimized processing if enabled

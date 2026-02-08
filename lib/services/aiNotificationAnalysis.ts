@@ -176,8 +176,11 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
     logger.info({
       rule_id: ruleId,
       model: 'gpt-4o-mini',
-      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
     }, '📞 [AI-ANALYSIS] Calling OpenAI API');
+    logger.debug({
+      rule_id: ruleId,
+      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
+    }, '📞 [AI-ANALYSIS] Messages sample');
     
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -189,12 +192,6 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       max_tokens: 300,
       response_format: { type: 'json_object' }
     });
-
-    logger.info({
-      rule_id: ruleId,
-      has_response: !!completion.choices[0]?.message?.content,
-      usage: completion.usage
-    }, '✅ [AI-ANALYSIS] OpenAI API response received');
 
     const responseText = completion.choices[0]?.message?.content;
     if (!responseText) {
@@ -212,11 +209,14 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       has_negative: result.has_negative,
       severity: result.severity,
       summary: result.summary,
-      problematic_indices: result.problematic_indices,
-      raw_response: responseText.slice(0, 500), // First 500 chars for debugging
       tokens: totalTokens,
       cost_usd: costUsd
     }, '📊 [AI-ANALYSIS] Analysis result');
+    logger.debug({
+      rule_id: ruleId,
+      problematic_indices: result.problematic_indices,
+      raw_response: responseText.slice(0, 500),
+    }, '📊 [AI-ANALYSIS] Raw response details');
 
     // Log API call
     await logAICall({
@@ -321,8 +321,11 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
     logger.info({
       rule_id: ruleId,
       model: 'gpt-4o-mini',
-      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
     }, '📞 [AI-ANALYSIS] Calling OpenAI API for questions');
+    logger.debug({
+      rule_id: ruleId,
+      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
+    }, '📞 [AI-ANALYSIS] Messages sample for questions');
     
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -335,10 +338,10 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       response_format: { type: 'json_object' }
     });
 
-    logger.info({
+    logger.debug({
       rule_id: ruleId,
       has_response: !!completion.choices[0]?.message?.content,
-      usage: completion.usage
+      total_tokens: completion.usage?.total_tokens
     }, '✅ [AI-ANALYSIS] OpenAI API response received for questions');
 
     const responseText = completion.choices[0]?.message?.content;

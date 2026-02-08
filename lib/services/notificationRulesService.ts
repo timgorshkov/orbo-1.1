@@ -831,7 +831,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         logger.info({ rule_name: rule.name, chat: groupTitle, message_count: allMessages.length, timeout_hours: timeoutHours, window_minutes: timeoutHours * 60 + 30 }, '❓ Unanswered question check: fetched messages');
         
         if (allMessages.length < 1) {
-          logger.info({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: no messages in window');
+          logger.debug({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: no messages in window');
           continue;
         }
         
@@ -865,8 +865,11 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             topic_id: topicId,
             questions_found: analysis.questions.length,
             cost_usd: analysis.cost_usd,
-            questions: analysis.questions.map((q: any) => ({ text: q.text?.slice(0, 60), author: q.author, answered: q.answered }))
           }, '❓ AI analysis result for unanswered questions');
+          logger.debug({
+            rule_name: rule.name,
+            questions: analysis.questions.map((q: any) => ({ text: q.text?.slice(0, 60), author: q.author, answered: q.answered }))
+          }, '❓ Questions detail');
           
           // Send notification for each unanswered question
           for (const question of analysis.questions) {
@@ -875,7 +878,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             );
             
             if (hoursAgo < timeoutHours) {
-              logger.info({ rule_name: rule.name, chat: groupTitle, topic_id: topicId, hours_ago: hoursAgo, timeout: timeoutHours, question: question.text?.slice(0, 60) }, '❓ Question not yet timed out, skipping');
+              logger.debug({ rule_name: rule.name, chat: groupTitle, topic_id: topicId, hours_ago: hoursAgo, timeout: timeoutHours, question: question.text?.slice(0, 60) }, '❓ Question not yet timed out, skipping');
               continue;
             }
             
