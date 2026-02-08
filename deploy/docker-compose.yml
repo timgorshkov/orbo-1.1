@@ -33,27 +33,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    # Performance tuning for 32GB RAM server
+    # Performance tuning for 32GB RAM server (DB ~100MB, tuned with growth headroom)
     command: >
       postgres
-      -c shared_buffers=8GB
-      -c effective_cache_size=24GB
-      -c maintenance_work_mem=2GB
+      -c shared_buffers=1GB
+      -c effective_cache_size=8GB
+      -c maintenance_work_mem=256MB
       -c checkpoint_completion_target=0.9
-      -c wal_buffers=64MB
+      -c wal_buffers=16MB
       -c default_statistics_target=100
       -c random_page_cost=1.1
       -c effective_io_concurrency=200
-      -c work_mem=52428kB
+      -c work_mem=32MB
       -c huge_pages=off
-      -c min_wal_size=1GB
-      -c max_wal_size=4GB
-      -c max_connections=200
+      -c min_wal_size=256MB
+      -c max_wal_size=2GB
+      -c max_connections=100
       -c logging_collector=on
       -c log_directory='/var/lib/postgresql/data/log'
-      -c log_filename='postgresql-%Y-%m-%d_%H%M%S.log'
+      -c log_filename='postgresql-%Y-%m-%d.log'
       -c log_rotation_age=1d
-      -c log_rotation_size=100MB
+      -c log_rotation_size=50MB
       -c log_min_duration_statement=1000
 
   # ============================================
@@ -78,6 +78,8 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://orbo:${POSTGRES_PASSWORD}@postgres:5432/orbo
+      - DATABASE_SSL=false
+      - DB_PROVIDER=postgres
       - NODE_ENV=production
     ports:
       - "127.0.0.1:3000:3000"

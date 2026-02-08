@@ -60,7 +60,7 @@ curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-event-re
 EOF
 chmod +x ~/orbo/cron-send-event-reminders.sh
 
-# Create cron script for send-weekly-digests (hourly, checks schedule internally)
+# Create cron script for send-weekly-digests (every 3 hours, checks schedule internally)
 cat > ~/orbo/cron-send-weekly-digests.sh << EOF
 #!/bin/bash
 curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-weekly-digests" >> /var/log/orbo-cron.log 2>&1
@@ -87,10 +87,12 @@ cat >> "$CRONTAB_FILE" << CRON
 */5 * * * * ~/orbo/cron-group-metrics.sh
 */15 * * * * ~/orbo/cron-notification-rules.sh
 0 * * * * ~/orbo/cron-sync-attention-zones.sh
-* * * * * ~/orbo/cron-send-announcements.sh
+*/5 * * * * ~/orbo/cron-send-announcements.sh
 0 * * * * ~/orbo/cron-send-event-reminders.sh
-0 * * * * ~/orbo/cron-send-weekly-digests.sh
+0 */3 * * * ~/orbo/cron-send-weekly-digests.sh
 0 */6 * * * ~/orbo/cron-notification-health-check.sh
+# Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
+0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1
 CRON
 
 # Install crontab from file
