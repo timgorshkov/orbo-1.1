@@ -146,57 +146,72 @@ export default function AttentionZones({
           </div>
         )}
 
-        {/* AI Alerts */}
-        {aiAlerts.length > 0 && (
-          <div className="border-l-4 border-purple-500 pl-3 py-1">
-            <h3 className="font-semibold text-purple-900 text-sm mb-1.5">AI-алерты</h3>
-            <div className="space-y-1">
-              {aiAlerts.slice(0, 2).map(alert => {
-                const icon = alert.type === 'negative_discussion' 
-                  ? <MessageCircleWarning className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
-                  : alert.type === 'unanswered_question'
-                  ? <HelpCircle className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
-                  : <Volume2 className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
-                
-                const typeLabel = alert.type === 'negative_discussion' 
-                  ? 'Негатив' 
-                  : alert.type === 'unanswered_question' 
-                  ? 'Вопрос без ответа' 
-                  : 'Неактивная группа'
+        {/* AI Alerts - color matches notification type */}
+        {aiAlerts.length > 0 && (() => {
+          // Separate alerts by severity: red (negative) vs amber (questions, inactive)
+          const hasRedAlerts = aiAlerts.some(a => a.type === 'negative_discussion');
+          // Use red border if any negative alerts, otherwise amber
+          const borderColor = hasRedAlerts ? 'border-red-500' : 'border-amber-500';
+          const headerColor = hasRedAlerts ? 'text-red-900' : 'text-amber-900';
+          
+          return (
+            <div className={`border-l-4 ${borderColor} pl-3 py-1`}>
+              <h3 className={`font-semibold ${headerColor} text-sm mb-1.5`}>AI-алерты</h3>
+              <div className="space-y-1">
+                {aiAlerts.slice(0, 2).map(alert => {
+                  // Per-alert colors: red for negative, amber for questions/inactive
+                  const isNegative = alert.type === 'negative_discussion';
+                  const alertBg = isNegative ? 'bg-red-50' : 'bg-amber-50';
+                  const alertTextColor = isNegative ? 'text-red-600' : 'text-amber-600';
+                  const alertSubColor = isNegative ? 'text-red-500' : 'text-amber-500';
+                  const alertTimeColor = isNegative ? 'text-red-400' : 'text-amber-400';
+                  
+                  const icon = alert.type === 'negative_discussion' 
+                    ? <MessageCircleWarning className={`h-3.5 w-3.5 ${alertSubColor} flex-shrink-0 mt-0.5`} />
+                    : alert.type === 'unanswered_question'
+                    ? <HelpCircle className={`h-3.5 w-3.5 ${alertSubColor} flex-shrink-0 mt-0.5`} />
+                    : <Volume2 className={`h-3.5 w-3.5 ${alertSubColor} flex-shrink-0 mt-0.5`} />
+                  
+                  const typeLabel = alert.type === 'negative_discussion' 
+                    ? 'Негатив' 
+                    : alert.type === 'unanswered_question' 
+                    ? 'Вопрос без ответа' 
+                    : 'Неактивная группа'
 
-                const timeAgo = formatTimeAgo(alert.created_at)
+                  const timeAgo = formatTimeAgo(alert.created_at)
 
-                return (
-                  <div
-                    key={alert.id}
-                    className="block px-2 py-1.5 rounded bg-purple-50"
-                  >
-                    <div className="flex items-start gap-2">
-                      {icon}
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-purple-900 block truncate">
-                          {typeLabel}{alert.group_name ? ` • ${alert.group_name}` : ''}
-                        </span>
-                        <span className="text-xs text-purple-600 line-clamp-2">
-                          {alert.message?.substring(0, 120)}{(alert.message?.length || 0) > 120 ? '...' : ''}
-                        </span>
-                        <span className="text-xs text-purple-400 mt-0.5 block">{timeAgo}</span>
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`block px-2 py-1.5 rounded ${alertBg}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {icon}
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm font-medium ${alertTextColor} block truncate`}>
+                            {typeLabel}{alert.group_name ? ` • ${alert.group_name}` : ''}
+                          </span>
+                          <span className={`text-xs ${alertSubColor} line-clamp-2`}>
+                            {alert.message?.substring(0, 120)}{(alert.message?.length || 0) > 120 ? '...' : ''}
+                          </span>
+                          <span className={`text-xs ${alertTimeColor} mt-0.5 block`}>{timeAgo}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-              {aiAlerts.length > 2 && (
-                <Link
-                  href={`/p/${orgId}/notifications`}
-                  className="block px-2 py-1 text-xs text-purple-600 hover:text-purple-700"
-                >
-                  Ещё {aiAlerts.length - 2} алертов →
-                </Link>
-              )}
+                  )
+                })}
+                {aiAlerts.length > 2 && (
+                  <Link
+                    href={`/p/${orgId}/notifications`}
+                    className="block px-2 py-1 text-xs text-amber-600 hover:text-amber-700"
+                  >
+                    Ещё {aiAlerts.length - 2} алертов →
+                  </Link>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Churning Participants - only show if no higher-priority alerts */}
         {showChurningOnDashboard && churningParticipants.length > 0 && (

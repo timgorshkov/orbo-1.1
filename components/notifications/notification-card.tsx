@@ -33,7 +33,10 @@ interface NotificationCardProps {
   onResolve: (id: string, sourceType: string) => Promise<void>;
 }
 
-// Конфигурация типов уведомлений с цветами и иконками
+// Unified 3-color scheme:
+// 🔴 Red = Critical (negative, critical events) 
+// 🟠 Amber = Warning (questions, inactivity, churning)
+// 🔵 Blue = Info (newcomers)
 const NOTIFICATION_CONFIG: Record<string, {
   icon: React.ReactNode;
   label: string;
@@ -47,23 +50,31 @@ const NOTIFICATION_CONFIG: Record<string, {
     label: 'Негатив в группе',
     borderColor: 'border-l-red-500',
     bgColor: 'bg-red-50',
-    iconColor: 'text-red-500',
+    iconColor: 'text-red-600',
     hint: 'Обнаружена негативная дискуссия',
+  },
+  critical_event: {
+    icon: <Calendar className="h-5 w-5" />,
+    label: 'Критичное событие',
+    borderColor: 'border-l-red-500',
+    bgColor: 'bg-red-50',
+    iconColor: 'text-red-600',
+    hint: 'Низкая регистрация',
   },
   unanswered_question: {
     icon: <MessageCircle className="h-5 w-5" />,
     label: 'Неотвеченный вопрос',
-    borderColor: 'border-l-orange-500',
-    bgColor: 'bg-orange-50',
-    iconColor: 'text-orange-500',
+    borderColor: 'border-l-amber-500',
+    bgColor: 'bg-amber-50',
+    iconColor: 'text-amber-600',
     hint: 'Вопрос ожидает ответа',
   },
   group_inactive: {
     icon: <Clock className="h-5 w-5" />,
     label: 'Неактивность группы',
-    borderColor: 'border-l-yellow-500',
-    bgColor: 'bg-yellow-50',
-    iconColor: 'text-yellow-600',
+    borderColor: 'border-l-amber-500',
+    bgColor: 'bg-amber-50',
+    iconColor: 'text-amber-600',
     hint: 'В группе нет сообщений',
   },
   churning_participant: {
@@ -79,25 +90,17 @@ const NOTIFICATION_CONFIG: Record<string, {
     label: 'Неактивный новичок',
     borderColor: 'border-l-blue-500',
     bgColor: 'bg-blue-50',
-    iconColor: 'text-blue-500',
+    iconColor: 'text-blue-600',
     hint: 'Нет активности после вступления',
-  },
-  critical_event: {
-    icon: <Calendar className="h-5 w-5" />,
-    label: 'Критичное событие',
-    borderColor: 'border-l-red-500',
-    bgColor: 'bg-red-50',
-    iconColor: 'text-red-500',
-    hint: 'Низкая регистрация',
   },
 };
 
 const DEFAULT_CONFIG = {
   icon: <AlertTriangle className="h-5 w-5" />,
   label: 'Уведомление',
-  borderColor: 'border-l-gray-300',
-  bgColor: 'bg-gray-50',
-  iconColor: 'text-gray-500',
+  borderColor: 'border-l-amber-500',
+  bgColor: 'bg-amber-50',
+  iconColor: 'text-amber-600',
 };
 
 export default function NotificationCard({ notification, orgId, onResolve }: NotificationCardProps) {
@@ -172,7 +175,7 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
             )}
             
             {/* Link to participant/group/message */}
-            {notification.link_url.startsWith('https://t.me') ? (
+            {notification.link_url && notification.link_url.startsWith('https://t.me') ? (
               <a 
                 href={notification.link_url}
                 target="_blank"
@@ -181,14 +184,14 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
               >
                 Открыть в Telegram →
               </a>
-            ) : (
+            ) : notification.link_url ? (
               <Link 
                 href={notification.link_url}
                 className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
               >
-                {notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Открыть →'}
+                {notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Подробнее →'}
               </Link>
-            )}
+            ) : null}
             
             {/* Resolved info */}
             {isResolved && (
