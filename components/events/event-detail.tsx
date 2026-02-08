@@ -249,16 +249,21 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         return
       }
 
-      const dateStr = typeof event.event_date === 'string' 
+      const startDateStr = typeof event.event_date === 'string' 
         ? event.event_date.split('T')[0] 
         : new Date(event.event_date).toISOString().split('T')[0]
+      
+      // Use end_date if provided, otherwise use event_date
+      const endDateStr = event.end_date 
+        ? (typeof event.end_date === 'string' ? event.end_date.split('T')[0] : new Date(event.end_date).toISOString().split('T')[0])
+        : startDateStr
       
       const startTimeStr = event.start_time?.substring(0, 5) || '10:00'
       const endTimeStr = event.end_time?.substring(0, 5) || '12:00'
       
       // Create Date objects in MSK timezone
-      const startDate = new Date(`${dateStr}T${startTimeStr}:00+03:00`)
-      const endDate = new Date(`${dateStr}T${endTimeStr}:00+03:00`)
+      const startDate = new Date(`${startDateStr}T${startTimeStr}:00+03:00`)
+      const endDate = new Date(`${endDateStr}T${endTimeStr}:00+03:00`)
       
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
         console.error('Invalid date/time values', { dateStr, startTimeStr, endTimeStr })
@@ -622,7 +627,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           {/* QR Ticket - admin tab */}
-                          {userRegistration?.qr_token && (
+                          {userRegistration?.qr_token && event.enable_qr_checkin !== false && (
                             <div className="mt-3 mb-3">
                               <QRCode
                                 value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}
@@ -1132,7 +1137,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           {/* QR Ticket - public view */}
-                          {userRegistration?.qr_token && (
+                          {userRegistration?.qr_token && event.enable_qr_checkin !== false && (
                             <div className="mt-3 mb-3">
                               <QRCode
                                 value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}

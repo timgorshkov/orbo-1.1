@@ -272,20 +272,33 @@ export async function getHomePageData(
       }
     })
 
-    // 5. Get recent members (5 max) - exclude bots, archived, and system accounts
-    const { data: recentMembers } = await supabase
+    // 5. Get recent members (10 max, will filter in app) - exclude bots, archived, and system accounts
+    const { data: recentMembersRaw } = await supabase
       .from('participants')
       .select('id, full_name, username, photo_url, created_at, source, tg_user_id, status, participant_status')
       .eq('org_id', orgId)
       .is('merged_into', null)
-      .neq('source', 'bot')
-      .not('tg_user_id', 'in', '(777000,136817688,1087968824)')
-      .or('status.is.null,status.neq.archived')
-      .or('participant_status.is.null,participant_status.neq.excluded')
       .order('created_at', { ascending: false })
-      .limit(5)
+      .limit(10)
 
-    const processedMembers = (recentMembers || []).map(member => ({
+    // Filter in application code for better control
+    const recentMembers = (recentMembersRaw || []).filter(member => {
+      // Exclude bots
+      if (member.source === 'bot') return false
+      
+      // Exclude system Telegram accounts
+      if (member.tg_user_id && [777000, 136817688, 1087968824].includes(member.tg_user_id)) return false
+      
+      // Exclude archived
+      if (member.status === 'archived') return false
+      
+      // Exclude excluded
+      if (member.participant_status === 'excluded') return false
+      
+      return true
+    }).slice(0, 5)
+
+    const processedMembers = recentMembers.map(member => ({
       id: member.id,
       full_name: member.full_name || 'Участник',
       username: member.username,

@@ -14,7 +14,6 @@ type Participant = {
   registered_at: string
   status: string
   is_authenticated: boolean
-  is_admin: boolean
 }
 
 type Props = {
@@ -29,6 +28,7 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
   const [error, setError] = useState<string | null>(null)
   const [linkCopied, setLinkCopied] = useState(false)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const handleCopyParticipantsLink = async () => {
     const url = `${window.location.origin}/p/${orgId}/events/${eventId}#participants`
@@ -83,6 +83,10 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
       })
       .then(data => {
         setParticipants(data.participants || [])
+        // is_admin is the same for all participants, so we can get it from the first one
+        if (data.participants && data.participants.length > 0 && data.participants[0].is_admin !== undefined) {
+          setIsAdmin(data.participants[0].is_admin)
+        }
         setLoading(false)
       })
       .catch(err => {
@@ -145,7 +149,6 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {participants.map(participant => {
           const isCheckedIn = participant.status === 'attended'
-          const isAdmin = participant.is_admin
           
           const CardContent = (
             <div className="flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded relative">
