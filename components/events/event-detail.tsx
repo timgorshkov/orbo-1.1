@@ -44,6 +44,7 @@ type Event = {
   allow_multiple_tickets?: boolean
   capacity_count_by_paid?: boolean
   show_participants_list?: boolean
+  enable_qr_checkin?: boolean
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
