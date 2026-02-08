@@ -63,13 +63,7 @@ export async function GET(
     
     // Разделяем на активные и решённые
     const active = filteredNotifications.filter((n: any) => !n.resolved_at);
-    const resolved = filteredNotifications.filter((n: any) => {
-      if (!n.resolved_at) return false;
-      // Скрываем решённые старше 24ч
-      const resolvedTime = new Date(n.resolved_at).getTime();
-      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      return resolvedTime > dayAgo;
-    });
+    const resolved = filteredNotifications.filter((n: any) => !!n.resolved_at);
     
     // Статистика
     const stats = {

@@ -363,15 +363,16 @@ export async function GET(
       attentionZones.hasMore.newcomers = Math.max(0, newcomersList.length - 3)
     }
 
-    // 4d. Fetch latest AI alerts from notification_logs (last 5 unread)
+    // 4d. Fetch latest AI alerts from notification_logs (last 5 unresolved)
     let aiAlerts: any[] = [];
     try {
       const { data: alertsData } = await adminSupabase
         .from('notification_logs')
-        .select('id, rule_id, rule_type, trigger_context, notification_status, created_at')
+        .select('id, rule_id, rule_type, trigger_context, notification_status, created_at, resolved_at')
         .eq('org_id', orgId)
         .in('notification_status', ['sent', 'failed'])
         .in('rule_type', ['negative_discussion', 'unanswered_question', 'group_inactive'])
+        .is('resolved_at', null)
         .order('created_at', { ascending: false })
         .limit(5);
       
