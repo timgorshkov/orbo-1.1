@@ -56,17 +56,25 @@ export default async function MembersPage({ params, searchParams }: {
     }
 
     // Map RPC result to expected format
-    participants = (enrichedParticipants || []).map((p: any) => ({
-      ...p,
-      is_org_owner: p.is_org_owner,
-      is_group_creator: p.is_group_creator,
-      is_admin: p.is_org_admin || p.is_group_admin,
-      is_owner: p.is_org_owner, // backwards compat
-      tags: p.tags || [],
-      real_join_date: p.first_message_at || p.created_at,
-      real_last_activity: p.last_message_at || p.last_activity_at,
-      first_message_at: p.first_message_at
-    }))
+    participants = (enrichedParticipants || []).map((p: any) => {
+      // Use the LATEST of last_message_at and last_activity_at (not first non-null)
+      const lastMsg = p.last_message_at ? new Date(p.last_message_at).getTime() : 0;
+      const lastAct = p.last_activity_at ? new Date(p.last_activity_at).getTime() : 0;
+      const latestActivity = lastMsg > lastAct ? p.last_message_at : (p.last_activity_at || p.last_message_at);
+      
+      return {
+        ...p,
+        is_org_owner: p.is_org_owner,
+        is_group_creator: p.is_group_creator,
+        is_admin: p.is_org_admin || p.is_group_admin,
+        is_owner: p.is_org_owner, // backwards compat
+        tags: p.tags || [],
+        real_join_date: p.first_message_at || p.created_at,
+        real_last_activity: latestActivity,
+        activity_score: p.activity_score || 0,
+        first_message_at: p.first_message_at
+      };
+    })
 
     logger.debug({ 
       participant_count: participants.length,
