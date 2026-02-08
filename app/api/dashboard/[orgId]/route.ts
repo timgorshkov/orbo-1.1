@@ -363,24 +363,28 @@ export async function GET(
       attentionZones.hasMore.newcomers = Math.max(0, newcomersList.length - 3)
     }
 
-    // 4d. Fetch latest AI alerts from notification_logs (last 3 unread)
+    // 4d. Fetch latest AI alerts from notification_logs (last 5 unread)
     let aiAlerts: any[] = [];
     try {
       const { data: alertsData } = await adminSupabase
         .from('notification_logs')
-        .select('id, rule_id, notification_type, message, severity, created_at, metadata')
+        .select('id, rule_id, rule_type, trigger_context, notification_status, created_at')
         .eq('org_id', orgId)
-        .in('notification_type', ['negative_discussion', 'unanswered_question', 'inactive_group'])
+        .eq('notification_status', 'sent')
+        .in('rule_type', ['negative_discussion', 'unanswered_question', 'group_inactive'])
         .order('created_at', { ascending: false })
         .limit(5);
       
       aiAlerts = (alertsData || []).map((alert: any) => ({
         id: alert.id,
-        type: alert.notification_type,
-        message: alert.message,
-        severity: alert.severity || 'medium',
+        type: alert.rule_type,
+        message: alert.trigger_context?.summary || alert.trigger_context?.question_text || 
+          (alert.rule_type === 'group_inactive' 
+            ? `Неактивна ${alert.trigger_context?.inactive_hours || '?'} ч.` 
+            : 'Уведомление'),
+        severity: alert.trigger_context?.severity || 'medium',
         created_at: alert.created_at,
-        group_name: alert.metadata?.group_name || alert.metadata?.chat_title,
+        group_name: alert.trigger_context?.group_title || alert.trigger_context?.group_name,
       }));
     } catch (alertsError: any) {
       logger.warn({ error: alertsError.message }, 'Error fetching AI alerts for dashboard');
