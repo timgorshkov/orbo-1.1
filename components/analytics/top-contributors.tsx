@@ -108,17 +108,8 @@ export default function TopContributors({ orgId, tgChatId, limit = 10 }: Props) 
         {data.map((contributor, index) => (
           <div 
             key={contributor.participant_id || contributor.tg_user_id} 
-            className="flex items-center gap-3 py-2 px-3 hover:bg-gray-50 rounded-lg transition-colors"
+            className="flex items-center gap-2 sm:gap-3 py-2 px-2 sm:px-3 hover:bg-gray-50 rounded-lg transition-colors"
           >
-            {/* Rank change indicator */}
-            <div className="w-6 flex justify-center">
-              {contributor.rank_change !== 0 && (
-                <span className={`text-sm font-medium ${getRankChangeColor(contributor.rank_change)}`}>
-                  {getRankChangeIcon(contributor.rank_change)}
-                </span>
-              )}
-            </div>
-
             {/* Rank badge */}
             <div 
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
@@ -132,18 +123,26 @@ export default function TopContributors({ orgId, tgChatId, limit = 10 }: Props) 
 
             {/* Name */}
             <div className="flex-1 min-w-0">
-              <span className="text-sm text-gray-900 truncate block">
-                {getDisplayName(contributor)}
-              </span>
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-gray-900 truncate block">
+                  {getDisplayName(contributor)}
+                </span>
+                {/* Rank change indicator - inline with name */}
+                {contributor.rank_change !== 0 && (
+                  <span className={`text-xs font-medium ${getRankChangeColor(contributor.rank_change)} flex-shrink-0`}>
+                    {getRankChangeIcon(contributor.rank_change)}
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Stats */}
-            <div className="flex items-center gap-3 text-sm text-gray-600">
-              <span className="whitespace-nowrap">
-                {contributor.message_count} сообщ.
+            {/* Stats - abbreviated on mobile */}
+            <div className="flex items-center gap-1.5 sm:gap-3 text-sm text-gray-600 flex-shrink-0">
+              <span className="whitespace-nowrap text-xs sm:text-sm">
+                {contributor.message_count}<span className="hidden sm:inline"> сообщ.</span>
               </span>
-              <span className="whitespace-nowrap">
-                {contributor.reaction_count} реакц.
+              <span className="whitespace-nowrap text-xs sm:text-sm">
+                {contributor.reaction_count}<span className="hidden sm:inline"> реакц.</span>
               </span>
             </div>
           </div>
