@@ -3,8 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { AppWindow, Plus, CheckCircle2, Loader2, ExternalLink, Store, Unplug } from 'lucide-react';
+import { AppWindow, Plus, CheckCircle2, Loader2, ExternalLink, Store, Unplug, RefreshCw, Users } from 'lucide-react';
 import { createClientLogger } from '@/lib/logger';
+
+interface ConnectedGroup {
+  chat_id: string;
+  title: string;
+  connected_at: string;
+}
 
 interface App {
   id: string;
@@ -16,6 +22,7 @@ interface App {
   miniapp_url: string | null;
   status: string;
   created_at: string;
+  connected_groups?: ConnectedGroup[];
 }
 
 export default function AppsPage() {
@@ -31,6 +38,7 @@ export default function AppsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [checkingGroups, setCheckingGroups] = useState<string | null>(null);
 
   useEffect(() => {
     if (createdAppId) {
@@ -92,7 +100,25 @@ export default function AppsPage() {
           app_count: data.apps?.length || 0,
           org_id: orgId
         }, 'Received apps');
-        setApps(data.apps || []);
+        
+        // Fetch connected_groups for catalog apps
+        const appsWithGroups = await Promise.all(
+          (data.apps || []).map(async (app: App) => {
+            if (app.app_type === 'catalog') {
+              try {
+                const connResp = await fetch(`/api/apps/catalog/${app.source_id}/connection?orgId=${orgId}`);
+                if (connResp.ok) {
+                  const connData = await connResp.json();
+                  return { ...app, connected_groups: connData.connected_groups || [] };
+                }
+              } catch (err) {
+                // Silently fail for individual connection queries
+              }
+            }
+            return app;
+          })
+        );
+        setApps(appsWithGroups);
       } else {
         clientLogger.error({
           status: response.status,
@@ -134,6 +160,38 @@ export default function AppsPage() {
       alert('Ошибка при отключении');
     } finally {
       setDisconnecting(null);
+    }
+  };
+
+  const handleCheckGroups = async (app: App) => {
+    if (app.app_type !== 'catalog') return;
+    setCheckingGroups(app.id);
+    try {
+      const response = await fetch(`/api/apps/catalog/${app.source_id}/check-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Update connected_groups for this app locally
+        setApps(prev => prev.map(a => 
+          a.id === app.id 
+            ? { ...a, connected_groups: data.connected_groups }
+            : a
+        ));
+        setSuccessMessage(`Найдено групп: ${data.total_connected} из ${data.total_checked}`);
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 5000);
+      } else {
+        alert('Не удалось проверить группы');
+      }
+    } catch (error) {
+      clientLogger.error({ error }, 'Error checking groups');
+      alert('Ошибка при проверке');
+    } finally {
+      setCheckingGroups(null);
     }
   };
 
@@ -292,6 +350,48 @@ export default function AppsPage() {
                     </div>
                   </div>
                 </Link>
+
+                {/* Connected groups section for catalog apps */}
+                {isAdmin && app.app_type === 'catalog' && (
+                  <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5" />
+                        Группы с ботом
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleCheckGroups(app);
+                        }}
+                        disabled={checkingGroups === app.id}
+                        className="text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200 flex items-center gap-1 disabled:opacity-50"
+                        title="Проверить в каких группах добавлен бот"
+                      >
+                        {checkingGroups === app.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                        Проверить
+                      </button>
+                    </div>
+                    {app.connected_groups && app.connected_groups.length > 0 ? (
+                      <ul className="space-y-1">
+                        {app.connected_groups.map((g, i) => (
+                          <li key={i} className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full flex-shrink-0" />
+                            {g.title}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                        Нажмите «Проверить» чтобы увидеть
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

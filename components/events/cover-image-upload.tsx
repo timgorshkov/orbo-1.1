@@ -24,12 +24,10 @@ export default function CoverImageUpload({
 }: CoverImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  const processFile = async (file: File) => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Пожалуйста, выберите изображение')
@@ -80,6 +78,34 @@ export default function CoverImageUpload({
       // Pass the file to parent for upload after event creation
       onFileSelect?.(file)
     }
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processFile(file)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    if (disabled || uploading) return
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    await processFile(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!disabled && !uploading) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
   }
 
   const handleDelete = async () => {
@@ -196,11 +222,23 @@ export default function CoverImageUpload({
       )}
 
       {!value && (
-        <div className="border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center">
-          <ImageIcon className="w-12 h-12 mx-auto text-neutral-400 mb-2" />
+        <div
+          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+            isDragging
+              ? 'border-blue-400 bg-blue-50'
+              : 'border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50'
+          } ${disabled || uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          <ImageIcon className={`w-12 h-12 mx-auto mb-2 ${isDragging ? 'text-blue-400' : 'text-neutral-400'}`} />
           <p className="text-sm text-neutral-500">
-            Укажите URL или загрузите изображение
+            {isDragging ? 'Отпустите для загрузки' : 'Перетащите изображение сюда или нажмите для выбора'}
           </p>
+          <p className="text-xs text-neutral-400 mt-1">JPG, PNG, WebP, GIF до 5 МБ</p>
         </div>
       )}
     </div>

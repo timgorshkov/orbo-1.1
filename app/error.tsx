@@ -34,6 +34,20 @@ export default function Error({
         stack: error.stack,
         digest: error.digest
       }, 'Page error occurred');
+      
+      // Persist to database via API for superadmin dashboard
+      fetch('/api/log-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'error-boundary',
+          message: error.message,
+          stack: error.stack,
+          digest: error.digest,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+        }),
+      }).catch(() => {/* silent */});
     }
   }, [error, isDeploymentMismatch]);
 

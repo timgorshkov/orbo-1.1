@@ -50,6 +50,7 @@ interface Message {
   created_at: string;
   tg_chat_id: string;
   tg_message_id?: number; // Telegram message ID for direct link
+  message_thread_id?: number; // Telegram topic/thread ID
   has_reply?: boolean;
 }
 
@@ -394,7 +395,8 @@ async function getRecentMessages(
         message_id,
         message_text,
         sent_at,
-        participant_id
+        participant_id,
+        message_thread_id
       `)
       .eq('tg_chat_id', chatIdNum)
       .gte('sent_at', since)
@@ -501,6 +503,7 @@ async function getRecentMessages(
       created_at: m.sent_at,
       tg_chat_id: String(m.tg_chat_id),
       tg_message_id: m.message_id ? Number(m.message_id) : undefined,
+      message_thread_id: m.message_thread_id ? Number(m.message_thread_id) : undefined,
     }));
   } catch (error) {
     logger.error({ error, chat_id: chatId }, 'Error getting messages');
@@ -548,8 +551,9 @@ function isWithinWorkHours(
 /**
  * Generate Telegram message link
  * Format: https://t.me/c/{chat_id_without_-100}/{message_id}
+ * For topics: https://t.me/c/{chat_id_without_-100}/{message_id}?thread={thread_id}
  */
-function getTelegramMessageLink(chatId: string, messageId?: number): string | null {
+function getTelegramMessageLink(chatId: string, messageId?: number, threadId?: number): string | null {
   if (!messageId) return null;
   
   try {
@@ -561,7 +565,11 @@ function getTelegramMessageLink(chatId: string, messageId?: number): string | nu
       cleanChatId = chatId.slice(1); // Remove just -
     }
     
-    return `https://t.me/c/${cleanChatId}/${messageId}`;
+    let link = `https://t.me/c/${cleanChatId}/${messageId}`;
+    if (threadId) {
+      link += `?thread=${threadId}`;
+    }
+    return link;
   } catch {
     return null;
   }
@@ -580,9 +588,9 @@ function formatNotificationMessage(
   // Пока просто показываем название группы как текст
   const groupDisplay = groupTitle || 'группа';
   
-  // Generate link to message if available
+  // Generate link to message if available (with topic thread support)
   const messageLink = groupChatId && context.last_message_id 
-    ? getTelegramMessageLink(groupChatId, context.last_message_id as number)
+    ? getTelegramMessageLink(groupChatId, context.last_message_id as number, context.thread_id as number | undefined)
     : null;
   
   const linkText = messageLink ? `\n\n[Открыть в Telegram →](${messageLink})` : '';
@@ -687,7 +695,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           effectiveIntervalMinutes = Math.min(intervalMinutes, minutesSinceLastCheck + 5);
         }
         
-        const messages = await getRecentMessages(chatId, effectiveIntervalMinutes, 50);
+        const allMessages = await getRecentMessages(chatId, effectiveIntervalMinutes, 50);
         
         logger.debug({ 
           rule_id: rule.id, 
@@ -695,88 +703,107 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           group_title: groupTitle,
           interval_minutes: effectiveIntervalMinutes,
           original_interval: intervalMinutes,
-          messages_count: messages.length 
+          messages_count: allMessages.length 
         }, 'Messages found for analysis');
         
         // Minimum 1 message for testing (increase to 3 for production)
-        if (messages.length < 1) {
-          logger.debug({ rule_id: rule.id, chat_id: chatId, count: messages.length }, '⏭️ No messages found');
+        if (allMessages.length < 1) {
+          logger.debug({ rule_id: rule.id, chat_id: chatId, count: allMessages.length }, '⏭️ No messages found');
           continue;
         }
         
+        // Group messages by topic (message_thread_id) for separate analysis
+        const messagesByTopic = new Map<number | undefined, Message[]>();
+        for (const msg of allMessages) {
+          const topicId = msg.message_thread_id;
+          if (!messagesByTopic.has(topicId)) {
+            messagesByTopic.set(topicId, []);
+          }
+          messagesByTopic.get(topicId)!.push(msg);
+        }
+        
         const severityThreshold = (rule.config.severity_threshold as 'low' | 'medium' | 'high') || 'medium';
-        const analysis = await analyzeNegativeContent(
-          messages,
-          rule.org_id,
-          rule.id,
-          severityThreshold
-        );
         
-        totalAiCost += analysis.cost_usd;
-        
-        // Check if severity meets threshold
-        const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
-        const threshold = severityOrder[severityThreshold];
-        const detected = severityOrder[analysis.severity];
-        
-        if (analysis.has_negative && detected >= threshold) {
-          // Get last message ID for direct Telegram link
-          const lastMessage = messages[messages.length - 1];
-          const lastMessageId = lastMessage?.tg_message_id;
+        // Analyze each topic group separately
+        for (const [topicId, messages] of messagesByTopic) {
+          if (messages.length < 1) continue;
           
-          const triggerContext = {
-            type: 'negative_discussion',
-            group_id: chatId,
-            group_title: groupTitle,
-            severity: analysis.severity,
-            summary: analysis.summary,
-            message_count: messages.length,
-            sample_messages: analysis.sample_messages,
-            last_message_id: lastMessageId, // For direct Telegram link
-          };
+          const analysis = await analyzeNegativeContent(
+            messages,
+            rule.org_id,
+            rule.id,
+            severityThreshold
+          );
           
-          const dedupHash = generateDedupHash(rule.id, triggerContext);
+          totalAiCost += analysis.cost_usd;
           
-          // Check for duplicate (6 hour window to prevent spam)
-          if (await isDuplicate(rule.id, dedupHash, 6)) {
-            logger.debug({ rule_id: rule.id, chat_id: chatId, hash: dedupHash }, 'Duplicate notification, skipping');
-            continue;
+          // Check if severity meets threshold
+          const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
+          const threshold = severityOrder[severityThreshold];
+          const detected = severityOrder[analysis.severity];
+          
+          if (analysis.has_negative && detected >= threshold) {
+            // Get last message ID for direct Telegram link
+            const lastMessage = messages[messages.length - 1];
+            const lastMessageId = lastMessage?.tg_message_id;
+            
+            const topicLabel = topicId ? ` (тема #${topicId})` : '';
+            
+            const triggerContext = {
+              type: 'negative_discussion',
+              group_id: chatId,
+              group_title: groupTitle + topicLabel,
+              severity: analysis.severity,
+              summary: analysis.summary,
+              message_count: messages.length,
+              sample_messages: analysis.sample_messages,
+              last_message_id: lastMessageId, // For direct Telegram link
+              thread_id: topicId, // Topic thread ID for link
+            };
+            
+            const dedupHash = generateDedupHash(rule.id, triggerContext);
+            
+            // Check for duplicate (6 hour window to prevent spam)
+            if (await isDuplicate(rule.id, dedupHash, 6)) {
+              logger.debug({ rule_id: rule.id, chat_id: chatId, topic_id: topicId, hash: dedupHash }, 'Duplicate notification, skipping');
+              continue;
+            }
+            
+            // Send notifications
+            const recipients = await getRecipients(rule);
+            const message = formatNotificationMessage(rule, triggerContext, groupTitle + topicLabel, chatId);
+            
+            let sentCount = 0;
+            for (const recipient of recipients) {
+              const result = await sendSystemNotification(recipient.tgUserId, message);
+              if (result.success) sentCount++;
+            }
+            
+            const finalStatus = sentCount > 0 ? 'sent' : 'failed';
+            
+            // Log notification
+            const logResult = await logNotification({
+              ruleId: rule.id,
+              orgId: rule.org_id,
+              ruleType: rule.rule_type,
+              triggerContext,
+              status: finalStatus,
+              dedupHash,
+              sentToUserIds: recipients.map(r => String(r.tgUserId)),
+              aiCostUsd: analysis.cost_usd,
+            });
+            
+            triggered = true;
+            logger.debug({ 
+              rule_name: rule.name,
+              chat: groupTitle, 
+              topic_id: topicId,
+              severity: analysis.severity,
+              telegram_sent: sentCount,
+              saved_to_db: logResult.success,
+              dedup_hash: dedupHash
+            }, '🔔 Negative discussion notification');
           }
-          
-          // Send notifications
-          const recipients = await getRecipients(rule);
-          const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
-          
-          let sentCount = 0;
-          for (const recipient of recipients) {
-            const result = await sendSystemNotification(recipient.tgUserId, message);
-            if (result.success) sentCount++;
-          }
-          
-          const finalStatus = sentCount > 0 ? 'sent' : 'failed';
-          
-          // Log notification
-          const logResult = await logNotification({
-            ruleId: rule.id,
-            orgId: rule.org_id,
-            ruleType: rule.rule_type,
-            triggerContext,
-            status: finalStatus,
-            dedupHash,
-            sentToUserIds: recipients.map(r => String(r.tgUserId)),
-            aiCostUsd: analysis.cost_usd,
-          });
-          
-          triggered = true;
-          // Only log when notification is actually triggered (debug level to reduce noise)
-          logger.debug({ 
-            rule_name: rule.name,
-            chat: groupTitle, 
-            severity: analysis.severity,
-            telegram_sent: sentCount,
-            saved_to_db: logResult.success,
-            dedup_hash: dedupHash
-          }, '🔔 Negative discussion notification');
         }
         break;
       }
@@ -789,81 +816,120 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           rule.config.work_days || null,
           rule.config.timezone || 'Europe/Moscow'
         )) {
+          logger.info({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: outside work hours');
           continue;
         }
         
-        if (!rule.use_ai) continue;
+        if (!rule.use_ai) {
+          logger.warn({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: use_ai is false — enable AI for this rule');
+          continue;
+        }
         
         const timeoutHours = rule.config.timeout_hours || 2;
-        const messages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 50);
+        const allMessages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 50);
         
-        if (messages.length < 2) continue;
+        logger.info({ rule_name: rule.name, chat: groupTitle, message_count: allMessages.length, timeout_hours: timeoutHours, window_minutes: timeoutHours * 60 + 30 }, '❓ Unanswered question check: fetched messages');
         
-        const analysis = await analyzeUnansweredQuestions(
-          messages,
-          rule.org_id,
-          rule.id,
-          timeoutHours
-        );
+        if (allMessages.length < 1) {
+          logger.info({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: no messages in window');
+          continue;
+        }
         
-        totalAiCost += analysis.cost_usd;
+        // Group messages by topic (message_thread_id) for separate analysis
+        const msgsByTopic = new Map<number | undefined, Message[]>();
+        for (const msg of allMessages) {
+          const topicId = msg.message_thread_id;
+          if (!msgsByTopic.has(topicId)) {
+            msgsByTopic.set(topicId, []);
+          }
+          msgsByTopic.get(topicId)!.push(msg);
+        }
         
-        // Send notification for each unanswered question
-        for (const question of analysis.questions) {
-          const hoursAgo = Math.floor(
-            (Date.now() - new Date(question.timestamp).getTime()) / (1000 * 60 * 60)
+        for (const [topicId, messages] of msgsByTopic) {
+          if (messages.length < 1) continue;
+          
+          const analysis = await analyzeUnansweredQuestions(
+            messages,
+            rule.org_id,
+            rule.id,
+            timeoutHours
           );
           
-          if (hoursAgo < timeoutHours) continue; // Not yet timed out
+          totalAiCost += analysis.cost_usd;
           
-          const triggerContext = {
-            type: 'unanswered_question',
-            group_id: chatId,
-            group_title: groupTitle,
-            question_text: question.text,
-            question_author: question.author,
-            question_author_id: question.author_id,
-            question_time: question.timestamp,
-            hours_without_answer: hoursAgo,
-            time_ago: `${hoursAgo} ч. назад`,
-          };
+          const topicLabel = topicId ? ` (тема #${topicId})` : '';
           
-          const dedupHash = generateDedupHash(rule.id, triggerContext);
+          logger.info({ 
+            rule_name: rule.name, 
+            chat: groupTitle + topicLabel, 
+            topic_id: topicId,
+            questions_found: analysis.questions.length,
+            cost_usd: analysis.cost_usd,
+            questions: analysis.questions.map((q: any) => ({ text: q.text?.slice(0, 60), author: q.author, answered: q.answered }))
+          }, '❓ AI analysis result for unanswered questions');
           
-          // Check for duplicate (6 hour window)
-          if (await isDuplicate(rule.id, dedupHash, 6)) {
-            continue;
+          // Send notification for each unanswered question
+          for (const question of analysis.questions) {
+            const hoursAgo = Math.floor(
+              (Date.now() - new Date(question.timestamp).getTime()) / (1000 * 60 * 60)
+            );
+            
+            if (hoursAgo < timeoutHours) {
+              logger.info({ rule_name: rule.name, chat: groupTitle, topic_id: topicId, hours_ago: hoursAgo, timeout: timeoutHours, question: question.text?.slice(0, 60) }, '❓ Question not yet timed out, skipping');
+              continue;
+            }
+            
+            const triggerContext = {
+              type: 'unanswered_question',
+              group_id: chatId,
+              group_title: groupTitle + topicLabel,
+              question_text: question.text,
+              question_author: question.author,
+              question_author_id: question.author_id,
+              question_time: question.timestamp,
+              hours_without_answer: hoursAgo,
+              time_ago: `${hoursAgo} ч. назад`,
+              thread_id: topicId, // Topic thread ID for link
+            };
+            
+            const dedupHash = generateDedupHash(rule.id, triggerContext);
+            
+            // Check for duplicate (6 hour window)
+            if (await isDuplicate(rule.id, dedupHash, 6)) {
+              continue;
+            }
+            
+            const recipients = await getRecipients(rule);
+            const message = formatNotificationMessage(rule, triggerContext, groupTitle + topicLabel, chatId);
+            
+            let sentCount = 0;
+            for (const recipient of recipients) {
+              const result = await sendSystemNotification(recipient.tgUserId, message);
+              if (result.success) sentCount++;
+            }
+            
+            const logResult = await logNotification({
+              ruleId: rule.id,
+              orgId: rule.org_id,
+              ruleType: rule.rule_type,
+              triggerContext,
+              status: sentCount > 0 ? 'sent' : 'failed',
+              dedupHash,
+              sentToUserIds: recipients.map(r => String(r.tgUserId)),
+              aiCostUsd: analysis.cost_usd / Math.max(analysis.questions.length, 1),
+            });
+            
+            triggered = true;
+            logger.debug({
+              rule_name: rule.name,
+              chat: groupTitle,
+              topic_id: topicId,
+              author: question.author,
+              hours: hoursAgo,
+              telegram_sent: sentCount,
+              saved_to_db: logResult.success
+            }, '❓ Unanswered question notification');
           }
-          
-          const recipients = await getRecipients(rule);
-          const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
-          
-          let sentCount = 0;
-          for (const recipient of recipients) {
-            const result = await sendSystemNotification(recipient.tgUserId, message);
-            if (result.success) sentCount++;
-          }
-          
-          const logResult = await logNotification({
-            ruleId: rule.id,
-            orgId: rule.org_id,
-            ruleType: rule.rule_type,
-            triggerContext,
-            status: sentCount > 0 ? 'sent' : 'failed',
-            dedupHash,
-            sentToUserIds: recipients.map(r => String(r.tgUserId)),
-            aiCostUsd: analysis.cost_usd / Math.max(analysis.questions.length, 1),
-          });
-          
-          triggered = true;
-          logger.debug({
-            rule_name: rule.name,
-            chat: groupTitle,
-            author: question.author,
-            hours: hoursAgo,
-            telegram_sent: sentCount,
-            saved_to_db: logResult.success
-          }, '❓ Unanswered question notification');
         }
         break;
       }

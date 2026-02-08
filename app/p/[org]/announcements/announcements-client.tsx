@@ -668,11 +668,11 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                 id="content"
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Поддерживается Telegram Markdown: **жирный**, *курсив*, `код`"
+                placeholder="Поддерживается Telegram Markdown: *жирный*, _курсив_, `код`"
                 rows={5}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Поддерживается форматирование: **жирный**, *курсив*, `код`, [ссылка](url)
+                Telegram Markdown: *жирный*, _курсив_, ~~зачёркнутый~~, `код`, [ссылка](url)
               </p>
             </div>
             

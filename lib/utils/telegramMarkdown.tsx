@@ -44,57 +44,64 @@ export function parseTelegramMarkdown(text: string): TelegramMarkdownNode[] {
 
   while (i < text.length) {
     // Проверяем различные форматы
-    if (text.substring(i, i + 2) === '**') {
-      // Жирный текст **text**
-      const endIndex = text.indexOf('**', i + 2)
-      if (endIndex !== -1) {
-        const content = text.substring(i + 2, endIndex)
-        nodes.push({
-          type: 'bold',
-          content,
-          children: parseTelegramMarkdown(content)
-        })
-        i = endIndex + 2
-        continue
+    if (text[i] === '*') {
+      // Telegram: *text* = жирный текст (bold)
+      // Also support **text** as bold for backward compatibility
+      if (text[i + 1] === '*') {
+        // **text** — bold (backward compat with standard markdown)
+        const endIndex = text.indexOf('**', i + 2)
+        if (endIndex !== -1) {
+          const content = text.substring(i + 2, endIndex)
+          nodes.push({
+            type: 'bold',
+            content,
+            children: parseTelegramMarkdown(content)
+          })
+          i = endIndex + 2
+          continue
+        }
+      } else {
+        // *text* — bold (Telegram standard)
+        const endIndex = findUnescaped(text, '*', i + 1)
+        if (endIndex !== -1 && endIndex > i + 1) {
+          const content = text.substring(i + 1, endIndex)
+          nodes.push({
+            type: 'bold',
+            content,
+            children: parseTelegramMarkdown(content)
+          })
+          i = endIndex + 1
+          continue
+        }
       }
-    } else if (text.substring(i, i + 2) === '__') {
-      // Жирный текст __text__ (альтернативный формат)
-      const endIndex = text.indexOf('__', i + 2)
-      if (endIndex !== -1) {
-        const content = text.substring(i + 2, endIndex)
-        nodes.push({
-          type: 'bold',
-          content,
-          children: parseTelegramMarkdown(content)
-        })
-        i = endIndex + 2
-        continue
-      }
-    } else if (text[i] === '*' && text[i + 1] !== '*') {
-      // Курсив *text*
-      const endIndex = findUnescaped(text, '*', i + 1)
-      if (endIndex !== -1 && endIndex > i + 1) {
-        const content = text.substring(i + 1, endIndex)
-        nodes.push({
-          type: 'italic',
-          content,
-          children: parseTelegramMarkdown(content)
-        })
-        i = endIndex + 1
-        continue
-      }
-    } else if (text[i] === '_' && text[i + 1] !== '_') {
-      // Курсив _text_
-      const endIndex = findUnescaped(text, '_', i + 1)
-      if (endIndex !== -1 && endIndex > i + 1) {
-        const content = text.substring(i + 1, endIndex)
-        nodes.push({
-          type: 'italic',
-          content,
-          children: parseTelegramMarkdown(content)
-        })
-        i = endIndex + 1
-        continue
+    } else if (text[i] === '_') {
+      // Telegram: _text_ = курсив (italic), __text__ = подчёркивание (underline, displayed as italic)
+      if (text[i + 1] === '_') {
+        // __text__ — underline in Telegram (render as italic for web)
+        const endIndex = text.indexOf('__', i + 2)
+        if (endIndex !== -1) {
+          const content = text.substring(i + 2, endIndex)
+          nodes.push({
+            type: 'italic',
+            content,
+            children: parseTelegramMarkdown(content)
+          })
+          i = endIndex + 2
+          continue
+        }
+      } else {
+        // _text_ — italic (Telegram standard)
+        const endIndex = findUnescaped(text, '_', i + 1)
+        if (endIndex !== -1 && endIndex > i + 1) {
+          const content = text.substring(i + 1, endIndex)
+          nodes.push({
+            type: 'italic',
+            content,
+            children: parseTelegramMarkdown(content)
+          })
+          i = endIndex + 1
+          continue
+        }
       }
     } else if (text.substring(i, i + 2) === '~~') {
       // Зачеркнутый текст ~~text~~

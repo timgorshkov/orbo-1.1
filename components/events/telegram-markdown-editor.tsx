@@ -38,8 +38,9 @@ export default function TelegramMarkdownEditor({
           <div className="mt-2 text-xs text-neutral-500">
             <p className="mb-1">Поддерживается Telegram Markdown:</p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li><code>**жирный**</code> или <code>__жирный__</code></li>
-              <li><code>*курсив*</code> или <code>_курсив_</code></li>
+              <li><code>*жирный*</code></li>
+              <li><code>_курсив_</code></li>
+              <li><code>__подчёркнутый__</code></li>
               <li><code>~~зачеркнутый~~</code></li>
               <li><code>||скрытый текст||</code></li>
               <li><code>`код`</code></li>

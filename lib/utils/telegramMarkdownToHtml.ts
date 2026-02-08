@@ -24,13 +24,14 @@ export function telegramMarkdownToHtml(text: string): string {
   // 3. Код `text` -> <code>text</code>
   result = result.replace(/`([^`]+)`/g, '<code>$1</code>')
 
-  // 4. Жирный текст **text** или __text__ -> <b>text</b>
+  // 4. Жирный текст: *text* -> <b>text</b> (Telegram standard)
+  // Также поддерживаем **text** для обратной совместимости
   result = result.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-  result = result.replace(/__([^_]+)__/g, '<b>$1</b>')
+  result = result.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<b>$1</b>')
 
-  // 5. Курсив *text* или _text_ -> <i>text</i>
-  // Важно: делаем после жирного, чтобы не конфликтовать с **
-  result = result.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<i>$1</i>')
+  // 5. Курсив: _text_ -> <i>text</i> (Telegram standard)
+  // __text__ -> <u>text</u> (подчёркивание в Telegram)
+  result = result.replace(/__([^_]+)__/g, '<u>$1</u>')
   result = result.replace(/(?<!_)_([^_\n]+?)_(?!_)/g, '<i>$1</i>')
 
   // 6. Зачеркнутый текст ~~text~~ -> <s>text</s>
@@ -81,9 +82,9 @@ export function stripTelegramMarkdown(text: string): string {
   result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
 
   // Удаляем все markdown синтаксисы
-  result = result.replace(/\*\*([^*]+)\*\*/g, '$1') // Жирный **text**
-  result = result.replace(/__([^_]+)__/g, '$1') // Жирный __text__
-  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '$1') // Курсив *text*
+  result = result.replace(/\*\*([^*]+)\*\*/g, '$1') // Жирный **text** (compat)
+  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '$1') // Жирный *text* (Telegram)
+  result = result.replace(/__([^_]+)__/g, '$1') // Подчёркивание __text__
   result = result.replace(/(?<!_)_([^_]+)_(?!_)/g, '$1') // Курсив _text_
   result = result.replace(/~~([^~]+)~~/g, '$1') // Зачеркнутый ~~text~~
   result = result.replace(/\|\|([^|]+)\|\|/g, '$1') // Скрытый ||text||
