@@ -266,7 +266,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
       const endDate = new Date(`${endDateStr}T${endTimeStr}:00+03:00`)
       
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        console.error('Invalid date/time values', { dateStr, startTimeStr, endTimeStr })
+        console.error('Invalid date/time values', { startDateStr, endDateStr, startTimeStr, endTimeStr })
         return
       }
       

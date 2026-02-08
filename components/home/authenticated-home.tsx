@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import HeroSection from './hero-section'
 import UpcomingEventsSection from './upcoming-events-section'
-import QuickLinksSection from './quick-links-section'
 import RecentMembersSection from './recent-members-section'
 import type { HomePageData } from '@/lib/server/getHomePageData'
 
@@ -93,13 +92,6 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
           events={data.upcomingEvents}
           orgId={orgId}
         />
-
-        {isAdmin && (
-          <QuickLinksSection
-            orgId={orgId}
-            isAdmin={isAdmin}
-          />
-        )}
 
         <RecentMembersSection
           members={data.recentMembers}
