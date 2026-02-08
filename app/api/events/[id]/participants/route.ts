@@ -38,7 +38,8 @@ export async function GET(
       .select(`
         id,
         registered_at,
-        participant_id
+        participant_id,
+        status
       `)
       .eq('event_id', eventId)
       .in('status', ['registered', 'attended'])
@@ -61,9 +62,21 @@ export async function GET(
       (participantsData || []).map(p => [p.id, p])
     )
     
-    // Check if user is authenticated to enable profile links
+    // Check if user is authenticated and is admin
     const { data: { user } } = await supabase.auth.getUser()
     const isAuthenticated = !!user
+    
+    let isAdmin = false
+    if (user) {
+      const { data: member } = await adminSupabase
+        .from('organization_members')
+        .select('role')
+        .eq('org_id', event.org_id)
+        .eq('user_id', user.id)
+        .single()
+      
+      isAdmin = member?.role === 'owner' || member?.role === 'admin'
+    }
     
     // Format response - filter out registrations without valid participants
     const participants = registrations
@@ -73,11 +86,14 @@ export async function GET(
         
         return {
           id: participant.id,
+          registration_id: reg.id,
           full_name: participant.full_name || 'Участник',
           bio: participant.bio,
           photo_url: participant.photo_url,
           registered_at: reg.registered_at,
-          is_authenticated: isAuthenticated
+          status: reg.status,
+          is_authenticated: isAuthenticated,
+          is_admin: isAdmin
         }
       })
       .filter(Boolean)

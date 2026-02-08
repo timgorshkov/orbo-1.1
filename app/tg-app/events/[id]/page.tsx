@@ -473,16 +473,21 @@ export default function TelegramEventPage() {
           {/* Add to Calendar buttons */}
           {event && (
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <a
-                href={`/api/events/${event.id}/ics`}
-                download
-                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
+              <button
+                onClick={() => {
+                  window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+                  // Open in external browser for better compatibility
+                  const icsUrl = `${window.location.origin}/api/events/${event.id}/ics`;
+                  window.Telegram?.WebApp?.openLink?.(icsUrl) || window.open(icsUrl, '_blank');
+                }}
+                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm active:bg-gray-200"
               >
                 <Download className="w-4 h-4" />
                 iCal
-              </a>
-              <a
-                href={(() => {
+              </button>
+              <button
+                onClick={() => {
+                  window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
                   const dateStr = event.event_date.split('T')[0]
                   const startTimeStr = event.start_time?.substring(0, 5) || '10:00'
                   const endTimeStr = event.end_time?.substring(0, 5) || '12:00'
@@ -505,15 +510,15 @@ export default function TelegramEventPage() {
                     location: location
                   })
                   
-                  return `https://calendar.google.com/calendar/render?${params.toString()}`
-                })()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
+                  const googleCalendarUrl = `https://calendar.google.com/calendar/render?${params.toString()}`
+                  // Always open in external browser
+                  window.Telegram?.WebApp?.openLink?.(googleCalendarUrl) || window.open(googleCalendarUrl, '_blank');
+                }}
+                className="flex items-center justify-center gap-2 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm active:bg-gray-200"
               >
                 <Calendar className="w-4 h-4" />
                 Google
-              </a>
+              </button>
             </div>
           )}
           
