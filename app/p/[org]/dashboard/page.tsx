@@ -8,6 +8,7 @@ import OnboardingChecklist from '@/components/dashboard/onboarding-checklist'
 import AttentionZones from '@/components/dashboard/attention-zones'
 import UpcomingEvents from '@/components/dashboard/upcoming-events'
 import ActivityTimeline from '@/components/analytics/activity-timeline'
+import EventRegistrationsChart from '@/components/analytics/event-registrations-chart'
 import TopContributors from '@/components/analytics/top-contributors'
 import EngagementPie from '@/components/analytics/engagement-pie'
 import KeyMetrics from '@/components/analytics/key-metrics'
@@ -185,6 +186,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
 
           {/* Analytics Section - with Suspense for faster LCP */}
           <div className="space-y-6">
+            {/* Event Registrations Chart - Full Width (only shows if events exist) */}
+            <Suspense fallback={<ChartSkeleton />}>
+              <EventRegistrationsChart orgId={orgId} days={30} />
+            </Suspense>
+
             {/* Activity Timeline - Full Width */}
             <Suspense fallback={<ChartSkeleton />}>
               <ActivityTimeline orgId={orgId} days={30} />
