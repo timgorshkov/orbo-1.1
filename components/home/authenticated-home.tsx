@@ -94,10 +94,12 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
           orgId={orgId}
         />
 
-        <QuickLinksSection
-          orgId={orgId}
-          isAdmin={isAdmin}
-        />
+        {isAdmin && (
+          <QuickLinksSection
+            orgId={orgId}
+            isAdmin={isAdmin}
+          />
+        )}
 
         <RecentMembersSection
           members={data.recentMembers}

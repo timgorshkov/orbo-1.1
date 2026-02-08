@@ -272,12 +272,16 @@ export async function getHomePageData(
       }
     })
 
-    // 5. Get recent members (5 max)
+    // 5. Get recent members (5 max) - exclude bots, archived, and system accounts
     const { data: recentMembers } = await supabase
       .from('participants')
-      .select('id, full_name, username, photo_url, created_at')
+      .select('id, full_name, username, photo_url, created_at, source, tg_user_id, status, participant_status')
       .eq('org_id', orgId)
       .is('merged_into', null)
+      .neq('source', 'bot')
+      .not('tg_user_id', 'in', '(777000,136817688,1087968824)')
+      .or('status.is.null,status.neq.archived')
+      .or('participant_status.is.null,participant_status.neq.excluded')
       .order('created_at', { ascending: false })
       .limit(5)
 
