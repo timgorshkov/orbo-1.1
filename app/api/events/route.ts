@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
       capacity: capacity || null,
       capacity_count_by_paid: capacityCountByPaid !== undefined ? capacityCountByPaid : false,
       show_participants_list: showParticipantsList !== undefined ? showParticipantsList : true,
+      enable_qr_checkin: enableQrCheckin !== undefined ? enableQrCheckin : true,
       allow_multiple_tickets: allowMultipleTickets !== undefined ? allowMultipleTickets : false,
       registration_fields_config: registrationFieldsConfig || null,
       status: status || 'draft', // Use status from form, default to draft

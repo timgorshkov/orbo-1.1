@@ -50,6 +50,8 @@ type Event = {
   capacity: number | null
   status: 'draft' | 'published' | 'cancelled'
   is_public: boolean
+  show_participants_list?: boolean
+  enable_qr_checkin?: boolean
   telegram_group_link: string | null
 }
 
@@ -187,6 +189,8 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
     initialEvent?.status || 'published'
   )
   const [isPublic, setIsPublic] = useState(initialEvent?.is_public ?? true) // Public by default for new events
+  const [showParticipantsList, setShowParticipantsList] = useState(initialEvent?.show_participants_list ?? true)
+  const [enableQrCheckin, setEnableQrCheckin] = useState(initialEvent?.enable_qr_checkin ?? true)
   const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')
   
   const [error, setError] = useState<string | null>(null)
@@ -223,9 +227,11 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
       capacity: capacity ? parseInt(capacity) : null,
       status,
       isPublic,
+      showParticipantsList,
+      enableQrCheckin,
       telegramGroupLink: telegramGroupLink || null
     }
-  }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, telegramGroupLink])
+  }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, showParticipantsList, enableQrCheckin, telegramGroupLink])
 
   const submitEvent = async (eventData: any, createAnnouncements: boolean) => {
     startTransition(async () => {
@@ -841,6 +847,38 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
               </div>
               <p className="text-xs text-neutral-500">
                 Публичные события видны всем, даже неавторизованным пользователям
+              </p>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="showParticipantsList"
+                  checked={showParticipantsList}
+                  onChange={(e) => setShowParticipantsList(e.target.checked)}
+                  className="mr-2"
+                />
+                <label htmlFor="showParticipantsList" className="text-sm">
+                  Показывать список участников
+                </label>
+              </div>
+              <p className="text-xs text-neutral-500">
+                Список участников будет виден на странице события
+              </p>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="enableQrCheckin"
+                  checked={enableQrCheckin}
+                  onChange={(e) => setEnableQrCheckin(e.target.checked)}
+                  className="mr-2"
+                />
+                <label htmlFor="enableQrCheckin" className="text-sm">
+                  Использовать QR-коды для check-in
+                </label>
+              </div>
+              <p className="text-xs text-neutral-500">
+                Участники получат QR-коды для отметки на входе
               </p>
 
               {isPublic && (
