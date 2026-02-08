@@ -723,8 +723,17 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         }
         
         const severityThreshold = (rule.config.severity_threshold as 'low' | 'medium' | 'high') || 'medium';
+        const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
+        const threshold = severityOrder[severityThreshold];
         
-        // Analyze each topic group separately
+        // Analyze each topic group separately, collect results
+        const topicResults: Array<{
+          topicId: number | undefined;
+          analysis: any;
+          messages: Message[];
+          lastMessageId: number | undefined;
+        }> = [];
+        
         for (const [topicId, messages] of messagesByTopic) {
           if (messages.length < 1) continue;
           
@@ -737,41 +746,64 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           totalAiCost += analysis.cost_usd;
           
-          // Check if severity meets threshold
-          const severityOrder: Record<string, number> = { low: 1, medium: 2, high: 3 };
-          const threshold = severityOrder[severityThreshold];
           const detected = severityOrder[analysis.severity];
           
           if (analysis.has_negative && detected >= threshold) {
-            // Get last message ID for direct Telegram link
             const lastMessage = messages[messages.length - 1];
-            const lastMessageId = lastMessage?.tg_message_id;
-            
-            const topicLabel = topicId ? ` (тема #${topicId})` : '';
-            
-            const triggerContext = {
-              type: 'negative_discussion',
-              group_id: chatId,
-              group_title: groupTitle + topicLabel,
-              severity: analysis.severity,
-              summary: analysis.summary,
-              message_count: messages.length,
-              sample_messages: analysis.sample_messages,
-              last_message_id: lastMessageId, // For direct Telegram link
-              thread_id: topicId, // Topic thread ID for link
-            };
-            
-            const dedupHash = generateDedupHash(rule.id, triggerContext);
-            
-            // Check for duplicate (6 hour window to prevent spam)
-            if (await isDuplicate(rule.id, dedupHash, 6)) {
-              logger.debug({ rule_id: rule.id, chat_id: chatId, topic_id: topicId, hash: dedupHash }, 'Duplicate notification, skipping');
-              continue;
-            }
-            
+            topicResults.push({
+              topicId,
+              analysis,
+              messages,
+              lastMessageId: lastMessage?.tg_message_id,
+            });
+          }
+        }
+        
+        // Send ONE aggregated notification per group (not per topic)
+        if (topicResults.length > 0) {
+          // Pick the highest severity and combine summaries
+          const highestSeverity = topicResults.reduce((max, r) => 
+            severityOrder[r.analysis.severity] > severityOrder[max] ? r.analysis.severity : max, 
+            topicResults[0].analysis.severity
+          );
+          
+          const totalMessages = topicResults.reduce((sum, r) => sum + r.messages.length, 0);
+          
+          // Combine summaries from all topics
+          let combinedSummary: string;
+          if (topicResults.length === 1) {
+            const topicLabel = topicResults[0].topicId ? ` (тема #${topicResults[0].topicId})` : '';
+            combinedSummary = topicResults[0].analysis.summary + (topicLabel ? `\n_${topicLabel}_` : '');
+          } else {
+            combinedSummary = topicResults.map(r => {
+              const label = r.topicId ? `Тема #${r.topicId}` : 'Основной чат';
+              return `• ${label}: ${r.analysis.summary}`;
+            }).join('\n');
+          }
+          
+          // Use the first result's last_message_id for the main link
+          const primaryResult = topicResults[0];
+          
+          const triggerContext = {
+            type: 'negative_discussion',
+            group_id: chatId,
+            group_title: groupTitle,
+            severity: highestSeverity,
+            summary: combinedSummary,
+            message_count: totalMessages,
+            sample_messages: primaryResult.analysis.sample_messages,
+            last_message_id: primaryResult.lastMessageId,
+            thread_id: primaryResult.topicId,
+            topics_affected: topicResults.length,
+          };
+          
+          const dedupHash = generateDedupHash(rule.id, triggerContext);
+          
+          // Check for duplicate (6 hour window to prevent spam)
+          if (!await isDuplicate(rule.id, dedupHash, 6)) {
             // Send notifications
             const recipients = await getRecipients(rule);
-            const message = formatNotificationMessage(rule, triggerContext, groupTitle + topicLabel, chatId);
+            const message = formatNotificationMessage(rule, triggerContext, groupTitle, chatId);
             
             let sentCount = 0;
             for (const recipient of recipients) {
@@ -790,19 +822,21 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
               status: finalStatus,
               dedupHash,
               sentToUserIds: recipients.map(r => String(r.tgUserId)),
-              aiCostUsd: analysis.cost_usd,
+              aiCostUsd: topicResults.reduce((sum, r) => sum + r.analysis.cost_usd, 0),
             });
             
             triggered = true;
-            logger.debug({ 
+            logger.info({ 
               rule_name: rule.name,
-              chat: groupTitle, 
-              topic_id: topicId,
-              severity: analysis.severity,
+              chat: groupTitle,
+              topics_affected: topicResults.length, 
+              severity: highestSeverity,
+              total_messages: totalMessages,
               telegram_sent: sentCount,
               saved_to_db: logResult.success,
-              dedup_hash: dedupHash
-            }, '🔔 Negative discussion notification');
+            }, '🔔 Negative discussion notification (aggregated)');
+          } else {
+            logger.debug({ rule_id: rule.id, chat_id: chatId, topics: topicResults.length }, 'Duplicate notification, skipping');
           }
         }
         break;
