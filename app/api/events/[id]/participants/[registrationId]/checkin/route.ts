@@ -28,36 +28,55 @@ export async function POST(
       registration_id: registrationId 
     }, 'Checkin attempt by user');
     
-    // Get registration with event info
-    const { data: registration } = await adminSupabase
+    // Step 1: Get the event to find org_id (separate query, no joins)
+    const { data: eventData, error: eventError } = await adminSupabase
+      .from('events')
+      .select('id, org_id')
+      .eq('id', eventId)
+      .single()
+    
+    if (eventError || !eventData) {
+      logger.warn({ event_id: eventId, error: eventError?.message }, 'Event not found for checkin');
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+    
+    // Step 2: Check that user is admin of the org
+    const { data: member, error: memberError } = await adminSupabase
+      .from('memberships')
+      .select('role')
+      .eq('org_id', eventData.org_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    
+    logger.info({ 
+      user_id: user.id, 
+      org_id: eventData.org_id, 
+      role: member?.role,
+      member_found: !!member,
+      member_error: memberError?.message
+    }, 'Membership check for checkin');
+    
+    const role = member?.role
+    if (role !== 'owner' && role !== 'admin') {
+      logger.warn({ user_id: user.id, org_id: eventData.org_id, role }, 'Non-admin attempted manual check-in');
+      return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })
+    }
+    
+    // Step 3: Get the registration (separate query, no joins)
+    const { data: registration, error: regError } = await adminSupabase
       .from('event_registrations')
-      .select('id, event_id, participant_id, status, checked_in_at, events(org_id)')
+      .select('id, event_id, participant_id, status, checked_in_at')
       .eq('id', registrationId)
       .eq('event_id', eventId)
       .single()
     
-    if (!registration) {
-      logger.warn({ registration_id: registrationId }, 'Registration not found');
+    if (regError || !registration) {
+      logger.warn({ 
+        registration_id: registrationId, 
+        event_id: eventId, 
+        error: regError?.message 
+      }, 'Registration not found for checkin');
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 })
-    }
-    
-    const event = registration.events as any
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
-    }
-    
-    // Check that user is admin of the org
-    const { data: member } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', event.org_id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    
-    const role = member?.role
-    if (role !== 'owner' && role !== 'admin') {
-      logger.warn({ user_id: user.id, org_id: event.org_id, role }, 'Non-admin attempted manual check-in');
-      return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })
     }
     
     // Check if already checked in
@@ -71,7 +90,7 @@ export async function POST(
       })
     }
     
-    // Perform check-in
+    // Step 4: Perform check-in
     const now = new Date().toISOString()
     const { data: updated, error: updateError } = await adminSupabase
       .from('event_registrations')
@@ -80,7 +99,7 @@ export async function POST(
         checked_in_at: now
       })
       .eq('id', registrationId)
-      .select()
+      .select('id, status, checked_in_at')
       .single()
     
     if (updateError) {
@@ -92,6 +111,7 @@ export async function POST(
       registration_id: registration.id,
       participant_id: registration.participant_id,
       event_id: eventId,
+      org_id: eventData.org_id,
       checked_in_by: user.id,
       manual_checkin: true
     }, 'Manual check-in successful');

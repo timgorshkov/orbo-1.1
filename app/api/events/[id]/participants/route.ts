@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createAPILogger } from '@/lib/logger'
 
 // GET /api/events/[id]/participants - Get public participants list
@@ -12,7 +13,6 @@ export async function GET(
   try {
     const { id: eventId } = await params;
     
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
     
     // Get event first to check if participants list should be shown
@@ -62,8 +62,8 @@ export async function GET(
       (participantsData || []).map(p => [p.id, p])
     )
     
-    // Check if user is authenticated and is admin
-    const { data: { user } } = await supabase.auth.getUser()
+    // Check if user is authenticated and is admin (using unified auth)
+    const user = await getUnifiedUser()
     const isAuthenticated = !!user
     
     let isAdmin = false
