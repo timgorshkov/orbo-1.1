@@ -158,11 +158,22 @@ export async function createEventReminders(
   eventDescription: string | null,
   eventStartTime: Date,
   eventLocation: string | null,
-  targetGroups: string[]
+  targetGroups: string[],
+  useMiniAppLink: boolean = true
 ): Promise<void> {
   const supabase = createAdminServer();
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-  const eventUrl = `${baseUrl}/e/${eventId}`;
+  
+  // Generate event link based on preference
+  let eventUrl: string;
+  if (useMiniAppLink) {
+    // MiniApp link format: https://t.me/orbo_event_bot/events?startapp=e-{eventId}
+    const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_event_bot';
+    eventUrl = `https://t.me/${botUsername}/events?startapp=e-${eventId}`;
+  } else {
+    // Web link format: https://my.orbo.ru/e/{eventId}
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+    eventUrl = `${baseUrl}/e/${eventId}`;
+  }
   
   // Формируем текст напоминания за 24 часа
   let content24h = `🗓 *Напоминание: ${eventTitle}*\n\n`;

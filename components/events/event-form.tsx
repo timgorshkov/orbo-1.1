@@ -197,6 +197,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
   const [success, setSuccess] = useState(false)
   const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false)
   const [pendingEventData, setPendingEventData] = useState<any>(null)
+  const [useMiniAppLink, setUseMiniAppLink] = useState(true)
 
   const buildEventData = useCallback(() => {
     // Don't send blob: URLs to the server - they're invalid
@@ -233,7 +234,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
     }
   }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, showParticipantsList, enableQrCheckin, telegramGroupLink])
 
-  const submitEvent = async (eventData: any, createAnnouncements: boolean) => {
+  const submitEvent = async (eventData: any, createAnnouncements: boolean, useMiniAppLink: boolean = true) => {
     startTransition(async () => {
       try {
         const url = mode === 'create' 
@@ -245,7 +246,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
         const response = await fetch(url, {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...eventData, create_announcements: createAnnouncements })
+          body: JSON.stringify({ ...eventData, create_announcements: createAnnouncements, use_miniapp_link: useMiniAppLink })
         })
 
         const data = await response.json()
@@ -970,12 +971,46 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
           <p className="text-xs text-gray-500 mb-4">
             Вы сможете отредактировать текст анонсов, выбрать конкретные группы для отправки или отменить напоминания в разделе «Анонсы».
           </p>
+          
+          {/* Link Type Selection */}
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Тип ссылки в анонсах:
+            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="linkType"
+                  checked={useMiniAppLink}
+                  onChange={() => setUseMiniAppLink(true)}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">
+                  🤖 MiniApp (t.me/orbo_event_bot)
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="linkType"
+                  checked={!useMiniAppLink}
+                  onChange={() => setUseMiniAppLink(false)}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <span className="text-sm text-gray-700">
+                  🌐 Веб-страница (my.orbo.ru)
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div className="flex gap-3">
             <Button
               className="flex-1"
               onClick={async () => {
                 setShowAnnouncementDialog(false)
-                await submitEvent(pendingEventData, true)
+                await submitEvent(pendingEventData, true, useMiniAppLink)
               }}
               disabled={isPending}
             >
@@ -986,7 +1021,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
               className="flex-1"
               onClick={async () => {
                 setShowAnnouncementDialog(false)
-                await submitEvent(pendingEventData, false)
+                await submitEvent(pendingEventData, false, useMiniAppLink)
               }}
               disabled={isPending}
             >

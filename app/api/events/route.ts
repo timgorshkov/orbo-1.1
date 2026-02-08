@@ -277,6 +277,7 @@ export async function POST(request: NextRequest) {
     // Only for future events with event_date set
     // Only if client requests it (skip_announcements flag)
     const shouldCreateAnnouncements = body.create_announcements !== false;
+    const useMiniAppLink = body.use_miniapp_link !== false; // Default to MiniApp link
     
     if (event?.id && event.event_date && shouldCreateAnnouncements) {
       try {
@@ -319,14 +320,16 @@ export async function POST(request: NextRequest) {
                 event.description,
                 eventStartTime,
                 event.location_info,
-                targetGroups
+                targetGroups,
+                useMiniAppLink
               );
               logger.info({ 
                 event_id: event.id, 
                 targetGroupsCount: targetGroups.length,
                 event_start_time: eventStartTime.toISOString(),
                 event_date: event.event_date,
-                start_time: event.start_time
+                start_time: event.start_time,
+                use_miniapp_link: useMiniAppLink
               }, 'Event reminders created');
             } else {
               logger.error({ 
