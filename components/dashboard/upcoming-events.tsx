@@ -63,7 +63,7 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
           <Button variant="outline">Все события</Button>
         </Link>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-2">
         {events.map(event => (
           <Link
             key={event.id}
@@ -71,8 +71,8 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
             className="block border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
           >
             <div className="flex">
-              {/* Event Image or Placeholder */}
-              <div className="w-32 h-32 flex-shrink-0 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+              {/* Event Image or Placeholder - compact horizontal ratio */}
+              <div className="w-28 h-20 flex-shrink-0 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
                 {event.cover_image_url ? (
                   <img 
                     src={event.cover_image_url} 
@@ -80,43 +80,43 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <svg className="w-12 h-12 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-8 h-8 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 )}
               </div>
 
-              {/* Event Info */}
-              <div className="flex-1 p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-neutral-900 line-clamp-1">{event.title}</h3>
-                  <div className="flex gap-2 ml-2">
+              {/* Event Info - compact padding */}
+              <div className="flex-1 px-3 py-2">
+                <div className="flex items-start justify-between mb-0.5">
+                  <h3 className="font-semibold text-sm text-neutral-900 line-clamp-1">{event.title}</h3>
+                  <div className="flex gap-1 ml-2">
                     {event.event_type === 'online' && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
                         Онлайн
                       </span>
                     )}
                     {event.is_paid && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">
                         Платное
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="text-sm text-neutral-600 mb-3">
+                <div className="text-xs text-neutral-600 mb-1.5">
                   {formatDate(event.event_date)} • {event.start_time?.substring(0, 5)} - {event.end_time?.substring(0, 5)}
                 </div>
 
                 {event.capacity && (
                   <div>
-                    <div className="flex items-center justify-between text-sm mb-1">
+                    <div className="flex items-center justify-between text-xs mb-0.5">
                       <span className="text-neutral-600">Регистрация</span>
                       <span className="font-medium">
                         {event.registeredCount} / {event.capacity} ({event.registrationRate}%)
                       </span>
                     </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
                       <div 
                         className={`${getProgressColor(event.registrationRate)} h-full transition-all`}
                         style={{ width: `${Math.min(event.registrationRate, 100)}%` }}
@@ -126,7 +126,7 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
                 )}
 
                 {!event.capacity && (
-                  <div className="text-sm text-neutral-500">
+                  <div className="text-xs text-neutral-500">
                     {event.registeredCount} зарегистрировано
                   </div>
                 )}

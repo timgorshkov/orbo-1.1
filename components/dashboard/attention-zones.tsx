@@ -274,16 +274,6 @@ export default function AttentionZones({
           </div>
         )}
 
-        {/* Summary link - always show link to full notifications */}
-        <div className="pt-2 border-t border-amber-200">
-          <Link
-            href={`/p/${orgId}/notifications`}
-            className="text-sm text-gray-600 hover:text-gray-800 flex items-center justify-center gap-1"
-          >
-            Все уведомления →
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
       </CardContent>
     </Card>
   )

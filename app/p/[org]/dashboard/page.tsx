@@ -193,11 +193,6 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
               <EventRegistrationsChart orgId={orgId} days={30} />
             </Suspense>
 
-            {/* Activity Timeline - Full Width */}
-            <Suspense fallback={<ChartSkeleton />}>
-              <ActivityTimeline orgId={orgId} days={30} />
-            </Suspense>
-
             {/* Top Contributors and Engagement */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Suspense fallback={<ChartSkeleton />}>
@@ -207,6 +202,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
                 <EngagementPie orgId={orgId} />
               </Suspense>
             </div>
+
+            {/* Activity Timeline - Full Width */}
+            <Suspense fallback={<ChartSkeleton />}>
+              <ActivityTimeline orgId={orgId} days={30} />
+            </Suspense>
 
             {/* Key Metrics and Activity Heatmap */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
