@@ -60,11 +60,18 @@ curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-event-re
 EOF
 chmod +x ~/orbo/cron-send-event-reminders.sh
 
+# Create cron script for send-weekly-digests (hourly, checks schedule internally)
+cat > ~/orbo/cron-send-weekly-digests.sh << EOF
+#!/bin/bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-weekly-digests" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-send-weekly-digests.sh
+
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -75,6 +82,7 @@ cat >> "$CRONTAB_FILE" << CRON
 0 * * * * ~/orbo/cron-sync-attention-zones.sh
 * * * * * ~/orbo/cron-send-announcements.sh
 0 * * * * ~/orbo/cron-send-event-reminders.sh
+0 * * * * ~/orbo/cron-send-weekly-digests.sh
 CRON
 
 # Install crontab from file

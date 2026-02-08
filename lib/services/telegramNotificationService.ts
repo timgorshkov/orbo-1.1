@@ -40,15 +40,35 @@ async function sendTelegramMessage(
 ): Promise<TelegramResponse> {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
 
-  return await response.json();
+    const data: TelegramResponse = await response.json();
+    
+    if (!data.ok) {
+      logger.error({
+        chat_id: params.chat_id,
+        error_code: data.error_code,
+        description: data.description,
+        message_length: params.text?.length
+      }, 'Telegram API returned error');
+    }
+    
+    return data;
+  } catch (error) {
+    logger.error({
+      chat_id: params.chat_id,
+      error: error instanceof Error ? error.message : String(error),
+      message_length: params.text?.length
+    }, 'Telegram API request failed');
+    throw error;
+  }
 }
 
 /**
@@ -206,6 +226,7 @@ export async function sendSystemNotification(
   const botToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN;
 
   if (!botToken) {
+    logger.error({ tg_user_id: tgUserId }, 'TELEGRAM_NOTIFICATIONS_BOT_TOKEN not configured - cannot send notification');
     return { success: false, error: 'Bot token not configured' };
   }
 
@@ -216,11 +237,31 @@ export async function sendSystemNotification(
       parse_mode: 'Markdown',
     });
 
+    if (response.ok) {
+      logger.info({ 
+        tg_user_id: tgUserId, 
+        message_id: response.result?.message_id,
+        message_length: message.length 
+      }, 'System notification sent successfully');
+    } else {
+      logger.error({ 
+        tg_user_id: tgUserId, 
+        error_code: response.error_code,
+        description: response.description,
+        message_length: message.length 
+      }, 'System notification delivery failed');
+    }
+
     return {
       success: response.ok,
       error: response.description,
     };
   } catch (error) {
+    logger.error({ 
+      tg_user_id: tgUserId, 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    }, 'System notification send error');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

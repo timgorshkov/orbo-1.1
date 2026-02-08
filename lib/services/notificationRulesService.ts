@@ -229,29 +229,36 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
         const { data: rpcResult, error: rpcError } = await supabaseAdmin
           .rpc('get_user_telegram_id', { p_user_id: membership.user_id });
         
-        // RPC can return different formats depending on Supabase version
-        // Handle: number, string, or array of objects [{get_user_telegram_id: "123"}]
+        // RPC can return different formats depending on Supabase version and PostgreSQL client
+        // Handle: bigint (from self-hosted PG), number, string, or array of objects
         let tgUserId: number | null = null;
         if (rpcResult !== null && rpcResult !== undefined) {
-          if (typeof rpcResult === 'number') {
+          if (typeof rpcResult === 'bigint') {
+            // Self-hosted PostgreSQL returns BIGINT as JavaScript BigInt
+            tgUserId = Number(rpcResult);
+          } else if (typeof rpcResult === 'number') {
             tgUserId = rpcResult;
           } else if (typeof rpcResult === 'string') {
             tgUserId = parseInt(rpcResult, 10);
           } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
             const firstItem = rpcResult[0];
             if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
-              tgUserId = parseInt(firstItem.get_user_telegram_id, 10);
+              tgUserId = Number(firstItem.get_user_telegram_id);
             }
+          } else {
+            // Fallback: try Number() for any unexpected type
+            tgUserId = Number(rpcResult);
           }
         }
         
-        logger.debug({
+        logger.info({
           rule_id: rule.id,
           user_id: membership.user_id,
-          rpc_raw_result: rpcResult,
+          rpc_result_type: typeof rpcResult,
+          rpc_raw_result: rpcResult !== null ? String(rpcResult) : null,
           tg_user_id_parsed: tgUserId,
           rpc_error: rpcError?.message
-        }, 'RPC get_user_telegram_id result');
+        }, 'RPC get_user_telegram_id result for owner');
         
         if (tgUserId && !isNaN(tgUserId)) {
           recipients.push({
@@ -259,7 +266,12 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
             name: 'Owner',
           });
         } else if (!rpcError) {
-          logger.warn({ rule_id: rule.id, user_id: membership.user_id, rpc_result: rpcResult }, 'Owner has no valid tg_user_id');
+          logger.error({ 
+            rule_id: rule.id, 
+            user_id: membership.user_id, 
+            rpc_result: rpcResult !== null ? String(rpcResult) : null,
+            rpc_result_type: typeof rpcResult
+          }, 'Owner has no valid tg_user_id - notification delivery will fail');
         }
       }
     }
@@ -277,18 +289,22 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
           const { data: rpcResult } = await supabaseAdmin
             .rpc('get_user_telegram_id', { p_user_id: adminMembership.user_id });
           
-          // Parse RPC result (handle different formats)
+          // Parse RPC result (handle bigint, number, string, array formats)
           let tgUserId: number | null = null;
           if (rpcResult !== null && rpcResult !== undefined) {
-            if (typeof rpcResult === 'number') {
+            if (typeof rpcResult === 'bigint') {
+              tgUserId = Number(rpcResult);
+            } else if (typeof rpcResult === 'number') {
               tgUserId = rpcResult;
             } else if (typeof rpcResult === 'string') {
               tgUserId = parseInt(rpcResult, 10);
             } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
               const firstItem = rpcResult[0];
               if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
-                tgUserId = parseInt(firstItem.get_user_telegram_id, 10);
+                tgUserId = Number(firstItem.get_user_telegram_id);
               }
+            } else {
+              tgUserId = Number(rpcResult);
             }
           }
           
