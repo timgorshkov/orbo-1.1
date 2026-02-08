@@ -272,6 +272,16 @@ export default function TelegramEventPage() {
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
       setIsRegistered(true);
       
+      // Set QR token if provided
+      if (data.registration?.qr_token) {
+        setQrToken(data.registration.qr_token);
+      }
+      
+      // Set payment status if provided
+      if (data.registration?.payment_status) {
+        setPaymentStatus(data.registration.payment_status);
+      }
+      
       // If paid event, show payment step
       if (event.requires_payment && event.payment_link) {
         setViewState('payment');

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createAPILogger } from '@/lib/logger'
 
 // POST /api/events/[id]/participants/[registrationId]/checkin - Manual check-in by admin
@@ -12,14 +13,20 @@ export async function POST(
   try {
     const { id: eventId, registrationId } = await params;
     
-    const supabase = await createClientServer()
     const adminSupabase = createAdminServer()
     
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // Check authentication via unified auth
+    const user = await getUnifiedUser()
+    if (!user) {
+      logger.warn({ event_id: eventId, registration_id: registrationId }, 'Unauthorized checkin attempt - no user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    
+    logger.info({ 
+      user_id: user.id, 
+      event_id: eventId, 
+      registration_id: registrationId 
+    }, 'Checkin attempt by user');
     
     // Get registration with event info
     const { data: registration } = await adminSupabase

@@ -167,7 +167,7 @@ export async function POST(
       }
       
       // Reactivate cancelled registration
-      const { error: updateError } = await adminSupabase
+      const { data: updatedReg, error: updateError } = await adminSupabase
         .from('event_registrations')
         .update({
           status: 'registered',
@@ -176,7 +176,9 @@ export async function POST(
           quantity,
           registration_source: 'telegram_miniapp',
         })
-        .eq('id', existingRegistration.id);
+        .eq('id', existingRegistration.id)
+        .select('id, qr_token, payment_status')
+        .single();
       
       if (updateError) {
         logger.error({ error: updateError.message }, 'Error updating registration');
@@ -186,12 +188,19 @@ export async function POST(
       logger.info({ 
         event_id: eventId, 
         participant_id: participant.id,
-        telegram_user_id: telegramUser.id 
+        telegram_user_id: telegramUser.id,
+        qr_token: updatedReg?.qr_token
       }, '✅ Registration reactivated via MiniApp');
       
       return NextResponse.json({ 
         success: true,
-        message: 'Регистрация восстановлена'
+        message: 'Регистрация восстановлена',
+        registration: {
+          id: updatedReg?.id,
+          qr_token: updatedReg?.qr_token,
+          status: 'registered',
+          payment_status: updatedReg?.payment_status
+        }
       });
     }
     
@@ -217,28 +226,45 @@ export async function POST(
       return NextResponse.json({ error: 'Ошибка регистрации' }, { status: 500 });
     }
     
-    // Update registration source
+    // Update registration source and get full registration data
     const registrationRow = Array.isArray(registrationResult) && registrationResult.length > 0
       ? registrationResult[0]
       : registrationResult;
     
+    let qrToken = registrationRow?.registration_qr_token || null;
+    let paymentStatus = null;
+    
     if (registrationRow?.registration_id) {
-      await adminSupabase
+      const { data: updatedReg } = await adminSupabase
         .from('event_registrations')
         .update({ registration_source: 'telegram_miniapp' })
-        .eq('id', registrationRow.registration_id);
+        .eq('id', registrationRow.registration_id)
+        .select('qr_token, payment_status')
+        .single();
+      
+      if (updatedReg) {
+        qrToken = updatedReg.qr_token;
+        paymentStatus = updatedReg.payment_status;
+      }
     }
     
     logger.info({ 
       event_id: eventId, 
       participant_id: participant.id,
       telegram_user_id: telegramUser.id,
-      username: telegramUser.username
+      username: telegramUser.username,
+      qr_token: qrToken
     }, '✅ New registration via MiniApp');
     
     return NextResponse.json({ 
       success: true,
-      message: 'Вы успешно зарегистрированы!'
+      message: 'Вы успешно зарегистрированы!',
+      registration: {
+        id: registrationRow?.registration_id,
+        qr_token: qrToken,
+        status: 'registered',
+        payment_status: paymentStatus
+      }
     }, { status: 201 });
     
   } catch (error: any) {
