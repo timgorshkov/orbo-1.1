@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
       capacity,
       capacityCountByPaid,
       showParticipantsList,
+      enableQrCheckin,
       allowMultipleTickets,
       // Registration fields config (JSONB)
       registrationFieldsConfig,
