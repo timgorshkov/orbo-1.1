@@ -2,7 +2,7 @@ import AppShell from '@/components/app-shell'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { notFound } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import Link from 'next/link'
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups'
 import TabsLayout from '../tabs-layout'
@@ -15,16 +15,8 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
   try {
     const { supabase: userSupabase, user } = await requireOrgAccess(params.org)
     
-    // Создаем клиент Supabase с сервисной ролью для обхода RLS
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          persistSession: false
-        }
-      }
-    )
+    // PostgreSQL admin client for all DB operations
+    const supabase = createAdminServer()
     
     // Получаем список групп организации
     const groups = await getOrgTelegramGroups(params.org)

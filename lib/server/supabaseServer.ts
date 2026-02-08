@@ -1,20 +1,16 @@
 /**
  * Database Server Utilities
  * 
- * Этот файл предоставляет клиент для работы с БД:
- * - .from() и .rpc() направляются на локальный PostgreSQL
- * - .storage используется для файлов (Selectel S3 или Supabase Storage как fallback)
+ * Provides database client for the application:
+ * - .from() and .rpc() route to local PostgreSQL
+ * - Storage is handled by Selectel S3 (see lib/storage)
+ * - Auth is handled by NextAuth.js (see lib/auth/unified-auth.ts)
  * 
- * ВАЖНО: Auth реализован через NextAuth.js (см. lib/auth/unified-auth.ts)
- * Supabase Auth больше НЕ используется.
- * 
- * После полного отключения Supabase этот файл можно переименовать в postgresServer.ts
+ * NOTE: This file was previously named "supabaseServer" and used a Supabase proxy.
+ * Since January 2026, the application uses only local PostgreSQL.
+ * The file name is kept for backwards compatibility with 180+ import sites.
  */
 
-import { createServerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { getDbProvider } from '@/lib/db'
 import { getPostgresClient } from '@/lib/db/postgres-client'
 
 // Кэш для PostgreSQL клиента
@@ -28,144 +24,45 @@ function getOrCreatePgClient() {
 }
 
 /**
- * Создаёт Proxy-обёртку вокруг Supabase клиента,
- * которая перенаправляет DB операции на PostgreSQL
- */
-function createHybridClient(supabaseClient: SupabaseClient): SupabaseClient {
-  const provider = getDbProvider();
-  
-  // Если провайдер не postgres, возвращаем оригинальный клиент
-  if (provider !== 'postgres') {
-    return supabaseClient;
-  }
-  
-  const pg = getOrCreatePgClient();
-  
-  return new Proxy(supabaseClient, {
-    get(target, prop: string | symbol) {
-      // Все .from() запросы идут на PostgreSQL
-      if (prop === 'from') {
-        return (table: string) => {
-          return pg.from(table);
-        };
-      }
-      
-      // Все .rpc() вызовы идут на PostgreSQL
-      if (prop === 'rpc') {
-        return (fn: string, params?: Record<string, any>) => {
-          return pg.rpc(fn, params);
-        };
-      }
-      
-      // Все остальные методы (auth, storage, channel, etc.) идут в Supabase
-      const value = (target as any)[prop];
-      
-      // Если это функция, привязываем контекст
-      if (typeof value === 'function') {
-        return value.bind(target);
-      }
-      
-      return value;
-    }
-  }) as SupabaseClient;
-}
-
-/**
- * Создаёт серверный клиент с cookies для аутентификации
+ * Создаёт серверный клиент для работы с БД
+ * Используется в Server Components и Route Handlers
  * 
- * DB операции идут на PostgreSQL (если DB_PROVIDER=postgres)
- * Auth операции идут на Supabase
+ * @returns PostgresDbClient instance
  */
 export async function createClientServer() {
-  const cookieStore = await cookies()
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: name => cookieStore.get(name)?.value,
-        set: (name, value, opts) => {
-          try {
-            cookieStore.set({ name, value, ...opts })
-          } catch (error) {
-            // Silently ignore in Server Components
-          }
-        },
-        remove: (name, opts) => {
-          try {
-            cookieStore.set({ name, value: "", ...opts })
-          } catch (error) {
-            // Silently ignore in Server Components
-          }
-        },
-      }
-    }
-  )
-  
-  return createHybridClient(supabase);
+  return getOrCreatePgClient();
 }
 
 /**
- * Создаёт админский клиент (bypass RLS)
+ * Создаёт админский клиент для работы с БД (bypass RLS)
+ * Используется в cron jobs, webhooks, внутренних сервисах
  * 
- * DB операции идут на PostgreSQL (если DB_PROVIDER=postgres)
- * Auth/Storage операции идут на Supabase
+ * Для PostgreSQL это тот же клиент, что и createClientServer()
+ * (PostgreSQL не использует RLS в этом проекте)
+ * 
+ * @returns PostgresDbClient instance
  */
 export function createAdminServer() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
-  
-  return createHybridClient(supabase);
+  return getOrCreatePgClient();
 }
 
 // ============================================
-// Хелперы для прямого доступа к Supabase
-// (когда нужен именно Supabase, а не абстракция)
+// Deprecated exports (kept for backwards compatibility)
+// These were used to access Supabase directly — no longer needed
 // ============================================
 
 /**
- * Получить оригинальный Supabase клиент (без Proxy)
- * Используйте для Supabase-специфичных операций: realtime, storage, etc.
- */
-export async function getSupabaseClient() {
-  const cookieStore = await cookies()
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: name => cookieStore.get(name)?.value,
-        set: (name, value, opts) => {
-          try {
-            cookieStore.set({ name, value, ...opts })
-          } catch (error) {
-            // Silently ignore in Server Components
-          }
-        },
-        remove: (name, opts) => {
-          try {
-            cookieStore.set({ name, value: "", ...opts })
-          } catch (error) {
-            // Silently ignore in Server Components
-          }
-        },
-      }
-    }
-  )
-}
-
-/**
- * Получить оригинальный Supabase Admin клиент (без Proxy)
+ * @deprecated Supabase removed. Use createAdminServer() instead.
+ * This function now returns the PostgreSQL client.
  */
 export function getSupabaseAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  )
+  return getOrCreatePgClient();
+}
+
+/**
+ * @deprecated Supabase removed. Use createClientServer() instead.
+ * This function now returns the PostgreSQL client.
+ */
+export async function getSupabaseClient() {
+  return getOrCreatePgClient();
 }

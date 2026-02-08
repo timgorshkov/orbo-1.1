@@ -1,5 +1,6 @@
 import { createClientServer } from './server/supabaseServer'
-import { SupabaseClient } from '@supabase/supabase-js'
+// SupabaseClient type replaced with 'any' after Supabase removal
+type SupabaseClient = any
 import { createServiceLogger } from './logger'
 
 export async function getOrgInfo(orgId: string) {

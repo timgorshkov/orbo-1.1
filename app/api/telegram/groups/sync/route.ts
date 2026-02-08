@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+// Removed unused Supabase import
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService } from '@/lib/services/telegramService';
 import { getOrgTelegramGroups } from '@/lib/server/getOrgTelegramGroups';

@@ -1,5 +1,6 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { PostgrestSingleResponse } from '@supabase/supabase-js';
+// PostgrestSingleResponse type replaced after Supabase removal
+type PostgrestSingleResponse<T> = { data: T | null; error: any; count?: number | null; status: number; statusText: string };
 import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('ParticipantMatcher');

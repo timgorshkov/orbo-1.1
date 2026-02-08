@@ -18,6 +18,8 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
+export const dynamic = 'force-dynamic';
+
 const supabaseAdmin = createAdminServer();
 
 export async function GET(request: NextRequest) {

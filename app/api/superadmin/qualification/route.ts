@@ -3,6 +3,8 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { logger } from '@/lib/logger';
 import { RESPONSE_LABELS } from '@/lib/qualification/config';
 
+export const dynamic = 'force-dynamic';
+
 interface UserInfo {
   email?: string;
   name?: string;

@@ -45,9 +45,12 @@ export async function POST(
       )
     }
 
-    // Ищем пользователя по email
-    const { data: existingUsers } = await adminSupabase.auth.admin.listUsers()
-    const existingUser = existingUsers?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+    // Ищем пользователя по email (direct PostgreSQL query)
+    const { data: existingUser } = await adminSupabase
+      .from('users')
+      .select('id, email, name')
+      .ilike('email', email.toLowerCase())
+      .single()
 
     if (existingUser) {
       // Пользователь уже зарегистрирован, добавляем membership
@@ -194,8 +197,12 @@ export async function POST(
           .eq('id', orgId)
           .single()
         
-        const { data: inviter } = await adminSupabase.auth.admin.getUserById(user.id)
-        const inviterName = inviter.user?.email || 'Администратор'
+        const { data: inviterData } = await adminSupabase
+          .from('users')
+          .select('email, name')
+          .eq('id', user.id)
+          .single()
+        const inviterName = inviterData?.email || 'Администратор'
         
         await sendTeamInvitation(email, inviteLink, org?.name || 'организации', inviterName)
         
@@ -255,8 +262,12 @@ export async function POST(
         .eq('id', orgId)
         .single()
       
-      const { data: inviter } = await adminSupabase.auth.admin.getUserById(user.id)
-      const inviterName = inviter.user?.email || 'Администратор'
+      const { data: inviter } = await adminSupabase
+        .from('users')
+        .select('email, name')
+        .eq('id', user.id)
+        .single()
+      const inviterName = inviter?.email || 'Администратор'
       
       try {
         const result = await sendTeamInvitation(

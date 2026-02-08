@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     });
     
     // Преобразуем count
-    const appsWithStats = (apps || []).map(app => ({
+    const appsWithStats = (apps || []).map((app: any) => ({
       ...app,
       connections_count: countsMap.get(app.id) || 0
     }));

@@ -175,7 +175,7 @@ export interface StorageProvider {
 /**
  * Тип провайдера хранилища
  */
-export type StorageProviderType = 'supabase' | 's3' | 'r2' | 'local';
+export type StorageProviderType = 's3' | 'r2' | 'local';
 
 /**
  * Конфигурация хранилища

@@ -25,7 +25,6 @@
  */
 
 import type { StorageProvider, StorageProviderType } from './types';
-import { createSupabaseStorage, SupabaseStorageProvider } from './supabase-storage';
 import { createS3Storage, createSelectelStorage, S3StorageProvider } from './s3-storage';
 
 // Реэкспорт типов
@@ -42,7 +41,6 @@ export type {
   StorageConfig
 } from './types';
 
-export { SupabaseStorageProvider } from './supabase-storage';
 export { S3StorageProvider, createS3Storage, createSelectelStorage } from './s3-storage';
 
 /**
@@ -50,7 +48,7 @@ export { S3StorageProvider, createS3Storage, createSelectelStorage } from './s3-
  */
 export function getStorageProvider(): StorageProviderType {
   const provider = process.env.STORAGE_PROVIDER as StorageProviderType;
-  return provider || 'supabase';
+  return provider || 's3';
 }
 
 /**
@@ -60,11 +58,8 @@ export function createStorage(): StorageProvider {
   const provider = getStorageProvider();
   
   switch (provider) {
-    case 'supabase':
-      return createSupabaseStorage();
-    
     case 's3':
-      // S3-совместимые хранилища (AWS S3, Selectel, MinIO и др.)
+      // S3-совместимые хранилища (Selectel, AWS S3, MinIO и др.)
       return createS3Storage();
     
     case 'r2':
@@ -76,7 +71,7 @@ export function createStorage(): StorageProvider {
       throw new Error('Local storage provider not yet implemented');
     
     default:
-      throw new Error(`Unknown storage provider: ${provider}`);
+      throw new Error(`Unknown storage provider: ${provider}. Supported: s3, r2, local`);
   }
 }
 

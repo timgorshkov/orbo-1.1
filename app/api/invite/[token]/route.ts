@@ -51,9 +51,13 @@ export async function GET(
     // Get inviter info
     let inviterEmail = 'Администратор'
     if (invitation.invited_by) {
-      const { data: inviter } = await adminSupabase.auth.admin.getUserById(invitation.invited_by)
-      if (inviter?.user?.email) {
-        inviterEmail = inviter.user.email
+      const { data: inviter } = await adminSupabase
+        .from('users')
+        .select('email, name')
+        .eq('id', invitation.invited_by)
+        .single()
+      if (inviter?.email) {
+        inviterEmail = inviter.email
       }
     }
 

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { createAdminServer, getSupabaseAdminClient } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
+import { encode } from 'next-auth/jwt'
 
-// Для DB операций используем hybrid клиент (PostgreSQL)
+// Единый клиент для DB и Auth операций (PostgreSQL)
 const supabaseAdmin = createAdminServer()
-// Для Auth операций используем оригинальный Supabase клиент  
-const supabaseAuth = getSupabaseAdminClient()
 
 /**
  * Проверка подлинности данных от Telegram Login Widget
@@ -119,23 +118,24 @@ export async function POST(req: NextRequest) {
       // Создаём нового пользователя
       isNewUser = true
       
-      // Используем Telegram ID как основу для email (технический)
+      // Создаём пользователя в локальной PostgreSQL (NextAuth users table)
       const email = `tg${tgUserId}@telegram.user`
-      const password = crypto.randomBytes(32).toString('hex')
+      const newUserId = crypto.randomUUID()
+      const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
 
-      const { data: newUser, error: signUpError } = await supabaseAuth.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true, // автоматически подтверждаем
-        user_metadata: {
-          telegram_id: tgUserId,
-          telegram_username: username,
-          full_name: `${firstName}${lastName ? ' ' + lastName : ''}`,
-          photo_url: photoUrl
-        }
-      })
+      const { data: newUser, error: signUpError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          id: newUserId,
+          email,
+          name: fullName,
+          image: photoUrl || null,
+          email_verified: new Date().toISOString(),
+        })
+        .select()
+        .single()
 
-      if (signUpError || !newUser.user) {
+      if (signUpError || !newUser) {
         await logErrorToDatabase({
           level: 'error',
           message: `Failed to create user via Telegram widget: ${signUpError?.message || 'Unknown error'}`,
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to create user' }, { status: 500 })
       }
 
-      userId = newUser.user.id
+      userId = newUser.id
     }
 
     // 2. Обрабатываем доступ к организации
@@ -340,43 +340,66 @@ export async function POST(req: NextRequest) {
         })
     }
 
-    // 4. Создаём сессию для пользователя
-    const { data: session, error: sessionError } = await supabaseAuth.auth.admin.generateLink({
-      type: 'magiclink',
-      email: `tg${tgUserId}@telegram.user`,
-      options: {
-        redirectTo: targetOrgId ? `${process.env.NEXT_PUBLIC_APP_URL}/app/${targetOrgId}` : `${process.env.NEXT_PUBLIC_APP_URL}/orgs`
-      }
-    })
-
-    if (sessionError || !session) {
-      await logErrorToDatabase({
-        level: 'error',
-        message: `Failed to create session for Telegram user: ${sessionError?.message || 'Unknown error'}`,
-        errorCode: 'AUTH_TG_WIDGET_ERROR',
-        context: {
-          endpoint: '/api/auth/telegram',
-          reason: 'session_creation_failed',
-          dbError: sessionError?.message,
-          userId,
-          telegramUserId: tgUserId,
-          ip: ipAddress
-        }
-      })
-      return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
+    // 4. Создаём NextAuth JWT сессию для пользователя (same as telegram-handler)
+    const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
+    if (!secret) {
+      return NextResponse.json({ error: 'Auth configuration error' }, { status: 500 })
     }
 
-    return NextResponse.json({
+    // Get user data for JWT
+    const { data: userData } = await supabaseAdmin
+      .from('users')
+      .select('id, email, name, image')
+      .eq('id', userId)
+      .single()
+
+    const userEmail = userData?.email || `tg${tgUserId}@telegram.user`
+    const userName = userData?.name || `${firstName}${lastName ? ' ' + lastName : ''}`
+
+    const cookieName = process.env.NODE_ENV === 'production'
+      ? '__Secure-authjs.session-token'
+      : 'authjs.session-token'
+    
+    const jwtToken = await encode({
+      token: {
+        id: userId,
+        sub: userId,
+        email: userEmail,
+        name: userName,
+        picture: userData?.image || photoUrl,
+        provider: 'telegram',
+      },
+      secret,
+      salt: cookieName,
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    })
+
+    const redirectPath = targetOrgId ? `/app/${targetOrgId}` : '/orgs'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
+    const redirectUrl = `${appUrl}${redirectPath}`
+
+    // Set NextAuth JWT cookie in the response
+    const response = NextResponse.json({
       success: true,
       user: {
         id: userId,
         telegram_id: tgUserId,
         username,
-        full_name: `${firstName}${lastName ? ' ' + lastName : ''}`
+        full_name: userName
       },
-      redirectUrl: session.properties.action_link,
+      redirectUrl,
       orgId: targetOrgId
     })
+    
+    response.cookies.set(cookieName, jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    })
+
+    return response
 
   } catch (error) {
     await logErrorToDatabase({

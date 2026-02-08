@@ -19,8 +19,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'send_code') {
-      // Проверяем, не занят ли email
-      const { data: existingUsers, error: userCheckError } = await adminSupabase.auth.admin.listUsers()
+      // Проверяем, не занят ли email (direct PostgreSQL query)
+      const { data: existingUser, error: userCheckError } = await adminSupabase
+        .from('users')
+        .select('id, email')
+        .ilike('email', email.toLowerCase())
+        .maybeSingle()
       
       if (userCheckError) {
         logger.error({ 
@@ -29,8 +33,6 @@ export async function POST(request: NextRequest) {
         }, 'Error checking existing users');
         return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 })
       }
-
-      const existingUser = existingUsers.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
 
       if (existingUser && existingUser.id !== user.id) {
         // Проверяем, есть ли у того пользователя Telegram
@@ -138,11 +140,15 @@ export async function POST(request: NextRequest) {
 
       const pendingEmail = account.metadata.pending_email
 
-      // Код верный, обновляем email пользователя
-      const { error: updateError } = await adminSupabase.auth.admin.updateUserById(user.id, {
-        email: pendingEmail,
-        email_confirm: true
-      })
+      // Код верный, обновляем email пользователя (direct PostgreSQL query)
+      const { error: updateError } = await adminSupabase
+        .from('users')
+        .update({
+          email: pendingEmail,
+          email_verified: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
 
       if (updateError) {
         logger.error({ 

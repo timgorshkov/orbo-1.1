@@ -4,7 +4,8 @@ import { getParticipantDetail } from '@/lib/server/getParticipantDetail';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
-import type { SupabaseClient } from '@supabase/supabase-js';
+// SupabaseClient type replaced with 'any' after Supabase removal
+type SupabaseClient = any;
 
 async function ensureOrgAccess(orgId: string, logger?: ReturnType<typeof createAPILogger>) {
   const user = await getUnifiedUser();

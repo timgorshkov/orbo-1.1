@@ -20,11 +20,6 @@
 
 import type { AuthProvider, AuthProviderType } from './types';
 import { 
-  createSupabaseServerAuth, 
-  createSupabaseBrowserAuth,
-  SupabaseBrowserAuthProvider
-} from './supabase-auth';
-import { 
   createNextAuthServerProvider, 
   NextAuthServerProvider,
   authenticateWithTelegramCode 
@@ -44,11 +39,6 @@ export type {
 } from './types';
 
 export { 
-  SupabaseServerAuthProvider, 
-  SupabaseBrowserAuthProvider 
-} from './supabase-auth';
-
-export { 
   NextAuthServerProvider,
   createNextAuthServerProvider,
   authenticateWithTelegramCode,
@@ -59,8 +49,7 @@ export {
  * Получить текущий провайдер аутентификации из env
  */
 export function getAuthProvider(): AuthProviderType {
-  const provider = process.env.AUTH_PROVIDER as AuthProviderType;
-  return provider || 'supabase';
+  return 'nextauth';
 }
 
 /**
@@ -69,27 +58,7 @@ export function getAuthProvider(): AuthProviderType {
  * Используется в Server Components и Route Handlers.
  */
 export function createServerAuth(): AuthProvider {
-  const provider = getAuthProvider();
-  
-  switch (provider) {
-    case 'supabase':
-      return createSupabaseServerAuth();
-    
-    case 'nextauth':
-      // NextAuth.js v5 провайдер
-      return createNextAuthServerProvider();
-    
-    case 'lucia':
-      // TODO: Реализовать Lucia провайдер
-      throw new Error('Lucia provider not yet implemented');
-    
-    case 'custom':
-      // TODO: Реализовать Custom JWT провайдер
-      throw new Error('Custom JWT provider not yet implemented');
-    
-    default:
-      throw new Error(`Unknown auth provider: ${provider}`);
-  }
+  return createNextAuthServerProvider();
 }
 
 /**
@@ -97,25 +66,8 @@ export function createServerAuth(): AuthProvider {
  * 
  * Используется в Client Components.
  */
-export function createBrowserAuth(): SupabaseBrowserAuthProvider {
-  const provider = getAuthProvider();
-  
-  switch (provider) {
-    case 'supabase':
-      return createSupabaseBrowserAuth();
-    
-    case 'nextauth':
-      throw new Error('NextAuth browser provider not yet implemented');
-    
-    case 'lucia':
-      throw new Error('Lucia browser provider not yet implemented');
-    
-    case 'custom':
-      throw new Error('Custom JWT browser provider not yet implemented');
-    
-    default:
-      throw new Error(`Unknown auth provider: ${provider}`);
-  }
+export function createBrowserAuth(): any {
+  throw new Error('Browser auth is handled by NextAuth - use next-auth/react signIn/signOut');
 }
 
 // ============================================

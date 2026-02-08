@@ -51,23 +51,43 @@ async function getPool() {
   await initPg();
   
   if (!poolInstance) {
-    // Используем DATABASE_URL_POSTGRES если указан, иначе DATABASE_URL
-    const connectionString = process.env.DATABASE_URL_POSTGRES || process.env.DATABASE_URL;
+    const logger = createServiceLogger('PostgreSQL Pool');
     
-    if (!connectionString) {
-      throw new Error('DATABASE_URL or DATABASE_URL_POSTGRES must be set');
+    // Build connection config
+    // Prefer individual params (POSTGRES_PASSWORD) to avoid URL-encoding issues
+    // with special characters (+, /, =) in connection strings
+    let connectionConfig: Record<string, any>;
+    
+    const password = process.env.POSTGRES_PASSWORD;
+    if (password) {
+      // Individual params — most reliable, avoids URL parsing issues
+      connectionConfig = {
+        host: process.env.DB_HOST || 'postgres',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        user: process.env.DB_USER || 'orbo',
+        password,
+        database: process.env.DB_NAME || 'orbo',
+      };
+      logger.info({ host: connectionConfig.host, port: connectionConfig.port, database: connectionConfig.database }, 'Using individual connection params');
+    } else {
+      // Fallback to connection string
+      const connectionString = process.env.DATABASE_URL_POSTGRES || process.env.DATABASE_URL;
+      if (!connectionString) {
+        throw new Error('POSTGRES_PASSWORD or DATABASE_URL must be set');
+      }
+      connectionConfig = { connectionString };
+      logger.info('Using DATABASE_URL connection string');
     }
     
     poolInstance = new Pool({
-      connectionString,
+      ...connectionConfig,
       max: parseInt(process.env.DATABASE_POOL_SIZE || '20'),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-      ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+      ssl: process.env.DATABASE_SSL === 'false' ? false : undefined,
     });
     
     // Обработка ошибок пула
-    const logger = createServiceLogger('PostgreSQL Pool');
     poolInstance.on('error', (err: Error) => {
       logger.error({ 
         error: err.message,

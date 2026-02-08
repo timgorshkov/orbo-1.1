@@ -3,86 +3,21 @@
  * Сервис для верификации кодов авторизации Telegram
  */
 
-import { getSupabaseAdminClient, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
+import crypto from 'crypto'
 
 const logger = createServiceLogger('TelegramAuth');
 
-// Supabase admin client для auth операций (используем оригинальный клиент)
-const supabaseAdmin = getSupabaseAdminClient();
-
-// Создаём админ клиент для запросов к БД (более надёжный чем REST API)
+// Единый админ клиент для всех операций (PostgreSQL)
 function getAdminSupabase() {
   return createAdminServer();
 }
 
-// Helper для прямых HTTP запросов к Supabase REST API с timeout
-async function supabaseFetch(endpoint: string, options: RequestInit = {}) {
-  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/${endpoint}`
-  const headers = {
-    'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation',
-    ...options.headers
-  }
-  
-  logger.debug({ method: options.method || 'GET', endpoint }, 'Supabase fetch');
-  
-  // Создаем AbortController для timeout
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => {
-    logger.warn({ endpoint }, 'Supabase fetch timeout after 5 seconds');
-    controller.abort()
-  }, 5000)
-  
-  try {
-    const response = await fetch(url, { 
-      ...options, 
-      headers,
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-    logger.debug({ endpoint, status: response.status }, 'Supabase fetch response');
-    
-    if (!response.ok) {
-      const error = await response.text()
-      logger.error({ endpoint, status: response.status, error }, 'Supabase API error');
-      throw new Error(`Supabase API error: ${response.status} ${error}`)
-    }
-    
-    // Проверяем, есть ли тело ответа
-    const text = await response.text()
-    
-    if (!text || text.length === 0) {
-      logger.debug({ endpoint }, 'Empty response body');
-      return []
-    }
-    
-    const data = JSON.parse(text)
-    logger.debug({ 
-      endpoint, 
-      data_type: Array.isArray(data) ? 'array' : 'object',
-      items_count: Array.isArray(data) ? data.length : undefined
-    }, 'Supabase fetch data received');
-    
-    return data
-  } catch (error) {
-    clearTimeout(timeoutId)
-    
-    if (error instanceof Error && error.name === 'AbortError') {
-      logger.error({ endpoint }, 'Request aborted due to timeout');
-      throw new Error('Supabase request timeout')
-    }
-    
-    logger.error({ 
-      endpoint,
-      error: error instanceof Error ? error.message : String(error)
-    }, 'Supabase fetch error');
-    throw error
-  }
-}
+// Legacy: supabaseFetch removed — all operations use PostgresDbClient via createAdminServer()
+// The old helper made direct HTTP requests to Supabase REST API, which is no longer needed.
+
+// supabaseFetch has been completely removed — all operations use createAdminServer().from()
 
 export interface VerifyCodeParams {
   code: string
@@ -292,25 +227,24 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
       userId = existingAccount.user_id
       logger.info({ user_id: userId, telegram_user_id: telegramUserId }, 'Found existing user');
     } else {
-      // Создаём нового пользователя
+      // Создаём нового пользователя в локальной PostgreSQL (NextAuth users table)
       logger.debug({ telegram_user_id: telegramUserId }, 'Creating new user');
       const email = `telegram_${telegramUserId}@orbo.temp`
-      // Временный токен для создания пользователя (не используется для входа)
-      const tempAuthToken = `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`
+      const newUserId = crypto.randomUUID()
+      const fullName = `${firstName}${lastName ? ' ' + lastName : ''}`
 
-      const { data: newUser, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: tempAuthToken,
-        email_confirm: true,
-        user_metadata: {
-          telegram_user_id: telegramUserId,
-          telegram_username: telegramUsername,
-          first_name: firstName,
-          last_name: lastName
-        }
-      })
+      const { data: newUser, error: signUpError } = await adminSupabase
+        .from('users')
+        .insert({
+          id: newUserId,
+          email,
+          name: fullName,
+          email_verified: new Date().toISOString(),
+        })
+        .select()
+        .single()
 
-      if (signUpError || !newUser.user) {
+      if (signUpError || !newUser) {
         logger.error({ 
           telegram_user_id: telegramUserId,
           error: signUpError?.message
@@ -322,7 +256,7 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
         }
       }
 
-      userId = newUser.user.id
+      userId = newUser.id
       logger.info({ user_id: userId, telegram_user_id: telegramUserId }, 'Created new user');
     }
 

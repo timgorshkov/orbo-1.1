@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     // Create collections
     const collections = appConfig.collections || [];
-    const createdCollections = [];
+    const createdCollections: any[] = [];
 
     // Helper to ensure valid JSONB
     const ensureValidJson = (value: any, defaultValue: any = {}): any => {

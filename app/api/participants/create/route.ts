@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { participantMatcher } from '@/lib/services/participants/matcher';
-import { PostgrestSingleResponse } from '@supabase/supabase-js';
+// PostgrestSingleResponse type replaced after Supabase removal
+type PostgrestSingleResponse<T> = { data: T | null; error: any; count?: number | null; status: number; statusText: string };
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 // REMOVED: logParticipantAudit - audit logging removed in migration 072

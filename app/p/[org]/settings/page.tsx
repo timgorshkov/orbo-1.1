@@ -1,7 +1,7 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { notFound } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { createClient } from '@supabase/supabase-js'
+// Supabase removed — using createAdminServer() for all DB operations
 import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
@@ -22,15 +22,7 @@ const NotificationRulesContent = dynamic(() => import('@/components/settings/not
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 export default async function OrganizationSettingsPage({ 
   params,

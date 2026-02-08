@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       cron: {
         last_run: lastCronRun,
         last_run_ago_minutes: lastCronRun ? Math.floor((now.getTime() - new Date(lastCronRun).getTime()) / (1000 * 60)) : null,
-        recently_checked_rules: lastCheckedRules.map(r => ({
+        recently_checked_rules: lastCheckedRules.map((r: any) => ({
           id: r.id,
           name: r.name,
           type: r.rule_type,
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
       },
       rules: {
         enabled_total: enabledRulesCount,
-        stalled: stalledRules.map(r => ({
+        stalled: stalledRules.map((r: any) => ({
           id: r.id,
           name: r.name,
           type: r.rule_type,
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
       bot: {
         token_configured: hasBotToken,
       },
-      recent_logs: recentLogs.map(l => ({
+      recent_logs: recentLogs.map((l: any) => ({
         id: l.id,
         type: l.rule_type,
         status: l.notification_status,

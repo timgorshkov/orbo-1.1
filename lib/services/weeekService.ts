@@ -561,11 +561,15 @@ export async function onOrganizationCreated(
       return;
     }
 
-    // Get user email from admin API
+    // Get user email from users table (direct PostgreSQL query)
     let email = '';
     try {
-      const { data: userData } = await supabase.auth.admin.getUserById(userId);
-      email = userData?.user?.email || '';
+      const { data: userData } = await supabase
+        .from('users')
+        .select('email, name')
+        .eq('id', userId)
+        .single();
+      email = userData?.email || '';
     } catch {
       // If can't get email, use empty string
     }
@@ -645,13 +649,16 @@ export async function onTelegramLinked(
       return;
     }
 
-    // Get user email for firstName fallback
+    // Get user email for firstName fallback (direct PostgreSQL query)
     let firstName = 'User';
     try {
-      const { data: userData } = await supabase.auth.admin.getUserById(userId);
-      const email = userData?.user?.email || '';
-      const name = userData?.user?.user_metadata?.full_name;
-      firstName = name?.split(' ')[0] || email.split('@')[0] || 'User';
+      const { data: userData } = await supabase
+        .from('users')
+        .select('email, name')
+        .eq('id', userId)
+        .single();
+      const userEmail = userData?.email || '';
+      firstName = userData?.name?.split(' ')[0] || userEmail.split('@')[0] || 'User';
     } catch {
       // Use default
     }

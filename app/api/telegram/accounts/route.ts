@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+// Removed unused Supabase import
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';

@@ -6,18 +6,10 @@
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { redirect } from 'next/navigation';
 import DigestSettingsForm from '@/components/settings/digest-settings-form';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createAdminServer();
 
 export default async function DigestSettingsPage({
   params,

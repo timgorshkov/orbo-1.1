@@ -1,23 +1,38 @@
 /**
- * @deprecated DEPRECATED - DO NOT USE FOR NEW CODE
+ * @deprecated REMOVED - Supabase has been removed from the project (January 2026).
  * 
- * Этот клиент обращается к удалённому Supabase, а не к локальному PostgreSQL.
- * Для новых клиентских компонентов используйте API routes вместо прямых запросов.
+ * This stub replaces the old Supabase browser client.
  * 
- * Оставшиеся использования:
- * - app/p/[org]/telegram/groups/[id]/page.tsx (TODO: мигрировать на API)
- * - app/app/[org]/telegram/message/page.tsx (TODO: мигрировать на API)
+ * Remaining legacy pages that call this (TODO: migrate to API routes):
+ * - app/p/[org]/telegram/groups/[id]/page.tsx
+ * - app/app/[org]/telegram/message/page.tsx
  * 
- * После миграции этих файлов - УДАЛИТЬ этот модуль.
+ * These pages will fail at runtime. After migrating them — DELETE this module.
  */
-import { createBrowserClient } from "@supabase/ssr"
+
+// Dummy chainable query builder that logs errors
+function createDummyQueryBuilder(): any {
+  const handler: ProxyHandler<any> = {
+    get(_target, prop) {
+      if (prop === 'then') return undefined; // Not a thenable
+      if (prop === 'data') return null;
+      if (prop === 'error') return { message: 'Supabase has been removed. Migrate to API routes.' };
+      // Return chainable proxy for any method call
+      return (..._args: any[]) => new Proxy({}, handler);
+    },
+  };
+  return new Proxy({}, handler);
+}
 
 /**
- * @deprecated Use API routes instead of direct Supabase calls
+ * @deprecated Supabase removed. Use fetch('/api/...') instead.
  */
-export function createClientBrowser() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+export function createClientBrowser(): any {
+  console.error('[REMOVED] createClientBrowser: Supabase has been removed from the project. Migrate to API routes.');
+  return {
+    from: () => createDummyQueryBuilder(),
+    auth: createDummyQueryBuilder(),
+    rpc: () => createDummyQueryBuilder(),
+    storage: createDummyQueryBuilder(),
+  };
 }
