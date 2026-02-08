@@ -59,7 +59,8 @@ export async function GET(
         capacity,
         capacity_count_by_paid,
         status,
-        org_id
+        org_id,
+        enable_qr_checkin
       `)
       .eq('id', eventId)
       .single();
@@ -172,6 +173,7 @@ export async function GET(
         status: event.status,
         org_id: event.org_id,
         org_name: orgInfo?.name,
+        enable_qr_checkin: event.enable_qr_checkin,
       },
       fields: fields || [],
       isRegistered,

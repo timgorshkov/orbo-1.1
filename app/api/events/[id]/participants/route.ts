@@ -69,11 +69,11 @@ export async function GET(
     let isAdmin = false
     if (user) {
       const { data: member } = await adminSupabase
-        .from('organization_members')
+        .from('memberships')
         .select('role')
         .eq('org_id', event.org_id)
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
       
       isAdmin = member?.role === 'owner' || member?.role === 'admin'
     }

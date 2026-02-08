@@ -413,11 +413,12 @@ export async function DELETE(
       )
     }
 
-    // Check if event has any registrations
+    // Check if event has any active registrations (not cancelled)
     const { data: registrations, error: regCheckError } = await adminSupabase
       .from('event_registrations')
-      .select('id')
+      .select('id, status')
       .eq('event_id', eventId)
+      .neq('status', 'cancelled')
       .limit(1)
     
     if (regCheckError) {
@@ -427,7 +428,7 @@ export async function DELETE(
     
     if (registrations && registrations.length > 0) {
       return NextResponse.json(
-        { error: 'Нельзя удалить событие с зарегистрированными участниками' },
+        { error: 'Нельзя удалить событие с зарегистрированными участниками. Сначала отмените все регистрации.' },
         { status: 400 }
       )
     }
