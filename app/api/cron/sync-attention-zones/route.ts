@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { sendSystemNotification } from '@/lib/services/telegramNotificationService';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -87,10 +88,74 @@ export async function POST(request: NextRequest) {
     
     let totalChurning = 0;
     let totalNewcomers = 0;
+    let totalCriticalEvents = 0;
     let totalUpdated = 0;
     
     for (const orgId of orgIds) {
       try {
+        // 0. Sync critical events (low registration rate)
+        const threeDaysFromNow = new Date();
+        threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+        
+        const { data: upcomingEvents } = await adminSupabase
+          .from('events')
+          .select('id, title, event_date, start_time, capacity')
+          .eq('org_id', orgId)
+          .eq('status', 'published')
+          .not('capacity', 'is', null)
+          .gt('capacity', 0)
+          .gte('event_date', new Date().toISOString())
+          .lte('event_date', threeDaysFromNow.toISOString());
+        
+        if (upcomingEvents && upcomingEvents.length > 0) {
+          const eventIds = upcomingEvents.map(e => e.id);
+          const { data: regs } = await adminSupabase
+            .from('event_registrations')
+            .select('event_id, status')
+            .in('event_id', eventIds)
+            .eq('status', 'registered');
+          
+          const regCounts = new Map<string, number>();
+          for (const r of regs || []) {
+            regCounts.set(r.event_id, (regCounts.get(r.event_id) || 0) + 1);
+          }
+          
+          const criticalItems = upcomingEvents
+            .filter(e => {
+              const count = regCounts.get(e.id) || 0;
+              const rate = (count / e.capacity) * 100;
+              return rate < 30;
+            })
+            .map(e => ({
+              org_id: orgId,
+              item_type: 'critical_event',
+              item_id: e.id,
+              item_data: {
+                title: e.title,
+                event_date: e.event_date,
+                start_time: e.start_time,
+                registeredCount: regCounts.get(e.id) || 0,
+                capacity: e.capacity,
+                registrationRate: Math.round(((regCounts.get(e.id) || 0) / e.capacity) * 100),
+              },
+            }));
+          
+          if (criticalItems.length > 0) {
+            const { error: upsertError } = await adminSupabase
+              .from('attention_zone_items')
+              .upsert(criticalItems, {
+                onConflict: 'org_id,item_type,item_id',
+                ignoreDuplicates: false,
+              });
+            
+            if (upsertError) {
+              logger.warn({ org_id: orgId, error: upsertError.message }, 'Error upserting critical events');
+            } else {
+              totalCriticalEvents += criticalItems.length;
+            }
+          }
+        }
+
         // 1. Получаем молчунов (churning participants)
         const { data: churningParticipants, error: churningError } = await adminSupabase
           .rpc('get_churning_participants', {
@@ -185,7 +250,120 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // 5. Очистка старых resolved items (старше 7 дней)
+    // 5. Send Telegram notifications for system rules with send_telegram=true
+    let telegramSent = 0;
+    try {
+      // Find system rules that have send_telegram enabled
+      const { data: systemRules } = await adminSupabase
+        .from('notification_rules')
+        .select('id, org_id, rule_type, notify_owner, notify_admins, config')
+        .eq('is_system', true)
+        .eq('is_enabled', true)
+        .eq('send_telegram', true);
+      
+      if (systemRules && systemRules.length > 0) {
+        for (const rule of systemRules) {
+          try {
+            // Get new attention items for this org that were just created/updated
+            const { data: items } = await adminSupabase
+              .from('attention_zone_items')
+              .select('item_id, item_type, item_data, created_at')
+              .eq('org_id', rule.org_id)
+              .eq('item_type', rule.rule_type)
+              .is('resolved_at', null)
+              .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()) // Last 2 hours
+              .limit(5);
+            
+            if (!items || items.length === 0) continue;
+            
+            // Get recipients
+            const recipients: Array<{ tgUserId: number; name: string }> = [];
+            
+            if (rule.notify_owner) {
+              const { data: ownerMembership } = await adminSupabase
+                .from('memberships')
+                .select('user_id')
+                .eq('org_id', rule.org_id)
+                .eq('role', 'owner')
+                .single();
+              
+              if (ownerMembership?.user_id) {
+                const { data: tgId } = await adminSupabase
+                  .rpc('get_user_telegram_id', { p_user_id: ownerMembership.user_id });
+                
+                let parsedId: number | null = null;
+                if (tgId !== null && tgId !== undefined) {
+                  parsedId = typeof tgId === 'bigint' ? Number(tgId) : Number(tgId);
+                }
+                if (parsedId && !isNaN(parsedId)) {
+                  recipients.push({ tgUserId: parsedId, name: 'Owner' });
+                }
+              }
+            }
+            
+            if (rule.notify_admins) {
+              const { data: admins } = await adminSupabase
+                .from('memberships')
+                .select('user_id')
+                .eq('org_id', rule.org_id)
+                .eq('role', 'admin');
+              
+              for (const admin of admins || []) {
+                const { data: tgId } = await adminSupabase
+                  .rpc('get_user_telegram_id', { p_user_id: admin.user_id });
+                
+                let parsedId: number | null = null;
+                if (tgId !== null && tgId !== undefined) {
+                  parsedId = typeof tgId === 'bigint' ? Number(tgId) : Number(tgId);
+                }
+                if (parsedId && !isNaN(parsedId) && !recipients.find(r => r.tgUserId === parsedId)) {
+                  recipients.push({ tgUserId: parsedId, name: 'Admin' });
+                }
+              }
+            }
+            
+            if (recipients.length === 0) continue;
+            
+            // Format message based on rule type
+            let message = '';
+            const typeLabels: Record<string, string> = {
+              churning_participant: 'Участники на грани оттока',
+              inactive_newcomer: 'Новички без активности',
+              critical_event: 'Низкие регистрации на событие',
+            };
+            
+            message = `🔔 *${typeLabels[rule.rule_type] || rule.rule_type}*\n\n`;
+            
+            for (const item of items.slice(0, 3)) {
+              const data = item.item_data as Record<string, any>;
+              if (rule.rule_type === 'churning_participant') {
+                message += `• ${data.full_name || data.username || 'Участник'} — молчит ${data.days_since_activity} дн.\n`;
+              } else if (rule.rule_type === 'inactive_newcomer') {
+                message += `• ${data.full_name || data.username || 'Новичок'} — ${data.days_since_join} дн. без активности\n`;
+              } else if (rule.rule_type === 'critical_event') {
+                message += `• ${data.title} — ${data.registeredCount}/${data.capacity} (${data.registrationRate}%)\n`;
+              }
+            }
+            
+            if (items.length > 3) {
+              message += `\n_...и ещё ${items.length - 3}_`;
+            }
+            
+            // Send to all recipients
+            for (const recipient of recipients) {
+              const result = await sendSystemNotification(recipient.tgUserId, message);
+              if (result.success) telegramSent++;
+            }
+          } catch (ruleError: any) {
+            logger.warn({ rule_id: rule.id, error: ruleError.message }, 'Error sending system rule Telegram notification');
+          }
+        }
+      }
+    } catch (tgError: any) {
+      logger.warn({ error: tgError.message }, 'Error processing Telegram notifications for system rules');
+    }
+
+    // 6. Очистка старых resolved items (старше 7 дней)
     const { error: cleanupError } = await adminSupabase
       .from('attention_zone_items')
       .delete()
@@ -199,13 +377,15 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
     
     // Only log info if we actually updated something, otherwise debug
-    const hasUpdates = totalChurning > 0 || totalNewcomers > 0;
+    const hasUpdates = totalChurning > 0 || totalNewcomers > 0 || totalCriticalEvents > 0;
     const logMethod = hasUpdates ? logger.info.bind(logger) : logger.debug.bind(logger);
     
     logMethod({
       orgs_processed: totalUpdated,
       churning_items: totalChurning,
       newcomer_items: totalNewcomers,
+      critical_event_items: totalCriticalEvents,
+      telegram_sent: telegramSent,
       duration_ms: duration,
     }, hasUpdates ? '✅ Attention zones sync completed with updates' : 'Attention zones sync completed (no changes)');
     
@@ -214,6 +394,8 @@ export async function POST(request: NextRequest) {
       orgs_processed: totalUpdated,
       churning_items: totalChurning,
       newcomer_items: totalNewcomers,
+      critical_event_items: totalCriticalEvents,
+      telegram_sent: telegramSent,
       duration_ms: duration,
     });
     

@@ -142,6 +142,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
         churningParticipants: [],
         inactiveNewcomers: []
       },
+      aiAlerts: [],
       upcomingEvents: []
     }
   }
@@ -176,6 +177,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
               churningParticipants={dashboardData.attentionZones.churningParticipants}
               inactiveNewcomers={dashboardData.attentionZones.inactiveNewcomers}
               hasMore={dashboardData.attentionZones.hasMore}
+              aiAlerts={dashboardData.aiAlerts || []}
             />
 
             <UpcomingEvents 

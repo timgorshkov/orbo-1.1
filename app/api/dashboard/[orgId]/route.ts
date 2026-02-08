@@ -363,6 +363,29 @@ export async function GET(
       attentionZones.hasMore.newcomers = Math.max(0, newcomersList.length - 3)
     }
 
+    // 4d. Fetch latest AI alerts from notification_logs (last 3 unread)
+    let aiAlerts: any[] = [];
+    try {
+      const { data: alertsData } = await adminSupabase
+        .from('notification_logs')
+        .select('id, rule_id, notification_type, message, severity, created_at, metadata')
+        .eq('org_id', orgId)
+        .in('notification_type', ['negative_discussion', 'unanswered_question', 'inactive_group'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      aiAlerts = (alertsData || []).map((alert: any) => ({
+        id: alert.id,
+        type: alert.notification_type,
+        message: alert.message,
+        severity: alert.severity || 'medium',
+        created_at: alert.created_at,
+        group_name: alert.metadata?.group_name || alert.metadata?.chat_title,
+      }));
+    } catch (alertsError: any) {
+      logger.warn({ error: alertsError.message }, 'Error fetching AI alerts for dashboard');
+    }
+
     // 5. Upcoming events (next 3)
     const { data: upcomingEvents } = await adminSupabase
       .from('events')
@@ -421,6 +444,7 @@ export async function GET(
         activityChart
       },
       attentionZones,
+      aiAlerts,
       upcomingEvents: upcomingEventsData
     })
   } catch (error: any) {

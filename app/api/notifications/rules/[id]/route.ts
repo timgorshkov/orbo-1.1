@@ -59,7 +59,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, description, rule_type, config, use_ai, notify_owner, notify_admins, is_enabled } = body
+    const { name, description, rule_type, config, use_ai, notify_owner, notify_admins, is_enabled, send_telegram } = body
 
     const user = await getUnifiedUser()
     if (!user) {
@@ -101,6 +101,7 @@ export async function PUT(
     if (notify_owner !== undefined) updateData.notify_owner = notify_owner
     if (notify_admins !== undefined) updateData.notify_admins = notify_admins
     if (is_enabled !== undefined) updateData.is_enabled = is_enabled
+    if (send_telegram !== undefined) updateData.send_telegram = send_telegram
 
     const { data: rule, error } = await adminSupabase
       .from('notification_rules')

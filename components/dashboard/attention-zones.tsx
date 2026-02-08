@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Bell, ChevronRight } from 'lucide-react'
+import { Bell, ChevronRight, MessageCircleWarning, HelpCircle, Volume2 } from 'lucide-react'
 
 interface CriticalEvent {
   id: string
@@ -12,6 +12,15 @@ interface CriticalEvent {
   registeredCount: number
   capacity: number
   registrationRate: number
+}
+
+interface AIAlert {
+  id: string
+  type: string
+  message: string
+  severity: string
+  created_at: string
+  group_name?: string
 }
 
 interface ChurningParticipant {
@@ -42,6 +51,7 @@ interface AttentionZonesProps {
   churningParticipants: ChurningParticipant[]
   inactiveNewcomers: InactiveNewcomer[]
   hasMore?: HasMore
+  aiAlerts?: AIAlert[]
 }
 
 export default function AttentionZones({
@@ -49,9 +59,10 @@ export default function AttentionZones({
   criticalEvents,
   churningParticipants,
   inactiveNewcomers,
-  hasMore = {}
+  hasMore = {},
+  aiAlerts = []
 }: AttentionZonesProps) {
-  const hasAlerts = criticalEvents.length > 0 || churningParticipants.length > 0 || inactiveNewcomers.length > 0
+  const hasAlerts = criticalEvents.length > 0 || churningParticipants.length > 0 || inactiveNewcomers.length > 0 || aiAlerts.length > 0
   const totalMore = (hasMore.churning || 0) + (hasMore.newcomers || 0) + (hasMore.events || 0)
 
   if (!hasAlerts) {
@@ -71,6 +82,16 @@ export default function AttentionZones({
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long' }).format(date)
+  }
+
+  const formatTimeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const minutes = Math.floor(diff / 60000)
+    if (minutes < 60) return `${minutes} мин. назад`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours} ч. назад`
+    const days = Math.floor(hours / 24)
+    return `${days} дн. назад`
   }
 
   return (
@@ -116,6 +137,58 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Alerts */}
+        {aiAlerts.length > 0 && (
+          <div className="border-l-4 border-purple-500 pl-3 py-1">
+            <h3 className="font-semibold text-purple-900 text-sm mb-1.5">AI-алерты</h3>
+            <div className="space-y-1">
+              {aiAlerts.slice(0, 3).map(alert => {
+                const icon = alert.type === 'negative_discussion' 
+                  ? <MessageCircleWarning className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
+                  : alert.type === 'unanswered_question'
+                  ? <HelpCircle className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
+                  : <Volume2 className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
+                
+                const typeLabel = alert.type === 'negative_discussion' 
+                  ? 'Негатив' 
+                  : alert.type === 'unanswered_question' 
+                  ? 'Вопрос без ответа' 
+                  : 'Неактивная группа'
+
+                const timeAgo = formatTimeAgo(alert.created_at)
+
+                return (
+                  <div
+                    key={alert.id}
+                    className="block px-2 py-1.5 rounded bg-purple-50"
+                  >
+                    <div className="flex items-start gap-2">
+                      {icon}
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-purple-900 block truncate">
+                          {typeLabel}{alert.group_name ? ` • ${alert.group_name}` : ''}
+                        </span>
+                        <span className="text-xs text-purple-600 line-clamp-2">
+                          {alert.message?.substring(0, 120)}{(alert.message?.length || 0) > 120 ? '...' : ''}
+                        </span>
+                        <span className="text-xs text-purple-400 mt-0.5 block">{timeAgo}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              {aiAlerts.length > 3 && (
+                <Link
+                  href={`/p/${orgId}/notifications`}
+                  className="block px-2 py-1 text-xs text-purple-600 hover:text-purple-700"
+                >
+                  Ещё {aiAlerts.length - 3} алертов →
+                </Link>
+              )}
             </div>
           </div>
         )}

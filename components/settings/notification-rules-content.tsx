@@ -46,7 +46,7 @@ interface NotificationRuleData {
   id: string
   name: string
   description: string | null
-  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer'
+  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer' | 'critical_event'
   config: Record<string, unknown>
   use_ai: boolean
   notify_owner: boolean
@@ -67,36 +67,48 @@ interface TelegramGroup {
   bot_status: string | null
 }
 
-const RULE_TYPE_INFO: Record<string, { label: string; icon: any; color: string; bg: string }> = {
+const RULE_TYPE_INFO: Record<string, { label: string; icon: any; color: string; bg: string; description?: string }> = {
   negative_discussion: {
     label: 'Негатив в чате',
     icon: AlertTriangle,
     color: 'text-red-600',
     bg: 'bg-red-50',
+    description: 'AI обнаруживает конфликты и негатив в сообщениях',
   },
   unanswered_question: {
     label: 'Неотвеченный вопрос',
     icon: MessageSquare,
     color: 'text-orange-600',
     bg: 'bg-orange-50',
+    description: 'AI находит вопросы, оставшиеся без ответа',
   },
   group_inactive: {
     label: 'Неактивность группы',
     icon: Users,
     color: 'text-blue-600',
     bg: 'bg-blue-50',
+    description: 'Группа не активна дольше заданного времени',
   },
   churning_participant: {
     label: 'Участник на грани оттока',
     icon: Users,
     color: 'text-amber-600',
     bg: 'bg-amber-50',
+    description: 'Участник перестал писать более 14 дней',
   },
   inactive_newcomer: {
     label: 'Новичок без активности',
     icon: Users,
     color: 'text-blue-600',
     bg: 'bg-blue-50',
+    description: 'Новый участник не проявляет активности',
+  },
+  critical_event: {
+    label: 'Низкие регистрации на событие',
+    icon: AlertTriangle,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    description: 'Мало регистраций на ближайшее событие (менее 30%)',
   },
 }
 
@@ -197,6 +209,24 @@ export default function NotificationRulesContent() {
     }
   }
 
+  const handleUpdateSystemRule = async (ruleId: string, updates: Partial<NotificationRuleData>) => {
+    try {
+      const response = await fetch(`/api/notifications/rules/${ruleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+
+      if (response.ok) {
+        setRules(prev => prev.map(r => 
+          r.id === ruleId ? { ...r, ...updates } : r
+        ))
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error updating system rule')
+    }
+  }
+
   const handleEditRule = (rule: NotificationRuleData) => {
     setEditingRule(rule)
     setShowForm(true)
@@ -277,7 +307,6 @@ export default function NotificationRulesContent() {
           <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <Bell className="h-4 w-4" />
             Системные уведомления
-            <span className="text-xs text-gray-400 font-normal">(только в ЛК)</span>
           </h3>
           {rules.filter(r => r.is_system).map(rule => {
             const typeInfo = RULE_TYPE_INFO[rule.rule_type] || { 
@@ -294,12 +323,12 @@ export default function NotificationRulesContent() {
                 className={`border rounded-lg p-4 ${rule.is_enabled ? 'bg-white' : 'bg-gray-50 opacity-75'}`}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 flex-1">
                     <div className={`p-2 rounded-lg ${typeInfo.bg}`}>
                       <Icon className={`h-5 w-5 ${typeInfo.color}`} />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-medium">{rule.name}</h4>
                         {!rule.is_enabled && (
                           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
@@ -310,17 +339,50 @@ export default function NotificationRulesContent() {
                           Системное
                         </span>
                       </div>
-                      <p className="text-sm text-gray-500 mt-0.5">{typeInfo.label}</p>
-                      {rule.description && (
-                        <p className="text-sm text-gray-600 mt-1">{rule.description}</p>
-                      )}
+                      <p className="text-sm text-gray-500 mt-0.5">{typeInfo.description || typeInfo.label}</p>
+                      
+                      {/* Delivery settings for system rules */}
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rule.notify_owner}
+                            onChange={() => handleUpdateSystemRule(rule.id, { notify_owner: !rule.notify_owner })}
+                            className="rounded border-gray-300 h-3.5 w-3.5"
+                          />
+                          <span className="text-gray-600">Владельцу</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rule.notify_admins}
+                            onChange={() => handleUpdateSystemRule(rule.id, { notify_admins: !rule.notify_admins })}
+                            className="rounded border-gray-300 h-3.5 w-3.5"
+                          />
+                          <span className="text-gray-600">Админам</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rule.send_telegram ?? false}
+                            onChange={() => handleUpdateSystemRule(rule.id, { send_telegram: !(rule.send_telegram ?? false) })}
+                            className="rounded border-gray-300 h-3.5 w-3.5"
+                          />
+                          <span className="text-gray-600">В Telegram</span>
+                        </label>
+                        {rule.last_triggered_at && (
+                          <span className="text-gray-400 ml-1">
+                            Сработало: {formatTimeAgo(rule.last_triggered_at)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => handleToggleRule(rule)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex-shrink-0 ${
                       rule.is_enabled 
                         ? 'bg-green-100 text-green-700 hover:bg-green-200' 
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

@@ -24,7 +24,7 @@ interface NotificationRule {
   id: string;
   org_id: string;
   name: string;
-  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive';
+  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer' | 'critical_event';
   config: {
     groups?: string[] | null;
     severity_threshold?: 'low' | 'medium' | 'high';

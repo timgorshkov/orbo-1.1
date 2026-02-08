@@ -24,7 +24,7 @@ export interface NotificationRule {
   id?: string
   name: string
   description?: string
-  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer'
+  rule_type: 'negative_discussion' | 'unanswered_question' | 'group_inactive' | 'churning_participant' | 'inactive_newcomer' | 'critical_event'
   config: Record<string, unknown>
   use_ai: boolean
   notify_owner: boolean
