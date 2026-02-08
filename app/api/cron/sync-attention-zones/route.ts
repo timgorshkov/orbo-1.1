@@ -291,9 +291,15 @@ export async function POST(request: NextRequest) {
                 const { data: tgId } = await adminSupabase
                   .rpc('get_user_telegram_id', { p_user_id: ownerMembership.user_id });
                 
+                // Parse RPC result - handle bigint, number, string, object types
                 let parsedId: number | null = null;
                 if (tgId !== null && tgId !== undefined) {
-                  parsedId = typeof tgId === 'bigint' ? Number(tgId) : Number(tgId);
+                  if (typeof tgId === 'bigint' || typeof tgId === 'number') {
+                    parsedId = Number(tgId);
+                  } else {
+                    const p = parseInt(String(tgId), 10);
+                    parsedId = isNaN(p) ? null : p;
+                  }
                 }
                 if (parsedId && !isNaN(parsedId)) {
                   recipients.push({ tgUserId: parsedId, name: 'Owner' });
@@ -312,9 +318,15 @@ export async function POST(request: NextRequest) {
                 const { data: tgId } = await adminSupabase
                   .rpc('get_user_telegram_id', { p_user_id: admin.user_id });
                 
+                // Parse RPC result - handle bigint, number, string, object types
                 let parsedId: number | null = null;
                 if (tgId !== null && tgId !== undefined) {
-                  parsedId = typeof tgId === 'bigint' ? Number(tgId) : Number(tgId);
+                  if (typeof tgId === 'bigint' || typeof tgId === 'number') {
+                    parsedId = Number(tgId);
+                  } else {
+                    const p = parseInt(String(tgId), 10);
+                    parsedId = isNaN(p) ? null : p;
+                  }
                 }
                 if (parsedId && !isNaN(parsedId) && !recipients.find(r => r.tgUserId === parsedId)) {
                   recipients.push({ tgUserId: parsedId, name: 'Admin' });

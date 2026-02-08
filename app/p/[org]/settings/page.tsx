@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js'
 import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
 import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
-import DigestSettingsForm from '@/components/settings/digest-settings-form'
 // InvitesManager moved to /p/[org]/members page
+// Digest settings are now in the Notifications tab (notification-rules-content.tsx)
 import dynamic from 'next/dynamic'
 import { createServiceLogger } from '@/lib/logger'
 
@@ -167,59 +167,7 @@ export default async function OrganizationSettingsPage({
         break
       }
 
-      case 'digest': {
-        const initialSettings = {
-          enabled: organization.digest_enabled ?? true,
-          day: organization.digest_day ?? 1,
-          time: organization.digest_time ?? '09:00:00',
-          lastSentAt: organization.last_digest_sent_at,
-        }
-
-        tabContent = (
-          <div className="p-6 max-w-4xl">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold">Еженедельный дайджест</h2>
-              <p className="text-gray-600 mt-1">
-                Настройте автоматическую отправку дайджеста активности сообщества
-              </p>
-            </div>
-
-            <DigestSettingsForm
-              orgId={orgId}
-              initialSettings={initialSettings}
-            />
-
-            {/* Info block */}
-            <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="font-medium text-blue-900 mb-2">Что включает дайджест?</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>📊 Метрики активности (сообщения, участники, реакции)</li>
-                <li>🌟 Топ-3 самых активных участников</li>
-                <li>⚠️ Зоны внимания (неактивные новички, молчащие участники)</li>
-                <li>📅 Ближайшие события</li>
-                <li>💡 AI-рекомендации по улучшению вовлечённости</li>
-              </ul>
-              <p className="text-sm text-blue-700 mt-3">
-                <strong>Стоимость генерации:</strong> ~$0.002-0.003 за дайджест (~0.19-0.29 ₽)
-              </p>
-            </div>
-
-            {/* Bot requirements */}
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <h3 className="font-medium text-yellow-900 mb-2">Требования</h3>
-              <p className="text-sm text-yellow-800">
-                Для получения дайджестов в Telegram необходимо:
-              </p>
-              <ol className="text-sm text-yellow-800 space-y-1 mt-2 ml-4 list-decimal">
-                <li>Запустить бота уведомлений Orbo в Telegram (отправьте /start)</li>
-                <li>Связать Telegram аккаунт в вашем профиле Orbo</li>
-              </ol>
-            </div>
-          </div>
-        )
-        break
-      }
-
+      // 'digest' tab removed - digest settings are now in the Notifications tab
       // 'invites' tab moved to /p/[org]/members page
     }
 

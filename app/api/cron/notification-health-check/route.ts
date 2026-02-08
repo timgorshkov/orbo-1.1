@@ -155,16 +155,15 @@ _Активных правил: ${enabledRulesCount}_`;
           const { data: tgId } = await adminSupabase
             .rpc('get_user_telegram_id', { p_user_id: sa.user_id });
 
+          // Parse RPC result - handle bigint, number, string, object (PostgREST wrapped) types
           let tgUserId: number | null = null;
           if (tgId !== null && tgId !== undefined) {
-            if (typeof tgId === 'bigint') {
+            if (typeof tgId === 'bigint' || typeof tgId === 'number') {
               tgUserId = Number(tgId);
-            } else if (typeof tgId === 'number') {
-              tgUserId = tgId;
-            } else if (typeof tgId === 'string') {
-              tgUserId = parseInt(tgId, 10);
             } else {
-              tgUserId = Number(tgId);
+              // For string, object, or any other type - parse from String representation
+              const parsed = parseInt(String(tgId), 10);
+              tgUserId = isNaN(parsed) ? null : parsed;
             }
           }
 

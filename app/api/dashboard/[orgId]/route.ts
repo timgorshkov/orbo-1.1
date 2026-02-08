@@ -370,7 +370,7 @@ export async function GET(
         .from('notification_logs')
         .select('id, rule_id, rule_type, trigger_context, notification_status, created_at')
         .eq('org_id', orgId)
-        .eq('notification_status', 'sent')
+        .in('notification_status', ['sent', 'failed'])
         .in('rule_type', ['negative_discussion', 'unanswered_question', 'group_inactive'])
         .order('created_at', { ascending: false })
         .limit(5);

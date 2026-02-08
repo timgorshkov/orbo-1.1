@@ -62,8 +62,13 @@ export default function AttentionZones({
   hasMore = {},
   aiAlerts = []
 }: AttentionZonesProps) {
-  const hasAlerts = criticalEvents.length > 0 || churningParticipants.length > 0 || inactiveNewcomers.length > 0 || aiAlerts.length > 0
-  const totalMore = (hasMore.churning || 0) + (hasMore.newcomers || 0) + (hasMore.events || 0)
+  // Determine what to show on dashboard (max 3 total items, prioritized)
+  // Priority: critical events > AI alerts > inactive newcomers > churning participants
+  const hasHighPriorityAlerts = criticalEvents.length > 0 || aiAlerts.length > 0 || inactiveNewcomers.length > 0
+  // Only show churning on dashboard if there's nothing else
+  const showChurningOnDashboard = !hasHighPriorityAlerts
+  
+  const hasAlerts = criticalEvents.length > 0 || aiAlerts.length > 0 || inactiveNewcomers.length > 0 || (showChurningOnDashboard && churningParticipants.length > 0)
 
   if (!hasAlerts) {
     return (
@@ -146,7 +151,7 @@ export default function AttentionZones({
           <div className="border-l-4 border-purple-500 pl-3 py-1">
             <h3 className="font-semibold text-purple-900 text-sm mb-1.5">AI-алерты</h3>
             <div className="space-y-1">
-              {aiAlerts.slice(0, 3).map(alert => {
+              {aiAlerts.slice(0, 2).map(alert => {
                 const icon = alert.type === 'negative_discussion' 
                   ? <MessageCircleWarning className="h-3.5 w-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
                   : alert.type === 'unanswered_question'
@@ -181,20 +186,20 @@ export default function AttentionZones({
                   </div>
                 )
               })}
-              {aiAlerts.length > 3 && (
+              {aiAlerts.length > 2 && (
                 <Link
                   href={`/p/${orgId}/notifications`}
                   className="block px-2 py-1 text-xs text-purple-600 hover:text-purple-700"
                 >
-                  Ещё {aiAlerts.length - 3} алертов →
+                  Ещё {aiAlerts.length - 2} алертов →
                 </Link>
               )}
             </div>
           </div>
         )}
 
-        {/* Churning Participants */}
-        {churningParticipants.length > 0 && (
+        {/* Churning Participants - only show if no higher-priority alerts */}
+        {showChurningOnDashboard && churningParticipants.length > 0 && (
           <div className="border-l-4 border-amber-500 pl-3 py-1">
             <h3 className="font-semibold text-amber-900 text-sm mb-1.5">Участники на грани оттока</h3>
             <div className="space-y-1">
@@ -231,12 +236,12 @@ export default function AttentionZones({
           </div>
         )}
 
-        {/* Inactive Newcomers */}
+        {/* Inactive Newcomers - limit to 2 on dashboard */}
         {inactiveNewcomers.length > 0 && (
           <div className="border-l-4 border-blue-500 pl-3 py-1">
             <h3 className="font-semibold text-blue-900 text-sm mb-1.5">Новички без активности</h3>
             <div className="space-y-1">
-              {inactiveNewcomers.map(newcomer => (
+              {inactiveNewcomers.slice(0, 2).map(newcomer => (
                 <Link
                   key={newcomer.participant_id}
                   href={`/p/${orgId}/members/${newcomer.participant_id}`}
@@ -257,30 +262,28 @@ export default function AttentionZones({
                   </div>
                 </Link>
               ))}
-              {(hasMore.newcomers ?? 0) > 0 && (
+              {(inactiveNewcomers.length > 2 || (hasMore.newcomers ?? 0) > 0) && (
                 <Link
                   href={`/p/${orgId}/notifications?type=inactive_newcomer`}
                   className="block px-2 py-1 text-xs text-blue-600 hover:text-blue-700"
                 >
-                  Ещё {hasMore.newcomers} новичков →
+                  Ещё {Math.max(0, inactiveNewcomers.length - 2) + (hasMore.newcomers || 0)} новичков →
                 </Link>
               )}
             </div>
           </div>
         )}
 
-        {/* Summary link */}
-        {totalMore > 0 && (
-          <div className="pt-2 border-t border-amber-200">
-            <Link
-              href={`/p/${orgId}/notifications`}
-              className="text-sm text-gray-600 hover:text-gray-800 flex items-center justify-center gap-1"
-            >
-              Все уведомления ({criticalEvents.length + churningParticipants.length + inactiveNewcomers.length + totalMore})
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
-        )}
+        {/* Summary link - always show link to full notifications */}
+        <div className="pt-2 border-t border-amber-200">
+          <Link
+            href={`/p/${orgId}/notifications`}
+            className="text-sm text-gray-600 hover:text-gray-800 flex items-center justify-center gap-1"
+          >
+            Все уведомления →
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
       </CardContent>
     </Card>
   )

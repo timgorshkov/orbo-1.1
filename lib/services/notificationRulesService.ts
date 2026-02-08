@@ -61,6 +61,39 @@ interface RuleCheckResult {
 }
 
 /**
+ * Parse Telegram user ID from various RPC result formats.
+ * PostgREST/Supabase can return BIGINT as: bigint, number, string, 
+ * wrapped object (typeof=object but String() gives numeric), or array.
+ */
+function parseTelegramId(rpcResult: unknown): number | null {
+  if (rpcResult === null || rpcResult === undefined) return null;
+
+  if (typeof rpcResult === 'bigint') {
+    return Number(rpcResult);
+  }
+  if (typeof rpcResult === 'number') {
+    return rpcResult;
+  }
+  if (typeof rpcResult === 'string') {
+    const parsed = parseInt(rpcResult, 10);
+    return isNaN(parsed) ? null : parsed;
+  }
+  if (Array.isArray(rpcResult) && rpcResult.length > 0) {
+    const firstItem = rpcResult[0];
+    if (typeof firstItem === 'object' && firstItem !== null && firstItem.get_user_telegram_id) {
+      return Number(firstItem.get_user_telegram_id);
+    }
+    // Array of scalars
+    return parseTelegramId(firstItem);
+  }
+  // Object type (PostgREST wrapped scalar) — String() gives the numeric value
+  // Number(object) returns NaN, so we parse from string representation
+  const strValue = String(rpcResult);
+  const parsed = parseInt(strValue, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+/**
  * Generate deduplication hash from trigger context
  */
 function generateDedupHash(ruleId: string, context: Record<string, unknown>): string {
@@ -230,26 +263,8 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
           .rpc('get_user_telegram_id', { p_user_id: membership.user_id });
         
         // RPC can return different formats depending on Supabase version and PostgreSQL client
-        // Handle: bigint (from self-hosted PG), number, string, or array of objects
-        let tgUserId: number | null = null;
-        if (rpcResult !== null && rpcResult !== undefined) {
-          if (typeof rpcResult === 'bigint') {
-            // Self-hosted PostgreSQL returns BIGINT as JavaScript BigInt
-            tgUserId = Number(rpcResult);
-          } else if (typeof rpcResult === 'number') {
-            tgUserId = rpcResult;
-          } else if (typeof rpcResult === 'string') {
-            tgUserId = parseInt(rpcResult, 10);
-          } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
-            const firstItem = rpcResult[0];
-            if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
-              tgUserId = Number(firstItem.get_user_telegram_id);
-            }
-          } else {
-            // Fallback: try Number() for any unexpected type
-            tgUserId = Number(rpcResult);
-          }
-        }
+        // Handle: bigint, number, string, object (PostgREST wrapped scalar), or array of objects
+        const tgUserId = parseTelegramId(rpcResult);
         
         logger.info({
           rule_id: rule.id,
@@ -289,24 +304,8 @@ async function getRecipients(rule: NotificationRule): Promise<Array<{ tgUserId: 
           const { data: rpcResult } = await supabaseAdmin
             .rpc('get_user_telegram_id', { p_user_id: adminMembership.user_id });
           
-          // Parse RPC result (handle bigint, number, string, array formats)
-          let tgUserId: number | null = null;
-          if (rpcResult !== null && rpcResult !== undefined) {
-            if (typeof rpcResult === 'bigint') {
-              tgUserId = Number(rpcResult);
-            } else if (typeof rpcResult === 'number') {
-              tgUserId = rpcResult;
-            } else if (typeof rpcResult === 'string') {
-              tgUserId = parseInt(rpcResult, 10);
-            } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
-              const firstItem = rpcResult[0];
-              if (typeof firstItem === 'object' && firstItem.get_user_telegram_id) {
-                tgUserId = Number(firstItem.get_user_telegram_id);
-              }
-            } else {
-              tgUserId = Number(rpcResult);
-            }
-          }
+          // Parse RPC result (handle bigint, number, string, object, array formats)
+          const tgUserId = parseTelegramId(rpcResult);
           
           if (tgUserId && !isNaN(tgUserId) && !recipients.find(r => r.tgUserId === tgUserId)) {
             recipients.push({
