@@ -32,6 +32,7 @@ interface Event {
   status: string;
   org_id?: string;
   org_name?: string;
+  enable_qr_checkin?: boolean;
 }
 
 interface RegistrationField {
