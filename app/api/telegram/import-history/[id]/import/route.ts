@@ -886,7 +886,7 @@ async function recalculateGroupMetrics(
     .from('participant_groups')
     .select('*', { count: 'exact', head: true })
     .eq('tg_group_id', tgChatId)
-    .eq('is_active', true);
+    .is('left_at', null);
 
   // 2. Получаем дату последней активности
   const { data: lastActivity } = await supabase

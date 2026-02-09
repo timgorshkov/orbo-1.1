@@ -431,7 +431,7 @@ export async function GET(request: Request) {
                 .from('participant_groups')
                 .select('tg_group_id')
                 .in('tg_group_id', missingChatIds)
-                .eq('is_active', true);
+                .is('left_at', null);
               
               if (!countError && memberCounts) {
                 const dbCounts = new Map<string, number>();

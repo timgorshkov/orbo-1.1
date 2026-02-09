@@ -202,7 +202,7 @@ export async function GET(
             participants!inner(id)
           `, { count: 'exact', head: true })
           .eq('tg_group_id', numericChatId)
-          .eq('is_active', true)
+          .is('left_at', null)
           .eq('participants.org_id', orgId)
           .neq('participants.source', 'bot')
           .is('participants.merged_into', null)

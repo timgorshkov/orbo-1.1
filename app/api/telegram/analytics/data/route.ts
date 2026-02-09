@@ -180,7 +180,7 @@ export async function GET(request: Request) {
         .from('participant_groups')
         .select('participant_id')
         .eq('tg_group_id', numericChatId)
-        .eq('is_active', true)
+        .is('left_at', null)
 
       logger.debug({ 
         chat_id: chatId, 
