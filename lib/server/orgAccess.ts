@@ -61,7 +61,7 @@ export async function getEffectiveOrgRole(
   }
 
   if (superadmin) {
-    logger.info({ user_id: userId, org_id: orgId }, 'Superadmin accessing org as virtual owner');
+    logger.debug({ user_id: userId, org_id: orgId }, 'Superadmin accessing org as virtual owner');
     return { role: 'owner', isSuperadmin: true };
   }
 

@@ -52,14 +52,18 @@ export async function GET(request: NextRequest) {
     };
 
     // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно
-    const [membershipResult, telegramResult, organizationResult] = await Promise.all([
-      // 2. Membership в организации
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const [access, membershipResult, telegramResult, organizationResult] = await Promise.all([
+      // Check access (with superadmin fallback)
+      getEffectiveOrgRole(user.id, orgId),
+      
+      // 2. Membership в организации (may be null for superadmins)
       adminSupabase
         .from('memberships')
         .select('role, role_source, metadata, created_at')
         .eq('org_id', orgId)
         .eq('user_id', user.id)
-        .single(),
+        .maybeSingle(),
       
       // 3. Telegram аккаунт для организации
       adminSupabase
@@ -77,24 +81,19 @@ export async function GET(request: NextRequest) {
         .single()
     ]);
 
-    const { data: membership, error: membershipError } = membershipResult;
-    const { data: telegramAccount, error: telegramError } = telegramResult;
-    const { data: organization } = organizationResult;
-
-    if (membershipError) {
-      logger.error({ 
-        user_id: user.id,
-        org_id: orgId,
-        error: membershipError.message
-      }, 'Membership error');
+    if (!access) {
       return NextResponse.json({ 
         error: 'Forbidden', 
         details: 'You are not a member of this organization' 
       }, { status: 403 });
     }
 
+    const membership = membershipResult.data;
+    const { data: telegramAccount, error: telegramError } = telegramResult;
+    const { data: organization } = organizationResult;
+
     // Проверяем, является ли пользователь теневым админом
-    const isShadowProfile = membership.metadata?.shadow_profile === true;
+    const isShadowProfile = membership?.metadata?.shadow_profile === true;
 
     if (telegramError) {
       logger.warn({ 
@@ -180,7 +179,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4b. Если participant не найден, создаём его автоматически (для владельцев и админов)
-    if (!participant && (membership.role === 'owner' || membership.role === 'admin')) {
+    if (!participant && (access.role === 'owner' || access.role === 'admin') && !access.isSuperadmin) {
       logger.debug({ user_id: user.id, org_id: orgId }, 'Participant not found, creating new participant');
       
       // Определяем данные для создания participant
@@ -232,7 +231,7 @@ export async function GET(request: NextRequest) {
 
     // 5. Если админ - получаем список групп, где он администратор
     let adminGroups: Array<{ id: number; title: string }> = [];
-    if (membership.role === 'admin' && membership.role_source === 'telegram_admin') {
+    if (membership?.role === 'admin' && membership?.role_source === 'telegram_admin') {
       try {
         const groupIds = membership.metadata?.telegram_groups || [];
         const groupTitles = membership.metadata?.telegram_group_titles || [];
@@ -254,12 +253,13 @@ export async function GET(request: NextRequest) {
     const profile = {
       user: authUser,
       membership: {
-        role: membership.role,
-        role_source: membership.role_source,
+        role: access.role,
+        role_source: membership?.role_source || (access.isSuperadmin ? 'superadmin' : null),
         is_shadow_profile: isShadowProfile,
-        created_at: membership.created_at,
+        created_at: membership?.created_at || null,
         admin_groups: adminGroups,
-        metadata: membership.metadata
+        metadata: membership?.metadata || null,
+        is_superadmin: access.isSuperadmin
       },
       telegram: telegramAccount || null,
       participant: participant || null,
@@ -322,23 +322,27 @@ export async function PATCH(request: NextRequest) {
 
     const adminSupabase = createAdminServer();
 
-    // Проверяем membership
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role, metadata')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+    // Проверяем membership (с фолбэком на суперадмина)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId);
 
-    if (!membership) {
+    if (!access) {
       return NextResponse.json({ 
         error: 'Forbidden', 
         details: 'You are not a member of this organization' 
       }, { status: 403 });
     }
 
+    // Для суперадминов - получаем реальный membership для проверки metadata
+    const { data: membership } = await adminSupabase
+      .from('memberships')
+      .select('role, metadata')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
     // Проверяем, не теневой ли профиль (теневые не могут редактировать)
-    if (membership.metadata?.shadow_profile === true) {
+    if (membership?.metadata?.shadow_profile === true) {
       return NextResponse.json({ 
         error: 'Forbidden', 
         details: 'Shadow profiles cannot edit their profile. Please add and verify your email first.' 

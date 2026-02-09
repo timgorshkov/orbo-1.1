@@ -40,20 +40,11 @@ export async function GET(request: Request) {
 
     const supabaseAdmin = createAdminServer();
 
-    // Проверяем, что пользователь имеет доступ к организации
-    const { data: membership, error: membershipError } = await supabaseAdmin
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .maybeSingle();
+    // Проверяем, что пользователь имеет доступ к организации (с фолбэком на суперадмина)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId);
 
-    if (membershipError) {
-      logger.error({ error: membershipError.message, org_id: orgId, user_id: user.id }, 'Membership check error');
-      return NextResponse.json({ error: 'Failed to verify membership' }, { status: 500 });
-    }
-
-    if (!membership) {
+    if (!access) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
