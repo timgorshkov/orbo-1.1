@@ -170,6 +170,60 @@ export async function enrichParticipant(
         .filter((v, i, a) => a.indexOf(v) === i); // unique
     }
     
+    // 4b. Fetch event registrations (compact summary for AI context)
+    let eventSummary: string[] = [];
+    {
+      const { data: registrations } = await supabaseAdmin
+        .from('event_registrations')
+        .select('id, status, checked_in, events!inner(title, event_date, description)')
+        .eq('participant_id', participantId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      if (registrations && registrations.length > 0) {
+        eventSummary = registrations.map((r: any) => {
+          const event = r.events;
+          const eventDate = event?.event_date ? new Date(event.event_date).toLocaleDateString('ru-RU') : '';
+          const statusText = r.checked_in ? 'посетил' : (r.status === 'confirmed' ? 'зарегистрирован' : r.status);
+          const title = event?.title || 'Событие';
+          return `${title} (${eventDate}) — ${statusText}`;
+        });
+      }
+    }
+
+    // 4c. Fetch applications (compact summary for AI context)
+    let applicationSummary: string[] = [];
+    {
+      const { data: applications } = await supabaseAdmin
+        .from('applications')
+        .select('id, created_at, pipeline_stages!inner(name, slug), application_forms!inner(name, application_pipelines!inner(name, pipeline_type))')
+        .eq('participant_id', participantId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (applications && applications.length > 0) {
+        applicationSummary = applications.map((app: any) => {
+          const pipelineName = app.application_forms?.application_pipelines?.name || '';
+          const stageName = app.pipeline_stages?.name || '';
+          return `${pipelineName}: ${stageName}`;
+        });
+      }
+    }
+
+    // 4d. Collect participant profile info for AI context
+    const profileContext: string[] = [];
+    if (participant.bio) profileContext.push(`Биография: ${participant.bio}`);
+    if (participant.full_name) profileContext.push(`Имя: ${participant.full_name}`);
+    if (participant.username) profileContext.push(`Username: @${participant.username}`);
+    
+    // Include relevant admin-set fields from custom_attributes (if any)
+    const existingAttrs = participant.custom_attributes || {};
+    if (existingAttrs.company) profileContext.push(`Компания: ${existingAttrs.company}`);
+    if (existingAttrs.position) profileContext.push(`Должность: ${existingAttrs.position}`);
+    if (existingAttrs.phone) profileContext.push(`Телефон: ${existingAttrs.phone}`);
+    if (existingAttrs.email) profileContext.push(`Email: ${existingAttrs.email}`);
+    if (existingAttrs.website) profileContext.push(`Сайт: ${existingAttrs.website}`);
+
     // 5. Calculate activity stats (for role classification)
     const stats = await calculateActivityStats(participantId, chatIds, daysBack);
     
@@ -208,7 +262,12 @@ export async function enrichParticipant(
         userId, // ⭐ Who triggered enrichment
         participantId, // ⭐ For metadata
         allKeywords,
-        reactedMessages // ⭐ NEW: Pass reacted messages
+        reactedMessages, // ⭐ Reacted messages
+        {
+          eventSummary,
+          applicationSummary,
+          profileContext
+        }
       );
       
       result.ai_analysis = aiAnalysis;

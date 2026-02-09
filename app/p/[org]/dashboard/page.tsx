@@ -3,8 +3,7 @@ import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import WelcomeBlock from '@/components/dashboard/welcome-block'
-import OnboardingChecklist from '@/components/dashboard/onboarding-checklist'
+import OnboardingWrapper from '@/components/dashboard/onboarding-wrapper'
 import AttentionZones from '@/components/dashboard/attention-zones'
 import UpcomingEvents from '@/components/dashboard/upcoming-events'
 import ActivityTimeline from '@/components/analytics/activity-timeline'
@@ -145,77 +144,69 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
   
   return (
     <div className="p-6 space-y-6">
-      {/* Onboarding Flow */}
-      {dashboardData.isOnboarding && (
-        <>
-          <WelcomeBlock orgName={org.name || 'Пространство'} />
-          
-          <OnboardingChecklist 
-            orgId={orgId}
-            status={dashboardData.onboardingStatus}
-          />
-        </>
-      )}
+      {/* Onboarding Flow (with skip option) */}
+      <OnboardingWrapper 
+        isOnboarding={dashboardData.isOnboarding}
+        orgId={orgId}
+        orgName={org.name || 'Пространство'}
+        onboardingStatus={dashboardData.onboardingStatus}
+      />
 
-      {/* Main Dashboard for Experienced Users */}
-      {!dashboardData.isOnboarding && (
-        <>
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold">Дашборд</h1>
-            <p className="text-neutral-600 mt-1">Обзор активности вашего сообщества</p>
-          </div>
+      {/* Main Dashboard */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold">Дашборд</h1>
+        <p className="text-neutral-600 mt-1">Обзор активности вашего сообщества</p>
+      </div>
 
-          {/* Attention Zones and Upcoming Events - Top Priority */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <AttentionZones 
-              orgId={orgId}
-              criticalEvents={dashboardData.attentionZones.criticalEvents}
-              churningParticipants={dashboardData.attentionZones.churningParticipants}
-              inactiveNewcomers={dashboardData.attentionZones.inactiveNewcomers}
-              hasMore={dashboardData.attentionZones.hasMore}
-              aiAlerts={dashboardData.aiAlerts || []}
-            />
+      {/* Attention Zones and Upcoming Events - Top Priority */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <AttentionZones 
+          orgId={orgId}
+          criticalEvents={dashboardData.attentionZones.criticalEvents}
+          churningParticipants={dashboardData.attentionZones.churningParticipants}
+          inactiveNewcomers={dashboardData.attentionZones.inactiveNewcomers}
+          hasMore={dashboardData.attentionZones.hasMore}
+          aiAlerts={dashboardData.aiAlerts || []}
+        />
 
-            <UpcomingEvents 
-              orgId={orgId}
-              events={dashboardData.upcomingEvents}
-            />
-          </div>
+        <UpcomingEvents 
+          orgId={orgId}
+          events={dashboardData.upcomingEvents}
+        />
+      </div>
 
-          {/* Analytics Section - with Suspense for faster LCP */}
-          <div className="space-y-6">
-            {/* Event Registrations Chart - Full Width (only shows if events exist) */}
-            <Suspense fallback={<ChartSkeleton />}>
-              <EventRegistrationsChart orgId={orgId} days={30} />
-            </Suspense>
+      {/* Analytics Section - with Suspense for faster LCP */}
+      <div className="space-y-6">
+        {/* Event Registrations Chart - Full Width (only shows if events exist) */}
+        <Suspense fallback={<ChartSkeleton />}>
+          <EventRegistrationsChart orgId={orgId} days={30} />
+        </Suspense>
 
-            {/* Top Contributors and Engagement */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Suspense fallback={<ChartSkeleton />}>
-                <TopContributors orgId={orgId} limit={10} />
-              </Suspense>
-              <Suspense fallback={<ChartSkeleton />}>
-                <EngagementPie orgId={orgId} />
-              </Suspense>
-            </div>
+        {/* Top Contributors and Engagement */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Suspense fallback={<ChartSkeleton />}>
+            <TopContributors orgId={orgId} limit={10} />
+          </Suspense>
+          <Suspense fallback={<ChartSkeleton />}>
+            <EngagementPie orgId={orgId} />
+          </Suspense>
+        </div>
 
-            {/* Activity Timeline - Full Width */}
-            <Suspense fallback={<ChartSkeleton />}>
-              <ActivityTimeline orgId={orgId} days={30} />
-            </Suspense>
+        {/* Activity Timeline - Full Width */}
+        <Suspense fallback={<ChartSkeleton />}>
+          <ActivityTimeline orgId={orgId} days={30} />
+        </Suspense>
 
-            {/* Key Metrics and Activity Heatmap */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Suspense fallback={<MetricsSkeleton />}>
-                <KeyMetrics orgId={orgId} />
-              </Suspense>
-              <Suspense fallback={<ChartSkeleton />}>
-                <ActivityHeatmap orgId={orgId} days={60} />
-              </Suspense>
-            </div>
-          </div>
-        </>
-      )}
+        {/* Key Metrics and Activity Heatmap */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Suspense fallback={<MetricsSkeleton />}>
+            <KeyMetrics orgId={orgId} />
+          </Suspense>
+          <Suspense fallback={<ChartSkeleton />}>
+            <ActivityHeatmap orgId={orgId} days={60} />
+          </Suspense>
+        </div>
+      </div>
     </div>
   )
 }

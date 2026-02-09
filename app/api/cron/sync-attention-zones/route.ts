@@ -179,18 +179,22 @@ export async function POST(request: NextRequest) {
         }
         
         // 3. Upsert attention zone items для молчунов
+        const currentChurningIds = new Set<string>();
         if (churningParticipants && churningParticipants.length > 0) {
-          const churningItems = churningParticipants.map((p: any) => ({
-            org_id: orgId,
-            item_type: 'churning_participant',
-            item_id: p.participant_id,
-            item_data: {
-              full_name: p.full_name,
-              username: p.username,
-              days_since_activity: p.days_since_activity,
-              previous_activity_score: p.previous_activity_score,
-            },
-          }));
+          const churningItems = churningParticipants.map((p: any) => {
+            currentChurningIds.add(p.participant_id);
+            return {
+              org_id: orgId,
+              item_type: 'churning_participant',
+              item_id: p.participant_id,
+              item_data: {
+                full_name: p.full_name,
+                username: p.username,
+                days_since_activity: p.days_since_activity,
+                previous_activity_score: p.previous_activity_score,
+              },
+            };
+          });
           
           const { error: upsertError } = await adminSupabase
             .from('attention_zone_items')
@@ -208,20 +212,53 @@ export async function POST(request: NextRequest) {
             totalChurning += churningItems.length;
           }
         }
+
+        // 3b. Auto-resolve churning items for participants who became active
+        {
+          const { data: unresolvedChurning } = await adminSupabase
+            .from('attention_zone_items')
+            .select('id, item_id')
+            .eq('org_id', orgId)
+            .eq('item_type', 'churning_participant')
+            .is('resolved_at', null);
+          
+          if (unresolvedChurning && unresolvedChurning.length > 0) {
+            const toResolve = unresolvedChurning.filter(
+              (item: any) => !currentChurningIds.has(item.item_id)
+            );
+            
+            if (toResolve.length > 0) {
+              const resolveIds = toResolve.map((item: any) => item.id);
+              await adminSupabase
+                .from('attention_zone_items')
+                .update({ resolved_at: new Date().toISOString() })
+                .in('id', resolveIds);
+              
+              logger.debug({ 
+                org_id: orgId, 
+                auto_resolved_churning: toResolve.length 
+              }, 'Auto-resolved churning items for active participants');
+            }
+          }
+        }
         
         // 4. Upsert attention zone items для неактивных новичков
+        const currentNewcomerIds = new Set<string>();
         if (inactiveNewcomers && inactiveNewcomers.length > 0) {
-          const newcomerItems = inactiveNewcomers.map((p: any) => ({
-            org_id: orgId,
-            item_type: 'inactive_newcomer',
-            item_id: p.participant_id,
-            item_data: {
-              full_name: p.full_name,
-              username: p.username,
-              days_since_join: p.days_since_join,
-              activity_count: p.activity_count,
-            },
-          }));
+          const newcomerItems = inactiveNewcomers.map((p: any) => {
+            currentNewcomerIds.add(p.participant_id);
+            return {
+              org_id: orgId,
+              item_type: 'inactive_newcomer',
+              item_id: p.participant_id,
+              item_data: {
+                full_name: p.full_name,
+                username: p.username,
+                days_since_join: p.days_since_join,
+                activity_count: p.activity_count,
+              },
+            };
+          });
           
           const { error: upsertError } = await adminSupabase
             .from('attention_zone_items')
@@ -237,6 +274,35 @@ export async function POST(request: NextRequest) {
             }, 'Error upserting inactive newcomers');
           } else {
             totalNewcomers += newcomerItems.length;
+          }
+        }
+
+        // 4b. Auto-resolve newcomer items for participants who became active
+        {
+          const { data: unresolvedNewcomers } = await adminSupabase
+            .from('attention_zone_items')
+            .select('id, item_id')
+            .eq('org_id', orgId)
+            .eq('item_type', 'inactive_newcomer')
+            .is('resolved_at', null);
+          
+          if (unresolvedNewcomers && unresolvedNewcomers.length > 0) {
+            const toResolve = unresolvedNewcomers.filter(
+              (item: any) => !currentNewcomerIds.has(item.item_id)
+            );
+            
+            if (toResolve.length > 0) {
+              const resolveIds = toResolve.map((item: any) => item.id);
+              await adminSupabase
+                .from('attention_zone_items')
+                .update({ resolved_at: new Date().toISOString() })
+                .in('id', resolveIds);
+              
+              logger.debug({ 
+                org_id: orgId, 
+                auto_resolved_newcomers: toResolve.length 
+              }, 'Auto-resolved newcomer items for active participants');
+            }
           }
         }
         

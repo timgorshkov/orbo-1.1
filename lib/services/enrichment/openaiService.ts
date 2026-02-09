@@ -134,7 +134,12 @@ export async function analyzeParticipantWithAI(
   userId: string | null = null,
   participantId: string | null = null,
   groupKeywords: string[] = [],
-  reactedMessages: Array<{ text: string; emoji: string; author?: string }> = []
+  reactedMessages: Array<{ text: string; emoji: string; author?: string }> = [],
+  additionalContext?: {
+    eventSummary?: string[];
+    applicationSummary?: string[];
+    profileContext?: string[];
+  }
 ): Promise<AIEnrichmentResult> {
   // ⚠️ Don't filter by date - imported history may have old dates
   // Use all available messages, but prioritize recent ones
@@ -183,10 +188,17 @@ export async function analyzeParticipantWithAI(
 - 🔥 - сообщение, на которое участник поставил реакцию (сигнал об интересах)
 - 💬 - контекст обсуждения (соседние сообщения в треде)
 
+**ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ:**
+- 📅 - события, на которые участник зарегистрировался/пришёл (показывает его активность в офлайне)
+- 📋 - заявки участника в воронках (вступление, услуги)
+- 👤 - данные профиля (биография, компания, должность)
+
 **ВАЖНО:**
 - Используй контекст ответов и реакций для более точного определения интересов
 - Если участник отвечает на вопрос о Python - значит он интересуется/разбирается в Python
 - Если участник ставит 🔥 на пост о маркетинге - это сигнал интереса к маркетингу
+- Учитывай события и заявки как дополнительные сигналы интересов и вовлечённости
+- Данные профиля (компания, должность) - важны для определения экспертизы
 - Фокус на последние 2 недели для "актуальных запросов"
 - Интересы - из всего периода, но с приоритетом на свежие
 - Возвращай только данные в формате JSON, без комментариев`;
@@ -203,7 +215,23 @@ export async function analyzeParticipantWithAI(
       }`
     : '';
 
-  const userPrompt = `Участник: ${participantName}
+  // Build additional context sections (compact, token-efficient)
+  let profileSection = '';
+  if (additionalContext?.profileContext && additionalContext.profileContext.length > 0) {
+    profileSection = `\n\n--- ПРОФИЛЬ УЧАСТНИКА ---\n${additionalContext.profileContext.join('\n')}`;
+  }
+
+  let eventsSection = '';
+  if (additionalContext?.eventSummary && additionalContext.eventSummary.length > 0) {
+    eventsSection = `\n\n--- УЧАСТИЕ В СОБЫТИЯХ ---\n${additionalContext.eventSummary.map(e => `📅 ${e}`).join('\n')}`;
+  }
+
+  let applicationsSection = '';
+  if (additionalContext?.applicationSummary && additionalContext.applicationSummary.length > 0) {
+    applicationsSection = `\n\n--- ЗАЯВКИ ---\n${additionalContext.applicationSummary.map(a => `📋 ${a}`).join('\n')}`;
+  }
+
+  const userPrompt = `Участник: ${participantName}${profileSection}
 
 Сообщения участника с контекстом (от новых к старым):
 
@@ -230,7 +258,7 @@ ${messagesToAnalyze.map((m, i) => {
   messageBlock += `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
   
   return messageBlock;
-}).join('\n\n')}${reactedSection}
+}).join('\n\n')}${reactedSection}${eventsSection}${applicationsSection}
 
 Верни результат строго в формате JSON:
 {
