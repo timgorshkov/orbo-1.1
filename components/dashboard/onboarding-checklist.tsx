@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button'
 interface OnboardingStatus {
   hasTelegramAccount: boolean
   hasGroups: boolean
-  hasMaterials: boolean
   hasEvents: boolean
+  hasSharedEvent: boolean
   progress: number
 }
 
@@ -21,37 +21,43 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
   const steps = [
     {
       id: 'org',
-      label: 'Создана организация',
+      label: 'Организация создана',
+      description: 'Ваше пространство для управления сообществом готово',
       completed: true,
-      link: null
-    },
-    {
-      id: 'telegram',
-      label: 'Привязан Telegram-аккаунт',
-      completed: status.hasTelegramAccount,
-      link: `/p/${orgId}/telegram/account`,
-      action: 'Привязать сейчас'
-    },
-    {
-      id: 'groups',
-      label: 'Добавлена первая группа',
-      completed: status.hasGroups,
-      link: `/p/${orgId}/telegram`,
-      action: 'Добавить группу'
-    },
-    {
-      id: 'materials',
-      label: 'Создан первый материал',
-      completed: status.hasMaterials,
-      link: `/p/${orgId}/materials`,
-      action: 'Создать материал'
+      link: null,
+      action: null
     },
     {
       id: 'events',
-      label: 'Запланировано первое событие',
+      label: 'Создайте первое событие',
+      description: 'Встреча, вебинар или любая активность — за пару минут',
       completed: status.hasEvents,
       link: `/p/${orgId}/events/new`,
       action: 'Создать событие'
+    },
+    {
+      id: 'telegram',
+      label: 'Привяжите Telegram-аккаунт',
+      description: 'Для отправки уведомлений и анонсов участникам',
+      completed: status.hasTelegramAccount,
+      link: `/p/${orgId}/telegram/account`,
+      action: 'Привязать'
+    },
+    {
+      id: 'share',
+      label: 'Поделитесь событием',
+      description: 'Отправьте ссылку на miniapp или веб-страницу события участникам',
+      completed: status.hasSharedEvent,
+      link: status.hasEvents ? `/p/${orgId}/events` : null,
+      action: status.hasEvents ? 'К событиям' : null
+    },
+    {
+      id: 'groups',
+      label: 'Подключите Telegram-группу',
+      description: 'Бот будет отслеживать активность и помогать с модерацией',
+      completed: status.hasGroups,
+      link: `/p/${orgId}/telegram`,
+      action: 'Подключить'
     }
   ]
 
@@ -61,8 +67,13 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>Быстрый старт</CardTitle>
-          <span className="text-sm text-neutral-500">
+          <div>
+            <CardTitle>Быстрый старт</CardTitle>
+            <p className="text-sm text-neutral-500 mt-1">
+              Выполните шаги, чтобы начать собирать людей на мероприятия
+            </p>
+          </div>
+          <span className="text-sm font-medium text-neutral-500">
             {completedSteps} из {steps.length}
           </span>
         </div>
@@ -74,39 +85,55 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
           />
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {steps.map((step) => (
+      <CardContent className="space-y-2">
+        {steps.map((step, index) => (
           <div
             key={step.id}
-            className="flex items-center justify-between p-3 rounded-lg hover:bg-neutral-50 transition-colors"
+            className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+              step.completed ? 'bg-green-50/50' : 'hover:bg-neutral-50'
+            }`}
           >
-            <div className="flex items-center gap-3 flex-1">
-              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium ${
                 step.completed 
                   ? 'bg-green-500 text-white' 
-                  : 'bg-neutral-200 text-neutral-400'
+                  : 'bg-neutral-200 text-neutral-500'
               }`}>
                 {step.completed ? (
-                  <span className="text-sm">✓</span>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
                 ) : (
-                  <span className="text-sm">⬜</span>
+                  <span>{index + 1}</span>
                 )}
               </div>
-              <span className={step.completed ? 'text-neutral-600' : 'text-neutral-900 font-medium'}>
-                {step.label}
-              </span>
+              <div className="min-w-0">
+                <span className={`block ${step.completed ? 'text-neutral-500 line-through' : 'text-neutral-900 font-medium'}`}>
+                  {step.label}
+                </span>
+                {!step.completed && step.description && (
+                  <span className="block text-xs text-neutral-500 mt-0.5 truncate">
+                    {step.description}
+                  </span>
+                )}
+              </div>
             </div>
-            {!step.completed && step.link && (
-              <Link href={step.link}>
-                <Button variant="outline" className="text-sm">
+            {!step.completed && step.link && step.action && (
+              <Link href={step.link} className="flex-shrink-0 ml-3">
+                <Button variant="outline" size="sm" className="text-sm whitespace-nowrap">
                   {step.action}
                 </Button>
               </Link>
             )}
           </div>
         ))}
+
+        {completedSteps === steps.length && (
+          <div className="mt-4 p-4 bg-green-50 rounded-lg text-center">
+            <p className="text-green-800 font-medium">Все готово! Дашборд скоро обновится с аналитикой.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
 }
-

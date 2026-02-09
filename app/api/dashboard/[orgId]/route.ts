@@ -87,21 +87,32 @@ export async function GET(
       (item: any) => item.telegram_groups?.bot_status === 'connected'
     ).length || 0
 
+    // Check if any event has at least one registration (= event was shared)
+    let hasSharedEvent = false;
+    if ((eventsCount || 0) > 0) {
+      const { count: regCount } = await adminSupabase
+        .from('event_registrations')
+        .select('*', { count: 'exact', head: true })
+        .eq('org_id', orgId)
+        .limit(1);
+      hasSharedEvent = (regCount || 0) > 0;
+    }
+
     const onboardingStatus = {
       hasTelegramAccount: !!telegramAccount,
       hasGroups: (groupsCount || 0) > 0,
-      hasMaterials: (materialsCount || 0) > 0,
       hasEvents: (eventsCount || 0) > 0,
+      hasSharedEvent,
       progress: [
         true, // organization created (always true if here)
+        (eventsCount || 0) > 0,
         !!telegramAccount,
-        (groupsCount || 0) > 0,
-        (materialsCount || 0) > 0,
-        (eventsCount || 0) > 0
+        hasSharedEvent,
+        (groupsCount || 0) > 0
       ].filter(Boolean).length * 20 // 0-100%
     }
 
-    const isOnboarding = onboardingStatus.progress < 60 // Less than 60% complete
+    const isOnboarding = onboardingStatus.progress < 60 // Less than 3 of 5 steps complete
 
     // 2. Get activity for last 14 days (messages per day)
     // Note: totalParticipants already fetched in parallel above
