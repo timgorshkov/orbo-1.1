@@ -23,15 +23,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Проверка доступа к организации (owner/admin)
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+    // Проверка доступа к организации (owner/admin, с фолбэком на суперадмина)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId);
     
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    if (!access || !['owner', 'admin'].includes(access.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     

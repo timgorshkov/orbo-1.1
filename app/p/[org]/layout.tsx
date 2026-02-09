@@ -41,14 +41,10 @@ export default async function PublicOrgLayout({
 
   // Если пользователь авторизован, загружаем данные параллельно
   if (user) {
-    // ⚡ Параллельные запросы: membership + participant одновременно
-    const [membershipResult, participantResult] = await Promise.all([
-      adminSupabase
-        .from('memberships')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('org_id', org.id)
-        .maybeSingle(),
+    // ⚡ Параллельные запросы: membership (with superadmin fallback) + participant одновременно
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const [accessResult, participantResult] = await Promise.all([
+      getEffectiveOrgRole(user.id, org.id),
       adminSupabase
         .from('participants')
         .select('full_name, username, photo_url')
@@ -57,8 +53,8 @@ export default async function PublicOrgLayout({
         .maybeSingle()
     ])
 
-    if (membershipResult.data) {
-      role = membershipResult.data.role as UserRole
+    if (accessResult) {
+      role = accessResult.role as UserRole
     }
 
     if (participantResult.data) {

@@ -31,17 +31,14 @@ export default async function NotificationsPage({ params }: { params: Promise<{ 
     redirect(`/p/${orgId}/auth`);
   }
 
-  // Проверяем роль (только owner/admin)
-  const { data: membership } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle();
+  // Проверяем роль (только owner/admin, с фолбэком на суперадмина)
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+  const access = await getEffectiveOrgRole(user.id, orgId);
 
-  if (!membership || !['owner', 'admin'].includes(membership.role)) {
+  if (!access || !['owner', 'admin'].includes(access.role)) {
     redirect(`/p/${orgId}/dashboard`);
   }
+  const membership = { role: access.role };
 
   // Получаем название организации
   const { data: org } = await adminSupabase

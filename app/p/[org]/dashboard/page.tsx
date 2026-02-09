@@ -53,14 +53,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
     redirect(`/p/${orgId}/auth`)
   }
 
-  // PARALLEL: Проверяем роль и получаем организацию одновременно
-  const [membershipResult, orgResult] = await Promise.all([
-    adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle(),
+  // PARALLEL: Проверяем роль (с фолбэком на суперадмина) и получаем организацию одновременно
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+  const [access, orgResult] = await Promise.all([
+    getEffectiveOrgRole(user.id, orgId),
     adminSupabase
       .from('organizations')
       .select('id, name')
@@ -68,12 +64,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
       .single()
   ])
 
-  const membership = membershipResult.data
   const org = orgResult.data
 
-  if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+  if (!access || (access.role !== 'owner' && access.role !== 'admin')) {
     redirect(`/p/${orgId}`)
   }
+  const membership = { role: access.role }
 
   if (!org) {
     redirect('/orgs')

@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Archive, ArchiveRestore, Loader2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Loader2, LogIn } from 'lucide-react'
+import Link from 'next/link'
 
 type Organization = {
   id: string
@@ -175,35 +176,48 @@ export default function OrganizationsTable({
                       }
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {showArchived ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleUnarchive(org)}
-                          disabled={loadingId === org.id}
-                          title="Восстановить из архива"
+                      <div className="flex items-center justify-center gap-1">
+                        <Link
+                          href={`/p/${org.id}/dashboard`}
+                          title="Войти в организацию"
                         >
-                          {loadingId === org.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <ArchiveRestore className="h-4 w-4 text-green-600" />
-                          )}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleArchive(org)}
-                          disabled={loadingId === org.id}
-                          title="Переместить в архив"
-                        >
-                          {loadingId === org.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Archive className="h-4 w-4 text-gray-500 hover:text-red-500" />
-                          )}
-                        </Button>
-                      )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                          >
+                            <LogIn className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        </Link>
+                        {showArchived ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUnarchive(org)}
+                            disabled={loadingId === org.id}
+                            title="Восстановить из архива"
+                          >
+                            {loadingId === org.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <ArchiveRestore className="h-4 w-4 text-green-600" />
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleArchive(org)}
+                            disabled={loadingId === org.id}
+                            title="Переместить в архив"
+                          >
+                            {loadingId === org.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Archive className="h-4 w-4 text-gray-500 hover:text-red-500" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

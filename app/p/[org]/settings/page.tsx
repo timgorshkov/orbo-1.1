@@ -39,20 +39,14 @@ export default async function OrganizationSettingsPage({
     const { tab } = await searchParams;
     const activeTab: SettingsTab = (tab as SettingsTab) || 'team'
     
-    const { supabase, user } = await requireOrgAccess(orgId)
+    const { supabase, user, role } = await requireOrgAccess(orgId)
     const adminSupabase = createAdminServer()
     
-    // Get user's role
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    // requireOrgAccess now handles superadmin fallback
+    if (!['owner', 'admin'].includes(role)) {
       return notFound()
     }
+    const membership = { role }
 
     // Get organization details
     const { data: organization, error: orgError } = await supabase

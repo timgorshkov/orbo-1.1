@@ -21,15 +21,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check user has access to this organization
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single()
+    // Check user has access to this organization (with superadmin fallback)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId)
 
-    if (!membership) {
+    if (!access) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

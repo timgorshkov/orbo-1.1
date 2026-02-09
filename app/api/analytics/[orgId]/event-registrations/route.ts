@@ -22,15 +22,11 @@ export async function GET(
 
     const adminSupabase = createAdminServer()
 
-    // Verify user has access to org
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle()
+    // Verify user has access to org (with superadmin fallback)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId)
 
-    if (!membership) {
+    if (!access) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

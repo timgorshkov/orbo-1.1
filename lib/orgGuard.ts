@@ -2,6 +2,7 @@ import { createAdminServer } from './server/supabaseServer'
 import { syncOrgAdmins } from './server/syncOrgAdmins'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from './server/orgAccess'
 
 type OrgRole = 'owner' | 'admin' | 'editor' | 'member' | 'viewer';
 
@@ -30,33 +31,27 @@ export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) 
     }, 'Background admin sync failed');
   })
 
-  // Проверяем членство в org напрямую
+  // Check membership with superadmin fallback
   const membershipStart = Date.now();
-  const { data: membership, error: membershipError } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const access = await getEffectiveOrgRole(user.id, orgId);
   const membershipDuration = Date.now() - membershipStart;
 
   const totalDuration = Date.now() - startTime;
   
-  if (membershipError || !membership) {
+  if (!access) {
     logger.warn({
       org_id: orgId,
       user_id: user.id,
       user_email: user.email,
       user_provider: user.provider,
-      error: membershipError?.message,
       auth_duration_ms: authDuration,
       membership_query_duration_ms: membershipDuration,
       total_duration_ms: totalDuration
-    }, 'Access denied - no membership found');
+    }, 'Access denied - no membership or superadmin status');
     throw new Error('Forbidden')
   }
 
-  const role = membership.role as OrgRole
+  const role = access.role as OrgRole
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     logger.warn({
@@ -64,6 +59,7 @@ export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) 
       user_id: user.id,
       user_role: role,
       allowed_roles: allowedRoles,
+      is_superadmin: access.isSuperadmin,
       total_duration_ms: totalDuration
     }, 'Access denied - insufficient role');
     throw new Error('Forbidden')
@@ -75,6 +71,7 @@ export async function requireOrgAccess(orgId: string, allowedRoles?: OrgRole[]) 
       org_id: orgId,
       user_id: user.id,
       role,
+      is_superadmin: access.isSuperadmin,
       auth_duration_ms: authDuration,
       membership_query_duration_ms: membershipDuration,
       total_duration_ms: totalDuration

@@ -20,18 +20,10 @@ export default async function DigestSettingsPage({
   const { org: orgId } = await params
   
   try {
-    // Verify access
-    const { supabase, user } = await requireOrgAccess(orgId);
+    // Verify access (requireOrgAccess now handles superadmin fallback)
+    const { supabase, user, role } = await requireOrgAccess(orgId);
 
-    // Check if user is owner/admin
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    if (!['owner', 'admin'].includes(role)) {
       redirect(`/p/${orgId}/dashboard`);
     }
 

@@ -159,20 +159,16 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ o
     return <PublicCommunityHub orgId={orgId} />
   }
 
-  // Check if user has access to this organization (use admin client to bypass RLS)
-  const { data: membership } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
+  // Check if user has access (with superadmin fallback)
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+  const access = await getEffectiveOrgRole(user.id, orgId)
 
   // If no membership, redirect to auth page
-  if (!membership) {
+  if (!access) {
     redirect(`/p/${orgId}/auth`)
   }
 
-  const isAdmin = membership.role === 'owner' || membership.role === 'admin'
+  const isAdmin = access.role === 'owner' || access.role === 'admin'
 
   // Show authenticated version
   return <AuthenticatedHome orgId={orgId} isAdmin={isAdmin} />

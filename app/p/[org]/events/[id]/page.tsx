@@ -276,20 +276,16 @@ export default async function EventDetailPage({
   }
 
   // User is authenticated - check org access for private events
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
   let hasOrgAccess = true;
   if (!event.is_public) {
-    // Check membership directly instead of using requireOrgAccess (which throws)
+    // Check membership (with superadmin fallback)
     timing.mark('check_org_access_start');
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', orgId)
-      .maybeSingle();
+    const accessCheck = await getEffectiveOrgRole(user.id, orgId);
     timing.mark('check_org_access_end');
     timing.measure('check_org_access', 'check_org_access_start', 'check_org_access_end');
     
-    hasOrgAccess = !!membership
+    hasOrgAccess = !!accessCheck
   }
   
   // If user doesn't have access to private event, show auth form
@@ -347,18 +343,13 @@ export default async function EventDetailPage({
     ? Math.max(0, event.capacity - registeredCount)
     : null
 
-  // Check user's role
+  // Check user's role (with superadmin fallback)
   timing.mark('fetch_membership_start');
-  const { data: membershipData } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle();
+  const membershipAccess = await getEffectiveOrgRole(user.id, orgId);
   timing.mark('fetch_membership_end');
   timing.measure('fetch_membership', 'fetch_membership_start', 'fetch_membership_end');
 
-  const role = membershipData?.role || 'guest'
+  const role = membershipAccess?.role || 'guest'
   
   logger.debug({
     user_id: user.id,

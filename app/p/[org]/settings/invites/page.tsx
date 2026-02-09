@@ -19,15 +19,11 @@ export default async function InvitesPage({
     redirect(`/signin?redirect=/p/${orgId}/settings/invites`)
   }
 
-  // Определяем роль
-  const { data: membership } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .single()
+  // Определяем роль (с фолбэком на суперадмина)
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+  const access = await getEffectiveOrgRole(user.id, orgId)
 
-  const role = membership?.role || 'guest'
+  const role = access?.role || 'guest'
 
   if (role !== 'owner' && role !== 'admin') {
     redirect(`/p/${orgId}`)

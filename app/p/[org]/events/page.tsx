@@ -16,17 +16,14 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Get user role
-  const { data: membership } = await adminSupabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
+  // Get user role (with superadmin fallback)
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+  const access = await getEffectiveOrgRole(user.id, orgId)
 
-  if (!membership) {
+  if (!access) {
     redirect(`/p/${orgId}`)
   }
+  const membership = { role: access.role }
 
   const role = membership.role
   const isAdmin = role === 'owner' || role === 'admin'
