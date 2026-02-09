@@ -137,15 +137,6 @@ export async function POST(request: Request) {
 
     // Отправляем код верификации через бота уведомлений
     try {
-      // Используем сервисную роль для обхода ограничений Next.js при серверных вызовах API
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-      
-      if (!supabaseUrl || !supabaseServiceKey) {
-        throw new Error('Missing Supabase configuration');
-      }
-      
-      // Инициализируем бота уведомлений напрямую
       const { TelegramService } = await import('@/lib/services/telegramService');
       const notificationsBot = new TelegramService('notifications');
       

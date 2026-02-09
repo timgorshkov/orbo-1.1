@@ -24,14 +24,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Используем сервисную роль для обхода RLS политик
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Missing Supabase configuration' }, { status: 500 });
-    }
-    
     const supabaseService = createAdminServer();
     
     // Получаем верифицированные аккаунты текущего пользователя (не ограничиваем по org_id)

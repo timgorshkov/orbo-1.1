@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 
 const logger = createServiceLogger('ParticipantTagsById');
 
@@ -39,15 +40,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
     }
 
-    // Check admin permissions
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', participant.org_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    // Check admin permissions (with superadmin fallback)
+    const access = await getEffectiveOrgRole(user.id, participant.org_id);
+    if (!access || !['owner', 'admin'].includes(access.role)) {
       logger.warn({ userId: user.id, participantId }, 'Insufficient permissions to remove tag');
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

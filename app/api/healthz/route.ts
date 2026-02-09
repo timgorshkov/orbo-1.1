@@ -64,9 +64,8 @@ export async function GET(request: Request) {
 
 function checkEnvVars() {
   const required = [
-    'NEXT_PUBLIC_SUPABASE_URL',
-    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-    'SUPABASE_SERVICE_ROLE_KEY',
+    'POSTGRES_HOST',
+    'POSTGRES_DB',
     'TELEGRAM_BOT_TOKEN_MAIN',
     'TELEGRAM_BOT_TOKEN_ASSISTANT',
     'TELEGRAM_WEBHOOK_SECRET'

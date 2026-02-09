@@ -90,12 +90,22 @@ export async function GET(
     // Check if any event has at least one registration (= event was shared)
     let hasSharedEvent = false;
     if ((eventsCount || 0) > 0) {
-      const { count: regCount } = await adminSupabase
-        .from('event_registrations')
-        .select('*', { count: 'exact', head: true })
+      // event_registrations doesn't have org_id, so we join through events
+      const { data: orgEvents } = await adminSupabase
+        .from('events')
+        .select('id')
         .eq('org_id', orgId)
-        .limit(1);
-      hasSharedEvent = (regCount || 0) > 0;
+        .limit(50);
+      
+      if (orgEvents && orgEvents.length > 0) {
+        const eventIds = orgEvents.map((e: any) => e.id);
+        const { count: regCount } = await adminSupabase
+          .from('event_registrations')
+          .select('*', { count: 'exact', head: true })
+          .in('event_id', eventIds)
+          .limit(1);
+        hasSharedEvent = (regCount || 0) > 0;
+      }
     }
 
     const onboardingStatus = {

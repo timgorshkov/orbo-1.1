@@ -47,16 +47,6 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
     has_code: !!params.code
   }, 'Starting verification');
   
-  // Проверяем конфигурацию
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    logger.error({}, 'Missing Supabase configuration');
-    return {
-      success: false,
-      error: 'Supabase not configured',
-      errorCode: 'CONFIG_ERROR'
-    }
-  }
-
   const { 
     code, 
     telegramUserId, 
