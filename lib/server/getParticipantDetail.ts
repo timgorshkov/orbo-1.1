@@ -141,20 +141,33 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     }
   }
 
-  const groups: ParticipantGroupLink[] = (groupLinks || []).map(link => {
-    const key = String(link.tg_group_id);
-    const detail = groupDetailsMap.get(key);
+  // SECURITY: Get org's group IDs to filter participant_groups for this org only
+  const { data: orgGroupsList } = await supabase
+    .from('org_telegram_groups')
+    .select('tg_chat_id')
+    .eq('org_id', orgId);
+  
+  const orgChatIdSet = new Set(
+    (orgGroupsList || []).map(g => String(g.tg_chat_id))
+  );
 
-    return {
-      tg_chat_id: detail?.tg_chat_id ?? key,
-      tg_group_id: key,
-      title: detail?.title ?? null,
-      bot_status: detail?.bot_status ?? null,
-      is_active: Boolean(link.is_active),
-      joined_at: link.joined_at,
-      left_at: link.left_at
-    };
-  });
+  // Only show groups that belong to the current organization
+  const groups: ParticipantGroupLink[] = (groupLinks || [])
+    .filter(link => orgChatIdSet.has(String(link.tg_group_id)))
+    .map(link => {
+      const key = String(link.tg_group_id);
+      const detail = groupDetailsMap.get(key);
+
+      return {
+        tg_chat_id: detail?.tg_chat_id ?? key,
+        tg_group_id: key,
+        title: detail?.title ?? null,
+        bot_status: detail?.bot_status ?? null,
+        is_active: Boolean(link.is_active),
+        joined_at: link.joined_at,
+        left_at: link.left_at
+      };
+    });
 
   // REMOVED: identity_id and telegram_activity_events usage
   // Migration 42 removed these, use activity_events with tg_user_id instead
@@ -175,83 +188,10 @@ export async function getParticipantDetail(orgId: string, participantId: string)
   }, 'Participant tg_user_id parsing');
 
   if (tgUserId) {
-    let accessibleChatIds: string[] = [];
+    // SECURITY: Use only org's groups (already fetched above as orgChatIdSet)
+    const accessibleChatIds = Array.from(orgChatIdSet);
 
-    try {
-      // Загружаем все группы организации для активности участника
-      // Не фильтруем по status, чтобы показывать всю активность
-      const { data: accessibleChats, error: chatsError } = await supabase
-        .from('org_telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', orgId);
-
-      if (chatsError) {
-        if (chatsError.code !== '42703' && chatsError.code !== '42P01') {
-          logger.error({ 
-            error: chatsError.message,
-            error_code: chatsError.code,
-            org_id: orgId,
-            participant_id: participantId,
-            tg_user_id: tgUserId
-          }, 'Error loading accessible chats for participant');
-          // Не бросаем ошибку, продолжаем с группами из participant_groups
-        }
-      } else {
-        (accessibleChats || []).forEach(chat => {
-          if (chat?.tg_chat_id) {
-            accessibleChatIds.push(String(chat.tg_chat_id));
-          }
-        });
-      }
-    } catch (chatError) {
-      logger.error({ 
-        error: chatError instanceof Error ? chatError.message : String(chatError),
-        org_id: orgId,
-        participant_id: participantId,
-        tg_user_id: tgUserId
-      }, 'Unexpected error while loading accessible chats');
-      // Продолжаем с группами из participant_groups
-    }
-
-    // Добавляем группы из participant_groups
-    groups.forEach(group => {
-      accessibleChatIds.push(String(group.tg_chat_id));
-    });
-
-    accessibleChatIds = Array.from(new Set(accessibleChatIds));
-
-    // Если нет групп из org_telegram_groups, но есть группы из participant_groups, используем их
-    // Если вообще нет групп, загружаем события для всех групп организации
-    if (accessibleChatIds.length === 0) {
-      logger.debug({ org_id: orgId, participant_id: participantId, tg_user_id: tgUserId }, 'No accessible chat IDs found, loading all org groups for activity');
-      try {
-        const { data: allOrgChats } = await supabase
-          .from('org_telegram_groups')
-          .select('tg_chat_id')
-          .eq('org_id', orgId);
-        
-        if (allOrgChats && allOrgChats.length > 0) {
-          allOrgChats.forEach(chat => {
-            if (chat?.tg_chat_id) {
-              accessibleChatIds.push(String(chat.tg_chat_id));
-            }
-          });
-          logger.debug({ 
-            org_id: orgId,
-            participant_id: participantId,
-            chat_count: accessibleChatIds.length
-          }, 'Fallback: loaded org groups');
-        } else {
-          logger.debug({ org_id: orgId, participant_id: participantId }, 'No org groups found, will load events without chat_id filter');
-        }
-      } catch (fallbackError) {
-        logger.error({ 
-          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-          org_id: orgId,
-          participant_id: participantId
-        }, 'Error loading fallback org chats');
-      }
-    } else {
+    if (accessibleChatIds.length > 0) {
       logger.debug({ 
         org_id: orgId,
         participant_id: participantId,
@@ -344,26 +284,28 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         }
       }
 
-      // Use activity_events (not telegram_activity_events)
-      // ВАЖНО: Не фильтруем по org_id, так как группы и участники могут быть в разных организациях
-      // Показываем события для участника, если группа добавлена в текущую организацию
+      // SECURITY: Only show activity from groups belonging to this organization
+      // Never show cross-org activity data
+      if (numericChatIds.length === 0) {
+        logger.debug({ org_id: orgId, tg_user_id: tgUserId }, 'No org chat IDs found, skipping activity load');
+      }
+      
       let query = supabase
         .from('activity_events')
         .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id, org_id')
         .eq('tg_user_id', tgUserId);
       
-      // Добавляем фильтр по chat_id только если есть валидные группы
-      // Это гарантирует, что показываем только события из групп, добавленных в текущую организацию
+      // Always filter by org's chat IDs to prevent cross-org data leakage
       if (numericChatIds.length > 0) {
         query = query.in('tg_chat_id', numericChatIds);
         logger.debug({ 
-          chat_ids: numericChatIds,
           chat_count: numericChatIds.length,
           org_id: orgId,
           tg_user_id: tgUserId
-        }, 'Filtering by chat IDs (ignoring org_id filter)');
+        }, 'Filtering activity by org chat IDs');
       } else {
-        logger.debug({ org_id: orgId, tg_user_id: tgUserId }, 'No valid chat IDs, loading all events without chat filter');
+        // No groups in org = no activity to show (safe default)
+        query = query.eq('tg_chat_id', -1); // Will match nothing
       }
       
       const { data: activityEvents, error: activityEventsError } = await query
