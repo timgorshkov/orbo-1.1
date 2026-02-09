@@ -6,6 +6,14 @@
 > **Автор:** Orbo Development Team
 >
 > **ВАЖНО:** Актуальная техническая архитектура описана в `docs/ARCHITECTURE.md`
+>
+> **⚠️ УСТАРЕВШИЕ ССЫЛКИ:** Этот документ содержит упоминания Supabase (Auth, Storage, Database). 
+> С января 2026 Supabase полностью удалён из проекта. Актуальный стек:
+> - **Database:** PostgreSQL 16 (прямое подключение через `lib/db/postgres-client.ts`)
+> - **Storage:** Selectel S3 (`lib/storage/`)
+> - **Auth:** NextAuth.js v5 (Google OAuth, Yandex OAuth, Telegram codes)
+> - **Deploy:** Docker Compose на Selectel VPS (не Vercel)
+> - **Операции:** См. `docs/OPERATIONS_GUIDE.md`
 
 ## 📋 Содержание
 

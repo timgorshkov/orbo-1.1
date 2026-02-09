@@ -23,7 +23,7 @@ This technical note is synced with `docs/ROADMAP_FINAL_NOV15_2025.md`; every Wav
 
 ## 4. Materials
 - Tree built from `material_folders`  `material_items`. `MaterialService` caps depth at 3 and ensures parent existence. `material_access` allows group/participant-specific ACL but UI does not expose advanced permissions yet.
-- Files uploaded via Supabase Storage (integration stubbed). Future improvement: add signed URL helper and quotas.
+- Files uploaded via Selectel S3 storage. Future improvement: add signed URL helper and quotas.
 
 ## 5. Events & Attendance
 - Schema from `db/migrations/19_events.sql`: `events`, `event_registrations`, `event_telegram_notifications` with indexes on `org_id`, `event_date`.
@@ -51,13 +51,14 @@ This technical note is synced with `docs/ROADMAP_FINAL_NOV15_2025.md`; every Wav
 - Billing split for marketplace reserved for Wave 2 once extensions exist.
 
 ## 8. CI/CD & Tooling
-- **Current**: No CI. Local commands `npm run lint`, `npm run build`, `npm run dev`. Database migrations run manually through Supabase.
-- **Plan**: GitHub Actions workflow: install deps (`npm ci`), run lint/build, optionally run Vitest (once tests exist). Add Supabase migration verification step (generate types, diff check) for staging.
-- Deploy: Vercel auto-deploy from default branch. Document environment promotion and cron secret rotation in Runbook.
+- **Current**: GitHub Actions for build/deploy. Local commands `npm run lint`, `npm run build`, `npm run dev`. Database migrations applied manually via SSH (`docker exec -i orbo_postgres psql ...`).
+- **Plan**: Add Vitest once tests exist. Migration verification step for staging.
+- Deploy: Docker Compose on Selectel VPS. See `docs/OPERATIONS_GUIDE.md` for full process.
 
 ## 9. Observability & Reliability
 - Present: `console.log` heavy; `app/api/health` checks DB connectivity; `app/api/healthz` optionally checks webhook configuration (expects env vars `TELEGRAM_BOT_TOKEN_MAIN`, etc.).
-- Planned: Pino logger with correlation IDs, Sentry instrumentation, Supabase table `system_heartbeats` updated by cron jobs, BigQuery (or Supabase logs) export for webhook events.
+- Implemented: Pino structured logging with service-level loggers, error logging to `error_logs` table, Docker log rotation.
+- Planned: Sentry instrumentation, `system_heartbeats` table for cron monitoring.
 - Add `alerts` on: webhook secret mismatch, cron failure, payment reconcile errors, participant dedupe anomalies.
 
 ## 10. Security Notes

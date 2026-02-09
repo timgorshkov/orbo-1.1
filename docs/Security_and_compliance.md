@@ -3,15 +3,15 @@
 This refresh reflects the architecture/code state as of the Nov 15 roadmap (`docs/ROADMAP_FINAL_NOV15_2025.md`) and drives Wave 0 stabilization goals.
 
 ## 1. Context & Scope
-- Platform: Next.js 14 on Vercel, Supabase (Postgres  Auth  Storage), Telegram bots.
+- Platform: Next.js 15 on Selectel VPS (Docker), PostgreSQL 16 (прямое подключение), Selectel S3, NextAuth.js v5, Telegram bots.
 - Tenancy: Multi-org SaaS for communities, with future corp pilots and marketplace modules.
 - Data: Participant PII (names, emails, phone, Telegram IDs), activity metadata, event attendance, materials content.
 
 ## 2. Threat Model (STRIDE-lite)
 | Category | Threat | Current Controls | Gaps / Actions |
 | --- | --- | --- | --- |
-| **Spoofing** | Unauthorized API access, Telegram impersonation. | Supabase Auth (magic links); Telegram webhook secret. | Missing bot signature verification for incoming commands; service-role usage bypasses RLS. Add HMAC for internal webhooks, restrict service-role to backend services. |
-| **Tampering** | Modifying participant/event data across tenants. | Row Level Security on most tables. | Service-role clients in API/routes bypass RLS; no audit log. Implement org-scoped RPCs  `admin_action_log`. |
+| **Spoofing** | Unauthorized API access, Telegram impersonation. | NextAuth.js (Google/Yandex OAuth, Telegram codes); Telegram webhook secret. | Missing bot signature verification for incoming commands. Add HMAC for internal webhooks. |
+| **Tampering** | Modifying participant/event data across tenants. | Org-scoped access checks in API routes (`getEffectiveOrgRole()`). | Data isolation between orgs enforced at application level. Audit log planned. |
 | **Repudiation** | Admin actions not tracked. | None since migration 072 removed audit logs. | Restore audit log table capturing user_id, org_id, action, payload, timestamp; expose read-only view. |
 | **Information Disclosure** | PII leakage via logs or mis-scoped queries. | No structured logging; some redaction in UI. | `console.log` outputs may include secrets (tokens). Add logger with redaction; ensure Sentry scrub rules; reintroduce `.env.example` to document secrets. |
 | **Denial of Service** | Telegram rate limits exceeded, cron abuse. | Webhook returns 200 quickly; recovery service with attempt limits. | No rate limiting/backoff in message sending; no queue. Implement retry with exponential backoff; monitor 429 responses. |
@@ -24,10 +24,10 @@ This refresh reflects the architecture/code state as of the Nov 15 roadmap (`doc
 - **Audit gap**: There is no replacement for the removed admin action log, so administrators can merge participants or remap Telegram groups without traceability—blocking S2 compliance goals.
 
 ## 3. Data Protection
-- **PII Storage**: Participant emails/phones stored in Supabase; Telegram IDs stored as integers. No encryption-at-rest beyond Supabase default; consider encrypting phone/email using Postgres pgcrypto for corp tenants.
+- **PII Storage**: Participant emails/phones stored in PostgreSQL; Telegram IDs stored as integers. Consider encrypting phone/email using pgcrypto for corp tenants.
 - **Minimization**: Message text not stored; only metadata (`activity_events`, `group_metrics`). Materials content stored in `material_items.content` (markdown) and storage files.
 - **Retention**: No automated deletion. Need policy for participant offboarding (Wave 2) and data export (Wave 1).
-- **Backups**: Rely on Supabase automated backups. Document recovery procedure in Runbook.
+- **Backups**: Automated daily pg_dump backups via cron (7-day retention). Recovery procedure in OPERATIONS_GUIDE.md.
 
 ## 4. Access Control & Offboarding
 - User roles: owner/admin/member; viewer missing. `user_telegram_accounts.is_verified` ensures bots DM verified admins.
@@ -37,7 +37,7 @@ This refresh reflects the architecture/code state as of the Nov 15 roadmap (`doc
 ## 5. Logging & Monitoring
 - Current logging: `console.log` across API routes (includes tokens). No centralized storage or alerting.
 - Health endpoints: `/api/health` (DB ping), `/api/healthz` (webhook checks). Cron success logged to console only.
-- Actions: Introduce structured logging (Pino) with redaction, stream to Vercel/Supabase logs; integrate Sentry with sampling; create `system_heartbeats` table updated by cron jobs; set up alerts for missing heartbeats (>15 min) and webhook secret mismatches.
+- Actions: Structured logging (Pino) implemented with service-level loggers. Docker log rotation configured. Error logging to `error_logs` table. Alerts for webhook secret mismatches (auto-recovery implemented).
 
 ## 6. Telegram Compliance & Limits
 - **Rate limits**: Bot API limit ~30 req/sec per bot; current implementation sends notifications sequentially per event. Must add backoff and chunk sending in cron tasks.
@@ -61,6 +61,6 @@ This refresh reflects the architecture/code state as of the Nov 15 roadmap (`doc
 ## 9. Compliance Checklist
 - [ ] Reinstate audit logging.
 - [ ] Provide data export  deletion runbook.
-- [ ] Document incident response (contact chain, Slack alert, Supabase rollback steps).
+- [ ] Document incident response (contact chain, rollback steps).
 - [ ] Ensure `.env.example` includes all secrets with notes on storage.
 - [ ] Add privacy notice covering Telegram ID usage and retention.

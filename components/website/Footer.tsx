@@ -11,6 +11,7 @@ export function Footer() {
           <Link href="/crm">CRM</Link>
           <Link href="/notifications">Уведомления</Link>
           <Link href="/events">События</Link>
+          <Link href="/whatsapp-migration">Миграция с WhatsApp</Link>
           <Link href="/terms">Условия использования</Link>
           <Link href="/privacy">Политика конфиденциальности</Link>
         </nav>

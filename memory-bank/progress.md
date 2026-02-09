@@ -1,5 +1,62 @@
 # Project Progress
 
+## [2026-02-09] February Development Sprint — Week 1
+
+### Major Features & Fixes Completed:
+
+#### Events System:
+- QR check-in (опциональный, настройка `enable_qr_checkin`)
+- Ручной check-in для админов (кнопка в списке участников)
+- Google Calendar экспорт (с описанием, ссылкой, локацией)
+- ICS экспорт (исправлена обработка дат и часовых поясов)
+- Удаление событий
+- Диаграмма регистраций на дашборде (30 дней)
+- Выбор ссылки (miniapp/web) при создании анонсов
+
+#### Notification System:
+- Авто-решение уведомлений о неактивности при появлении активности
+- Топик-анализ: отдельный анализ негатива и вопросов по форум-топикам Telegram
+- Агрегация негатива: одно уведомление на группу (не на каждый топик)
+- Единая цветовая схема: 3 цвета (Red/Amber/Blue) для дашборда и раздела уведомлений
+- Фикс ссылок: `get_telegram_message_link` возвращает NULL при отсутствии message_id
+
+#### Superadmin Impersonation:
+- Суперадмины могут входить в любую организацию как виртуальный owner
+- `getEffectiveOrgRole()` (`lib/server/orgAccess.ts`) — единая проверка доступа
+- Обновлены 20+ API-routes и страниц для поддержки имперсонации
+- Профиль в чужой организации показывает профиль owner'а организации
+
+#### Security:
+- Изоляция данных между организациями (participant activity)
+- `participant_groups` фильтрация: `.is('left_at', null)` вместо `.eq('is_active', true)`
+- Security headers в nginx (CSP, HSTS, X-Frame-Options)
+- Удалены остаточные проверки Supabase env vars
+
+#### AI Enrichment:
+- Расширение данных: события, заявки, профильная информация участника
+- Оптимизация промптов для учёта дополнительного контекста
+
+#### Dashboard & Onboarding:
+- 5 шагов онбординга (адаптированы под ICP)
+- Убрано "Создание материалов", добавлено "Поделиться событием"
+- Скрытие онбординга (localStorage)
+- Компактные блоки событий, переупорядочены графики
+
+#### DevOps:
+- PostgreSQL tuning (буферы, WAL)
+- Docker 29.2.1 update
+- Ротация логов (logrotate)
+- Оптимизация log levels (info → debug для шумных сообщений)
+- Очистка Docker кэша
+
+#### Documentation:
+- Создан `docs/OPERATIONS_GUIDE.md` (деплой, SSH, БД, troubleshooting)
+- Обновлены ARCHITECTURE.md, ROADMAP_FEB_2026_ICP.md, README.md
+- Очищены ссылки на Supabase в ключевых документах
+- Обновлён Runbook.md
+
+---
+
 ## [2026-02-08] Complete Supabase Removal
 
 ### ? MAJOR MILESTONE: Supabase Fully Removed from Project

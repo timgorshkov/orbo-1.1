@@ -50,10 +50,12 @@ TELEGRAM_BOT_TOKEN=your_bot_token
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=your_bot_name
 TELEGRAM_WEBHOOK_SECRET=dev-secret
 
-# Storage (можно использовать Supabase Storage временно)
-STORAGE_PROVIDER=supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_service_key
+# Storage (Selectel S3)
+STORAGE_PROVIDER=s3
+SELECTEL_ENDPOINT=https://s3.storage.selcloud.ru
+SELECTEL_BUCKET=orbo-materials
+SELECTEL_ACCESS_KEY=your_access_key
+SELECTEL_SECRET_KEY=your_secret_key
 ```
 
 ### 3. Запуск PostgreSQL (если нет локального)

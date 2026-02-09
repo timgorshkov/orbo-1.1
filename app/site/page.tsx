@@ -1,5 +1,5 @@
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
-import { Header, Footer, Orb, BrowserFrame, AnnouncementBanner } from '@/components/website';
+import { Header, Footer, Orb, BrowserFrame } from '@/components/website';
 import Link from 'next/link';
 
 // Messenger logo SVGs
@@ -25,12 +25,6 @@ const MaxLogo = () => (
 export default function HomePage() {
   return (
     <>
-      <AnnouncementBanner 
-        id="whatsapp-2024"
-        message="WhatsApp блокируют — сохраните участников в Orbo"
-        linkText="Подробнее"
-        linkHref="/whatsapp-migration"
-      />
       <Header />
       
       {/* ========== HERO с ORB эффектом ========== */}
