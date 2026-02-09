@@ -26,15 +26,11 @@ export async function GET(request: NextRequest) {
 
     const adminSupabase = createAdminServer()
 
-    // Check membership
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .maybeSingle()
+    // Check membership (with superadmin fallback)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId)
 
-    if (!membership) {
+    if (!access) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

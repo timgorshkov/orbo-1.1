@@ -88,9 +88,86 @@ export async function GET(request: NextRequest) {
       }, { status: 403 });
     }
 
+    const { data: organization } = organizationResult;
+
+    // For superadmins without real membership, show the org owner's profile
+    if (access.isSuperadmin && !membershipResult.data) {
+      // Find the org owner
+      const { data: ownerMembership } = await adminSupabase
+        .from('memberships')
+        .select('user_id, role, role_source, metadata, created_at')
+        .eq('org_id', orgId)
+        .eq('role', 'owner')
+        .maybeSingle();
+
+      if (ownerMembership) {
+        // Get owner's participant profile
+        const { data: ownerParticipant } = await adminSupabase
+          .from('participants')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+          .eq('org_id', orgId)
+          .eq('user_id', ownerMembership.user_id)
+          .is('merged_into', null)
+          .maybeSingle();
+
+        // Get owner's telegram account
+        const { data: ownerTelegram } = await adminSupabase
+          .from('user_telegram_accounts')
+          .select('*')
+          .eq('user_id', ownerMembership.user_id)
+          .eq('org_id', orgId)
+          .maybeSingle();
+
+        const profile = {
+          user: {
+            id: ownerMembership.user_id,
+            email: null, // Don't expose owner's email to superadmin
+            email_confirmed: true,
+            email_confirmed_at: null,
+            metadata: {},
+            created_at: ownerMembership.created_at
+          },
+          membership: {
+            role: 'owner',
+            role_source: ownerMembership.role_source,
+            is_shadow_profile: false,
+            created_at: ownerMembership.created_at,
+            admin_groups: [],
+            metadata: ownerMembership.metadata,
+            is_superadmin: true,
+            viewing_as: 'superadmin'
+          },
+          telegram: ownerTelegram || null,
+          participant: ownerParticipant || null,
+          organization: organization || null
+        };
+
+        return NextResponse.json({ success: true, profile });
+      }
+
+      // No owner found - return minimal profile
+      const profile = {
+        user: authUser,
+        membership: {
+          role: 'owner',
+          role_source: 'superadmin',
+          is_shadow_profile: false,
+          created_at: null,
+          admin_groups: [],
+          metadata: null,
+          is_superadmin: true,
+          viewing_as: 'superadmin'
+        },
+        telegram: null,
+        participant: null,
+        organization: organization || null
+      };
+
+      return NextResponse.json({ success: true, profile });
+    }
+
     const membership = membershipResult.data;
     const { data: telegramAccount, error: telegramError } = telegramResult;
-    const { data: organization } = organizationResult;
 
     // Проверяем, является ли пользователь теневым админом
     const isShadowProfile = membership?.metadata?.shadow_profile === true;

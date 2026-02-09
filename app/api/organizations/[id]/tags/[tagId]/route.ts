@@ -70,15 +70,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check admin permissions
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+    // Check admin permissions (with superadmin fallback)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const access = await getEffectiveOrgRole(user.id, orgId);
 
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    if (!access || !['owner', 'admin'].includes(access.role)) {
       logger.warn({ userId: user.id, orgId }, 'Insufficient permissions to update tag');
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -146,15 +142,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check admin permissions
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
+    // Check admin permissions (with superadmin fallback)
+    const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
+    const accessDel = await getEffectiveOrgRole(user.id, orgId);
 
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    if (!accessDel || !['owner', 'admin'].includes(accessDel.role)) {
       logger.warn({ userId: user.id, orgId }, 'Insufficient permissions to delete tag');
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

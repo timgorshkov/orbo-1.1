@@ -15,44 +15,21 @@ export interface UserOrgRole {
 
 /**
  * Получить роль пользователя в организации (server-side)
- * Использует admin client для работы с NextAuth пользователями (нет Supabase session)
+ * Использует getEffectiveOrgRole для поддержки суперадминов
  */
 export async function getUserRoleInOrg(
   userId: string,
   orgId: string
 ): Promise<UserRole> {
-  const supabase = createAdminServer()
-
-  // Вызываем SQL функцию get_user_role_in_org
-  const { data, error } = await supabase.rpc('get_user_role_in_org', {
-    p_user_id: userId,
-    p_org_id: orgId,
-  })
-
-  if (error) {
-    const logger = createServiceLogger('getUserRoleInOrg');
-    logger.error({ 
-      error: error.message,
-      user_id: userId,
-      org_id: orgId
-    }, 'Error getting user role');
-    return 'guest'
-  }
-
-  // PostgreSQL RPC может вернуть:
-  // - Supabase: 'owner' (строка напрямую)
-  // - PostgresClient: { get_user_role_in_org: 'owner' } или [{ get_user_role_in_org: 'owner' }]
-  let role: UserRole = 'guest';
-  if (typeof data === 'string') {
-    role = data as UserRole;
-  } else if (Array.isArray(data) && data.length > 0) {
-    const firstRow = data[0];
-    role = (firstRow?.get_user_role_in_org || firstRow) as UserRole;
-  } else if (data && typeof data === 'object') {
-    role = ((data as any).get_user_role_in_org || data) as UserRole;
+  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess');
+  
+  const access = await getEffectiveOrgRole(userId, orgId);
+  
+  if (!access) {
+    return 'guest';
   }
   
-  return role || 'guest'
+  return (access.role as UserRole) || 'guest';
 }
 
 /**
