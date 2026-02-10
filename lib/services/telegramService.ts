@@ -48,6 +48,17 @@ export class TelegramService {
   }
 
   /**
+   * Отправляет фото в чат Telegram с подписью
+   */
+  async sendPhoto(chatId: number, photoUrl: string, options: { caption?: string; parse_mode?: string } = {}) {
+    return this.callApi('sendPhoto', {
+      chat_id: chatId,
+      photo: photoUrl,
+      ...options
+    });
+  }
+
+  /**
    * Установка webhook для бота
    */
   async setWebhook(url: string, secretToken: string) {

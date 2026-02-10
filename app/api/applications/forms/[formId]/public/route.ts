@@ -185,8 +185,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       has_telegram_group: !!telegramGroup
     }, 'Public form processed');
     
+    // Add cache-busting to org logo URL to prevent Telegram WebView from caching old images
+    const responseData = { ...data };
+    if (responseData.org_logo) {
+      responseData.org_logo = `${String(responseData.org_logo).split('?')[0]}?v=${Date.now()}`;
+    }
+    
     return NextResponse.json({
-      ...data,
+      ...responseData,
       existing_application: existingApplication,
       telegram_group: telegramGroup
     });
@@ -301,12 +307,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         has_form_data: !!form_data && Object.keys(form_data).length > 0
       }, 'Existing application found');
       
-      // Rate limiting: allow update only once per minute
+      // Rate limiting: prevent accidental double-submits (5 second cooldown)
       const lastUpdate = new Date(existingApp.updated_at);
       const now = new Date();
       const secondsSinceUpdate = (now.getTime() - lastUpdate.getTime()) / 1000;
       
-      if (secondsSinceUpdate < 60) {
+      if (secondsSinceUpdate < 5) {
         logger.info({ 
           form_id: formId, 
           application_id: existingApp.id,

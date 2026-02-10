@@ -11,6 +11,7 @@ interface Announcement {
   content: string;
   target_groups: string[];
   status: string;
+  image_url?: string | null;
 }
 
 interface SendResult {
@@ -72,12 +73,23 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       }
       
       try {
-        // Отправляем сообщение с Telegram Markdown
-        const messageResult = await telegram.sendMessage(
-          chatId,
-          announcement.content,
-          { parse_mode: 'Markdown' }
-        );
+        let messageResult: any;
+        
+        if (announcement.image_url) {
+          // Отправляем как фото с подписью
+          messageResult = await telegram.sendPhoto(
+            chatId,
+            announcement.image_url,
+            { caption: announcement.content, parse_mode: 'Markdown' }
+          );
+        } else {
+          // Отправляем текстовое сообщение с Telegram Markdown
+          messageResult = await telegram.sendMessage(
+            chatId,
+            announcement.content,
+            { parse_mode: 'Markdown' }
+          );
+        }
         
         results[String(chatId)] = { 
           success: true, 

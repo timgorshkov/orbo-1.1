@@ -15,7 +15,11 @@ import {
   ChevronRight,
   Edit,
   Trash2,
-  Users
+  Users,
+  Upload,
+  X,
+  ImageIcon,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,6 +52,7 @@ interface Announcement {
   updated_by_name: string | null;
   created_at: string;
   send_results: Record<string, { success: boolean; message_id?: number; error?: string }>;
+  image_url?: string | null;
 }
 
 interface TelegramGroup {
@@ -83,6 +88,9 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     scheduled_at: ''
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   useEffect(() => {
     fetchAnnouncements();
@@ -144,6 +152,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       target_groups: groups.map(g => g.tg_chat_id), // Все группы по умолчанию
       scheduled_at: getLocalDatetimeString(1) // +1 час от текущего времени
     });
+    setImageFile(null);
+    setImagePreview(null);
     setIsDialogOpen(true);
   };
   
@@ -156,6 +166,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       // Конвертируем UTC время из БД в локальное для отображения
       scheduled_at: utcToLocalDatetimeString(announcement.scheduled_at)
     });
+    setImageFile(null);
+    setImagePreview(announcement.image_url || null);
     setIsDialogOpen(true);
   };
   
@@ -184,6 +196,38 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       });
       
       if (response.ok) {
+        const result = await response.json();
+        const annId = result.announcement?.id || editingAnnouncement?.id;
+        
+        // Upload image if a new file was selected
+        if (imageFile && annId) {
+          setIsUploadingImage(true);
+          try {
+            const imgFormData = new FormData();
+            imgFormData.append('file', imageFile);
+            
+            await fetch(`/api/announcements/${annId}/cover`, {
+              method: 'POST',
+              body: imgFormData
+            });
+          } catch (imgErr) {
+            console.error('Failed to upload image:', imgErr);
+          } finally {
+            setIsUploadingImage(false);
+          }
+        }
+        
+        // If existing image was removed
+        if (!imagePreview && !imageFile && editingAnnouncement?.image_url && annId) {
+          try {
+            await fetch(`/api/announcements/${annId}/cover`, {
+              method: 'DELETE'
+            });
+          } catch (delErr) {
+            console.error('Failed to delete image:', delErr);
+          }
+        }
+        
         setIsDialogOpen(false);
         fetchAnnouncements();
       } else {
@@ -677,6 +721,49 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
             </div>
             
             <div>
+              <Label>Изображение</Label>
+              {(imagePreview || (imageFile && URL.createObjectURL(imageFile))) ? (
+                <div className="relative mt-1">
+                  <img 
+                    src={imageFile ? URL.createObjectURL(imageFile) : (imagePreview || '')}
+                    alt="Изображение"
+                    className="w-full h-32 object-cover rounded-lg border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImagePreview(null);
+                    }}
+                    className="absolute top-2 right-2 p-1 bg-white/80 rounded-full hover:bg-white shadow-sm"
+                  >
+                    <X className="w-4 h-4 text-red-500" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 mt-1 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                  <ImageIcon className="w-5 h-5 text-neutral-400" />
+                  <span className="text-sm text-neutral-600">Прикрепить изображение</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setImageFile(file);
+                        setImagePreview(URL.createObjectURL(file));
+                      }
+                    }}
+                  />
+                </label>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                JPEG, PNG, WebP или GIF до 5 МБ. Будет отправлено как фото в Telegram.
+              </p>
+            </div>
+            
+            <div>
               <Label htmlFor="scheduled_at">Дата и время отправки</Label>
               <Input
                 id="scheduled_at"
@@ -735,8 +822,13 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               Отмена
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? 'Сохранение...' : (editingAnnouncement ? 'Сохранить' : 'Создать')}
+            <Button onClick={handleSave} disabled={isSaving || isUploadingImage}>
+              {isSaving || isUploadingImage ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {isUploadingImage ? 'Загрузка изображения...' : 'Сохранение...'}
+                </>
+              ) : (editingAnnouncement ? 'Сохранить' : 'Создать')}
             </Button>
           </DialogFooter>
         </DialogContent>

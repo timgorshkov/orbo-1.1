@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
     
-    // Fetch upcoming published public events
+    // Fetch upcoming published events (both public and private - MiniApp users are org members)
     const now = new Date().toISOString().split('T')[0];
     
     const { data: events, error: eventsError } = await supabase
@@ -50,7 +50,6 @@ export async function GET(
       `)
       .eq('org_id', orgId)
       .eq('status', 'published')
-      .eq('is_public', true)
       .gte('event_date', now)
       .order('event_date', { ascending: true })
       .limit(20);
@@ -85,8 +84,14 @@ export async function GET(
       registered_count: registrationCounts[event.id] || 0
     })) || [];
     
+    // Add cache-busting to org logo URL to prevent Telegram WebView from caching old images
+    const orgWithFreshLogo = {
+      ...org,
+      logo_url: org.logo_url ? `${org.logo_url.split('?')[0]}?v=${Date.now()}` : null
+    };
+    
     return NextResponse.json({
-      organization: org,
+      organization: orgWithFreshLogo,
       events: eventsWithCounts
     });
     

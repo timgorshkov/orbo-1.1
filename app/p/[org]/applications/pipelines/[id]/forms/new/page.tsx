@@ -8,6 +8,7 @@ import {
   Save, 
   Loader2,
   Image,
+  Upload,
   Type,
   List,
   AlignLeft,
@@ -15,7 +16,8 @@ import {
   Phone,
   Plus,
   Trash2,
-  GripVertical
+  GripVertical,
+  X
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -116,6 +118,7 @@ export default function NewFormPage({
   const [error, setError] = useState<string | null>(null)
   const [orgName, setOrgName] = useState(propsOrgName || '')
   const [orgLogoUrl, setOrgLogoUrl] = useState(propsOrgLogoUrl || null)
+  const [isUploadingCover, setIsUploadingCover] = useState(false)
   
   // Fetch org data if not provided (for new form page)
   useEffect(() => {
@@ -164,6 +167,43 @@ export default function NewFormPage({
     setLanding({ ...landing, benefits })
   }
 
+  const handleCoverUpload = async (file: File) => {
+    // For new forms, we can't upload yet (no formId), so create a local preview
+    if (!formId) {
+      // Create object URL for preview, actual upload will happen on save
+      const objectUrl = URL.createObjectURL(file)
+      setLanding({ ...landing, cover_image_url: objectUrl })
+      // Store the file for later upload
+      setCoverFile(file)
+      return
+    }
+    
+    setIsUploadingCover(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const res = await fetch(`/api/applications/forms/${formId}/cover`, {
+        method: 'POST',
+        body: formData
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка загрузки')
+      }
+      
+      setLanding({ ...landing, cover_image_url: data.cover_image_url })
+    } catch (err: any) {
+      alert(err.message || 'Ошибка при загрузке обложки')
+    } finally {
+      setIsUploadingCover(false)
+    }
+  }
+  
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  
   const handleRemoveBenefit = (idx: number) => {
     setLanding({
       ...landing,
@@ -208,6 +248,26 @@ export default function NewFormPage({
       
       if (!res.ok) {
         throw new Error(data.error || `Не удалось ${isEdit ? 'обновить' : 'создать'} форму`)
+      }
+      
+      // Upload cover file if it was selected during form creation
+      const newFormId = data.form?.id || data.id
+      if (coverFile && newFormId) {
+        try {
+          const coverFormData = new FormData()
+          coverFormData.append('file', coverFile)
+          
+          const coverRes = await fetch(`/api/applications/forms/${newFormId}/cover`, {
+            method: 'POST',
+            body: coverFormData
+          })
+          
+          if (!coverRes.ok) {
+            console.error('Failed to upload cover after form creation')
+          }
+        } catch (coverErr) {
+          console.error('Cover upload error:', coverErr)
+        }
       }
       
       router.push(`/p/${orgId}/applications/pipelines/${pipelineId}/forms`)
@@ -327,12 +387,57 @@ export default function NewFormPage({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>URL обложки</Label>
-                    <Input
-                      value={landing.cover_image_url}
-                      onChange={(e) => setLanding({ ...landing, cover_image_url: e.target.value })}
-                      placeholder="https://..."
-                    />
+                    <Label>Обложка</Label>
+                    {landing.cover_image_url ? (
+                      <div className="relative group">
+                        <img 
+                          src={landing.cover_image_url}
+                          alt="Обложка"
+                          className="w-full h-32 object-cover rounded-lg border"
+                          onError={(e) => e.currentTarget.style.display = 'none'}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLanding({ ...landing, cover_image_url: '' })
+                            setCoverFile(null)
+                          }}
+                          className="absolute top-2 right-2 p-1 bg-white/80 rounded-full hover:bg-white shadow-sm"
+                        >
+                          <X className="w-4 h-4 text-red-500" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+                          {isUploadingCover ? (
+                            <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                          ) : (
+                            <Upload className="w-5 h-5 text-neutral-400" />
+                          )}
+                          <span className="text-sm text-neutral-600">
+                            {isUploadingCover ? 'Загрузка...' : 'Загрузить обложку'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleCoverUpload(file)
+                            }}
+                            disabled={isUploadingCover}
+                          />
+                        </label>
+                        <div className="text-center text-xs text-neutral-400">или</div>
+                        <Input
+                          value={landing.cover_image_url}
+                          onChange={(e) => setLanding({ ...landing, cover_image_url: e.target.value })}
+                          placeholder="Вставьте URL изображения..."
+                          className="text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
