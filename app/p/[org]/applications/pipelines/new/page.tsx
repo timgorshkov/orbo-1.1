@@ -131,8 +131,8 @@ export default function NewPipelinePage() {
         throw new Error(data.error || 'Не удалось создать воронку')
       }
       
-      // Redirect to pipeline page
-      router.push(`/p/${orgId}/applications/pipelines/${data.pipeline.id}`)
+      // Redirect to form creation page so user can set up the form immediately
+      router.push(`/p/${orgId}/applications/pipelines/${data.pipeline.id}/forms/new`)
     } catch (err: any) {
       setError(err.message)
     } finally {

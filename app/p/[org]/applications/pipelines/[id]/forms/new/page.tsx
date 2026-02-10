@@ -62,7 +62,7 @@ const defaultLanding: Landing = {
   text_color: '#1f2937',
   accent_color: '#4f46e5',
   show_member_count: true,
-  show_org_logo: true,
+  show_org_logo: false,
   benefits: [],
   cta_button_text: 'Подать заявку'
 }
@@ -426,13 +426,28 @@ export default function NewFormPage({
                     )}
                     <div className="p-4">
                       {landing.show_org_logo && (
-                        <div className="w-12 h-12 rounded-lg bg-neutral-200 mb-3" />
+                        <div className="w-12 h-12 rounded-lg bg-neutral-200 mb-3 overflow-hidden">
+                          {orgLogoUrl ? (
+                            <img 
+                              src={orgLogoUrl}
+                              alt={orgName || 'Лого'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-neutral-400 text-lg font-semibold">
+                              {(orgName || '?').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
                       )}
                       <h3 className="text-lg font-bold">
                         {landing.title || 'Заголовок'}
                       </h3>
                       {landing.subtitle && (
                         <p className="text-sm opacity-80 mt-1">{landing.subtitle}</p>
+                      )}
+                      {landing.description && (
+                        <p className="text-sm opacity-70 mt-2 whitespace-pre-line">{landing.description}</p>
                       )}
                       {landing.benefits.length > 0 && (
                         <div className="mt-4 space-y-2">
