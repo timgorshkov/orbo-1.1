@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { ArrowLeft, Users, FileText, Sparkles, Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+
+interface TelegramGroup {
+  tg_chat_id: string | number
+  title: string
+}
 
 interface PipelineType {
   id: 'join_request' | 'service' | 'custom'
@@ -73,8 +78,27 @@ export default function NewPipelinePage() {
   )
   const [name, setName] = useState(selectedType?.defaultName || '')
   const [description, setDescription] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [orgGroups, setOrgGroups] = useState<TelegramGroup[]>([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Fetch org telegram groups when step changes to details for join_request
+  useEffect(() => {
+    if (step === 'details' && selectedType?.id === 'join_request' && orgGroups.length === 0) {
+      setGroupsLoading(true)
+      fetch(`/api/groups/${orgId}`)
+        .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch groups'))
+        .then(data => {
+          setOrgGroups(data.groups || [])
+        })
+        .catch(err => {
+          console.error('Error fetching telegram groups:', err)
+        })
+        .finally(() => setGroupsLoading(false))
+    }
+  }, [step, selectedType, orgId, orgGroups.length])
 
   const handleSelectType = (type: PipelineType) => {
     setSelectedType(type)
@@ -96,7 +120,8 @@ export default function NewPipelinePage() {
           org_id: orgId,
           name: name.trim() || selectedType.defaultName,
           pipeline_type: selectedType.id,
-          description: description.trim() || undefined
+          description: description.trim() || undefined,
+          telegram_group_id: selectedType.id === 'join_request' && selectedGroupId ? selectedGroupId : undefined
         })
       })
       
@@ -192,17 +217,55 @@ export default function NewPipelinePage() {
               </p>
             </div>
 
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Описание (опционально)</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Для чего эта воронка..."
-                rows={3}
-              />
-            </div>
+            {/* Telegram Group Selection (only for join_request) */}
+            {selectedType.id === 'join_request' && (
+              <div className="space-y-2">
+                <Label htmlFor="telegram_group">Telegram группа</Label>
+                {groupsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-neutral-500 py-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Загрузка групп...
+                  </div>
+                ) : orgGroups.length > 0 ? (
+                  <>
+                    <select
+                      id="telegram_group"
+                      value={selectedGroupId}
+                      onChange={(e) => setSelectedGroupId(e.target.value)}
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Не выбрана</option>
+                      {orgGroups.map((group) => (
+                        <option key={String(group.tg_chat_id)} value={String(group.tg_chat_id)}>
+                          {group.title}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-neutral-500">
+                      Заявки на вступление в эту группу будут попадать в данную воронку
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-neutral-500">
+                    Нет подключенных Telegram групп. Группу можно привязать позже в настройках воронки.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Description (only for service/custom types) */}
+            {selectedType.id !== 'join_request' && (
+              <div className="space-y-2">
+                <Label htmlFor="description">Описание (опционально)</Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Для чего эта воронка..."
+                  rows={3}
+                />
+              </div>
+            )}
 
             {/* Default Stages Preview */}
             <div className="space-y-2">

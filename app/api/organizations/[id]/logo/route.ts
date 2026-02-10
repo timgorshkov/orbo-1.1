@@ -165,8 +165,9 @@ export async function POST(
       )
     }
 
-    // Get public URL
-    const publicUrl = storage.getPublicUrl(bucket, storagePath)
+    // Get public URL with cache-busting parameter to avoid stale cached images
+    const basePublicUrl = storage.getPublicUrl(bucket, storagePath)
+    const publicUrl = `${basePublicUrl}?v=${Date.now()}`
     
     logger.info({ 
       org_id: orgId, 

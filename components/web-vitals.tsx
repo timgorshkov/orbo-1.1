@@ -27,10 +27,15 @@ import { useRef, useEffect } from 'react';
 
 // Global set to track already-sent metric IDs (persists across re-renders)
 const sentMetricIds = new Set<string>();
+// Track which metric TYPES have been sent (FCP, LCP are one-time per page load)
+// These metrics don't change on client-side navigation, so sending them again is noise
+const sentPageLoadMetrics = new Set<string>();
 // Rate limiting: max 10 metrics per second
 let lastSendTime = 0;
 let sendCount = 0;
 const MAX_SENDS_PER_SECOND = 10;
+// Page-load metrics that are measured once and don't change on SPA navigation
+const PAGE_LOAD_METRICS = new Set(['FCP', 'LCP', 'TTFB']);
 
 // Обычные пороги
 const THRESHOLDS = {
@@ -78,7 +83,17 @@ export function WebVitals() {
   useReportWebVitals((metric) => {
     const { name, value, id, rating } = metric;
     
-    // Deduplication: skip if already sent
+    // FCP, LCP, TTFB are page-load metrics — measured once per full page load.
+    // On client-side SPA navigation, the browser re-reports the SAME stale value
+    // but with the new pathname, creating misleading logs. Only send these once.
+    if (PAGE_LOAD_METRICS.has(name)) {
+      if (sentPageLoadMetrics.has(name)) {
+        return; // Already sent this metric type for this page session
+      }
+      sentPageLoadMetrics.add(name);
+    }
+    
+    // Deduplication: skip if already sent this exact metric ID
     if (sentMetricIds.has(id)) {
       return;
     }

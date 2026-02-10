@@ -795,6 +795,8 @@ function AnnouncementCard({
       .join(', ');
   };
   
+  const isEventReminder = !!announcement.event_id && !!announcement.reminder_type;
+  
   if (compact) {
     return (
       <Card>
@@ -808,6 +810,9 @@ function AnnouncementCard({
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{formatDate(announcement.scheduled_at)}</span>
                 <span>• {announcement.target_groups.length} групп</span>
+                {isEventReminder && (
+                  <span className="text-indigo-600" title="Также будет отправлено личным сообщением зарегистрированным участникам">+ ЛС участникам</span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -849,6 +854,12 @@ function AnnouncementCard({
                 <Users className="w-3 h-3" />
                 {announcement.target_groups.length} групп
               </span>
+              {isEventReminder && (
+                <span className="flex items-center gap-1 text-indigo-600" title="Также будет отправлено личным сообщением зарегистрированным участникам">
+                  <Send className="w-3 h-3" />
+                  + ЛС зарегистрированным
+                </span>
+              )}
               {announcement.created_by_name && (
                 <span>Автор: {announcement.created_by_name}</span>
               )}

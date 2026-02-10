@@ -7,6 +7,7 @@ import ParticipantDuplicatesCard from './participant-duplicates-card'
 import ParticipantEventsCard from './participant-events-card'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 
 interface ParticipantDetailTabsProps {
   orgId: string
@@ -14,6 +15,7 @@ interface ParticipantDetailTabsProps {
   isAdmin: boolean
   canEdit: boolean
   currentUserId: string
+  userRole?: 'owner' | 'admin' | 'member' | 'guest'
 }
 
 export default function ParticipantDetailTabs({ 
@@ -21,9 +23,16 @@ export default function ParticipantDetailTabs({
   initialDetail, 
   isAdmin, 
   canEdit,
-  currentUserId 
+  currentUserId,
+  userRole
 }: ParticipantDetailTabsProps) {
   const [detail, setDetail] = useState<ParticipantDetailResult>(initialDetail)
+  
+  // Respect admin mode toggle - when admin switches to "participant mode",
+  // show the profile as a regular participant would see it
+  const { adminMode } = useAdminMode(userRole || (isAdmin ? 'admin' : 'member'))
+  const effectiveAdmin = isAdmin && adminMode
+  const effectiveCanEdit = effectiveAdmin ? canEdit : (canEdit && !isAdmin)
 
   const editableDetail = useMemo(() => detail, [detail])
 
@@ -39,13 +48,13 @@ export default function ParticipantDetailTabs({
     <Tabs defaultValue="profile" className="space-y-6">
       <TabsList>
         <TabsTrigger value="profile">Профиль</TabsTrigger>
-        {isAdmin && (
+        {effectiveAdmin && (
           <TabsTrigger value="events">
             События{eventRegistrationCount > 0 ? ` (${eventRegistrationCount})` : ''}
           </TabsTrigger>
         )}
-        {isAdmin && <TabsTrigger value="activity">Активность</TabsTrigger>}
-        {isAdmin && <TabsTrigger value="duplicates">Дубликаты</TabsTrigger>}
+        {effectiveAdmin && <TabsTrigger value="activity">Активность</TabsTrigger>}
+        {effectiveAdmin && <TabsTrigger value="duplicates">Дубликаты</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="profile" className="space-y-6">
@@ -53,24 +62,24 @@ export default function ParticipantDetailTabs({
           orgId={orgId} 
           detail={editableDetail} 
           onDetailUpdate={handleDetailUpdate}
-          canEdit={canEdit}
-          isAdmin={isAdmin}
+          canEdit={effectiveCanEdit}
+          isAdmin={effectiveAdmin}
         />
       </TabsContent>
 
-      {isAdmin && (
+      {effectiveAdmin && (
         <TabsContent value="events">
           <ParticipantEventsCard orgId={orgId} detail={editableDetail} />
         </TabsContent>
       )}
 
-      {isAdmin && (
+      {effectiveAdmin && (
         <TabsContent value="activity">
           <ParticipantActivityTimeline detail={editableDetail} />
         </TabsContent>
       )}
 
-      {isAdmin && (
+      {effectiveAdmin && (
         <TabsContent value="duplicates">
           <ParticipantDuplicatesCard 
             orgId={orgId} 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, Link as LinkIcon, Check, CheckCircle2 } from 'lucide-react'
+import { Users, Link as LinkIcon, Check } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -27,8 +27,6 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [linkCopied, setLinkCopied] = useState(false)
-  const [checkingIn, setCheckingIn] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
 
   const handleCopyParticipantsLink = async () => {
     const url = `${window.location.origin}/p/${orgId}/events/${eventId}#participants`
@@ -38,33 +36,6 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
       setTimeout(() => setLinkCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy link:', err)
-    }
-  }
-
-  const handleCheckIn = async (registrationId: string) => {
-    setCheckingIn(registrationId)
-    try {
-      const response = await fetch(`/api/events/${eventId}/participants/${registrationId}/checkin`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to check in participant')
-      }
-
-      // Update participant status locally
-      setParticipants(prev =>
-        prev.map(p =>
-          p.registration_id === registrationId
-            ? { ...p, status: 'attended' }
-            : p
-        )
-      )
-    } catch (err) {
-      console.error('Error checking in participant:', err)
-      alert('Не удалось отметить участника')
-    } finally {
-      setCheckingIn(null)
     }
   }
 
@@ -83,10 +54,6 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
       })
       .then(data => {
         setParticipants(data.participants || [])
-        // is_admin is the same for all participants, so we can get it from the first one
-        if (data.participants && data.participants.length > 0 && data.participants[0].is_admin !== undefined) {
-          setIsAdmin(data.participants[0].is_admin)
-        }
         setLoading(false)
       })
       .catch(err => {
@@ -148,17 +115,8 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {participants.map(participant => {
-          const isCheckedIn = participant.status === 'attended'
-          
           const CardContent = (
-            <div className="flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded relative">
-              {/* Check-in status badge */}
-              {isCheckedIn && (
-                <div className="absolute top-1 right-1 bg-green-500 text-white rounded-full p-0.5" title="Отметился">
-                  <CheckCircle2 className="w-3 h-3" />
-                </div>
-              )}
-              
+            <div className="flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded">
               {/* Photo */}
               <div className="w-12 h-12 rounded-full bg-neutral-200 overflow-hidden mb-2 flex-shrink-0">
                 {participant.photo_url ? (
@@ -184,22 +142,6 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
                 <div className="text-xs text-neutral-600 line-clamp-1 leading-tight">
                   {participant.bio}
                 </div>
-              )}
-              
-              {/* Admin check-in button */}
-              {isAdmin && !isCheckedIn && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleCheckIn(participant.registration_id)
-                  }}
-                  disabled={checkingIn === participant.registration_id}
-                  className="mt-2 px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Отметить участника"
-                >
-                  {checkingIn === participant.registration_id ? '...' : '✓ Отметить'}
-                </button>
               )}
             </div>
           )

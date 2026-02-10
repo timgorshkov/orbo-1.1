@@ -60,6 +60,7 @@ export default async function ParticipantPage({
         isAdmin={isAdmin}
         canEdit={canEdit}
         currentUserId={user.id}
+        userRole={role}
       />
     </div>
   )
