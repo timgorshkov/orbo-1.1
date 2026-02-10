@@ -63,57 +63,90 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: data.error }, { status: 404 });
     }
     
-    // Check if user already has an application
+    // Get form's pipeline_id first (needed for both application lookup and group info)
+    const { data: formMeta } = await supabase
+      .from('application_forms')
+      .select('pipeline_id')
+      .eq('id', formId)
+      .single();
+    
+    const pipelineId = formMeta?.pipeline_id;
+    
+    // Check if user already has an application for this pipeline
+    // Use pipeline_id (not form_id) so we find applications even after form recreation
     let existingApplication = null;
-    if (tgUserId) {
-      const { data: appData } = await supabase
-        .from('applications')
-        .select(`
-          id,
-          form_data,
-          created_at,
-          stage_id
-        `)
-        .eq('form_id', formId)
-        .eq('tg_user_id', tgUserId)
-        .single();
+    if (tgUserId && pipelineId) {
+      // Get all form IDs for this pipeline to find any existing application
+      const { data: pipelineForms } = await supabase
+        .from('application_forms')
+        .select('id')
+        .eq('pipeline_id', pipelineId);
       
-      if (appData) {
-        // Get stage info
-        const { data: stageData } = await supabase
-          .from('pipeline_stages')
-          .select('name, is_terminal, terminal_type')
-          .eq('id', appData.stage_id)
+      const pipelineFormIds = pipelineForms?.map(f => f.id) || [];
+      
+      if (pipelineFormIds.length > 0) {
+        const { data: appData } = await supabase
+          .from('applications')
+          .select(`
+            id,
+            form_id,
+            form_data,
+            created_at,
+            stage_id
+          `)
+          .in('form_id', pipelineFormIds)
+          .eq('tg_user_id', tgUserId)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .single();
         
-        existingApplication = {
-          id: appData.id,
-          form_data: appData.form_data,
-          created_at: appData.created_at,
-          stage_name: stageData?.name || 'На рассмотрении',
-          is_approved: stageData?.terminal_type === 'success',
-          is_rejected: stageData?.terminal_type === 'failure',
-          is_pending: !stageData?.is_terminal,
-          telegram_group: null as { title: string } | null
-        };
-        
-        logger.info({ 
-          form_id: formId, 
-          tg_user_id: tgUserId,
-          application_id: appData.id,
-          stage_name: existingApplication.stage_name,
-          is_pending: existingApplication.is_pending
-        }, 'Existing application found for user');
+        if (appData) {
+          // If application has a different form_id, update it to the current form
+          if (appData.form_id !== formId) {
+            logger.info({ 
+              application_id: appData.id, 
+              old_form_id: appData.form_id, 
+              new_form_id: formId 
+            }, 'Migrating application to current form');
+            
+            await supabase
+              .from('applications')
+              .update({ form_id: formId, updated_at: new Date().toISOString() })
+              .eq('id', appData.id);
+          }
+          
+          // Get stage info
+          const { data: stageData } = await supabase
+            .from('pipeline_stages')
+            .select('name, is_terminal, terminal_type')
+            .eq('id', appData.stage_id)
+            .single();
+          
+          existingApplication = {
+            id: appData.id,
+            form_data: appData.form_data,
+            created_at: appData.created_at,
+            stage_name: stageData?.name || 'На рассмотрении',
+            is_approved: stageData?.terminal_type === 'success',
+            is_rejected: stageData?.terminal_type === 'failure',
+            is_pending: !stageData?.is_terminal,
+            telegram_group: null as { title: string } | null
+          };
+          
+          logger.info({ 
+            form_id: formId, 
+            tg_user_id: tgUserId,
+            application_id: appData.id,
+            stage_name: existingApplication.stage_name,
+            is_pending: existingApplication.is_pending
+          }, 'Existing application found for user');
+        }
       }
     }
     
     // Get telegram group info for the pipeline
     let telegramGroup = null;
-    const { data: formData } = await supabase
-      .from('application_forms')
-      .select('pipeline_id')
-      .eq('id', formId)
-      .single();
+    const formData = formMeta; // reuse already-fetched data
     
     if (formData?.pipeline_id) {
       const { data: pipelineData } = await supabase
@@ -209,13 +242,56 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Form not found' }, { status: 404 });
     }
     
-    // Check if application already exists
-    const { data: existingApp } = await supabase
+    // Check if application already exists (by pipeline, not just form_id)
+    // This handles the case where forms were recreated for the same pipeline
+    let existingApp = null;
+    
+    // First try current form_id
+    const { data: directMatch } = await supabase
       .from('applications')
-      .select('id, stage_id, updated_at')
+      .select('id, form_id, stage_id, updated_at')
       .eq('form_id', formId)
       .eq('tg_user_id', tg_user_id)
       .single();
+    
+    if (directMatch) {
+      existingApp = directMatch;
+    } else if (form.pipeline_id) {
+      // Look for application via any form in the same pipeline
+      const { data: pipelineForms } = await supabase
+        .from('application_forms')
+        .select('id')
+        .eq('pipeline_id', form.pipeline_id);
+      
+      const pipelineFormIds = pipelineForms?.map(f => f.id) || [];
+      
+      if (pipelineFormIds.length > 0) {
+        const { data: pipelineMatch } = await supabase
+          .from('applications')
+          .select('id, form_id, stage_id, updated_at')
+          .in('form_id', pipelineFormIds)
+          .eq('tg_user_id', tg_user_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (pipelineMatch) {
+          existingApp = pipelineMatch;
+          
+          // Migrate application to the current form_id
+          logger.info({ 
+            application_id: pipelineMatch.id, 
+            old_form_id: pipelineMatch.form_id, 
+            new_form_id: formId 
+          }, 'Migrating application to current form (POST)');
+          
+          await supabase
+            .from('applications')
+            .update({ form_id: formId, updated_at: new Date().toISOString() })
+            .eq('id', pipelineMatch.id);
+        }
+      }
+    }
     
     if (existingApp) {
       logger.info({ 
@@ -246,14 +322,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         });
       }
       
-      // If form_data provided, update existing application
+      // If form_data provided, update existing application (direct update, allowing re-fill)
       if (form_data && Object.keys(form_data).length > 0) {
-        const { data: updated, error: updateError } = await supabase
-          .rpc('submit_application_form', {
-            p_application_id: existingApp.id,
-            p_form_data: form_data
+        const { error: updateError } = await supabase
+          .from('applications')
+          .update({ 
+            form_data: form_data,
+            form_filled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           })
-          .single();
+          .eq('id', existingApp.id);
         
         if (updateError) {
           logger.error({ 
@@ -264,11 +342,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
         }
         
+        // Log the event
+        await supabase
+          .from('application_events')
+          .insert({
+            application_id: existingApp.id,
+            event_type: 'form_filled',
+            actor_type: 'system',
+            data: form_data
+          });
+        
         logger.info({ 
           form_id: formId, 
           application_id: existingApp.id, 
           tg_user_id 
-        }, 'Existing application updated');
+        }, 'Existing application form data updated');
         
         return NextResponse.json({
           success: true,

@@ -289,10 +289,11 @@ export default function ApplicationFormPage() {
       mainButton.show();
       mainButton.onClick(handleMainButtonClick);
     } else if (pageState === 'status' && formData) {
-      // For existing applications that are still pending - allow to edit
+      // For existing applications that are still pending - allow to edit/fill form
       const app = formData.existing_application;
       if (app?.is_pending && formData.form_schema?.length > 0) {
-        mainButton.setText('Редактировать заявку');
+        const hasFormData = app.form_data && Object.keys(app.form_data).length > 0;
+        mainButton.setText(hasFormData ? 'Редактировать заявку' : 'Заполнить анкету');
         mainButton.show();
         mainButton.onClick(handleMainButtonClick);
       } else {
@@ -325,7 +326,8 @@ export default function ApplicationFormPage() {
           setPageState('status');
           const app = formData.existing_application;
           if (app.is_pending && formData.form_schema?.length > 0) {
-            webApp.MainButton.setText('Редактировать заявку');
+            const hasFormData = app.form_data && Object.keys(app.form_data).length > 0;
+            webApp.MainButton.setText(hasFormData ? 'Редактировать заявку' : 'Заполнить анкету');
           } else {
             webApp.MainButton.hide();
           }
@@ -459,7 +461,7 @@ export default function ApplicationFormPage() {
                 <div className="border-t px-4 py-3">
                   <p className="text-sm text-gray-500 mb-2">Ваши данные:</p>
                   <div className="space-y-2">
-                    {formData.form_schema.map((field) => {
+                    {formData.form_schema.map((field: FormField) => {
                       const value = app.form_data[field.id];
                       if (!value) return null;
                       return (
@@ -469,6 +471,16 @@ export default function ApplicationFormPage() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Prompt to fill form if empty */}
+              {(!app.form_data || Object.keys(app.form_data).length === 0) && formData.form_schema?.length > 0 && app.is_pending && (
+                <div className="border-t px-4 py-3">
+                  <div className="flex items-center gap-2 text-amber-700 bg-amber-50 rounded-lg p-3">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-sm">Заполните анкету, чтобы ускорить рассмотрение заявки</p>
                   </div>
                 </div>
               )}
