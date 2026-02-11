@@ -697,13 +697,16 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
           
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="title">Заголовок</Label>
+              <Label htmlFor="title">Название (не отправляется)</Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Название анонса"
+                placeholder="Для вашего удобства, например: Приглашение на пятницу"
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Служебное поле — видно только вам в списке анонсов
+              </p>
             </div>
             
             <div>

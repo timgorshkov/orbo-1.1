@@ -64,20 +64,26 @@ export function tiptapHtmlToTelegram(tiptapHtml: string): string {
 
   let result = tiptapHtml
 
-  // Replace <br> and <br/> with newline
+  // 1. Remove empty paragraphs (user pressed Enter for spacing).
+  //    These are absorbed into the paragraph break — no extra newlines.
+  //    <p><br></p> or <p><br/></p> or <p></p> between other paragraphs
+  result = result.replace(/<p><br\s*\/?><\/p>/gi, '')
+  result = result.replace(/<p>\s*<\/p>/gi, '')
+
+  // 2. Replace <br> within paragraphs with newline (Shift+Enter)
   result = result.replace(/<br\s*\/?>/gi, '\n')
 
-  // Replace closing </p> followed by opening <p> with double newline
+  // 3. Replace paragraph boundaries with double newline
   result = result.replace(/<\/p>\s*<p>/gi, '\n\n')
 
-  // Remove remaining <p> and </p> tags
+  // 4. Remove remaining <p> and </p> tags
   result = result.replace(/<\/?p>/gi, '')
 
-  // Clean up: trim trailing newlines
-  result = result.replace(/\n+$/, '')
+  // 5. Collapse excessive newlines (3+ → 2, i.e. max one blank line)
+  result = result.replace(/\n{3,}/g, '\n\n')
 
-  // Tiptap renders spoiler in its own tg-spoiler tag, which Telegram supports —
-  // no conversion needed.
+  // 6. Trim leading/trailing newlines
+  result = result.trim()
 
   return result
 }
