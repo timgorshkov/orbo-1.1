@@ -39,23 +39,36 @@ export class TelegramService {
    * Отправляет сообщение в чат Telegram
    */
   async sendMessage(chatId: number, text: string, options: any = {}) {
-    return this.callApi('sendMessage', {
+    const params: any = {
       chat_id: chatId,
       text,
-      parse_mode: 'HTML',
       ...options
-    });
+    };
+    // Set default parse_mode only if not explicitly provided in options
+    if (!('parse_mode' in options)) {
+      params.parse_mode = 'HTML';
+    }
+    // Allow removing parse_mode by passing undefined or null
+    if (params.parse_mode === undefined || params.parse_mode === null) {
+      delete params.parse_mode;
+    }
+    return this.callApi('sendMessage', params);
   }
 
   /**
    * Отправляет фото в чат Telegram с подписью
    */
   async sendPhoto(chatId: number, photoUrl: string, options: { caption?: string; parse_mode?: string } = {}) {
-    return this.callApi('sendPhoto', {
+    const params: any = {
       chat_id: chatId,
       photo: photoUrl,
       ...options
-    });
+    };
+    // Allow removing parse_mode by passing undefined or null
+    if (params.parse_mode === undefined || params.parse_mode === null) {
+      delete params.parse_mode;
+    }
+    return this.callApi('sendPhoto', params);
   }
 
   /**

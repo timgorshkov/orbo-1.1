@@ -77,19 +77,41 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
         let messageResult: any;
         
         if (announcement.image_url) {
-          // Отправляем как фото с подписью
           messageResult = await telegram.sendPhoto(
             chatId,
             announcement.image_url,
             { caption: announcement.content, parse_mode: 'Markdown' }
           );
         } else {
-          // Отправляем текстовое сообщение с Telegram Markdown
           messageResult = await telegram.sendMessage(
             chatId,
             announcement.content,
             { parse_mode: 'Markdown' }
           );
+        }
+        
+        // Fallback: if Markdown parsing failed, retry without parse_mode
+        const isParseError = messageResult?.ok === false && 
+          messageResult?.description?.includes("can't parse entities");
+        
+        if (isParseError) {
+          logger.info({ 
+            announcementId: announcement.id, chatId, groupTitle 
+          }, '⚠️ Markdown parse error, retrying without parse_mode');
+          
+          if (announcement.image_url) {
+            messageResult = await telegram.sendPhoto(
+              chatId,
+              announcement.image_url,
+              { caption: announcement.content, parse_mode: undefined }
+            );
+          } else {
+            messageResult = await telegram.sendMessage(
+              chatId,
+              announcement.content,
+              { parse_mode: undefined }
+            );
+          }
         }
         
         // callApi returns { ok: false, ... } on error instead of throwing
