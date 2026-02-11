@@ -76,28 +76,29 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       try {
         let messageResult: any;
         
+        // Content is stored as Telegram-compatible HTML from the rich editor
         if (announcement.image_url) {
           messageResult = await telegram.sendPhoto(
             chatId,
             announcement.image_url,
-            { caption: announcement.content, parse_mode: 'Markdown' }
+            { caption: announcement.content, parse_mode: 'HTML' }
           );
         } else {
           messageResult = await telegram.sendMessage(
             chatId,
             announcement.content,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'HTML' }
           );
         }
         
-        // Fallback: if Markdown parsing failed, retry without parse_mode
+        // Fallback: if HTML parsing failed, retry without parse_mode (plain text)
         const isParseError = messageResult?.ok === false && 
           messageResult?.description?.includes("can't parse entities");
         
         if (isParseError) {
           logger.info({ 
             announcementId: announcement.id, chatId, groupTitle 
-          }, '⚠️ Markdown parse error, retrying without parse_mode');
+          }, '⚠️ HTML parse error, retrying without parse_mode');
           
           if (announcement.image_url) {
             messageResult = await telegram.sendPhoto(
@@ -258,25 +259,26 @@ export async function createEventReminders(
     eventUrl = `${baseUrl}/e/${eventId}`;
   }
   
-  // Формируем текст напоминания за 24 часа
-  let content24h = `🗓 *Напоминание: ${eventTitle}*\n\n`;
+  // Формируем текст напоминания за 24 часа (в формате Telegram HTML)
+  const escapedTitle = escapeHtml(eventTitle);
+  let content24h = `🗓 <b>Напоминание: ${escapedTitle}</b>\n\n`;
   content24h += `📅 Завтра, ${formatDateTime(eventStartTime)}\n`;
   if (eventLocation) {
-    content24h += `📍 ${eventLocation}\n`;
+    content24h += `📍 ${escapeHtml(eventLocation)}\n`;
   }
   if (eventDescription) {
     const shortDesc = eventDescription.length > 200 ? eventDescription.slice(0, 200) + '...' : eventDescription;
     content24h += `\n${shortDesc}\n`;
   }
-  content24h += `\n🔗 [Подробнее и регистрация](${eventUrl})`;
+  content24h += `\n🔗 <a href="${eventUrl}">Подробнее и регистрация</a>`;
 
-  // Формируем текст напоминания за 1 час
-  let content1h = `⏰ *Через час начинается: ${eventTitle}*\n\n`;
+  // Формируем текст напоминания за 1 час (в формате Telegram HTML)
+  let content1h = `⏰ <b>Через час начинается: ${escapedTitle}</b>\n\n`;
   content1h += `🕐 Начало в ${formatDateTime(eventStartTime).split(', ').pop()}\n`;
   if (eventLocation) {
-    content1h += `📍 ${eventLocation}\n`;
+    content1h += `📍 ${escapeHtml(eventLocation)}\n`;
   }
-  content1h += `\n🔗 [Подробнее](${eventUrl})`;
+  content1h += `\n🔗 <a href="${eventUrl}">Подробнее</a>`;
   
   const now = new Date();
   const announcements: Array<{
@@ -370,3 +372,12 @@ function formatDateTime(date: Date): string {
   });
 }
 
+/**
+ * Экранирует HTML-спецсимволы для безопасной вставки в Telegram HTML
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}

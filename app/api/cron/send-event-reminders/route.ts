@@ -266,13 +266,15 @@ async function sendPostEventFollowUps({
         for (const p of (participants || [])) {
           if (!p.tg_user_id) continue;
           try {
-            const message = `✅ Спасибо за участие в *${event.title}*!\n\n` +
+            const safeTitle = event.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const safeOrgName = orgName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const message = `✅ Спасибо за участие в <b>${safeTitle}</b>!\n\n` +
               `Мы рады, что вы были с нами.\n` +
-              `Следите за новыми событиями от ${orgName}.\n\n` +
-              `📅 Все события: ${baseUrl}/p/${event.org_id}/events`;
+              `Следите за новыми событиями от ${safeOrgName}.\n\n` +
+              `📅 <a href="${baseUrl}/p/${event.org_id}/events">Все события</a>`;
 
             const result = await telegramService.sendMessage(p.tg_user_id, message, {
-              parse_mode: 'Markdown',
+              parse_mode: 'HTML',
               disable_web_page_preview: true
             });
             if (result.ok) totalSent++;
@@ -381,20 +383,24 @@ async function sendReminderToParticipants({
         const isPaid = event.requires_payment;
         const needsPayment = isPaid && reg.payment_status !== 'paid';
 
+        const safeTitle = event.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeOrgName = orgName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const safeLocation = event.location_info ? event.location_info.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+
         let message = '';
         if (reminderType === '24h') {
           message = `🔔 Напоминание о событии!\n\n` +
-            `*${event.title}*\n\n` +
+            `<b>${safeTitle}</b>\n\n` +
             `📅 Завтра, ${formattedDate}\n` +
             `🕐 ${formattedTime}\n`;
         } else if (reminderType === '1h') {
           message = `⏰ Через час начинается!\n\n` +
-            `*${event.title}*\n\n` +
+            `<b>${safeTitle}</b>\n\n` +
             `📅 Сегодня в ${formattedTime}\n`;
         }
 
-        if (event.location_info) {
-          message += `📍 ${event.location_info}\n`;
+        if (safeLocation) {
+          message += `📍 ${safeLocation}\n`;
         }
 
         message += `\n`;
@@ -403,12 +409,12 @@ async function sendReminderToParticipants({
           message += `💳 Не забудьте оплатить участие!\n\n`;
         }
 
-        message += `Подробнее: ${eventUrl}\n`;
-        if (orgName) message += `Организатор: ${orgName}\n`;
+        message += `<a href="${eventUrl}">Подробнее</a>\n`;
+        if (safeOrgName) message += `Организатор: ${safeOrgName}\n`;
         message += `\nДо встречи! 🙌`;
 
         const result = await telegramService.sendMessage(participant.tg_user_id, message, {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           disable_web_page_preview: true
         });
 

@@ -218,8 +218,19 @@ export default function Orb({
     const container = ctnDom.current;
     if (!container) return;
 
-    const renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    } catch (e) {
+      // WebGL not available (e.g. Firefox with disabled GPU acceleration)
+      console.warn('WebGL not available for Orb component:', e);
+      return;
+    }
     const gl = renderer.gl;
+    if (!gl) {
+      console.warn('WebGL context is null, skipping Orb render');
+      return;
+    }
     gl.clearColor(0, 0, 0, 0);
     container.appendChild(gl.canvas);
 
@@ -285,27 +296,48 @@ export default function Orb({
     container.addEventListener('mousemove', handleMouseMove);
     container.addEventListener('mouseleave', handleMouseLeave);
 
+    // Track if context was lost to stop rendering
+    let contextLost = false;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      contextLost = true;
+      console.warn('WebGL context lost in Orb component');
+    };
+    const handleContextRestored = () => {
+      contextLost = false;
+    };
+    gl.canvas.addEventListener('webglcontextlost', handleContextLost);
+    gl.canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
     let rafId: number;
     const update = (t: number) => {
       rafId = requestAnimationFrame(update);
 
-      const dt = (t - lastTime) * 0.001;
-      lastTime = t;
+      // Skip rendering if context was lost
+      if (contextLost || !renderer.gl) return;
 
-      program.uniforms.iTime.value = t * 0.001;
-      program.uniforms.hue.value = hue;
-      program.uniforms.hoverIntensity.value = hoverIntensity;
-      program.uniforms.backgroundColor.value = hexToVec3(backgroundColor);
+      try {
+        const dt = (t - lastTime) * 0.001;
+        lastTime = t;
 
-      const effectiveHover = forceHoverState ? 1 : targetHover;
-      program.uniforms.hover.value += (effectiveHover - program.uniforms.hover.value) * 0.1;
+        program.uniforms.iTime.value = t * 0.001;
+        program.uniforms.hue.value = hue;
+        program.uniforms.hoverIntensity.value = hoverIntensity;
+        program.uniforms.backgroundColor.value = hexToVec3(backgroundColor);
 
-      if (rotateOnHover && effectiveHover > 0.5) {
-        currentRot += dt * rotationSpeed;
+        const effectiveHover = forceHoverState ? 1 : targetHover;
+        program.uniforms.hover.value += (effectiveHover - program.uniforms.hover.value) * 0.1;
+
+        if (rotateOnHover && effectiveHover > 0.5) {
+          currentRot += dt * rotationSpeed;
+        }
+        program.uniforms.rot.value = currentRot;
+
+        renderer.render({ scene: mesh });
+      } catch (e) {
+        // WebGL context lost mid-frame — stop silently
+        contextLost = true;
       }
-      program.uniforms.rot.value = currentRot;
-
-      renderer.render({ scene: mesh });
     };
 
     rafId = requestAnimationFrame(update);
@@ -315,8 +347,16 @@ export default function Orb({
       window.removeEventListener('resize', resize);
       container.removeEventListener('mousemove', handleMouseMove);
       container.removeEventListener('mouseleave', handleMouseLeave);
-      container.removeChild(gl.canvas);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      try {
+        gl.canvas.removeEventListener('webglcontextlost', handleContextLost);
+        gl.canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+        if (gl.canvas.parentNode) {
+          container.removeChild(gl.canvas);
+        }
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+      } catch (e) {
+        // Cleanup may fail if context already gone
+      }
     };
   }, [hue, hoverIntensity, rotateOnHover, forceHoverState, backgroundColor, vert, frag]);
 

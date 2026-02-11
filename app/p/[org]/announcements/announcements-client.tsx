@@ -25,7 +25,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
+import TelegramRichEditor from '@/components/ui/telegram-rich-editor';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +35,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -708,16 +708,11 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
             
             <div>
               <Label htmlFor="content">Текст сообщения</Label>
-              <Textarea
-                id="content"
+              <TelegramRichEditor
                 value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Поддерживается Telegram Markdown: *жирный*, _курсив_, `код`"
-                rows={5}
+                onChange={(val) => setFormData({ ...formData, content: val })}
+                placeholder="Введите текст анонса..."
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Telegram Markdown: *жирный*, _курсив_, ~~зачёркнутый~~, `код`, [ссылка](url)
-              </p>
             </div>
             
             <div>
@@ -935,7 +930,7 @@ function AnnouncementCard({
               {getStatusBadge(announcement.status)}
             </div>
             <div className="text-sm text-gray-500 mt-1 line-clamp-2">
-              {renderTelegramMarkdownText(announcement.content)}
+              {renderTelegramContent(announcement.content)}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
               <span className="flex items-center gap-1">

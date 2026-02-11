@@ -272,3 +272,139 @@ export function renderTelegramMarkdownText(text: string): React.ReactNode {
   return <>{renderTelegramMarkdown(nodes)}</>
 }
 
+/**
+ * Detect whether content contains Telegram HTML tags (vs old Markdown)
+ */
+function isHtmlContent(text: string): boolean {
+  return /<(b|i|u|s|code|a |a>|pre|tg-spoiler|strong|em)[\s>]/i.test(text)
+}
+
+/**
+ * Рендерит контент, автоматически определяя формат (HTML или Markdown).
+ * Новый контент из WYSIWYG редактора приходит как Telegram HTML.
+ * Старый контент — как Telegram Markdown.
+ */
+export function renderTelegramContent(text: string): React.ReactNode {
+  if (!text) return null
+
+  if (isHtmlContent(text)) {
+    return renderTelegramHtmlText(text)
+  }
+
+  // Fallback to old Markdown renderer for legacy content
+  return renderTelegramMarkdownText(text)
+}
+
+/**
+ * Рендерит Telegram HTML контент в React-элементы.
+ * Поддерживает: <b>, <i>, <u>, <s>, <code>, <a>, <tg-spoiler>
+ */
+function renderTelegramHtmlText(html: string): React.ReactNode {
+  if (!html) return null
+
+  // Split by newlines to preserve line breaks
+  const lines = html.split('\n')
+  const elements: React.ReactNode[] = []
+
+  lines.forEach((line, lineIdx) => {
+    if (lineIdx > 0) elements.push(<br key={`br-${lineIdx}`} />)
+    
+    // Parse inline HTML tags
+    const lineElements = parseHtmlLine(line, `line-${lineIdx}`)
+    elements.push(...lineElements)
+  })
+
+  return <>{elements}</>
+}
+
+/**
+ * Парсит строку с Telegram HTML тегами в React-элементы
+ */
+function parseHtmlLine(html: string, keyPrefix: string): React.ReactNode[] {
+  const elements: React.ReactNode[] = []
+  // Match HTML tags we support
+  const tagPattern = /<(b|i|u|s|code|a|tg-spoiler|strong|em)(\s[^>]*)?>(.+?)<\/\1>/gs
+  
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let matchIdx = 0
+
+  // Reset lastIndex for the regex
+  tagPattern.lastIndex = 0
+
+  while ((match = tagPattern.exec(html)) !== null) {
+    // Text before this tag
+    if (match.index > lastIndex) {
+      elements.push(decodeHtmlEntities(html.slice(lastIndex, match.index)))
+    }
+
+    const tag = match[1]
+    const attrs = match[2] || ''
+    const innerHtml = match[3]
+    const key = `${keyPrefix}-${matchIdx}`
+    
+    // Recursively parse inner content
+    const innerContent = parseHtmlLine(innerHtml, key)
+
+    switch (tag) {
+      case 'b':
+      case 'strong':
+        elements.push(<strong key={key}>{innerContent}</strong>)
+        break
+      case 'i':
+      case 'em':
+        elements.push(<em key={key}>{innerContent}</em>)
+        break
+      case 'u':
+        elements.push(<u key={key}>{innerContent}</u>)
+        break
+      case 's':
+        elements.push(<s key={key}>{innerContent}</s>)
+        break
+      case 'code':
+        elements.push(
+          <code key={key} className="bg-neutral-100 px-1 py-0.5 rounded text-sm font-mono">
+            {innerContent}
+          </code>
+        )
+        break
+      case 'a': {
+        const hrefMatch = attrs.match(/href="([^"]*)"/)
+        const href = hrefMatch ? hrefMatch[1] : '#'
+        elements.push(
+          <a key={key} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+            {innerContent}
+          </a>
+        )
+        break
+      }
+      case 'tg-spoiler':
+        elements.push(<SpoilerText key={key} content={<>{innerContent}</>} />)
+        break
+      default:
+        elements.push(<span key={key}>{innerContent}</span>)
+    }
+
+    lastIndex = match.index + match[0].length
+    matchIdx++
+  }
+
+  // Remaining text after last tag
+  if (lastIndex < html.length) {
+    elements.push(decodeHtmlEntities(html.slice(lastIndex)))
+  }
+
+  return elements
+}
+
+/**
+ * Декодирует HTML entities обратно в символы для отображения
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}

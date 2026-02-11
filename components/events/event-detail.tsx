@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Link from 'next/link'
 import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft, Trash2 } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
-import { renderTelegramMarkdownText } from '@/lib/utils/telegramMarkdown'
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
 import QRCode from '@/components/ui/qr-code'
@@ -588,7 +588,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardHeader>
                   <CardContent>
                     <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-                      {renderTelegramMarkdownText(event.description)}
+                      {renderTelegramContent(event.description)}
                     </div>
                   </CardContent>
                 </Card>
@@ -1124,7 +1124,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardHeader>
                   <CardContent>
                     <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-                      {renderTelegramMarkdownText(event.description)}
+                      {renderTelegramContent(event.description)}
                     </div>
                   </CardContent>
                 </Card>

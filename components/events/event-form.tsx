@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import TelegramMarkdownEditor from './telegram-markdown-editor'
+import TelegramRichEditor from '@/components/ui/telegram-rich-editor'
 import CoverImageUpload from './cover-image-upload'
 
 // Field status for registration form configuration
@@ -358,7 +358,7 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                 <label className="text-sm font-medium block mb-2">
                   Описание
                 </label>
-                <TelegramMarkdownEditor
+                <TelegramRichEditor
                   value={description}
                   onChange={setDescription}
                   placeholder="Расскажите о событии, программе, спикерах..."
