@@ -85,6 +85,19 @@ export async function middleware(request: NextRequest) {
   // Rewrites public routes to /site folder
   // ========================================
   if (isWebsiteDomain(request)) {
+    // Fix broken UTM links: /utm_source=...&utm_medium=... -> /?utm_source=...&utm_medium=...
+    // Ad platforms sometimes strip the "?" turning query params into path segments
+    if (pathname.startsWith('/utm_') || pathname.startsWith('/utm ')) {
+      const url = request.nextUrl.clone()
+      // Combine path-as-params with any existing query string (e.g. ?erid=...)
+      const paramsFromPath = pathname.slice(1) // remove leading "/"
+      const existingSearch = url.search ? url.search.slice(1) : '' // remove leading "?"
+      const combined = existingSearch ? `${paramsFromPath}&${existingSearch}` : paramsFromPath
+      url.pathname = '/site'
+      url.search = `?${combined}`
+      return NextResponse.rewrite(url)
+    }
+
     // Rewrite website routes to /site folder
     // Public URL stays clean (orbo.ru/product), internal path is /site/product
     if (isWebsiteRoute(pathname)) {
