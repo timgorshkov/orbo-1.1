@@ -24,6 +24,22 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createAdminServer();
     
+    // Reset stuck "sending" announcements older than 5 minutes back to "scheduled"
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: stuckAnnouncements } = await supabase
+      .from('announcements')
+      .update({ status: 'scheduled' })
+      .eq('status', 'sending')
+      .lt('updated_at', fiveMinutesAgo)
+      .select('id');
+    
+    if (stuckAnnouncements && stuckAnnouncements.length > 0) {
+      logger.info({ 
+        count: stuckAnnouncements.length, 
+        ids: stuckAnnouncements.map(a => a.id) 
+      }, '🔄 Reset stuck "sending" announcements back to scheduled');
+    }
+    
     // Получаем анонсы, которые нужно отправить
     const { data: pendingAnnouncements, error } = await supabase
       .from('announcements')

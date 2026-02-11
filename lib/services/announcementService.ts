@@ -12,6 +12,7 @@ interface Announcement {
   target_groups: string[];
   status: string;
   image_url?: string | null;
+  retry_count?: number;
 }
 
 interface SendResult {
@@ -91,18 +92,33 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
           );
         }
         
-        results[String(chatId)] = { 
-          success: true, 
-          message_id: messageResult.message_id 
-        };
-        successCount++;
-        
-        logger.debug({ 
-          announcementId: announcement.id, 
-          chatId,
-          groupTitle,
-          messageId: messageResult.message_id 
-        }, 'Message sent to group');
+        // callApi returns { ok: false, ... } on error instead of throwing
+        if (messageResult && messageResult.ok === false) {
+          const errorDesc = messageResult.description || 'Unknown Telegram API error';
+          results[String(chatId)] = { success: false, error: errorDesc };
+          failCount++;
+          
+          logger.warn({ 
+            announcementId: announcement.id, 
+            chatId,
+            groupTitle,
+            error_code: messageResult.error_code,
+            error: errorDesc
+          }, 'Telegram API returned error for group');
+        } else {
+          results[String(chatId)] = { 
+            success: true, 
+            message_id: messageResult?.result?.message_id || messageResult?.message_id 
+          };
+          successCount++;
+          
+          logger.debug({ 
+            announcementId: announcement.id, 
+            chatId,
+            groupTitle,
+            messageId: messageResult?.result?.message_id || messageResult?.message_id 
+          }, 'Message sent to group');
+        }
         
         // Небольшая задержка между отправками чтобы не превысить лимиты API
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -122,22 +138,50 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
     }
     
     // Обновляем статус анонса
-    const finalStatus = failCount === 0 ? 'sent' : (successCount === 0 ? 'failed' : 'sent');
+    const MAX_RETRIES = 3;
+    const retryCount = (announcement.retry_count || 0);
+    
+    let finalStatus: string;
+    const updateData: Record<string, any> = {
+      send_results: results,
+    };
+    
+    if (failCount === 0) {
+      // All groups succeeded
+      finalStatus = 'sent';
+      updateData.sent_at = new Date().toISOString();
+    } else if (successCount === 0 && retryCount < MAX_RETRIES) {
+      // Complete failure but retries remain — reschedule for next cron pass
+      finalStatus = 'scheduled';
+      updateData.retry_count = retryCount + 1;
+      logger.info({
+        announcementId: announcement.id,
+        retry_count: retryCount + 1,
+        max_retries: MAX_RETRIES,
+      }, '🔄 Announcement will be retried on next cron pass');
+    } else if (successCount > 0) {
+      // Partial success — mark as sent (some groups received the message)
+      finalStatus = 'sent';
+      updateData.sent_at = new Date().toISOString();
+    } else {
+      // All retries exhausted
+      finalStatus = 'failed';
+      updateData.sent_at = new Date().toISOString();
+    }
+    
+    updateData.status = finalStatus;
     
     await supabase
       .from('announcements')
-      .update({ 
-        status: finalStatus,
-        send_results: results,
-        sent_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', announcement.id);
     
     logger.info({ 
       announcementId: announcement.id,
       successCount,
       failCount,
-      status: finalStatus
+      status: finalStatus,
+      retry_count: updateData.retry_count ?? retryCount
     }, 'Announcement sending completed');
     
     return { successCount, failCount, results };
@@ -145,12 +189,17 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    const MAX_RETRIES = 3;
+    const retryCount = (announcement.retry_count || 0);
+    const canRetry = retryCount < MAX_RETRIES;
+    
     await supabase
       .from('announcements')
       .update({ 
-        status: 'failed',
+        status: canRetry ? 'scheduled' : 'failed',
+        retry_count: canRetry ? retryCount + 1 : retryCount,
         send_results: { error: errorMessage },
-        sent_at: new Date().toISOString()
+        ...(canRetry ? {} : { sent_at: new Date().toISOString() })
       })
       .eq('id', announcement.id);
     
