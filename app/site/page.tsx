@@ -37,7 +37,7 @@ export default function HomePage() {
           </h1>
           
           <p className="hero-orb-section__subtitle">
-            Повышайте доходимость на мероприятия, принимайте людей без хаоса и сохраняйте историю участия
+            Создайте MiniApp для регистрации на мероприятие за пару кликов. Нативный опыт в Telegram повышает конверсию, а автоматические напоминания — доходимость.
           </p>
           
           <div className="hero-orb-section__actions">
@@ -89,8 +89,8 @@ export default function HomePage() {
                 Люди регистрируются, но не доходят. Теряете деньги и время на тех, кто не участвует.
               </p>
               <ul className="audience-card__features">
-                <li>Напоминания повышают доходимость</li>
-                <li>Карточка участника с историей посещений</li>
+                <li>MiniApp для регистрации и оплаты прямо в Telegram</li>
+                <li>Напоминания в личку повышают доходимость</li>
                 <li>Видите, кто реально ходит и платит</li>
               </ul>
             </div>
@@ -168,8 +168,8 @@ export default function HomePage() {
               <div className="feature-card__icon">
                 <Calendar size={24} />
               </div>
-              <h4 className="feature-card__title">События и регистрации</h4>
-              <p className="feature-card__text">Оплаты, напоминания, чекин</p>
+              <h4 className="feature-card__title">MiniApp для событий</h4>
+              <p className="feature-card__text">Регистрация и оплата в Telegram, напоминания, чекин</p>
             </div>
             
             <div className="feature-card">
@@ -211,9 +211,9 @@ export default function HomePage() {
             </div>
             <div className="step-card">
               <div className="step-card__number">2</div>
-              <h4 className="step-card__title">Создайте первое событие</h4>
+              <h4 className="step-card__title">Создайте событие с MiniApp</h4>
               <p className="step-card__text">
-                Регистрация через Telegram, напоминания, сбор оплат — всё в одном месте
+                Участники регистрируются и платят прямо в Telegram, напоминания отправляются автоматически
               </p>
             </div>
             <div className="step-card">

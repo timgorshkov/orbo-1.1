@@ -27,7 +27,7 @@ export default function EventsPage() {
             Люди доходят<br />до мероприятий
           </h1>
           <p className="hero-floating__subtitle">
-            Регистрация, напоминания и история участия. Чем выше доходимость — тем ценнее каждый участник.
+            MiniApp для регистрации и оплаты прямо в Telegram — выше конверсия. Напоминания в личку — выше доходимость.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -63,10 +63,10 @@ export default function EventsPage() {
             <div className="audience-card" style={{ borderLeft: '4px solid #22c55e' }}>
               <h3 className="audience-card__title" style={{ color: '#16a34a' }}>✅ С Orbo</h3>
               <ul className="audience-card__features">
-                <li><strong>Регистрация в 2 клика</strong> — прямо в Telegram, без переходов</li>
-                <li><strong>Напоминания повышают доходимость</strong> — за 24 часа и за 1 час</li>
-                <li><strong>Карточки участников</strong> — история посещений и контакты</li>
-                <li><strong>Знаете, кто ценен</strong> — видите, кто реально ходит</li>
+                <li><strong>MiniApp для регистрации и оплаты</strong> — нативно в Telegram, без перехода на сайт</li>
+                <li><strong>Конверсия выше</strong> — участник не уходит из мессенджера, данные подставляются</li>
+                <li><strong>Напоминания в личку</strong> — за 24 часа и за 1 час, плюс анонс в группу</li>
+                <li><strong>Знаете, кто ценен</strong> — история посещений и оплат в карточке участника</li>
                 <li><strong>Оплата профессионально</strong> — через бот, не «скинь на Сбер»</li>
               </ul>
             </div>
@@ -131,8 +131,8 @@ export default function EventsPage() {
         <div className="website-container">
           <div className="section-header section-header--center">
             <span className="section-header__eyebrow">Шаг 2</span>
-            <h2 className="section-header__title">Форма регистрации</h2>
-            <p className="section-header__subtitle">Собирайте нужные данные от участников</p>
+            <h2 className="section-header__title">MiniApp с формой регистрации</h2>
+            <p className="section-header__subtitle">Участник регистрируется прямо в Telegram — без перехода на внешний сайт</p>
           </div>
           
           <div className="content-screenshot-row content-screenshot-row--narrow-phone">
@@ -153,7 +153,7 @@ export default function EventsPage() {
                 </tbody>
               </table>
               <p className="audience-card__text" style={{ marginTop: '1rem', marginBottom: 0 }}>
-                Данные автоматически подтягиваются из Telegram-профиля — минимум ввода для участников.
+                Данные подтягиваются из Telegram-профиля автоматически — минимум ввода, максимум конверсии.
               </p>
             </div>
             
@@ -229,8 +229,8 @@ export default function EventsPage() {
       <section className="website-section website-section--alt">
         <div className="website-container">
           <div className="section-header section-header--center">
-            <span className="section-header__eyebrow">Интеграция</span>
-            <h2 className="section-header__title">Публикация и напоминания</h2>
+            <span className="section-header__eyebrow">Конверсия и доходимость</span>
+            <h2 className="section-header__title">Анонс, MiniApp и напоминания</h2>
           </div>
           
           <div className="features-grid">
@@ -238,9 +238,9 @@ export default function EventsPage() {
               <div className="audience-card__icon">
                 <Send size={28} />
               </div>
-              <h3 className="audience-card__title">Анонс в группах</h3>
+              <h3 className="audience-card__title">Анонс с кнопкой регистрации</h3>
               <p className="audience-card__text">
-                Выберите группы для публикации. Бот отправит анонс с обложкой и кнопкой «Зарегистрироваться».
+                Бот публикует анонс с обложкой и кнопкой «Зарегистрироваться». Кнопка открывает MiniApp — участник регистрируется, не покидая Telegram.
               </p>
             </div>
             
@@ -248,9 +248,9 @@ export default function EventsPage() {
               <div className="audience-card__icon">
                 <CalendarCheck size={28} />
               </div>
-              <h3 className="audience-card__title">Автоматические напоминания</h3>
+              <h3 className="audience-card__title">Напоминания в личку</h3>
               <p className="audience-card__text">
-                При создании события автоматически планируются напоминания: за 24 часа и за 1 час до начала.
+                Бот отправляет личные напоминания за 24 часа и за 1 час до начала. Плюс анонс в группу. Доходимость растёт.
               </p>
               <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--website-bg-alt)', borderRadius: 'var(--website-radius-md)', fontSize: '0.875rem' }}>
                 Тексты можно редактировать или отменять
@@ -261,9 +261,9 @@ export default function EventsPage() {
               <div className="audience-card__icon">
                 <Smartphone size={28} />
               </div>
-              <h3 className="audience-card__title">Telegram MiniApp</h3>
+              <h3 className="audience-card__title">Нативный MiniApp</h3>
               <p className="audience-card__text">
-                Регистрация без выхода из Telegram. Данные подставляются автоматически. Бот: @orbo_event_bot
+                Регистрация и оплата открываются внутри Telegram. Данные подставляются из профиля. Нет перехода на внешний сайт — конверсия выше.
               </p>
             </div>
           </div>
@@ -321,9 +321,9 @@ export default function EventsPage() {
       {/* CTA */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Повысьте доходимость</h2>
+          <h2 className="cta-section__title">Создайте MiniApp для вашего мероприятия</h2>
           <p className="cta-section__text">
-            Создайте событие — люди придут, а карточки участников сохранятся для следующих мероприятий
+            Регистрация и оплата в Telegram, напоминания в личку, карточки участников — за пару кликов
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">

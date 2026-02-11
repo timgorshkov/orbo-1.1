@@ -26,7 +26,7 @@ export default function ProductPage() {
             CRM участников<br />и событий
           </h1>
           <p className="hero-floating__subtitle">
-            Люди регистрируются, но не доходят? Теряете контакты после первого касания? Orbo это исправляет.
+            MiniApp для регистрации и оплаты прямо в Telegram. Напоминания в личку. Карточки участников с историей.
           </p>
           <div className="hero-floating__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
@@ -71,8 +71,8 @@ export default function ProductPage() {
                 Люди регистрируются, но не доходят. Теряете деньги на тех, кто не участвует. Не видите, кто реально ценен.
               </p>
               <ul className="audience-card__features">
-                <li>Напоминания повышают доходимость</li>
-                <li>QR-чекин фиксирует факт участия</li>
+                <li>MiniApp для регистрации и оплаты — без выхода из Telegram</li>
+                <li>Напоминания в личку повышают доходимость</li>
                 <li>Карточка участника с историей посещений</li>
                 <li>Видите, кто реально ходит и платит</li>
               </ul>
@@ -148,9 +148,9 @@ export default function ProductPage() {
               <div className="feature-card__icon">
                 <Calendar size={24} />
               </div>
-              <h4 className="feature-card__title">События и регистрации</h4>
+              <h4 className="feature-card__title">MiniApp для событий</h4>
               <p className="feature-card__text">
-                Люди не доходят? Напоминания, сбор оплат и история посещений
+                Регистрация и оплата в Telegram — выше конверсия. Напоминания в личку — выше доходимость.
               </p>
             </Link>
             
@@ -243,7 +243,7 @@ export default function ProductPage() {
               </div>
               <h4 className="feature-card__title">@orbo_event_bot</h4>
               <p className="feature-card__text">
-                MiniApp для регистрации на события
+                MiniApp для регистрации и оплаты. Нативный опыт в Telegram — участник не уходит на внешний сайт.
               </p>
             </div>
           </div>
@@ -253,9 +253,9 @@ export default function ProductPage() {
       {/* CTA */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Начните бесплатно</h2>
+          <h2 className="cta-section__title">Создайте MiniApp для вашего события</h2>
           <p className="cta-section__text">
-            Подключите первую группу и оцените возможности Orbo
+            Регистрация, оплата и напоминания — за пару кликов, бесплатно
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
