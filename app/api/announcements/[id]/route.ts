@@ -35,15 +35,33 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
     
-    // Получаем информацию о целевых группах
-    const { data: groups } = await supabase
+    // Получаем информацию о целевых группах (два отдельных запроса вместо join)
+    const { data: orgGroupLinks } = await supabase
       .from('org_telegram_groups')
-      .select('id, telegram_groups(title, chat_id)')
+      .select('id, tg_chat_id')
       .in('id', announcement.target_groups);
+    
+    let groups: any[] = [];
+    if (orgGroupLinks && orgGroupLinks.length > 0) {
+      const chatIds = orgGroupLinks.map((g: any) => g.tg_chat_id).filter(Boolean);
+      if (chatIds.length > 0) {
+        const { data: tgGroups } = await supabase
+          .from('telegram_groups')
+          .select('title, chat_id, tg_chat_id')
+          .in('tg_chat_id', chatIds);
+        
+        // Собираем результат в формате, ожидаемом фронтендом
+        const tgGroupsMap = new Map((tgGroups || []).map((g: any) => [String(g.tg_chat_id), g]));
+        groups = orgGroupLinks.map((link: any) => ({
+          id: link.id,
+          telegram_groups: tgGroupsMap.get(String(link.tg_chat_id)) || null
+        }));
+      }
+    }
     
     return NextResponse.json({ 
       announcement,
-      groups: groups || []
+      groups
     });
   } catch (error) {
     logger.error({ error: error instanceof Error ? error.message : 'Unknown error' }, 'Error in GET /api/announcements/[id]');

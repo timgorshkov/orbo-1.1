@@ -948,7 +948,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       
       // Handle channel reactions separately
       if (chatType === 'channel') {
-        logger.info({
+        logger.debug({
           webhook: 'main',
           chat_id: chatId,
           message_id: messageId,
@@ -993,7 +993,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       const chatType = reactionCount.chat?.type;
       const messageId = reactionCount.message_id;
       
-      logger.info({
+      logger.debug({
         webhook: 'main',
         chat_id: chatId,
         chat_type: chatType,
@@ -1029,7 +1029,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               message_id: messageId
             }, '❌ [WEBHOOK] Failed to update post reactions count');
           } else {
-            logger.info({ 
+            logger.debug({ 
               chat_id: chatId,
               message_id: messageId,
               total_reactions: totalReactions
@@ -1049,19 +1049,15 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     // STEP 2.9: Обработка постов каналов (channel_post)
     // ========================================
     if (body.channel_post) {
-      logger.info({
+      logger.debug({
         webhook: 'main',
         update_id: body.update_id,
         chat_id: body.channel_post.chat?.id,
         chat_type: body.channel_post.chat?.type,
         chat_title: body.channel_post.chat?.title,
-        chat_username: body.channel_post.chat?.username,
         message_id: body.channel_post.message_id,
         has_text: !!body.channel_post.text,
-        has_caption: !!body.channel_post.caption,
-        text_length: body.channel_post.text?.length || 0,
-        views: body.channel_post.views,
-        date: body.channel_post.date
+        text_length: body.channel_post.text?.length || 0
       }, '📢 [WEBHOOK] Received channel_post');
       
       const result = await processChannelPost(body.channel_post);
@@ -1077,13 +1073,12 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
     // STEP 2.10: Обновление статистики постов (edited_channel_post)
     // ========================================
     if (body.edited_channel_post) {
-      logger.info({
+      logger.debug({
         webhook: 'main',
         update_id: body.update_id,
         chat_id: body.edited_channel_post.chat?.id,
         message_id: body.edited_channel_post.message_id,
-        views: body.edited_channel_post.views,
-        forwards: body.edited_channel_post.forward_count
+        views: body.edited_channel_post.views
       }, '📝 [WEBHOOK] Received edited_channel_post');
       
       const result = await processEditedChannelPost(body.edited_channel_post);

@@ -666,19 +666,27 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
 
   /**
    * Парсит колонки для SELECT (упрощённо обрабатывает joins)
+   * 
+   * ⚠️ ВАЖНО: PostgresQueryBuilder НЕ поддерживает Supabase-style JOIN синтаксис:
+   *   .select('org_id, organizations(name)')  // НЕ РАБОТАЕТ — создаст невалидный SQL
+   * 
+   * Используйте вместо этого:
+   *   - Отдельные запросы (два .from().select())
+   *   - Raw SQL через .raw('SELECT ... JOIN ...')
    */
   private parseSelectColumns(columns: string): string {
     // Supabase-стиль: "id, name, organization:organizations(id, name)"
-    // Упрощённо возвращаем как есть, сложные joins требуют отдельной обработки
+    // PostgresQueryBuilder НЕ поддерживает joins — пропускаем их с предупреждением
     if (columns.includes('(')) {
       const logger = createServiceLogger('PostgresQueryBuilder');
-      logger.warn({ columns }, 'Complex select with joins detected. Consider using raw SQL for complex queries.');
-      // Возвращаем базовые колонки без joins
+      logger.error({ columns, table: this.tableName }, 
+        '❌ Supabase-style JOIN syntax detected in .select() — this will produce incorrect SQL! Use .raw() or separate queries instead.');
+      // Возвращаем базовые колонки без joins (joins будут проигнорированы)
       const result: string[] = [];
       for (const c of columns.split(',')) {
         const base = c.trim().split(':')[0].split('(')[0].trim();
-        // Пропускаем пустые и связанные таблицы (которые начинались с join синтаксиса)
-        if (!base || base.includes(')')) continue;
+        // Пропускаем пустые, связанные таблицы и !inner модификаторы
+        if (!base || base.includes(')') || base.includes('!')) continue;
         // Обрабатываем * отдельно
         if (base === '*') {
           result.push('*');

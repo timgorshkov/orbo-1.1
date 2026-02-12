@@ -156,10 +156,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const supabase = createAdminServer();
 
-    // Get registration and verify event ownership
+    // Get registration and verify event ownership (два запроса вместо join)
     const { data: registration, error: regError } = await supabase
       .from('event_registrations')
-      .select('id, event_id, events:event_id (org_id)')
+      .select('id, event_id')
       .eq('id', registration_id)
       .single();
 
@@ -167,7 +167,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }
 
-    const orgId = (registration.events as any)?.org_id;
+    // Получаем org_id из связанного события
+    const { data: regEvent } = await supabase
+      .from('events')
+      .select('org_id')
+      .eq('id', registration.event_id)
+      .single();
+
+    const orgId = regEvent?.org_id;
 
     // Check user access to org
     const { data: membership } = await supabase

@@ -862,7 +862,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         const timeoutHours = rule.config.timeout_hours || 2;
         const allMessages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 50);
         
-        logger.info({ rule_name: rule.name, chat: groupTitle, message_count: allMessages.length, timeout_hours: timeoutHours, window_minutes: timeoutHours * 60 + 30 }, '❓ Unanswered question check: fetched messages');
+        logger.debug({ rule_name: rule.name, chat: groupTitle, message_count: allMessages.length, timeout_hours: timeoutHours, window_minutes: timeoutHours * 60 + 30 }, '❓ Unanswered question check: fetched messages');
         
         if (allMessages.length < 1) {
           logger.debug({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: no messages in window');
@@ -893,7 +893,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           
           const topicLabel = topicId ? ` (тема #${topicId})` : '';
           
-          logger.info({ 
+          logger.debug({ 
             rule_name: rule.name, 
             chat: groupTitle + topicLabel, 
             topic_id: topicId,

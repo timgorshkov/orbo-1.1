@@ -63,12 +63,9 @@ export default async function OrganizationsPage() {
   const { data: memberships, error: membershipsError } = membershipsResult;
   const { data: telegramAccounts } = telegramAccountsResult;
 
-  logger.info({ 
+  logger.debug({ 
     user_id: user.id,
-    qualification_completed: qualification?.completed_at,
     memberships_count: memberships?.length || 0,
-    memberships_data: memberships,
-    memberships_error: membershipsError?.message,
     telegram_accounts_count: telegramAccounts?.length || 0
   }, 'OrgsPage: Initial data loaded');
 
@@ -81,10 +78,6 @@ export default async function OrganizationsPage() {
 
   // Получаем организации для memberships (без Supabase JOIN)
   const membershipOrgIds = memberships?.map(m => m.org_id) || [];
-  logger.info({ 
-    user_id: user.id,
-    membership_org_ids: membershipOrgIds
-  }, 'OrgsPage: Org IDs from memberships');
   
   let orgsMap = new Map<string, { id: string; name: string; logo_url: string | null; status: string | null }>();
   
@@ -95,12 +88,9 @@ export default async function OrganizationsPage() {
       .in('id', membershipOrgIds)
       .or('status.is.null,status.eq.active');
     
-    logger.info({ 
-      user_id: user.id,
-      orgs_data_count: orgsData?.length || 0,
-      orgs_data: orgsData,
-      orgs_error: orgsError?.message
-    }, 'OrgsPage: Organizations fetched');
+    if (orgsError) {
+      logger.warn({ user_id: user.id, error: orgsError.message }, 'OrgsPage: Error fetching organizations');
+    }
     
     orgsData?.forEach(org => orgsMap.set(org.id, org));
   }

@@ -171,40 +171,51 @@ export async function enrichParticipant(
     }
     
     // 4b. Fetch event registrations (compact summary for AI context)
+    // Используем raw SQL JOIN вместо Supabase-style join синтаксиса
     let eventSummary: string[] = [];
     {
-      const { data: registrations } = await supabaseAdmin
-        .from('event_registrations')
-        .select('id, status, checked_in, events!inner(title, event_date, description)')
-        .eq('participant_id', participantId)
-        .order('created_at', { ascending: false })
-        .limit(20);
+      const { data: registrations } = await supabaseAdmin.raw(`
+        SELECT er.id, er.status, er.checked_in,
+               e.title AS event_title, e.event_date AS event_date
+        FROM event_registrations er
+        INNER JOIN events e ON e.id = er.event_id
+        WHERE er.participant_id = $1
+        ORDER BY er.created_at DESC
+        LIMIT 20
+      `, [participantId]);
       
       if (registrations && registrations.length > 0) {
         eventSummary = registrations.map((r: any) => {
-          const event = r.events;
-          const eventDate = event?.event_date ? new Date(event.event_date).toLocaleDateString('ru-RU') : '';
+          const eventDate = r.event_date ? new Date(r.event_date).toLocaleDateString('ru-RU') : '';
           const statusText = r.checked_in ? 'посетил' : (r.status === 'confirmed' ? 'зарегистрирован' : r.status);
-          const title = event?.title || 'Событие';
+          const title = r.event_title || 'Событие';
           return `${title} (${eventDate}) — ${statusText}`;
         });
       }
     }
 
     // 4c. Fetch applications (compact summary for AI context)
+    // Используем raw SQL JOIN вместо Supabase-style join синтаксиса
     let applicationSummary: string[] = [];
     {
-      const { data: applications } = await supabaseAdmin
-        .from('applications')
-        .select('id, created_at, pipeline_stages!inner(name, slug), application_forms!inner(name, application_pipelines!inner(name, pipeline_type))')
-        .eq('participant_id', participantId)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      const { data: applications } = await supabaseAdmin.raw(`
+        SELECT a.id, a.created_at,
+               ps.name AS stage_name, ps.slug AS stage_slug,
+               af.name AS form_name,
+               ap.name AS pipeline_name, ap.pipeline_type
+        FROM applications a
+        INNER JOIN pipeline_stages ps ON ps.id = a.stage_id
+        INNER JOIN application_forms af ON af.id = a.form_id
+        INNER JOIN application_pipelines ap ON ap.id = af.pipeline_id
+        WHERE a.participant_id = $1
+        ORDER BY a.created_at DESC
+        LIMIT 10
+      `, [participantId]);
       
       if (applications && applications.length > 0) {
         applicationSummary = applications.map((app: any) => {
-          const pipelineName = app.application_forms?.application_pipelines?.name || '';
-          const stageName = app.pipeline_stages?.name || '';
+          const pipelineName = app.pipeline_name || '';
+          const stageName = app.stage_name || '';
           return `${pipelineName}: ${stageName}`;
         });
       }

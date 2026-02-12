@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '100', 10);
     const errorCode = url.searchParams.get('error_code');
     
-    logger.info({ level_filter: levelFilter, hours, limit, error_code: errorCode }, 'Fetching error logs');
+    logger.debug({ level_filter: levelFilter, hours, limit, error_code: errorCode }, 'Fetching error logs');
     
     // Calculate time threshold
     const timeThreshold = new Date();

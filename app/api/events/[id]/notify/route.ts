@@ -35,7 +35,7 @@ export async function POST(
     // Get event using admin client to bypass RLS
     const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('*, organizations(name)')
+      .select('*')
       .eq('id', eventId)
       .single()
 

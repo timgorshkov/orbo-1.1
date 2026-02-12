@@ -16,10 +16,14 @@ export async function GET(request: Request) {
 
     const supabaseAdmin = createAdminServer();
 
-    const { data: memberships, error: membershipsError } = await supabaseAdmin
-      .from('memberships')
-      .select('org_id, role, organizations(id, name, plan)')
-      .eq('user_id', user.id);
+    // Используем raw SQL JOIN вместо Supabase-style join синтаксиса,
+    // т.к. PostgresQueryBuilder не поддерживает вложенные joins
+    const { data: memberships, error: membershipsError } = await supabaseAdmin.raw(`
+      SELECT m.org_id, m.role, o.id AS org_real_id, o.name AS org_name, o.plan AS org_plan
+      FROM memberships m
+      LEFT JOIN organizations o ON o.id = m.org_id
+      WHERE m.user_id = $1
+    `, [user.id]);
 
     if (membershipsError) {
       logger.error({ 
@@ -31,8 +35,8 @@ export async function GET(request: Request) {
 
     const orgs = memberships?.map((item: any) => ({
       id: item.org_id,
-      name: item.organizations?.name || 'Организация',
-      plan: item.organizations?.plan || 'free',
+      name: item.org_name || 'Организация',
+      plan: item.org_plan || 'free',
       role: item.role,
     })) || [];
 
