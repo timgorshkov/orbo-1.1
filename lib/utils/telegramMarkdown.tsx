@@ -327,9 +327,7 @@ function parseHtmlLine(html: string, keyPrefix: string): React.ReactNode[] {
   
   let lastIndex = 0
   let match: RegExpExecArray | null
-  let matchIdx = 0
-
-  // Reset lastIndex for the regex
+  let matchIdx = 0  // Reset lastIndex for the regex
   tagPattern.lastIndex = 0
 
   while ((match = tagPattern.exec(html)) !== null) {

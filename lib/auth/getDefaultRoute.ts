@@ -26,7 +26,7 @@ export async function getDefaultRoute(orgId: string, role: UserRole): Promise<st
 
     // 1. Проверяем наличие материалов
     const { data: materials, error: materialsError } = await supabase
-      .from('materials')
+      .from('material_pages')
       .select('id')
       .eq('org_id', orgId)
       .is('parent_id', null) // Только корневые элементы

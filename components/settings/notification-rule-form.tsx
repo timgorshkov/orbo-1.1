@@ -318,6 +318,12 @@ export default function NotificationRuleForm({
         {/* Negative Discussion Settings */}
         {ruleType === 'negative_discussion' && (
           <div className="space-y-4">
+            <div className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+              <strong>Как работает:</strong> AI анализирует сообщения в группе и обнаруживает негатив.
+              Уведомления отправляются в бот и отображаются в разделе «Уведомления» и на Дашборде.
+              Дедупликация: одно уведомление на группу раз в 6 часов по одному инциденту.
+              Автосокрытие: уведомление остаётся активным, пока вы не отметите его как решённое.
+            </div>
             <div>
               <Label>Порог серьёзности</Label>
               <Select
@@ -353,6 +359,12 @@ export default function NotificationRuleForm({
         {/* Unanswered Question Settings */}
         {ruleType === 'unanswered_question' && (
           <div className="space-y-4">
+            <div className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+              <strong>Как работает:</strong> AI определяет вопросы без ответа в группе.
+              Уведомления отправляются в бот и отображаются в «Уведомлениях» и на Дашборде.
+              Дедупликация: одно уведомление на вопрос раз в 6 часов. Проверка только в рабочее время.
+              Автосокрытие: уведомление остаётся до ручной отметки «Решено».
+            </div>
             <div>
               <Label>Таймаут без ответа (часы)</Label>
               <Input
@@ -415,6 +427,11 @@ export default function NotificationRuleForm({
         {/* Group Inactive Settings */}
         {ruleType === 'group_inactive' && (
           <div className="space-y-4">
+            <div className="text-xs text-gray-500 bg-blue-50 rounded p-2">
+              <strong>Как работает:</strong> Уведомление при отсутствии сообщений дольше указанного таймаута.
+              Одно уведомление на период молчания (дедупликация 48 ч).
+              Автосокрытие: уведомление снимается автоматически, когда активность в группе возобновляется.
+            </div>
             <div>
               <Label>Таймаут неактивности (часы)</Label>
               <Input

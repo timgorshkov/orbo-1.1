@@ -441,7 +441,80 @@ export async function POST(request: NextRequest) {
       logger.warn({ error: tgError.message }, 'Error processing Telegram notifications for system rules');
     }
 
-    // 6. Очистка старых resolved items (старше 7 дней)
+    // 6. Auto-resolve critical_event items for events that have already passed
+    {
+      const { data: unresolvedCritical } = await adminSupabase
+        .from('attention_zone_items')
+        .select('id, item_id, item_data')
+        .eq('item_type', 'critical_event')
+        .is('resolved_at', null);
+      
+      if (unresolvedCritical && unresolvedCritical.length > 0) {
+        const now = new Date();
+        const expiredIds = unresolvedCritical
+          .filter((item: any) => {
+            const eventDate = item.item_data?.event_date;
+            return eventDate && new Date(eventDate) < now;
+          })
+          .map((item: any) => item.id);
+        
+        if (expiredIds.length > 0) {
+          await adminSupabase
+            .from('attention_zone_items')
+            .update({ resolved_at: now.toISOString(), resolved_by_name: 'Авто: событие прошло' })
+            .in('id', expiredIds);
+          
+          logger.info({ count: expiredIds.length }, 'Auto-resolved critical events (event date passed)');
+        }
+      }
+    }
+
+    // 7. Auto-resolve group_inactive notification_logs when activity has resumed
+    {
+      const { data: unresolvedInactivity } = await adminSupabase
+        .from('notification_logs')
+        .select('id, trigger_context')
+        .eq('rule_type', 'group_inactive')
+        .eq('notification_status', 'sent')
+        .is('resolved_at', null);
+      
+      if (unresolvedInactivity && unresolvedInactivity.length > 0) {
+        const resolveIds: string[] = [];
+        
+        for (const notif of unresolvedInactivity) {
+          const ctx = notif.trigger_context as Record<string, any>;
+          const chatId = ctx?.group_id;
+          const lastMessageTimestamp = ctx?.last_message_timestamp;
+          
+          if (!chatId || !lastMessageTimestamp) continue;
+          
+          // Check if there are newer messages than the one that triggered the notification
+          const { data: newerMessage } = await adminSupabase
+            .from('activity_events')
+            .select('id')
+            .eq('tg_chat_id', chatId)
+            .eq('event_type', 'message')
+            .gt('created_at', lastMessageTimestamp)
+            .limit(1)
+            .single();
+          
+          if (newerMessage) {
+            resolveIds.push(notif.id);
+          }
+        }
+        
+        if (resolveIds.length > 0) {
+          await adminSupabase
+            .from('notification_logs')
+            .update({ resolved_at: new Date().toISOString(), resolved_by_name: 'Авто: активность возобновилась' })
+            .in('id', resolveIds);
+          
+          logger.info({ count: resolveIds.length }, 'Auto-resolved inactivity notifications (activity resumed)');
+        }
+      }
+    }
+
+    // 8. Очистка старых resolved items (старше 7 дней)
     const { error: cleanupError } = await adminSupabase
       .from('attention_zone_items')
       .delete()

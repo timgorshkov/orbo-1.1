@@ -20,24 +20,11 @@ export async function GET(request: NextRequest) {
 
     const adminSupabase = createAdminServer();
 
-    log.info({
-      user_id: session.user.id,
-      user_email: session.user.email,
-      provider: session.provider,
-    }, 'Fetching organizations for user');
-
     // Get user's memberships (without JOIN)
     const { data: memberships, error: membershipError } = await adminSupabase
       .from('memberships')
       .select('role, org_id')
       .eq('user_id', session.user.id);
-
-    log.info({
-      user_id: session.user.id,
-      memberships_count: memberships?.length || 0,
-      memberships_data: memberships,
-      membership_error: membershipError?.message,
-    }, 'Memberships query result');
 
     if (membershipError) {
       log.error({

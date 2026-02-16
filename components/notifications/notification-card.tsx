@@ -182,14 +182,15 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
               >
-                Открыть в Telegram →
+                {notification.notification_type === 'group_inactive' ? 'Открыть группу →' : 'Открыть в Telegram →'}
               </a>
             ) : notification.link_url ? (
               <Link 
                 href={notification.link_url}
                 className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
               >
-                {notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Подробнее →'}
+                {notification.notification_type === 'critical_event' ? 'Открыть событие →' :
+                 notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Подробнее →'}
               </Link>
             ) : null}
             

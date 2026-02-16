@@ -554,8 +554,6 @@ function isWithinWorkHours(
  * For topics: https://t.me/c/{chat_id_without_-100}/{message_id}?thread={thread_id}
  */
 function getTelegramMessageLink(chatId: string, messageId?: number, threadId?: number): string | null {
-  if (!messageId) return null;
-  
   try {
     // Convert chat ID: remove -100 prefix for private link format
     let cleanChatId = chatId;
@@ -565,11 +563,16 @@ function getTelegramMessageLink(chatId: string, messageId?: number, threadId?: n
       cleanChatId = chatId.slice(1); // Remove just -
     }
     
-    let link = `https://t.me/c/${cleanChatId}/${messageId}`;
-    if (threadId) {
-      link += `?thread=${threadId}`;
+    if (messageId) {
+      let link = `https://t.me/c/${cleanChatId}/${messageId}`;
+      if (threadId) {
+        link += `?thread=${threadId}`;
+      }
+      return link;
     }
-    return link;
+    
+    // Without messageId, return link to the group itself
+    return `https://t.me/c/${cleanChatId}`;
   } catch {
     return null;
   }
@@ -850,7 +853,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           rule.config.work_days || null,
           rule.config.timezone || 'Europe/Moscow'
         )) {
-          logger.info({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: outside work hours');
+          logger.debug({ rule_name: rule.name, chat: groupTitle }, '❓ Skipping unanswered_question: outside work hours');
           continue;
         }
         
@@ -1032,6 +1035,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           timeout_hours: timeoutHours,
         }, '🔔 In notification window - threshold just crossed');
         
+        const groupLink = getTelegramMessageLink(chatId);
         const triggerContext = {
           type: 'group_inactive',
           group_id: chatId,
@@ -1039,6 +1043,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
           last_message_at: lastMessageTime.toLocaleString('ru'),
           inactive_hours: Math.floor(hoursInactive),
           last_message_timestamp: lastMessageTimestamp,
+          group_link: groupLink,
         };
         
         // Additional safety: dedup hash based on the DAY of the last message

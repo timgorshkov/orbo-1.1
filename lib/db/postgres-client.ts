@@ -642,7 +642,11 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
           .join(', ');
         
         sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings}`;
-        sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO UPDATE SET ${updateSet}`;
+        if (this.upsertOptions.ignoreDuplicates) {
+          sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO NOTHING`;
+        } else {
+          sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO UPDATE SET ${updateSet}`;
+        }
         // Используем selectColumns для RETURNING (если указаны через .select())
         const upsertReturningColumns = this.selectColumns === '*' ? '*' : this.parseSelectColumns(this.selectColumns);
         sql += ` RETURNING ${upsertReturningColumns}`;
@@ -712,7 +716,11 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       const { sql, values } = this.buildQuery();
       
       // Высокочастотные таблицы - логируем только в debug
-      const highVolumeTables = ['activity_events', 'participants', 'participant_groups'];
+      const highVolumeTables = [
+        'activity_events', 'participants', 'participant_groups',
+        'notification_logs', 'telegram_webhook_idempotency', 'event_telegram_notifications',
+        'participant_messages',
+      ];
       const isHighVolume = highVolumeTables.includes(this.tableName);
       
       // Логируем INSERT запросы для отладки

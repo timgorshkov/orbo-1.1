@@ -1090,14 +1090,19 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       }
     }
     
-    // Обработка команд бота и кодов авторизации (включая личные сообщения)
+    // Обработка команд бота и кодов авторизации
     if (body?.message?.text) {
       const text = body.message.text.trim();
+      const chatType = body.message.chat?.type;
       const isAuthCode = /^[0-9A-F]{6}$/i.test(text);
       
-      if (isAuthCode) {
-        logger.info({ code: text }, 'Auth code detected');
+      if (isAuthCode && chatType === 'private') {
+        // Коды авторизации обрабатываем ТОЛЬКО в личных сообщениях
+        logger.info({ code: text }, 'Auth code detected in DM');
         await handleAuthCode(body.message, text.toUpperCase(), logger);
+      } else if (isAuthCode && chatType !== 'private') {
+        // В группах игнорируем сообщения, похожие на коды
+        logger.debug({ code: text, chat_type: chatType, chat_id: body.message.chat?.id }, 'Ignoring auth-code-like message in group chat');
       } else if (text.startsWith('/')) {
         const command = text.split(' ')[0];
         logger.debug({ command }, 'Bot command received');
