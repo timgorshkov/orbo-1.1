@@ -9,7 +9,11 @@ export async function GET(
   { params }: { params: { org: string } }
 ) {
   const { org } = params
-  
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(org)) {
+    return NextResponse.json({ error: 'Invalid org id' }, { status: 400 })
+  }
+
   try {
     const supabase = await createClientServer()
     

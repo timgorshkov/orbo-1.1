@@ -3,7 +3,10 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
+import { redirect } from 'next/navigation'
 import { logger } from '@/lib/logger'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -15,7 +18,11 @@ export default async function PublicOrgLayout({
   params: Promise<{ org: string }>
 }) {
   const { org: orgId } = await params
-  
+
+  if (!UUID_RE.test(orgId)) {
+    return <div className="min-h-screen flex items-center justify-center text-neutral-500">Not found</div>
+  }
+
   // Проверяем авторизацию через unified auth (Supabase или NextAuth)
   const session = await getUnifiedSession();
   const adminSupabase = createAdminServer()

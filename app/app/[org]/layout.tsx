@@ -9,6 +9,8 @@ import { HelpDeskWidget } from '@/components/support/helpdesk-widget'
 
 const logger = createServiceLogger('OrgLayout');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
 export default async function OrgLayout({
@@ -19,6 +21,11 @@ export default async function OrgLayout({
   params: Promise<{ org: string }>
 }) {
   const { org: orgId } = await params
+
+  if (!UUID_RE.test(orgId)) {
+    redirect('/orgs')
+  }
+
   logger.debug({ org_id: orgId }, 'OrgLayout start');
   
   // Проверяем авторизацию через unified auth (Supabase или NextAuth)
