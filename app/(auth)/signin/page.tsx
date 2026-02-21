@@ -47,6 +47,7 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [tgLoading, setTgLoading] = useState(false)
   const logger = createClientLogger('SignIn');
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -153,8 +154,6 @@ export default function SignIn() {
       setOauthLoading(null)
     }
   }
-
-  const [tgLoading, setTgLoading] = useState(false)
 
   async function handleTelegramAuth(user: TelegramUser) {
     setTgLoading(true)
