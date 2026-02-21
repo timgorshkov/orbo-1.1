@@ -5,15 +5,16 @@ import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('TelegramService');
 
+export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';
+
 export class TelegramService {
   private apiBase = 'https://api.telegram.org/bot';
   private token: string;
-  private botType: 'main' | 'notifications' | 'event';
+  private botType: TelegramBotType;
 
-  constructor(botType: 'main' | 'notifications' | 'event' = 'main') {
+  constructor(botType: TelegramBotType = 'main') {
     this.botType = botType;
     
-    // Выбираем токен в зависимости от типа бота
     let token: string | undefined;
     switch (botType) {
       case 'main':
@@ -24,6 +25,9 @@ export class TelegramService {
         break;
       case 'event':
         token = process.env.TELEGRAM_EVENT_BOT_TOKEN;
+        break;
+      case 'registration':
+        token = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
         break;
     }
       

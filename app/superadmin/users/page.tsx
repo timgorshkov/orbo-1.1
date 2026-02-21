@@ -1,22 +1,19 @@
 import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import UsersTable from '@/components/superadmin/users-table'
-import { createServiceLogger } from '@/lib/logger'
-
-const logger = createServiceLogger('SuperadminUsers')
 
 export default async function SuperadminUsersPage() {
   await requireSuperadmin()
   
   const supabase = createAdminServer()
   
-  // Получаем memberships (простой запрос без JOIN)
-  const { data: memberships } = await supabase
-    .from('memberships')
-    .select('user_id, role, org_id')
-    .in('role', ['owner', 'admin'])
+  // Step 1: Fetch ALL users (not just those with memberships)
+  const { data: allUsers } = await supabase
+    .from('users')
+    .select('id, email, name, email_verified, image, created_at, is_test')
+    .order('created_at', { ascending: false })
   
-  if (!memberships || memberships.length === 0) {
+  if (!allUsers || allUsers.length === 0) {
     return (
       <div>
         <div className="mb-6">
@@ -27,55 +24,20 @@ export default async function SuperadminUsersPage() {
     )
   }
   
-  // Группируем по user_id
-  const userMap = new Map<string, any>()
+  const userIds = allUsers.map(u => u.id)
   
-  // Собираем все org_id для получения имён
-  const orgIds = Array.from(new Set(memberships.map(m => m.org_id)))
-  
-  // Получаем названия организаций
-  const { data: organizations } = await supabase
-    .from('organizations')
-    .select('id, name')
-    .in('id', orgIds)
-  
-  const orgNameMap = new Map((organizations || []).map(o => [o.id, o.name]))
-  
-  for (const membership of memberships) {
-    if (!userMap.has(membership.user_id)) {
-      userMap.set(membership.user_id, {
-        user_id: membership.user_id,
-        owner_orgs: [] as { id: string, name: string }[],
-        admin_orgs: [] as { id: string, name: string }[],
-        total_orgs: 0
-      })
-    }
-    
-    const userData = userMap.get(membership.user_id)!
-    const orgName = orgNameMap.get(membership.org_id) || 'Без названия'
-    
-    if (membership.role === 'owner') {
-      userData.owner_orgs.push({ id: membership.org_id, name: orgName })
-    } else {
-      userData.admin_orgs.push({ id: membership.org_id, name: orgName })
-    }
-    userData.total_orgs++
-  }
-  
-  const userIds = Array.from(userMap.keys())
-  
-  // Получаем данные пользователей из нескольких источников параллельно
+  // Step 2: Fetch all related data in parallel
   const [
-    { data: usersData },
+    { data: memberships },
     { data: accountsData },
     { data: sessionsData },
     { data: telegramAccounts },
     { data: qualificationData }
   ] = await Promise.all([
     supabase
-      .from('users')
-      .select('id, email, name, email_verified, image, created_at, is_test')
-      .in('id', userIds),
+      .from('memberships')
+      .select('user_id, role, org_id')
+      .in('user_id', userIds),
     supabase
       .from('accounts')
       .select('user_id, provider, provider_account_id, updated_at')
@@ -95,17 +57,40 @@ export default async function SuperadminUsersPage() {
       .in('user_id', userIds)
   ])
   
-  const usersMap = new Map((usersData || []).map(u => [u.id, u]))
+  // Step 3: Build org names map
+  const orgIds = Array.from(new Set((memberships || []).map(m => m.org_id)))
+  const { data: organizations } = orgIds.length > 0
+    ? await supabase.from('organizations').select('id, name').in('id', orgIds)
+    : { data: [] }
+  const orgNameMap = new Map((organizations || []).map(o => [o.id, o.name]))
   
-  // Создаём карту email из accounts (для пользователей без email в users)
+  // Step 4: Build membership map per user
+  const membershipMap = new Map<string, { owner_orgs: { id: string, name: string }[], admin_orgs: { id: string, name: string }[], total_orgs: number }>()
+  for (const m of (memberships || [])) {
+    if (!membershipMap.has(m.user_id)) {
+      membershipMap.set(m.user_id, { owner_orgs: [], admin_orgs: [], total_orgs: 0 })
+    }
+    const entry = membershipMap.get(m.user_id)!
+    const orgName = orgNameMap.get(m.org_id) || 'Без названия'
+    if (m.role === 'owner') {
+      entry.owner_orgs.push({ id: m.org_id, name: orgName })
+    } else if (m.role === 'admin') {
+      entry.admin_orgs.push({ id: m.org_id, name: orgName })
+    }
+    entry.total_orgs++
+  }
+  
+  // Step 5: Build helper maps
   const accountEmailMap = new Map<string, string>()
-  // Создаём карту последней активности из accounts.updated_at
   const accountActivityMap = new Map<string, string>()
+  const tgAccountFromProvider = new Map<string, { tg_user_id: string, username?: string }>()
   accountsData?.forEach(acc => {
     if (acc.provider === 'email' && acc.provider_account_id) {
       accountEmailMap.set(acc.user_id, acc.provider_account_id)
     }
-    // Отслеживаем updated_at как показатель активности
+    if (acc.provider === 'telegram' && acc.provider_account_id) {
+      tgAccountFromProvider.set(acc.user_id, { tg_user_id: acc.provider_account_id })
+    }
     if (acc.updated_at) {
       const current = accountActivityMap.get(acc.user_id)
       if (!current || new Date(acc.updated_at) > new Date(current)) {
@@ -114,118 +99,115 @@ export default async function SuperadminUsersPage() {
     }
   })
   
-  // Создаём карту последних входов из sessions
   const lastLoginMap = new Map<string, string>()
   sessionsData?.forEach(session => {
-    // expires показывает когда сессия истекает, используем как показатель активности
     if (!lastLoginMap.has(session.user_id)) {
       lastLoginMap.set(session.user_id, session.expires)
     }
   })
   
-  // Создаём карту квалификации
   const qualificationMap = new Map<string, { responses: any, completed_at: string | null }>()
   qualificationData?.forEach(q => {
     qualificationMap.set(q.user_id, { responses: q.responses, completed_at: q.completed_at })
   })
   
-  // Получаем уникальные telegram_user_id для поиска групп
+  const tgAccountMap = new Map<string, { telegram_user_id: string, telegram_username: string | null, telegram_first_name: string | null, telegram_last_name: string | null, is_verified: boolean }>()
+  telegramAccounts?.forEach(acc => {
+    if (!tgAccountMap.has(acc.user_id)) {
+      tgAccountMap.set(acc.user_id, acc)
+    }
+  })
+  
+  // Step 6: Groups info for telegram users
   const tgUserIds = Array.from(new Set(
     (telegramAccounts || []).map(acc => acc.telegram_user_id).filter(Boolean)
   ))
-  
-  // Получаем группы где пользователь админ
   const { data: groupAdmins } = tgUserIds.length > 0
-    ? await supabase
-        .from('telegram_group_admins')
-        .select('tg_user_id, tg_chat_id')
-        .in('tg_user_id', tgUserIds)
+    ? await supabase.from('telegram_group_admins').select('tg_user_id, tg_chat_id').in('tg_user_id', tgUserIds)
     : { data: [] }
-  
-  // Получаем информацию о группах с ботом
   const chatIds = Array.from(new Set((groupAdmins || []).map(ga => ga.tg_chat_id).filter(Boolean)))
   const { data: groups } = chatIds.length > 0
-    ? await supabase
-        .from('telegram_groups')
-        .select('tg_chat_id, bot_status')
-        .in('tg_chat_id', chatIds)
-        .eq('bot_status', 'connected')
+    ? await supabase.from('telegram_groups').select('tg_chat_id, bot_status').in('tg_chat_id', chatIds).eq('bot_status', 'connected')
     : { data: [] }
-  
   const groupsWithBotSet = new Set((groups || []).map(g => g.tg_chat_id))
   
-  // Форматируем данные
-  const formattedUsers = Array.from(userMap.entries()).map(([userId, userData]) => {
-    const user = usersMap.get(userId)
-    const tgAccounts = (telegramAccounts || []).filter(acc => acc.user_id === userId)
-    const tgAccount = tgAccounts[0]
+  // Step 7: Format all users
+  const formattedUsers = allUsers.map(user => {
+    const mData = membershipMap.get(user.id)
+    const tgAccount = tgAccountMap.get(user.id)
+    const tgFromProvider = tgAccountFromProvider.get(user.id)
     
-    const tgUserIdsForUser = tgAccounts.map(acc => acc.telegram_user_id).filter(Boolean)
-    const groupsAsAdmin = (groupAdmins || []).filter(ga => 
-      tgUserIdsForUser.includes(ga.tg_user_id) && 
-      groupsWithBotSet.has(ga.tg_chat_id)
+    const tgUserIdsForUser = tgAccount ? [tgAccount.telegram_user_id] : []
+    const groupsAsAdmin = (groupAdmins || []).filter(ga =>
+      tgUserIdsForUser.includes(ga.tg_user_id) && groupsWithBotSet.has(ga.tg_chat_id)
     )
     
-    const fullName = tgAccount 
-      ? ([tgAccount.telegram_first_name, tgAccount.telegram_last_name]
-          .filter(Boolean)
-          .join(' ') || tgAccount.telegram_username || 'Не указано')
-      : (user?.name || user?.email?.split('@')[0] || 'Не указано')
+    const fullName = tgAccount
+      ? ([tgAccount.telegram_first_name, tgAccount.telegram_last_name].filter(Boolean).join(' ') || tgAccount.telegram_username || user.name || 'Не указано')
+      : (user.name || user.email?.split('@')[0] || 'Не указано')
     
-    const telegramDisplayName = tgAccount?.telegram_username 
-      ? `@${tgAccount.telegram_username}`
+    const telegramUsername = tgAccount?.telegram_username || null
+    const telegramUserId = tgAccount?.telegram_user_id || tgFromProvider?.tg_user_id || null
+    const telegramDisplayName = telegramUsername
+      ? `@${telegramUsername}`
       : (tgAccount ? fullName : null)
     
-    // Получаем email из разных источников (users.email или accounts.provider_account_id)
-    const email = user?.email || accountEmailMap.get(userId) || null
-    
-    // Получаем последний вход: sessions > accounts.updated_at > created_at
-    const lastLogin = lastLoginMap.get(userId) || accountActivityMap.get(userId) || user?.created_at || null
-    
-    // Получаем квалификацию
-    const qualification = qualificationMap.get(userId)
-    
-    // Получаем боли (pain_points — массив)
+    const email = user.email || accountEmailMap.get(user.id) || null
+    const lastLogin = lastLoginMap.get(user.id) || accountActivityMap.get(user.id) || user.created_at || null
+    const qualification = qualificationMap.get(user.id)
     const painPoints = qualification?.responses?.pain_points || []
     
+    const hasOrgs = mData && mData.total_orgs > 0
+    const hasQualification = !!qualification?.completed_at
+    let status: 'active' | 'no_org' | 'incomplete_onboarding'
+    if (hasOrgs) {
+      status = 'active'
+    } else if (hasQualification) {
+      status = 'no_org'
+    } else {
+      status = 'incomplete_onboarding'
+    }
+    
     return {
-      user_id: userId,
+      user_id: user.id,
       full_name: fullName,
       email: email || 'N/A',
-      is_test: user?.is_test || false,
-      telegram_verified: tgAccounts.some(acc => acc.is_verified),
+      is_test: user.is_test || false,
+      telegram_verified: tgAccount?.is_verified || false,
       telegram_display_name: telegramDisplayName,
-      owner_orgs_count: userData.owner_orgs.length,
-      owner_orgs_names: userData.owner_orgs.map((o: { name: string }) => o.name),
-      admin_orgs_count: userData.admin_orgs.length,
-      admin_orgs_names: userData.admin_orgs.map((o: { name: string }) => o.name),
-      total_orgs_count: userData.total_orgs,
+      telegram_username: telegramUsername,
+      telegram_user_id: telegramUserId,
+      owner_orgs_count: mData?.owner_orgs.length || 0,
+      owner_orgs_names: mData?.owner_orgs.map(o => o.name) || [],
+      admin_orgs_count: mData?.admin_orgs.length || 0,
+      admin_orgs_names: mData?.admin_orgs.map(o => o.name) || [],
+      total_orgs_count: mData?.total_orgs || 0,
       groups_with_bot_count: groupsAsAdmin.length,
       last_sign_in_at: lastLogin,
-      created_at: user?.created_at,
-      qualification_completed: !!qualification?.completed_at,
+      created_at: user.created_at,
+      qualification_completed: hasQualification,
       qualification_role: qualification?.responses?.role || null,
       qualification_community_type: qualification?.responses?.community_type || null,
       qualification_groups_count: qualification?.responses?.groups_count || null,
       qualification_pain_points: Array.isArray(painPoints) ? painPoints : [],
+      status,
     }
   }).sort((a, b) => {
-    // Сначала обычные пользователи, потом тестовые
-    if (a.is_test !== b.is_test) {
-      return a.is_test ? 1 : -1
-    }
-    // Внутри каждой группы — по дате создания (новые сверху)
+    if (a.is_test !== b.is_test) return a.is_test ? 1 : -1
     const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
     const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
     return dateB - dateA
   })
+  
+  const withOrgs = formattedUsers.filter(u => u.status === 'active').length
+  const withoutOrgs = formattedUsers.filter(u => u.status !== 'active').length
   
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Пользователи</h2>
         <p className="text-gray-600 mt-1">
-          Пользователи с организациями ({formattedUsers.length} всего)
+          Всего {formattedUsers.length} (с орг.: {withOrgs}, без орг.: {withoutOrgs})
         </p>
       </div>
       

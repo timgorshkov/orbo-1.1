@@ -43,12 +43,62 @@ export async function POST(req: NextRequest) {
     // Get bot type from request
     const { botType, dropPendingUpdates = false } = await req.json();
     
-    if (!botType || !['main', 'notifications', 'event'].includes(botType)) {
-      return NextResponse.json({ error: 'Invalid botType. Must be "main", "notifications", or "event"' }, { status: 400 });
+    if (!botType || !['main', 'notifications', 'event', 'registration'].includes(botType)) {
+      return NextResponse.json({ error: 'Invalid botType. Must be "main", "notifications", "event", or "registration"' }, { status: 400 });
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     
+    // Handle Registration Bot separately
+    if (botType === 'registration') {
+      const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
+      if (!regBotToken) {
+        return NextResponse.json({ error: 'TELEGRAM_REGISTRATION_BOT_TOKEN not configured' }, { status: 500 });
+      }
+      
+      const webhookUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+      const regSecret = process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
+      
+      logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting registration bot webhook');
+      
+      const response = await fetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: webhookUrl,
+          ...(regSecret ? { secret_token: regSecret } : {}),
+          allowed_updates: ['message'],
+          drop_pending_updates: dropPendingUpdates,
+          max_connections: 40,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!result.ok) {
+        logger.error({ error: result.description }, 'Failed to set registration bot webhook');
+        return NextResponse.json({ error: result.description || 'Failed to set webhook' }, { status: 500 });
+      }
+      
+      const infoResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+      const infoResult = await infoResponse.json();
+      const webhookInfo = infoResult.result || {};
+      
+      return NextResponse.json({
+        success: true,
+        botType,
+        webhook: {
+          url: webhookInfo.url || '',
+          hasCustomCertificate: webhookInfo.has_custom_certificate || false,
+          pendingUpdateCount: webhookInfo.pending_update_count || 0,
+          lastErrorDate: webhookInfo.last_error_date,
+          lastErrorMessage: webhookInfo.last_error_message,
+          maxConnections: webhookInfo.max_connections || 40,
+          allowedUpdates: webhookInfo.allowed_updates || []
+        }
+      });
+    }
+
     // Handle Event Bot separately (uses different token)
     if (botType === 'event') {
       const eventBotToken = getEventBotToken();
@@ -219,7 +269,6 @@ export async function GET(req: NextRequest) {
         const eventResult = await eventResponse.json();
         eventBotInfo = eventResult.result || {};
         
-        // Also get bot info for username
         const meResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getMe`);
         const meResult = await meResponse.json();
         if (meResult.result) {
@@ -227,6 +276,26 @@ export async function GET(req: NextRequest) {
         }
       } catch (e) {
         logger.warn({ error: (e as Error).message }, 'Failed to get event bot info');
+      }
+    }
+
+    // Get registration bot info (if configured)
+    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
+    let regBotInfo: any = null;
+    
+    if (regBotToken) {
+      try {
+        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+        const regResult = await regResponse.json();
+        regBotInfo = regResult.result || {};
+        
+        const meResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getMe`);
+        const meResult = await meResponse.json();
+        if (meResult.result) {
+          regBotInfo.botUsername = meResult.result.username;
+        }
+      } catch (e) {
+        logger.warn({ error: (e as Error).message }, 'Failed to get registration bot info');
       }
     }
 
@@ -271,6 +340,20 @@ export async function GET(req: NextRequest) {
       } : {
         configured: false,
         message: 'TELEGRAM_EVENT_BOT_TOKEN not set'
+      },
+      registration: regBotToken ? {
+        configured: true,
+        botUsername: regBotInfo?.botUsername || process.env.TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot',
+        url: regBotInfo?.url || '',
+        hasCustomCertificate: regBotInfo?.has_custom_certificate || false,
+        pendingUpdateCount: regBotInfo?.pending_update_count || 0,
+        lastErrorDate: regBotInfo?.last_error_date,
+        lastErrorMessage: regBotInfo?.last_error_message,
+        maxConnections: regBotInfo?.max_connections || 40,
+        allowedUpdates: regBotInfo?.allowed_updates || []
+      } : {
+        configured: false,
+        message: 'TELEGRAM_REGISTRATION_BOT_TOKEN not set'
       }
     });
   } catch (error: any) {

@@ -4,7 +4,7 @@ import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { WelcomeContent } from './welcome-content'
 
 interface WelcomePageProps {
-  searchParams: Promise<{ new?: string }>
+  searchParams: Promise<{ new?: string; tg?: string }>
 }
 
 export default async function WelcomePage({ searchParams }: WelcomePageProps) {
@@ -73,24 +73,27 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
   // 2. Резервно: проверяем время создания (менее 5 минут назад)
   const params = await searchParams
   const isNewFromUrl = params.new === '1'
+  const isTelegramRegistration = params.tg === '1'
   
   let isNewUser = isNewFromUrl
   
-  // Резервная проверка по времени создания (если пользователь создан менее 5 минут назад)
   if (!isNewUser && userData?.created_at) {
     const createdAt = new Date(userData.created_at)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
     isNewUser = createdAt > fiveMinutesAgo
   }
 
-  // Если все организации в архиве (или их нет) — показываем welcome
-  // Это позволяет пользователю пройти квалификацию заново или создать новую org
+  // Check if user needs email verification (TG-registered users with placeholder email)
+  const userEmail = user.email || ''
+  const needsEmailVerification = isTelegramRegistration && userEmail.endsWith('@telegram.user')
+
   return (
     <WelcomeContent 
       qualificationCompleted={qualificationCompleted}
       initialResponses={qualification?.responses || {}}
       hasOrganizations={activeOrgCount > 0}
       isNewUser={isNewUser}
+      needsEmailVerification={needsEmailVerification}
     />
   )
 }

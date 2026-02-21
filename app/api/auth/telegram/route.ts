@@ -100,6 +100,8 @@ export async function POST(req: NextRequest) {
       photo_url: photoUrl
     } = telegramData
 
+    const registrationMode = body.registrationMode === true
+
     // 1. Ищем существующего пользователя по Telegram ID
     const { data: existingAccount } = await supabaseAdmin
       .from('user_telegram_accounts')
@@ -108,12 +110,45 @@ export async function POST(req: NextRequest) {
       .eq('is_verified', true)
       .maybeSingle()
 
+    // Also check accounts table (provider='telegram')
+    const { data: existingProviderAccount } = await supabaseAdmin
+      .from('accounts')
+      .select('user_id')
+      .eq('provider', 'telegram')
+      .eq('provider_account_id', String(tgUserId))
+      .maybeSingle()
+
+    const existingUserId = existingAccount?.user_id || existingProviderAccount?.user_id
+
+    // In registration mode: if account already exists, return error with masked email
+    if (registrationMode && existingUserId) {
+      const { data: existingUser } = await supabaseAdmin
+        .from('users')
+        .select('email')
+        .eq('id', existingUserId)
+        .single()
+
+      let maskedEmail = ''
+      const rawEmail = existingUser?.email || ''
+      if (rawEmail && !rawEmail.endsWith('@telegram.user')) {
+        const [local, domain] = rawEmail.split('@')
+        maskedEmail = local.length > 2
+          ? `${local[0]}${'*'.repeat(Math.min(local.length - 2, 6))}${local[local.length - 1]}@${domain}`
+          : `${local[0]}*@${domain}`
+      }
+
+      return NextResponse.json({
+        error: 'account_exists',
+        maskedEmail,
+        message: 'Аккаунт с этим Telegram уже существует. Войдите по email.'
+      }, { status: 409 })
+    }
+
     let userId: string
     let isNewUser = false
 
-    if (existingAccount?.user_id) {
-      // Пользователь уже существует
-      userId = existingAccount.user_id
+    if (existingUserId) {
+      userId = existingUserId
     } else {
       // Создаём нового пользователя
       isNewUser = true
@@ -151,6 +186,19 @@ export async function POST(req: NextRequest) {
       }
 
       userId = newUser.id
+
+      // Create account record for provider=telegram
+      await supabaseAdmin
+        .from('accounts')
+        .upsert({
+          user_id: userId,
+          type: 'oauth',
+          provider: 'telegram',
+          provider_account_id: String(tgUserId),
+        }, {
+          onConflict: 'provider,provider_account_id',
+          ignoreDuplicates: true
+        })
     }
 
     // 2. Обрабатываем доступ к организации
@@ -374,7 +422,11 @@ export async function POST(req: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30 days
     })
 
-    const redirectPath = targetOrgId ? `/app/${targetOrgId}` : '/orgs'
+    const redirectPath = targetOrgId
+      ? `/app/${targetOrgId}`
+      : isNewUser
+        ? '/welcome?tg=1&new=1'
+        : '/orgs'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     const redirectUrl = `${appUrl}${redirectPath}`
 

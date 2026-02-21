@@ -6,9 +6,11 @@
 import { TelegramService } from './telegramService';
 import { createServiceLogger } from '@/lib/logger';
 
+type RecoverableBotType = 'main' | 'notifications' | 'registration';
+
 interface RecoveryAttempt {
   timestamp: number;
-  botType: 'main' | 'notifications';
+  botType: RecoverableBotType;
   success: boolean;
   error?: string;
 }
@@ -33,7 +35,7 @@ class WebhookRecoveryService {
   /**
    * Проверяет, можно ли попытаться восстановить webhook
    */
-  private canAttemptRecovery(botType: 'main' | 'notifications'): boolean {
+  private canAttemptRecovery(botType: RecoverableBotType): boolean {
     const attempts = this.recoveryAttempts.get(botType) || [];
     const now = Date.now();
     
@@ -68,7 +70,7 @@ class WebhookRecoveryService {
   /**
    * Записывает попытку восстановления
    */
-  private recordAttempt(botType: 'main' | 'notifications', success: boolean, error?: string) {
+  private recordAttempt(botType: RecoverableBotType, success: boolean, error?: string) {
     const attempts = this.recoveryAttempts.get(botType) || [];
     attempts.push({
       timestamp: Date.now(),
@@ -82,54 +84,36 @@ class WebhookRecoveryService {
   /**
    * Автоматически восстанавливает webhook
    */
-  async recoverWebhook(botType: 'main' | 'notifications', reason: string): Promise<boolean> {
+  async recoverWebhook(botType: RecoverableBotType, reason: string): Promise<boolean> {
     this.logger.info({ bot_type: botType, reason }, 'Recovery attempt start');
     
-    // Проверяем, не идёт ли уже recovery для этого бота
     if (this.activeRecoveries.has(botType)) {
       this.logger.warn({ bot_type: botType }, 'Recovery already in progress');
       return false;
     }
     
-    // Проверяем, можем ли мы попытаться восстановить
     if (!this.canAttemptRecovery(botType)) {
       this.logger.warn({ bot_type: botType }, 'Recovery blocked by rate limiting');
       return false;
     }
     
-    // Блокируем новые попытки
     this.activeRecoveries.add(botType);
     
     try {
-      // Используем правильный secret для каждого бота
-      const webhookSecret = botType === 'notifications'
-        ? (process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET)
-        : process.env.TELEGRAM_WEBHOOK_SECRET;
+      const { webhookSecret, webhookUrl, allowedUpdates } = this.getBotConfig(botType);
       
       if (!webhookSecret) {
         throw new Error('Webhook secret not configured');
       }
       
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-      const webhookUrl = botType === 'main' 
-        ? `${baseUrl}/api/telegram/webhook`
-        : `${baseUrl}/api/telegram/notifications/webhook`;
+      this.logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting webhook');
       
-      this.logger.info({ 
-        bot_type: botType,
-        webhook_url: webhookUrl,
-        secret_env: botType === 'notifications' ? 'TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET' : 'TELEGRAM_WEBHOOK_SECRET'
-      }, 'Setting webhook');
+      const telegramService = new TelegramService(botType);
       
-      const telegramService = new TelegramService(botType === 'main' ? 'main' : 'notifications');
-      
-      // Устанавливаем webhook
       const result = await telegramService.setWebhookAdvanced({
         url: webhookUrl,
         secret_token: webhookSecret,
-        allowed_updates: botType === 'main' 
-          ? ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request']
-          : ['message'],
+        allowed_updates: allowedUpdates,
         drop_pending_updates: false,
         max_connections: 40
       });
@@ -174,7 +158,32 @@ class WebhookRecoveryService {
   /**
    * Отправляет уведомление о восстановлении (опционально)
    */
-  private async notifyRecovery(botType: 'main' | 'notifications', success: boolean, error?: string) {
+  private getBotConfig(botType: RecoverableBotType) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
+    
+    switch (botType) {
+      case 'main':
+        return {
+          webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+          webhookUrl: `${baseUrl}/api/telegram/webhook`,
+          allowedUpdates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request'],
+        };
+      case 'notifications':
+        return {
+          webhookSecret: process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
+          webhookUrl: `${baseUrl}/api/telegram/notifications/webhook`,
+          allowedUpdates: ['message'],
+        };
+      case 'registration':
+        return {
+          webhookSecret: process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
+          webhookUrl: `${baseUrl}/api/telegram/registration-bot/webhook`,
+          allowedUpdates: ['message'],
+        };
+    }
+  }
+
+  private async notifyRecovery(botType: RecoverableBotType, success: boolean, error?: string) {
     try {
       // Можно отправить уведомление в Telegram или другой канал
       // Например, в специальный канал мониторинга

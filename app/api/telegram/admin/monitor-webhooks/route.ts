@@ -18,17 +18,29 @@ export async function GET(request: Request) {
     const mainBot = new TelegramService('main');
     const notificationsBot = new TelegramService('notifications');
 
-    // Проверяем состояние webhook для обоих ботов
-    const [mainWebhookInfo, notificationsWebhookInfo] = await Promise.all([
+    const webhookPromises: Promise<any>[] = [
       mainBot.getWebhookInfo(),
       notificationsBot.getWebhookInfo()
-    ]);
+    ];
+
+    // Registration bot is optional
+    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
+    let hasRegBot = false;
+    if (regBotToken) {
+      hasRegBot = true;
+      const regBot = new TelegramService('registration');
+      webhookPromises.push(regBot.getWebhookInfo());
+    }
+
+    const results = await Promise.all(webhookPromises);
+    const [mainWebhookInfo, notificationsWebhookInfo] = results;
+    const registrationWebhookInfo = hasRegBot ? results[2] : null;
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
     const expectedMainUrl = `${baseUrl}/api/telegram/webhook`;
     const expectedNotificationsUrl = `${baseUrl}/api/telegram/notifications/webhook`;
+    const expectedRegistrationUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
 
-    // Анализируем статус main bot
     const mainStatus = {
       bot: 'main',
       configured: mainWebhookInfo.ok && mainWebhookInfo.result?.url === expectedMainUrl,
@@ -38,7 +50,6 @@ export async function GET(request: Request) {
       lastErrorDate: mainWebhookInfo.result?.last_error_date || null
     };
 
-    // Анализируем статус notifications bot
     const notificationsStatus = {
       bot: 'notifications',
       configured: notificationsWebhookInfo.ok && notificationsWebhookInfo.result?.url === expectedNotificationsUrl,
@@ -48,46 +59,56 @@ export async function GET(request: Request) {
       lastErrorDate: notificationsWebhookInfo.result?.last_error_date || null
     };
 
-    logger.debug({ main_status: mainStatus, notifications_status: notificationsStatus }, '[Webhook Monitor] Bot statuses');
+    const registrationStatus = hasRegBot ? {
+      bot: 'registration',
+      configured: registrationWebhookInfo?.ok && registrationWebhookInfo?.result?.url === expectedRegistrationUrl,
+      url: registrationWebhookInfo?.result?.url || null,
+      pendingUpdates: registrationWebhookInfo?.result?.pending_update_count || 0,
+      lastError: registrationWebhookInfo?.result?.last_error_message || null,
+      lastErrorDate: registrationWebhookInfo?.result?.last_error_date || null
+    } : null;
 
-    // Восстановление webhook при необходимости
+    logger.debug({ main_status: mainStatus, notifications_status: notificationsStatus, registration_status: registrationStatus }, '[Webhook Monitor] Bot statuses');
+
     const recoveryActions = [];
 
-    // Main bot
     if (!mainStatus.configured) {
       logger.warn({}, '[Webhook Monitor] Main bot webhook misconfigured, attempting recovery');
       const recovered = await webhookRecoveryService.recoverWebhook('main', 'monitoring_detected_misconfiguration');
-      recoveryActions.push({
-        bot: 'main',
-        action: 'recovery_attempted',
-        success: recovered
-      });
+      recoveryActions.push({ bot: 'main', action: 'recovery_attempted', success: recovered });
     }
 
-    // Notifications bot
     if (!notificationsStatus.configured) {
       logger.warn({}, '[Webhook Monitor] Notifications bot webhook misconfigured, attempting recovery');
       const recovered = await webhookRecoveryService.recoverWebhook('notifications', 'monitoring_detected_misconfiguration');
-      recoveryActions.push({
-        bot: 'notifications',
-        action: 'recovery_attempted',
-        success: recovered
-      });
+      recoveryActions.push({ bot: 'notifications', action: 'recovery_attempted', success: recovered });
     }
 
-    // Получаем статистику восстановлений
+    if (registrationStatus && !registrationStatus.configured) {
+      logger.warn({}, '[Webhook Monitor] Registration bot webhook misconfigured, attempting recovery');
+      const recovered = await webhookRecoveryService.recoverWebhook('registration', 'monitoring_detected_misconfiguration');
+      recoveryActions.push({ bot: 'registration', action: 'recovery_attempted', success: recovered });
+    }
+
     const recoveryStats = webhookRecoveryService.getRecoveryStats();
+
+    const webhooks: Record<string, any> = {
+      main: mainStatus,
+      notifications: notificationsStatus
+    };
+    if (registrationStatus) {
+      webhooks.registration = registrationStatus;
+    }
+
+    const allConfigured = mainStatus.configured && notificationsStatus.configured && (!registrationStatus || registrationStatus.configured);
 
     const response = {
       success: true,
       timestamp: new Date().toISOString(),
-      webhooks: {
-        main: mainStatus,
-        notifications: notificationsStatus
-      },
+      webhooks,
       recoveryActions,
       recoveryStats,
-      allConfigured: mainStatus.configured && notificationsStatus.configured
+      allConfigured
     };
 
     logger.info({ all_configured: response.allConfigured }, '[Webhook Monitor] MONITORING COMPLETE');
@@ -117,26 +138,26 @@ export async function POST(request: Request) {
   
   try {
     const body = await request.json();
-    const { bot } = body; // 'main' | 'notifications' | 'both'
+    const { bot } = body; // 'main' | 'notifications' | 'registration' | 'both' | 'all'
 
     const results = [];
 
-    if (bot === 'main' || bot === 'both') {
+    if (bot === 'main' || bot === 'both' || bot === 'all') {
       logger.info({ bot: 'main' }, '[Webhook Monitor] Forcing recovery for main bot');
       const recovered = await webhookRecoveryService.recoverWebhook('main', 'forced_recovery');
-      results.push({
-        bot: 'main',
-        success: recovered
-      });
+      results.push({ bot: 'main', success: recovered });
     }
 
-    if (bot === 'notifications' || bot === 'both') {
+    if (bot === 'notifications' || bot === 'both' || bot === 'all') {
       logger.info({ bot: 'notifications' }, '[Webhook Monitor] Forcing recovery for notifications bot');
       const recovered = await webhookRecoveryService.recoverWebhook('notifications', 'forced_recovery');
-      results.push({
-        bot: 'notifications',
-        success: recovered
-      });
+      results.push({ bot: 'notifications', success: recovered });
+    }
+
+    if ((bot === 'registration' || bot === 'all') && process.env.TELEGRAM_REGISTRATION_BOT_TOKEN) {
+      logger.info({ bot: 'registration' }, '[Webhook Monitor] Forcing recovery for registration bot');
+      const recovered = await webhookRecoveryService.recoverWebhook('registration', 'forced_recovery');
+      results.push({ bot: 'registration', success: recovered });
     }
 
     logger.info({ results }, '[Webhook Monitor] FORCED RECOVERY COMPLETE');

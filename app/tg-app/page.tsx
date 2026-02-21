@@ -102,6 +102,13 @@ export default function TelegramAppHome() {
       }
     }
     
+    // Registration deep links
+    if (startParam.startsWith('ref_')) {
+      setStatus('redirecting');
+      router.replace('/tg-app/register');
+      return;
+    }
+    
     // Unknown format
     setErrorMessage(`Неизвестный формат параметра: ${startParam}`);
     setStatus('error');

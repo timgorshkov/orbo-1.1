@@ -26,118 +26,118 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/webhook`
-
-    if (!botToken) {
-      logger.error('TELEGRAM_BOT_TOKEN not configured')
-      return NextResponse.json({ error: 'Bot token not configured' }, { status: 500 })
-    }
-
-    if (!webhookUrl || !process.env.NEXT_PUBLIC_APP_URL) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!baseUrl) {
       logger.error('NEXT_PUBLIC_APP_URL not configured')
-      return NextResponse.json({ error: 'Webhook URL not configured' }, { status: 500 })
+      return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL not configured' }, { status: 500 })
     }
 
-    logger.info('Checking webhook status')
+    const bots: { name: string; token: string; webhookUrl: string; secret?: string; allowedUpdates: string[] }[] = [];
 
-    // 1. Получаем текущую информацию о webhook
-    const webhookInfoResponse = await fetch(
-      `https://api.telegram.org/bot${botToken}/getWebhookInfo`,
-      { method: 'GET' }
-    )
-
-    if (!webhookInfoResponse.ok) {
-      logger.error({ status: webhookInfoResponse.statusText }, 'Failed to get webhook info')
-      return NextResponse.json({ 
-        error: 'Failed to get webhook info',
-        status: webhookInfoResponse.statusText
-      }, { status: 500 })
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      bots.push({
+        name: 'main',
+        token: process.env.TELEGRAM_BOT_TOKEN,
+        webhookUrl: `${baseUrl}/api/telegram/webhook`,
+        secret: process.env.TELEGRAM_WEBHOOK_SECRET,
+        allowedUpdates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request'],
+      });
     }
 
-    const webhookInfo = await webhookInfoResponse.json()
-    
-    if (!webhookInfo.ok) {
-      logger.error({ description: webhookInfo.description }, 'Telegram API error')
-      return NextResponse.json({ 
-        error: 'Telegram API error',
-        description: webhookInfo.description
-      }, { status: 500 })
+    if (process.env.TELEGRAM_REGISTRATION_BOT_TOKEN) {
+      bots.push({
+        name: 'registration',
+        token: process.env.TELEGRAM_REGISTRATION_BOT_TOKEN,
+        webhookUrl: `${baseUrl}/api/telegram/registration-bot/webhook`,
+        secret: process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
+        allowedUpdates: ['message'],
+      });
     }
 
-    const currentWebhook = webhookInfo.result
-    logger.info({
-      url: currentWebhook.url,
-      has_custom_certificate: currentWebhook.has_custom_certificate,
-      pending_update_count: currentWebhook.pending_update_count,
-      last_error_date: currentWebhook.last_error_date,
-      last_error_message: currentWebhook.last_error_message
-    }, 'Current webhook status')
-
-    // 2. Проверяем, нужно ли восстанавливать webhook
-    const needsRestore = 
-      currentWebhook.url !== webhookUrl || // URL не совпадает
-      currentWebhook.last_error_date // Есть ошибки
-
-    if (!needsRestore) {
-      logger.info({ 
-        url: currentWebhook.url,
-        pending_updates: currentWebhook.pending_update_count
-      }, 'Webhook is healthy')
-      return NextResponse.json({ 
-        status: 'healthy',
-        url: currentWebhook.url,
-        pending_updates: currentWebhook.pending_update_count
-      })
+    if (bots.length === 0) {
+      logger.error('No bot tokens configured')
+      return NextResponse.json({ error: 'No bot tokens configured' }, { status: 500 })
     }
 
-    // 3. Восстанавливаем webhook
-    logger.info('Restoring webhook')
-    
-    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    
-    const setWebhookResponse = await fetch(
-      `https://api.telegram.org/bot${botToken}/setWebhook`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          url: webhookUrl,
-          secret_token: webhookSecret,
-          allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request'],
-          max_connections: 40,
-          drop_pending_updates: false // Не удаляем необработанные обновления
-        })
+    logger.info({ bot_count: bots.length }, 'Checking webhook status for all bots')
+
+    const results: Record<string, any> = {};
+
+    for (const bot of bots) {
+      try {
+        const webhookInfoResponse = await fetch(
+          `https://api.telegram.org/bot${bot.token}/getWebhookInfo`,
+          { method: 'GET' }
+        )
+
+        if (!webhookInfoResponse.ok) {
+          results[bot.name] = { status: 'error', error: `Failed to get webhook info: ${webhookInfoResponse.statusText}` };
+          continue;
+        }
+
+        const webhookInfo = await webhookInfoResponse.json()
+        
+        if (!webhookInfo.ok) {
+          results[bot.name] = { status: 'error', error: webhookInfo.description };
+          continue;
+        }
+
+        const currentWebhook = webhookInfo.result;
+
+        const needsRestore = 
+          currentWebhook.url !== bot.webhookUrl ||
+          currentWebhook.last_error_date;
+
+        if (!needsRestore) {
+          results[bot.name] = { 
+            status: 'healthy',
+            url: currentWebhook.url,
+            pending_updates: currentWebhook.pending_update_count
+          };
+          continue;
+        }
+
+        logger.info({ bot: bot.name }, 'Restoring webhook');
+        
+        const setWebhookResponse = await fetch(
+          `https://api.telegram.org/bot${bot.token}/setWebhook`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              url: bot.webhookUrl,
+              ...(bot.secret ? { secret_token: bot.secret } : {}),
+              allowed_updates: bot.allowedUpdates,
+              max_connections: 40,
+              drop_pending_updates: false
+            })
+          }
+        )
+
+        const setWebhookResult = await setWebhookResponse.json();
+
+        if (!setWebhookResult.ok) {
+          results[bot.name] = { status: 'restore_failed', error: setWebhookResult.description };
+          continue;
+        }
+
+        logger.info({ bot: bot.name }, 'Webhook restored successfully');
+        results[bot.name] = { 
+          status: 'restored',
+          previous_url: currentWebhook.url,
+          new_url: bot.webhookUrl,
+          had_errors: !!currentWebhook.last_error_date,
+          last_error: currentWebhook.last_error_message
+        };
+      } catch (err) {
+        results[bot.name] = { status: 'error', error: err instanceof Error ? err.message : String(err) };
       }
-    )
-
-    if (!setWebhookResponse.ok) {
-      logger.error({ status: setWebhookResponse.statusText }, 'Failed to set webhook')
-      return NextResponse.json({ 
-        error: 'Failed to set webhook',
-        status: setWebhookResponse.statusText
-      }, { status: 500 })
     }
 
-    const setWebhookResult = await setWebhookResponse.json()
+    const allHealthy = Object.values(results).every((r: any) => r.status === 'healthy');
+    logger.info({ all_healthy: allHealthy, results }, 'Webhook check complete');
 
-    if (!setWebhookResult.ok) {
-      logger.error({ description: setWebhookResult.description }, 'Telegram API error when setting webhook')
-      return NextResponse.json({ 
-        error: 'Failed to set webhook',
-        description: setWebhookResult.description
-      }, { status: 500 })
-    }
-
-    logger.info('Webhook restored successfully')
-
-    return NextResponse.json({ 
-      status: 'restored',
-      previous_url: currentWebhook.url,
-      new_url: webhookUrl,
-      had_errors: !!currentWebhook.last_error_date,
-      last_error: currentWebhook.last_error_message
-    })
+    return NextResponse.json(results)
 
   } catch (error) {
     logger.error({ error }, 'Unexpected error in check-webhook cron')

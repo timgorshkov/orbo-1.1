@@ -4,25 +4,129 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { QualificationForm } from '@/components/onboarding/qualification-form';
-import { ArrowRight, MessageSquare, Calendar, BarChart3 } from 'lucide-react';
+import { ArrowRight, MessageSquare, Calendar, BarChart3, Mail, CheckCircle2 } from 'lucide-react';
 import { ymGoal } from '@/components/analytics/YandexMetrika';
+
+function EmailVerificationStep({ onVerified }: { onVerified: () => void }) {
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSending(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/email/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Не удалось отправить письмо');
+        setSending(false);
+        return;
+      }
+      setSent(true);
+      ymGoal('tg_email_verification_sent', undefined, { once: true });
+    } catch {
+      setError('Произошла ошибка. Попробуйте позже.');
+      setSending(false);
+    }
+  }
+
+  function handleSkip() {
+    ymGoal('tg_email_verification_skipped', undefined, { once: true });
+    onVerified();
+  }
+
+  if (sent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md border-0 shadow-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-8 h-8 text-green-600" />
+            </div>
+            <CardTitle>Проверьте почту</CardTitle>
+            <CardDescription>
+              Мы отправили ссылку для подтверждения на <strong>{email}</strong>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-500 text-center">
+              После подтверждения email вы сможете входить по нему.
+            </p>
+            <Button variant="outline" className="w-full" onClick={handleSkip}>
+              Продолжить без подтверждения
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md border-0 shadow-lg">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+            <Mail className="w-8 h-8 text-blue-600" />
+          </div>
+          <CardTitle>Укажите ваш email</CardTitle>
+          <CardDescription>
+            Он понадобится для входа на платформу. Мы отправим ссылку для подтверждения.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              className="h-11"
+            />
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+            <Button type="submit" className="w-full h-11" disabled={sending}>
+              {sending ? 'Отправка...' : 'Подтвердить email'}
+            </Button>
+            <Button type="button" variant="ghost" className="w-full text-gray-500" onClick={handleSkip}>
+              Пропустить
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 interface WelcomeContentProps {
   qualificationCompleted: boolean;
   initialResponses: Record<string, unknown>;
   hasOrganizations?: boolean;
-  isNewUser?: boolean; // True only when user was just created (not returning user)
+  isNewUser?: boolean;
+  needsEmailVerification?: boolean;
 }
 
 export function WelcomeContent({ 
   qualificationCompleted: initialCompleted,
   initialResponses,
   hasOrganizations = false,
-  isNewUser = false, // Default false - only true for actual new registrations
+  isNewUser = false,
+  needsEmailVerification = false,
 }: WelcomeContentProps) {
   const router = useRouter();
+  const [emailVerified, setEmailVerified] = useState(!needsEmailVerification);
   const [showQualification, setShowQualification] = useState(!initialCompleted);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
   
@@ -73,6 +177,11 @@ export function WelcomeContent({
       router.push('/orgs');
     }
   };
+
+  // Show email verification step for TG-registered users
+  if (!emailVerified) {
+    return <EmailVerificationStep onVerified={() => setEmailVerified(true)} />;
+  }
 
   // Show qualification form if not completed
   if (showQualification) {

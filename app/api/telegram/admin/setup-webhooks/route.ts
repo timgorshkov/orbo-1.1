@@ -89,8 +89,35 @@ export async function GET(request: Request) {
       }
     }
 
+    // Check registration bot if configured
+    let registrationStatus: WebhookStatus | null = null;
+    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
+    const expectedRegistrationUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+    if (regBotToken) {
+      try {
+        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+        const regResult = await regResponse.json();
+        const regInfo = regResult.result || {};
+        
+        registrationStatus = {
+          bot: 'orbo_start_bot (REGISTRATION)',
+          configured: regInfo.url === expectedRegistrationUrl,
+          url: regInfo.url || null,
+          has_custom_certificate: regInfo.has_custom_certificate || false,
+          pending_update_count: regInfo.pending_update_count || 0,
+          last_error_date: regInfo.last_error_date,
+          last_error_message: regInfo.last_error_message,
+          max_connections: regInfo.max_connections,
+          allowed_updates: regInfo.allowed_updates
+        };
+      } catch (e) {
+        logger.warn({ error: (e as Error).message }, 'Failed to get registration bot webhook info');
+      }
+    }
+
     const allConfigured = mainStatus.configured && assistantStatus.configured && 
-      (eventStatus ? eventStatus.configured : true);
+      (eventStatus ? eventStatus.configured : true) &&
+      (registrationStatus ? registrationStatus.configured : true);
 
     return NextResponse.json({
       success: true,
@@ -98,12 +125,14 @@ export async function GET(request: Request) {
       webhooks: {
         main: mainStatus,
         assistant: assistantStatus,
-        ...(eventStatus && { event: eventStatus })
+        ...(eventStatus && { event: eventStatus }),
+        ...(registrationStatus && { registration: registrationStatus })
       },
       expected_urls: {
         main: expectedMainUrl,
         assistant: expectedAssistantUrl,
-        event: expectedEventUrl
+        event: expectedEventUrl,
+        registration: expectedRegistrationUrl
       },
       recommendations: allConfigured 
         ? ['Все webhook\'и настроены правильно ✅']
@@ -198,6 +227,32 @@ export async function POST(request: Request) {
       }
     }
 
+    // Setup registration bot if configured
+    let registrationSuccess = true;
+    let registrationResult: any = null;
+    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
+    const registrationWebhookUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+    
+    if (regBotToken) {
+      try {
+        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: registrationWebhookUrl,
+            allowed_updates: ['message'],
+            drop_pending_updates: false,
+            max_connections: 40,
+          }),
+        });
+        registrationResult = await regResponse.json();
+        registrationSuccess = registrationResult.ok;
+      } catch (e) {
+        logger.warn({ error: (e as Error).message }, 'Failed to set registration bot webhook');
+        registrationSuccess = false;
+      }
+    }
+
     if (!mainSuccess || !assistantSuccess) {
       return NextResponse.json({
         success: false,
@@ -216,11 +271,15 @@ export async function POST(request: Request) {
           description: eventResult?.description,
           url: eventWebhookUrl
         } : { configured: false },
+        registration_bot: regBotToken ? {
+          success: registrationSuccess,
+          description: registrationResult?.description,
+          url: registrationWebhookUrl
+        } : { configured: false },
         error: 'Failed to set one or more webhooks'
       }, { status: 500 });
     }
 
-    // Проверяем установку
     const [mainWebhookInfo, assistantWebhookInfo] = await Promise.all([
       mainBot.getWebhookInfo(),
       assistantBot.getWebhookInfo()
@@ -228,7 +287,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Webhooks successfully configured for all bots ✅',
+      message: 'Webhooks successfully configured for all bots',
       main_bot: {
         success: mainSuccess,
         url: mainWebhookInfo.result?.url,
@@ -242,6 +301,10 @@ export async function POST(request: Request) {
       event_bot: eventBotToken ? {
         success: eventSuccess,
         url: eventWebhookUrl
+      } : { configured: false },
+      registration_bot: regBotToken ? {
+        success: registrationSuccess,
+        url: registrationWebhookUrl
       } : { configured: false },
       secret_configured: true,
       timestamp: new Date().toISOString()

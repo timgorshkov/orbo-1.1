@@ -36,13 +36,14 @@ interface WebhookData {
   main: WebhookInfo;
   notifications: WebhookInfo;
   event?: EventBotInfo;
+  registration?: EventBotInfo;
 }
 
 export function WebhookSetup() {
   const [loading, setLoading] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState<WebhookData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [setupBotType, setSetupBotType] = useState<'main' | 'notifications' | 'event' | null>(null);
+  const [setupBotType, setSetupBotType] = useState<'main' | 'notifications' | 'event' | 'registration' | null>(null);
 
   const fetchWebhookInfo = async () => {
     try {
@@ -60,7 +61,7 @@ export function WebhookSetup() {
     }
   };
 
-  const setupWebhook = async (botType: 'main' | 'notifications' | 'event', dropPending: boolean = false) => {
+  const setupWebhook = async (botType: 'main' | 'notifications' | 'event' | 'registration', dropPending: boolean = false) => {
     try {
       setLoading(true);
       setSetupBotType(botType);
@@ -100,7 +101,7 @@ export function WebhookSetup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const renderWebhookInfo = (botType: 'main' | 'notifications' | 'event', info?: WebhookInfo) => {
+  const renderWebhookInfo = (botType: 'main' | 'notifications' | 'event' | 'registration', info?: WebhookInfo) => {
     if (!info) {
       return <p className="text-sm text-gray-500">Загрузка...</p>;
     }
@@ -185,7 +186,7 @@ export function WebhookSetup() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Main Bot */}
           <div className="border rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
@@ -298,6 +299,66 @@ export function WebhookSetup() {
                   </div>
                 )}
                 {renderWebhookInfo('event', webhookInfo.event)}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Загрузка...</p>
+            )}
+          </div>
+
+          {/* Registration Bot */}
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Registration Bot</h3>
+              <div className="flex gap-2">
+                {webhookInfo?.registration?.configured !== false && (
+                  <>
+                    <Button
+                      onClick={() => setupWebhook('registration')}
+                      disabled={loading}
+                      size="sm"
+                    >
+                      {loading && setupBotType === 'registration' ? 'Настройка...' : 'Setup'}
+                    </Button>
+                    {(webhookInfo?.registration?.lastErrorMessage || (webhookInfo?.registration?.pendingUpdateCount || 0) > 0) && (
+                      <Button
+                        onClick={() => setupWebhook('registration', true)}
+                        disabled={loading}
+                        size="sm"
+                        variant="outline"
+                        title="Сбросить ошибку и очередь"
+                      >
+                        🔄 Reset
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {webhookInfo?.registration?.configured === false ? (
+              <div className="text-sm text-gray-500">
+                <Badge variant="secondary">⚙️ Не настроен</Badge>
+                <p className="mt-2 text-xs">{webhookInfo.registration.message}</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Добавьте TELEGRAM_REGISTRATION_BOT_TOKEN в .env
+                </p>
+              </div>
+            ) : webhookInfo?.registration ? (
+              <div className="space-y-2">
+                {webhookInfo.registration.botUsername && (
+                  <div className="text-sm">
+                    <span className="font-medium">Бот:</span>{' '}
+                    <a 
+                      href={`https://t.me/${webhookInfo.registration.botUsername}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      @{webhookInfo.registration.botUsername}
+                    </a>
+                  </div>
+                )}
+                {renderWebhookInfo('registration', webhookInfo.registration)}
               </div>
             ) : (
               <p className="text-sm text-gray-500">Загрузка...</p>
