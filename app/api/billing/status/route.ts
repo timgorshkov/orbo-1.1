@@ -3,6 +3,8 @@ import { getOrgBillingStatus, getOrgInvoices } from '@/lib/services/billingServi
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   const session = await getUnifiedSession()
   if (!session?.user?.id) {
@@ -41,6 +43,10 @@ export async function GET(request: NextRequest) {
     daysOverLimit: status.daysOverLimit,
     paymentUrl: status.paymentUrl,
     aiEnabled: status.aiEnabled,
+    isTrial: status.isTrial,
+    trialDaysRemaining: status.trialDaysRemaining,
+    trialExpired: status.trialExpired,
+    trialWarning: status.trialWarning,
     invoices,
   })
 }
