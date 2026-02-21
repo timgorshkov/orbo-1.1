@@ -183,7 +183,8 @@ function getVerificationCodeTemplate(code: string, userName?: string): string {
   </div>
   
   <div style="text-align: center; margin-top: 30px; padding: 20px; color: #9ca3af; font-size: 12px;">
-    <p style="margin: 5px 0;">© 2025 Orbo. Все права защищены.</p>
+    <p style="margin: 5px 0;">Orbo — CRM участников и событий для Telegram-сообществ</p>
+    <p style="margin: 5px 0;"><a href="https://orbo.ru" style="color: #9ca3af;">orbo.ru</a></p>
   </div>
 </body>
 </html>
@@ -224,7 +225,8 @@ function getInvitationTemplate(inviteLink: string, orgName: string, invitedBy: s
   </div>
   
   <div style="text-align: center; margin-top: 30px; padding: 20px; color: #9ca3af; font-size: 12px;">
-    <p style="margin: 5px 0;">© 2025 Orbo. Все права защищены.</p>
+    <p style="margin: 5px 0;">Orbo — CRM участников и событий для Telegram-сообществ</p>
+    <p style="margin: 5px 0;"><a href="https://orbo.ru" style="color: #9ca3af;">orbo.ru</a></p>
   </div>
 </body>
 </html>
