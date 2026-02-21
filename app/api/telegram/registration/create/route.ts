@@ -17,10 +17,10 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: 'telegram/registration/create' })
 
   try {
-    const { initData: initDataString, email, orgName, campaignRef } = await request.json()
+    const { initData: initDataString, email, campaignRef } = await request.json()
 
-    if (!initDataString || !email || !orgName) {
-      return NextResponse.json({ error: 'Заполните все поля' }, { status: 400 })
+    if (!initDataString || !email) {
+      return NextResponse.json({ error: 'Заполните email' }, { status: 400 })
     }
 
     const normalizedEmail = email.toLowerCase().trim()
@@ -102,44 +102,6 @@ export async function POST(request: NextRequest) {
         provider_account_id: String(tgUserId),
       })
 
-    // --- Create organization ---
-    const orgId = crypto.randomUUID()
-
-    await supabaseAdmin
-      .from('organizations')
-      .insert({
-        id: orgId,
-        name: orgName.trim(),
-        owner_id: userId,
-        status: 'active',
-      })
-
-    // --- Create membership ---
-    await supabaseAdmin
-      .from('memberships')
-      .insert({
-        org_id: orgId,
-        user_id: userId,
-        role: 'owner',
-      })
-
-    // --- Link telegram account ---
-    await supabaseAdmin
-      .from('user_telegram_accounts')
-      .upsert({
-        user_id: userId,
-        org_id: orgId,
-        telegram_user_id: tgUserId,
-        telegram_username: tgUser.username || null,
-        telegram_first_name: tgUser.first_name,
-        telegram_last_name: tgUser.last_name || null,
-        is_verified: true,
-        verified_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,org_id',
-        ignoreDuplicates: false,
-      })
-
     // --- Save campaign ref ---
     if (campaignRef) {
       await supabaseAdmin
@@ -152,14 +114,14 @@ export async function POST(request: NextRequest) {
 
     // --- Send email verification ---
     const token = crypto.randomBytes(32).toString('hex')
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
     await supabaseAdmin
       .from('email_auth_tokens')
       .insert({
         token,
         email: normalizedEmail,
-        redirect_url: `/app/${orgId}`,
+        redirect_url: '/welcome?tg=1&verified=1',
         expires_at: expiresAt.toISOString(),
         ip_address: request.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown',
         user_agent: request.headers.get('user-agent') || 'unknown',
@@ -168,14 +130,16 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     const magicLink = `${baseUrl}/api/auth/email/verify?token=${token}`
 
-    await sendEmail({
+    const emailResult = await sendEmail({
       to: normalizedEmail,
-      subject: 'Добро пожаловать в Orbo!',
-      html: getWelcomeEmailTemplate(magicLink, normalizedEmail, orgName.trim()),
-      tags: ['registration', 'miniapp'],
-    }).catch(err => {
-      logger.warn({ error: err?.message }, 'Failed to send welcome email (non-blocking)')
+      subject: 'Подтвердите email — Orbo',
+      html: getVerificationEmailTemplate(magicLink, normalizedEmail, fullName),
+      tags: ['registration', 'miniapp', 'verification'],
     })
+
+    if (!emailResult.success) {
+      logger.error({ error: emailResult.error, email: normalizedEmail }, 'Failed to send verification email')
+    }
 
     // --- Generate auto-login JWT ---
     const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
@@ -200,8 +164,7 @@ export async function POST(request: NextRequest) {
         maxAge: 30 * 24 * 60 * 60,
       })
 
-      // Use a one-time auto-login endpoint
-      loginUrl = `${baseUrl}/api/auth/auto-login?token=${encodeURIComponent(jwtToken)}&redirect=${encodeURIComponent(`/app/${orgId}`)}`
+      loginUrl = `${baseUrl}/api/auth/auto-login?token=${encodeURIComponent(jwtToken)}&redirect=${encodeURIComponent('/welcome?tg=1&new=1')}`
     }
 
     // --- CRM integration (non-blocking) ---
@@ -211,17 +174,17 @@ export async function POST(request: NextRequest) {
 
     logger.info({
       user_id: userId,
-      org_id: orgId,
       email: normalizedEmail,
       tg_user_id: tgUserId,
       campaign_ref: campaignRef,
+      email_sent: emailResult.success,
     }, 'MiniApp registration complete')
 
     return NextResponse.json({
       success: true,
       loginUrl,
       userId,
-      orgId,
+      emailSent: emailResult.success,
     })
   } catch (error) {
     logger.error({
@@ -232,7 +195,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getWelcomeEmailTemplate(magicLink: string, email: string, orgName: string): string {
+function getVerificationEmailTemplate(magicLink: string, email: string, userName: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -242,14 +205,18 @@ function getWelcomeEmailTemplate(magicLink: string, email: string, orgName: stri
     <h1 style="color: white; margin: 0; font-size: 28px;">Orbo</h1>
   </div>
   <div style="background: #fff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
-    <h2 style="color: #1f2937; margin-top: 0;">Добро пожаловать!</h2>
-    <p>Ваше пространство <strong>${orgName}</strong> создано. Подтвердите email и начните работу:</p>
+    <h2 style="color: #1f2937; margin-top: 0;">Подтвердите email</h2>
+    <p>${userName}, подтвердите ваш email для завершения регистрации в Orbo:</p>
     <div style="text-align: center; margin: 30px 0;">
       <a href="${magicLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600;">
-        Подтвердить email и войти
+        Подтвердить email
       </a>
     </div>
-    <p style="font-size: 13px; color: #6b7280;">Ссылка действительна 1 час.</p>
+    <p style="font-size: 13px; color: #6b7280;">Ссылка действительна 24 часа. Если вы не регистрировались — просто проигнорируйте это письмо.</p>
+    <p style="font-size: 12px; color: #9ca3af; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+      Если кнопка не работает, скопируйте ссылку:<br>
+      <a href="${magicLink}" style="color: #667eea; word-break: break-all;">${magicLink}</a>
+    </p>
   </div>
 </body>
 </html>

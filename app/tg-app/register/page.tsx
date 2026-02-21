@@ -20,9 +20,9 @@ export default function TelegramRegisterPage() {
   const [campaignRef, setCampaignRef] = useState<string | null>(null);
   const [maskedEmail, setMaskedEmail] = useState('');
   const [email, setEmail] = useState('');
-  const [orgName, setOrgName] = useState('');
   const [error, setError] = useState('');
   const [loginUrl, setLoginUrl] = useState('');
+  const [emailSent, setEmailSent] = useState(true);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -105,7 +105,6 @@ export default function TelegramRegisterPage() {
         body: JSON.stringify({
           initData,
           email: email.trim().toLowerCase(),
-          orgName: orgName.trim(),
           campaignRef,
         }),
       });
@@ -119,6 +118,7 @@ export default function TelegramRegisterPage() {
       }
 
       setLoginUrl(result.loginUrl || '');
+      setEmailSent(result.emailSent !== false);
       setStep('done');
     } catch {
       setError('Произошла ошибка. Попробуйте позже.');
@@ -143,23 +143,23 @@ export default function TelegramRegisterPage() {
         strategy="beforeInteractive"
       />
 
-      <div className="min-h-screen flex items-center justify-center p-4 bg-white">
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#ffffff' }}>
         <div className="w-full max-w-sm">
 
           {step === 'loading' && (
             <div className="text-center space-y-4">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto" />
-              <p className="text-gray-500">Загрузка...</p>
+              <p style={{ color: '#6b7280' }}>Загрузка...</p>
             </div>
           )}
 
           {step === 'exists' && (
             <div className="text-center space-y-5">
               <div className="text-5xl">👋</div>
-              <h1 className="text-xl font-bold text-gray-900">
+              <h1 className="text-xl font-bold" style={{ color: '#111827' }}>
                 У вас уже есть аккаунт
               </h1>
-              <p className="text-gray-600">
+              <p style={{ color: '#4b5563' }}>
                 Telegram-аккаунт {tgUser?.first_name} уже привязан к Orbo
                 {maskedEmail && <> ({maskedEmail})</>}.
               </p>
@@ -176,25 +176,25 @@ export default function TelegramRegisterPage() {
             <div className="space-y-5">
               <div className="text-center">
                 <div className="text-5xl mb-3">🚀</div>
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 className="text-xl font-bold" style={{ color: '#111827' }}>
                   Добро пожаловать в Orbo
                 </h1>
-                <p className="text-gray-500 text-sm mt-1">
+                <p className="text-sm mt-1" style={{ color: '#6b7280' }}>
                   Платформа для управления сообществами
                 </p>
               </div>
 
               {tgUser && (
-                <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                <div className="flex items-center gap-3 rounded-xl p-3" style={{ backgroundColor: '#f9fafb' }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold" style={{ backgroundColor: '#dbeafe', color: '#2563eb' }}>
                     {tgUser.first_name[0]}
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900 text-sm">
+                    <p className="font-medium text-sm" style={{ color: '#111827' }}>
                       {tgUser.first_name}{tgUser.last_name ? ` ${tgUser.last_name}` : ''}
                     </p>
                     {tgUser.username && (
-                      <p className="text-gray-400 text-xs">@{tgUser.username}</p>
+                      <p className="text-xs" style={{ color: '#9ca3af' }}>@{tgUser.username}</p>
                     )}
                   </div>
                 </div>
@@ -202,7 +202,7 @@ export default function TelegramRegisterPage() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>
                     Email
                   </label>
                   <input
@@ -211,25 +211,12 @@ export default function TelegramRegisterPage() {
                     onChange={e => setEmail(e.target.value)}
                     placeholder="your@email.com"
                     required
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    style={{ backgroundColor: '#ffffff', color: '#111827' }}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Для входа и уведомлений
+                  <p className="text-xs mt-1" style={{ color: '#9ca3af' }}>
+                    Для входа и уведомлений. На этот адрес придёт подтверждение.
                   </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Название сообщества
-                  </label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={e => setOrgName(e.target.value)}
-                    placeholder="Мое сообщество"
-                    required
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
                 </div>
 
                 {error && (
@@ -241,11 +228,11 @@ export default function TelegramRegisterPage() {
                   disabled={step === 'submitting'}
                   className="w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium disabled:opacity-50"
                 >
-                  {step === 'submitting' ? 'Создаём...' : 'Создать пространство'}
+                  {step === 'submitting' ? 'Регистрация...' : 'Продолжить'}
                 </button>
               </form>
 
-              <p className="text-center text-xs text-gray-400">
+              <p className="text-center text-xs" style={{ color: '#9ca3af' }}>
                 Бесплатно для сообществ до 500 участников
               </p>
             </div>
@@ -254,19 +241,30 @@ export default function TelegramRegisterPage() {
           {step === 'done' && (
             <div className="text-center space-y-5">
               <div className="text-5xl">🎉</div>
-              <h1 className="text-xl font-bold text-gray-900">
-                Готово!
+              <h1 className="text-xl font-bold" style={{ color: '#111827' }}>
+                Аккаунт создан!
               </h1>
-              <p className="text-gray-600">
-                Пространство создано. Проверьте почту ({email}) — мы отправили ссылку для подтверждения.
-              </p>
+              {emailSent ? (
+                <p style={{ color: '#4b5563' }}>
+                  Мы отправили письмо на <strong>{email}</strong> — перейдите по ссылке в письме для подтверждения.
+                </p>
+              ) : (
+                <p style={{ color: '#4b5563' }}>
+                  Не удалось отправить письмо на <strong>{email}</strong>. Вы можете подтвердить email позже в настройках.
+                </p>
+              )}
               {loginUrl && (
                 <button
                   onClick={() => openLink(loginUrl)}
                   className="w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium"
                 >
-                  Открыть Orbo
+                  Перейти в Orbo
                 </button>
+              )}
+              {emailSent && (
+                <p className="text-xs" style={{ color: '#9ca3af' }}>
+                  Не пришло письмо? Проверьте папку «Спам».
+                </p>
               )}
             </div>
           )}
@@ -274,8 +272,8 @@ export default function TelegramRegisterPage() {
           {step === 'error' && (
             <div className="text-center space-y-4">
               <div className="text-5xl">😔</div>
-              <h1 className="text-xl font-bold text-gray-900">Ошибка</h1>
-              <p className="text-gray-600">{error}</p>
+              <h1 className="text-xl font-bold" style={{ color: '#111827' }}>Ошибка</h1>
+              <p style={{ color: '#4b5563' }}>{error}</p>
             </div>
           )}
         </div>
