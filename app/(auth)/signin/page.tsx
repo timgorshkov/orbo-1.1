@@ -8,7 +8,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { createClientLogger } from '@/lib/logger'
 import { ymGoal } from '@/components/analytics/YandexMetrika'
-import TelegramLogin, { type TelegramUser } from '@/components/auth/telegram-login'
 
 // Компонент для обработки ошибок из URL (требует Suspense)
 function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
@@ -47,7 +46,6 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [tgLoading, setTgLoading] = useState(false)
   const logger = createClientLogger('SignIn');
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -152,47 +150,6 @@ export default function SignIn() {
       }, 'OAuth exception');
       setMessage('Произошла ошибка при входе')
       setOauthLoading(null)
-    }
-  }
-
-  async function handleTelegramAuth(user: TelegramUser) {
-    setTgLoading(true)
-    setMessage(null)
-    
-    try {
-      const res = await fetch('/api/auth/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegramData: user, registrationMode: true })
-      })
-      const data = await res.json()
-      
-      if (data.error === 'account_exists') {
-        const emailHint = data.maskedEmail ? ` (${data.maskedEmail})` : ''
-        setMessage(`Аккаунт с этим Telegram уже существует${emailHint}. Войдите по email.`)
-        setTgLoading(false)
-        return
-      }
-      
-      if (!res.ok) {
-        setMessage(`Ошибка: ${data.error || 'Не удалось войти'}`)
-        setTgLoading(false)
-        return
-      }
-      
-      ymGoal('telegram_registration', undefined, { once: true })
-      
-      if (data.redirectUrl) {
-        window.location.href = data.redirectUrl
-      } else {
-        router.push('/welcome?tg=1&new=1')
-      }
-    } catch (error) {
-      logger.error({
-        error: error instanceof Error ? error.message : String(error),
-      }, 'Telegram auth error')
-      setMessage('Произошла ошибка при входе через Telegram')
-      setTgLoading(false)
     }
   }
 
@@ -371,33 +328,12 @@ export default function SignIn() {
             </form>
           </div>
 
-          {/* Telegram Registration */}
-          <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-6">
-            <p className="text-sm text-gray-600 mb-4 text-center">
-              Новый аккаунт через Telegram
-            </p>
-            {tgLoading ? (
-              <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-600">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Регистрация...
-              </div>
-            ) : (
-              <div className="flex justify-center">
-                <TelegramLogin
-                  botUsername={process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'}
-                  onAuth={handleTelegramAuth}
-                  buttonSize="large"
-                  cornerRadius={10}
-                />
-              </div>
-            )}
-            <p className="text-xs text-gray-400 mt-3 text-center">
-              Если аккаунт с этим Telegram уже есть — предложим войти по email
-            </p>
-          </div>
+          <p className="text-sm text-center text-gray-600">
+            Нет аккаунта?{' '}
+            <Link href="/signup" className="font-medium text-blue-600 hover:text-blue-700 underline">
+              Зарегистрироваться
+            </Link>
+          </p>
 
           <p className="text-xs text-center text-gray-500">
             <Link href="https://orbo.ru" className="hover:text-gray-700">
