@@ -46,11 +46,11 @@ export default function BillingContent() {
   useEffect(() => {
     if (!orgId) return
     Promise.all([
-      fetch(`/api/billing/status?orgId=${orgId}`).then(r => r.json()),
-      fetch('/api/billing/plans').then(r => r.json()),
+      fetch(`/api/billing/status?orgId=${orgId}`).then(r => r.ok ? r.json() : null),
+      fetch('/api/billing/plans').then(r => r.ok ? r.json() : null),
     ]).then(([statusData, plansData]) => {
-      setData(statusData)
-      setPlans(plansData.plans || [])
+      if (statusData && statusData.plan) setData(statusData)
+      setPlans(plansData?.plans || [])
     }).catch(() => {})
       .finally(() => setLoading(false))
   }, [orgId])

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrgBillingStatus, getOrgInvoices } from '@/lib/services/billingService'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
-import { createAdminServer } from '@/lib/server/supabaseServer'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,15 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'orgId required' }, { status: 400 })
   }
 
-  const supabase = createAdminServer()
-  const { data: membership } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('user_id', session.user.id)
-    .eq('org_id', orgId)
-    .maybeSingle()
-
-  if (!membership || !['owner', 'admin'].includes(membership.role)) {
+  const access = await getEffectiveOrgRole(session.user.id, orgId)
+  if (!access || !['owner', 'admin'].includes(access.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
