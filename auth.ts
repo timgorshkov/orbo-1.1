@@ -316,6 +316,12 @@ export const authConfig: NextAuthConfig = {
         user_id: user.id,
         email: user.email,
       }, 'New OAuth user created')
+
+      if (user.id) {
+        import('@/lib/services/onboardingChainService').then(({ scheduleOnboardingChain }) => {
+          scheduleOnboardingChain(user.id!, 'email').catch(() => {})
+        }).catch(() => {})
+      }
     },
   },
 

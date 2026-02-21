@@ -74,11 +74,18 @@ curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/notification-
 EOF
 chmod +x ~/orbo/cron-notification-health-check.sh
 
+# Create cron script for send-onboarding (every 15 minutes)
+cat > ~/orbo/cron-send-onboarding.sh << EOF
+#!/bin/bash
+curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-onboarding" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-send-onboarding.sh
+
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -91,6 +98,7 @@ cat >> "$CRONTAB_FILE" << CRON
 0 * * * * ~/orbo/cron-send-event-reminders.sh
 0 */3 * * * ~/orbo/cron-send-weekly-digests.sh
 0 */6 * * * ~/orbo/cron-notification-health-check.sh
+*/15 * * * * ~/orbo/cron-send-onboarding.sh
 # Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
 0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1
 CRON

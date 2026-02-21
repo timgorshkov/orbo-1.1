@@ -5,6 +5,7 @@ import { createAPILogger } from '@/lib/logger'
 import { encode } from 'next-auth/jwt'
 import crypto from 'crypto'
 import { sendEmail } from '@/lib/services/email'
+import { scheduleOnboardingChain } from '@/lib/services/onboardingChainService'
 
 const supabaseAdmin = createAdminServer()
 
@@ -171,6 +172,8 @@ export async function POST(request: NextRequest) {
     import('@/lib/services/weeekService').then(({ ensureCrmRecord }) => {
       ensureCrmRecord(userId, normalizedEmail, fullName).catch(() => {})
     }).catch(() => {})
+
+    scheduleOnboardingChain(userId, 'telegram').catch(() => {})
 
     logger.info({
       user_id: userId,

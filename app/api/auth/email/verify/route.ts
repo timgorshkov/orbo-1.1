@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { cookies } from 'next/headers'
 import { createAPILogger } from '@/lib/logger'
 import { encode } from 'next-auth/jwt'
+import { scheduleOnboardingChain } from '@/lib/services/onboardingChainService'
 
 const supabaseAdmin = createAdminServer()
 
@@ -93,6 +93,8 @@ export async function GET(request: NextRequest) {
       user = newUser
       isNewUser = true
       logger.info({ email, user_id: user.id }, 'Created new user via email')
+      
+      scheduleOnboardingChain(user.id, 'email').catch(() => {})
     } else {
       // Обновляем email_verified
       await supabaseAdmin
