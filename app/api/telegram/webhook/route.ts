@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     if (body.callback_query) updateTypes.push('callback_query');
     if (body.inline_query) updateTypes.push('inline_query');
     
-    logger.info({ 
+    logger.debug({ 
       update_id: body?.update_id,
       update_types: updateTypes,
       chat_id: body?.message?.chat?.id || body?.channel_post?.chat?.id || body?.my_chat_member?.chat?.id || body?.message_reaction?.chat?.id || body?.message_reaction_count?.chat?.id,
@@ -258,7 +258,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       if (orgMapping && orgMapping.length > 0 && orgMapping[0].org_id) {
         orgId = orgMapping[0].org_id;
         
-        logger.info({
+        logger.debug({
           chat_id: msgChatId,
           org_id: orgId,
           user_id: body.message?.from?.id,
@@ -290,7 +290,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
           try {
             await eventProcessingService.processUpdate(body);
             
-            logger.info({
+            logger.debug({
               chat_id: msgChatId,
               user_id: body.message?.from?.id,
               org_id: orgId

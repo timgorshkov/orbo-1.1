@@ -12,11 +12,11 @@ echo "$LOG_PREFIX Starting cleanup at $(date)"
 # Database table cleanup
 # ============================================
 
-# Delete telegram_health_events older than 30 days
+# Delete telegram_health_events older than 7 days (only stores webhook_success pings)
 docker exec $POSTGRES_CONTAINER psql -U orbo -d orbo -c "
 DELETE FROM telegram_health_events 
-WHERE created_at < NOW() - INTERVAL '30 days';
-" && echo "$LOG_PREFIX telegram_health_events cleaned (30d retention)"
+WHERE created_at < NOW() - INTERVAL '7 days';
+" && echo "$LOG_PREFIX telegram_health_events cleaned (7d retention)"
 
 # Delete telegram_webhook_idempotency older than 7 days
 docker exec $POSTGRES_CONTAINER psql -U orbo -d orbo -c "
