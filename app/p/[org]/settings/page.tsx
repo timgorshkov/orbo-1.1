@@ -22,6 +22,12 @@ const NotificationRulesContent = dynamic(() => import('@/components/settings/not
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
+// Dynamic import for billing page (it's a client component)
+const BillingContent = dynamic(() => import('@/components/settings/billing-content'), {
+  ssr: false,
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
 const supabaseAdmin = createAdminServer();
 
 export default async function OrganizationSettingsPage({ 
@@ -148,6 +154,21 @@ export default async function OrganizationSettingsPage({
               <h2 className="text-2xl font-semibold">Уведомления</h2>
             </div>
             <NotificationRulesContent />
+          </div>
+        )
+        break
+      }
+
+      case 'billing': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Тариф и оплата</h2>
+              <p className="text-gray-600 mt-1">
+                Управляйте тарифом и просматривайте историю платежей
+              </p>
+            </div>
+            <BillingContent />
           </div>
         )
         break

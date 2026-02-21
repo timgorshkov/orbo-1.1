@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
+import BillingGateProvider from '@/components/billing/billing-gate-provider'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { redirect } from 'next/navigation'
 import { logger } from '@/lib/logger'
@@ -149,29 +150,11 @@ export default async function PublicOrgLayout({
 
   // Use key to force remount when organization changes, preventing React DOM mismatch errors
   return (
-    <div key={`org-layout-${org.id}`} className="flex h-screen overflow-hidden bg-gray-50">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
-        <CollapsibleSidebar
-          orgId={org.id}
-          orgName={org.name}
-          orgLogoUrl={org.logo_url}
-          role={role}
-          telegramGroups={telegramGroups}
-          telegramChannels={telegramChannels}
-          userProfile={userProfile}
-        />
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
-          {children}
-        </main>
-
-        {/* Mobile Bottom Navigation */}
-        <div className="lg:hidden">
-          <MobileBottomNav
+    <BillingGateProvider orgId={org.id} role={role}>
+      <div key={`org-layout-${org.id}`} className="flex h-screen overflow-hidden bg-gray-50">
+        {/* Desktop Sidebar */}
+        <div className="hidden lg:block">
+          <CollapsibleSidebar
             orgId={org.id}
             orgName={org.name}
             orgLogoUrl={org.logo_url}
@@ -181,8 +164,28 @@ export default async function PublicOrgLayout({
             userProfile={userProfile}
           />
         </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
+            {children}
+          </main>
+
+          {/* Mobile Bottom Navigation */}
+          <div className="lg:hidden">
+            <MobileBottomNav
+              orgId={org.id}
+              orgName={org.name}
+              orgLogoUrl={org.logo_url}
+              role={role}
+              telegramGroups={telegramGroups}
+              telegramChannels={telegramChannels}
+              userProfile={userProfile}
+            />
+          </div>
+        </div>
       </div>
-    </div>
+    </BillingGateProvider>
   )
 }
 

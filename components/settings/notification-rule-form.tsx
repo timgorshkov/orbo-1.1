@@ -16,7 +16,9 @@ import {
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { createClientLogger } from '@/lib/logger'
-import { AlertTriangle, Sparkles, Clock, MessageSquare, Users } from 'lucide-react'
+import { AlertTriangle, Sparkles, Clock, MessageSquare, Users, Crown } from 'lucide-react'
+import { useBillingGate } from '@/lib/hooks/useBillingGate'
+import UpgradeDialog from '@/components/billing/upgrade-dialog'
 
 const logger = createClientLogger('NotificationRuleForm')
 
@@ -113,7 +115,9 @@ export default function NotificationRuleForm({
   onCancel,
 }: NotificationRuleFormProps) {
   const isEditing = !!rule?.id
-  
+  const { status: billingStatus, showUpgradeForFeature } = useBillingGate(orgId)
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false)
+
   const [name, setName] = useState(rule?.name || '')
   const [description, setDescription] = useState(rule?.description || '')
   const [ruleType, setRuleType] = useState<NotificationRule['rule_type']>(
@@ -204,6 +208,7 @@ export default function NotificationRuleForm({
   const selectedTypeInfo = RULE_TYPES.find(t => t.id === ruleType)
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic Info */}
       <div className="space-y-4">
@@ -242,10 +247,18 @@ export default function NotificationRuleForm({
               <button
                 key={type.id}
                 type="button"
-                onClick={() => setRuleType(type.id as NotificationRule['rule_type'])}
+                onClick={() => {
+                  if (type.requiresAI && showUpgradeForFeature('custom_rules')) {
+                    setShowUpgradeDialog(true)
+                    return
+                  }
+                  setRuleType(type.id as NotificationRule['rule_type'])
+                }}
                 className={`flex items-start gap-3 p-4 rounded-lg border-2 text-left transition-colors ${
                   isSelected
                     ? 'border-blue-500 bg-blue-50'
+                    : type.requiresAI && showUpgradeForFeature('custom_rules')
+                    ? 'border-gray-200 opacity-60'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -258,7 +271,7 @@ export default function NotificationRuleForm({
                     {type.requiresAI && (
                       <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
                         <Sparkles className="h-3 w-3" />
-                        AI
+                        {showUpgradeForFeature('custom_rules') ? 'PRO' : 'AI'}
                       </span>
                     )}
                   </div>
@@ -512,6 +525,17 @@ export default function NotificationRuleForm({
         </Button>
       </div>
     </form>
+
+    {billingStatus && (
+      <UpgradeDialog
+        isOpen={showUpgradeDialog}
+        onClose={() => setShowUpgradeDialog(false)}
+        reason="ai_feature"
+        paymentUrl={billingStatus.paymentUrl}
+        planName={billingStatus.plan?.name || 'Бесплатный'}
+      />
+    )}
+    </>
   )
 }
 

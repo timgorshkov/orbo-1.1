@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useBillingGate } from '@/lib/hooks/useBillingGate';
+import UpgradeDialog from '@/components/billing/upgrade-dialog';
 
 interface AIEnrichmentButtonProps {
   participantId: string;
@@ -10,13 +12,6 @@ interface AIEnrichmentButtonProps {
   onEnrichmentComplete?: () => void;
 }
 
-/**
- * AI Enrichment Button for Owners/Admins
- * 
- * One-click AI analysis - no cost confirmation needed (costs tracked in admin panel).
- * Automatically refreshes page after analysis.
- * Compact design to be placed inline in section headers.
- */
 export function AIEnrichmentButton({
   participantId,
   orgId,
@@ -26,8 +21,15 @@ export function AIEnrichmentButton({
   const router = useRouter();
   const [isEnriching, setIsEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const { status: billingStatus, showUpgradeForFeature } = useBillingGate(orgId);
 
   const handleEnrich = async () => {
+    if (showUpgradeForFeature('ai_analysis')) {
+      setShowUpgrade(true);
+      return;
+    }
+
     setIsEnriching(true);
     setError(null);
     
@@ -52,12 +54,10 @@ export function AIEnrichmentButton({
         throw new Error(errorData.error || 'Enrichment failed');
       }
       
-      // Call callback
       if (onEnrichmentComplete) {
         onEnrichmentComplete();
       }
       
-      // Auto-refresh page to show results
       router.refresh();
     } catch (err) {
       console.error('Enrichment error:', err);
@@ -79,15 +79,26 @@ export function AIEnrichmentButton({
             <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
             <span>Анализ...</span>
           </>
+        ) : showUpgradeForFeature('ai_analysis') ? (
+          'PRO: Запустить анализ'
         ) : (
           'Запустить анализ'
         )}
       </button>
       
       {error && (
-        <p className="text-xs text-red-600 mt-1">❌ {error}</p>
+        <p className="text-xs text-red-600 mt-1">{error}</p>
+      )}
+
+      {billingStatus && (
+        <UpgradeDialog
+          isOpen={showUpgrade}
+          onClose={() => setShowUpgrade(false)}
+          reason="ai_feature"
+          paymentUrl={billingStatus.paymentUrl}
+          planName={billingStatus.plan?.name || 'Бесплатный'}
+        />
       )}
     </div>
   );
 }
-

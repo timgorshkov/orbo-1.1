@@ -44,6 +44,7 @@ export function Header({ transparent = true }: HeaderProps) {
           <Link href="/crm">CRM</Link>
           <Link href="/notifications">Уведомления</Link>
           <Link href="/events">События</Link>
+          <Link href="/pricing">Тарифы</Link>
           <Link href="https://my.orbo.ru/signin" className="website-header__cta">
             Войти
           </Link>
@@ -74,6 +75,9 @@ export function Header({ transparent = true }: HeaderProps) {
             </Link>
             <Link href="/events" onClick={() => setIsMobileMenuOpen(false)}>
               События
+            </Link>
+            <Link href="/pricing" onClick={() => setIsMobileMenuOpen(false)}>
+              Тарифы
             </Link>
             <Link 
               href="https://my.orbo.ru/signin" 
