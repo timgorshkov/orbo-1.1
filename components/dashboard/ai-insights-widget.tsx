@@ -1,7 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
+
+interface ParticipantProfile {
+  id: string
+  name: string
+  username: string | null
+  activityScore: number
+  lastActive: string | null
+  interests: string[]
+  topics: Record<string, number>
+  recentAsks: string[]
+  city: string | null
+  role: string | null
+  success: boolean
+}
 
 interface AiCredits {
   total: number
@@ -9,30 +23,23 @@ interface AiCredits {
   remaining: number
 }
 
-interface AiInsights {
-  health_score: number
-  health_label: string
-  key_findings: string[]
-  risks: string[]
-  recommendations: string[]
-  highlight: string
-}
-
 export default function AiInsightsWidget({ orgId }: { orgId: string }) {
   const [credits, setCredits] = useState<AiCredits | null>(null)
-  const [insights, setInsights] = useState<AiInsights | null>(null)
+  const [hasData, setHasData] = useState(false)
+  const [profiles, setProfiles] = useState<ParticipantProfile[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [creditsLoading, setCreditsLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
 
   useEffect(() => {
     fetch(`/api/ai/community-insights?orgId=${orgId}`)
       .then(r => r.json())
       .then(data => {
         if (data.credits) setCredits(data.credits)
+        setHasData(!!data.hasData)
       })
       .catch(() => {})
-      .finally(() => setCreditsLoading(false))
+      .finally(() => setInitialLoading(false))
   }, [orgId])
 
   const runAnalysis = async () => {
@@ -51,13 +58,15 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
       if (!res.ok) {
         if (data.error === 'no_credits') {
           setError('AI-кредиты закончились. Напишите нам для подключения.')
+        } else if (data.error === 'no_data') {
+          setError(data.message || 'Недостаточно данных.')
         } else {
           setError(data.details || data.error || 'Ошибка анализа')
         }
         return
       }
 
-      setInsights(data.insights)
+      setProfiles(data.profiles)
       setCredits(data.credits)
     } catch {
       setError('Не удалось выполнить анализ. Попробуйте позже.')
@@ -66,125 +75,131 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
     }
   }
 
+  // Don't render anything while loading initial state
+  if (initialLoading) return null
+
+  // Don't show if no groups/messages
+  if (!hasData) return null
+
   const remaining = credits?.remaining ?? 0
 
-  const healthColor = (score: number) => {
-    if (score >= 7) return 'text-green-600'
-    if (score >= 4) return 'text-yellow-600'
-    return 'text-red-600'
+  // No credits left and no results to show
+  if (remaining <= 0 && !profiles) return null
+
+  const roleLabels: Record<string, string> = {
+    'leader': 'Лидер',
+    'expert': 'Эксперт',
+    'connector': 'Коннектор',
+    'active': 'Активный',
+    'observer': 'Наблюдатель',
+    'newcomer': 'Новичок',
   }
 
-  const healthBg = (score: number) => {
-    if (score >= 7) return 'bg-green-50 border-green-200'
-    if (score >= 4) return 'bg-yellow-50 border-yellow-200'
-    return 'bg-red-50 border-red-200'
-  }
-
-  if (creditsLoading) {
-    return (
-      <Card className="border bg-gradient-to-br from-indigo-50/50 to-purple-50/50">
-        <CardContent className="p-6">
-          <div className="animate-pulse space-y-3">
-            <div className="h-5 w-40 bg-gray-200 rounded" />
-            <div className="h-4 w-64 bg-gray-200 rounded" />
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Already analyzed — show results
-  if (insights) {
+  // Show results
+  if (profiles && profiles.length > 0) {
     return (
       <Card className="border">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <span className="text-lg">✨</span>
-              AI-анализ сообщества
-            </CardTitle>
-            <div className={`text-2xl font-bold ${healthColor(insights.health_score)}`}>
-              {insights.health_score}/10
-            </div>
-          </div>
-          <p className="text-sm text-gray-500">{insights.health_label}</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Highlight */}
-          <div className={`p-3 rounded-lg border ${healthBg(insights.health_score)}`}>
-            <p className="text-sm font-medium">{insights.highlight}</p>
-          </div>
-
-          {/* Key findings */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Находки</p>
-            <ul className="space-y-1.5">
-              {insights.key_findings.map((f, i) => (
-                <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5 flex-shrink-0">•</span>
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Recommendations */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Рекомендации</p>
-            <ul className="space-y-1.5">
-              {insights.recommendations.map((r, i) => (
-                <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                  <span className="text-green-500 mt-0.5 flex-shrink-0">→</span>
-                  {r}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Risks */}
-          {insights.risks.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Риски</p>
-              <ul className="space-y-1.5">
-                {insights.risks.map((r, i) => (
-                  <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                    <span className="text-amber-500 mt-0.5 flex-shrink-0">⚠</span>
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Run again if credits remain */}
-          {remaining > 0 && (
-            <div className="pt-2 border-t">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <span>✨</span> AI-анализ участников
+            </h3>
+            {remaining > 0 && (
               <button
                 onClick={runAnalysis}
                 disabled={loading}
-                className="text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
               >
-                {loading ? 'Анализирую...' : `Обновить анализ (осталось ${remaining})`}
+                {loading ? 'Анализирую...' : `Обновить (${remaining})`}
               </button>
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {profiles.filter(p => p.success).map(p => (
+              <div key={p.id} className="bg-gray-50 rounded-lg p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{p.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {p.username ? `@${p.username}` : ''}
+                      {p.city && ` · ${p.city}`}
+                    </p>
+                  </div>
+                  {p.role && (
+                    <span className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full font-medium">
+                      {roleLabels[p.role] || p.role}
+                    </span>
+                  )}
+                </div>
+
+                {/* Interests */}
+                {p.interests.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">Интересы и экспертиза</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.interests.slice(0, 8).map((tag, i) => (
+                        <span key={i} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent asks */}
+                {p.recentAsks.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Запросы</p>
+                    <ul className="space-y-1">
+                      {p.recentAsks.slice(0, 3).map((ask, i) => (
+                        <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                          <span className="text-amber-500 mt-px flex-shrink-0">?</span>
+                          {ask}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Topics (top 4) */}
+                {Object.keys(p.topics).length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Темы</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(p.topics)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 4)
+                        .map(([topic, count], i) => (
+                          <span key={i} className="text-xs text-gray-600">
+                            {topic}{count > 1 ? ` (${count})` : ''}
+                          </span>
+                        ))
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     )
   }
 
-  // No analysis yet — show CTA
+  // CTA state
   return (
-    <Card className="border bg-gradient-to-br from-indigo-50/50 to-purple-50/50 overflow-hidden">
-      <CardContent className="p-6">
+    <Card className="border bg-gradient-to-br from-indigo-50/50 to-purple-50/50">
+      <CardContent className="p-5">
         <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-            <span className="text-2xl">✨</span>
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <span className="text-xl">✨</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 mb-1">AI-анализ сообщества</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              AI проанализирует активность, участников и события — и даст конкретные рекомендации по развитию.
+            <h3 className="font-semibold text-gray-900 mb-1">AI-анализ участников</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              AI определит интересы, экспертизу и запросы двух самых активных участников по их сообщениям.
             </p>
 
             {error && (
@@ -211,7 +226,7 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
               </button>
               <span className="text-xs text-gray-500">
                 {remaining > 0
-                  ? `${remaining} бесплатн${remaining === 1 ? 'ый' : remaining < 5 ? 'ых' : 'ых'} анализ${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
+                  ? `${remaining} бесплатн${remaining === 1 ? 'ый' : 'ых'} анализ${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
                   : 'Кредиты закончились'
                 }
               </span>

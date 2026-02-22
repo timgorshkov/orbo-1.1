@@ -223,9 +223,10 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       let query = supabase
         .from('activity_events')
         .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id, org_id')
-        .eq('tg_user_id', tgUserId);
+        .eq('tg_user_id', tgUserId)
+        .eq('org_id', orgId);
       
-      // Always filter by org's chat IDs to prevent cross-org data leakage
+      // Also filter by org's chat IDs for extra safety
       if (numericChatIds.length > 0) {
         query = query.in('tg_chat_id', numericChatIds);
         logger.debug({ 
