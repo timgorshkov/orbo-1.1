@@ -120,7 +120,27 @@ export async function POST(
         { status: 500 }
       );
     }
-    
+
+    // Check AI credits
+    if (useAI) {
+      const { data: orgData } = await adminSupabase
+        .from('organizations')
+        .select('ai_credits_total, ai_credits_used')
+        .eq('id', orgId)
+        .single();
+
+      const total = orgData?.ai_credits_total ?? 3;
+      const used = orgData?.ai_credits_used ?? 0;
+      if (total - used <= 0) {
+        return NextResponse.json({
+          error: 'no_credits',
+          message: 'AI-кредиты закончились. Свяжитесь с нами для подключения.',
+        }, { status: 402 });
+      }
+
+      // Decrement after successful enrichment (done below)
+    }
+
     // Run enrichment
     const result = await enrichParticipant(
       participantId, 
@@ -138,6 +158,19 @@ export async function POST(
       return NextResponse.json({ error: result.error || 'Enrichment failed' }, { status: 500 });
     }
     
+    // Decrement AI credits
+    if (useAI && result.success) {
+      const { data: currentOrg } = await adminSupabase
+        .from('organizations')
+        .select('ai_credits_used')
+        .eq('id', orgId)
+        .single();
+      await adminSupabase
+        .from('organizations')
+        .update({ ai_credits_used: (currentOrg?.ai_credits_used || 0) + 1 })
+        .eq('id', orgId);
+    }
+
     // Log admin action
     await logAdminAction({
       orgId,

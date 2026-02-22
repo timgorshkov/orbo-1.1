@@ -6,6 +6,7 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import OnboardingWrapper from '@/components/dashboard/onboarding-wrapper'
 import AttentionZones from '@/components/dashboard/attention-zones'
 import UpcomingEvents from '@/components/dashboard/upcoming-events'
+import AiInsightsWidget from '@/components/dashboard/ai-insights-widget'
 import ActivityTimeline from '@/components/analytics/activity-timeline'
 import EventRegistrationsChart from '@/components/analytics/event-registrations-chart'
 import TopContributors from '@/components/analytics/top-contributors'
@@ -151,6 +152,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
         orgName={org.name || 'Пространство'}
         onboardingStatus={dashboardData.onboardingStatus}
       />
+
+      {/* AI Insights Widget */}
+      <AiInsightsWidget orgId={orgId} />
 
       {/* Main Dashboard */}
       <div className="mb-6">
