@@ -7,7 +7,7 @@ interface ParticipantProfile {
   id: string
   name: string
   username: string | null
-  activityScore: number
+  messageCount: number
   lastActive: string | null
   interests: string[]
   topics: Record<string, number>
@@ -117,13 +117,18 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {profiles.filter(p => p.success).map(p => (
-              <div key={p.id} className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <a
+                key={p.id}
+                href={`/p/${orgId}/members/${p.id}`}
+                className="block bg-gray-50 rounded-lg p-4 space-y-3 hover:bg-gray-100 transition-colors"
+              >
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-gray-900">{p.name}</p>
                     <p className="text-xs text-gray-500">
                       {p.username ? `@${p.username}` : ''}
+                      {p.messageCount > 0 && ` · ${p.messageCount} сообщ.`}
                       {p.city && ` · ${p.city}`}
                     </p>
                   </div>
@@ -180,9 +185,13 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
                     </div>
                   </div>
                 )}
-              </div>
+              </a>
             ))}
           </div>
+
+          <p className="text-xs text-gray-400 mt-3">
+            AI-анализ также доступен в карточке любого участника — в разделе «Участники».
+          </p>
         </CardContent>
       </Card>
     )

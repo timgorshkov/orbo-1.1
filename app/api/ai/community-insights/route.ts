@@ -67,20 +67,31 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Find top 2 participants by activity_score
-    const { data: topParticipants } = await supabase
-      .from('participants')
-      .select('id, full_name, first_name, last_name, tg_user_id, username, last_activity_at, activity_score')
-      .eq('org_id', orgId)
-      .neq('source', 'bot')
-      .gt('activity_score', 0)
-      .order('activity_score', { ascending: false })
-      .limit(2)
+    // Find top 2 participants by actual message count (JOIN with activity_events)
+    const chatIdsList = chatIds.map(id => `'${id}'`).join(',')
+    const { data: topByMessages } = await (supabase as any).raw(`
+      SELECT p.id, p.full_name, p.first_name, p.last_name, p.tg_user_id, p.username, p.last_activity_at,
+             COUNT(ae.id) as msg_count
+      FROM participants p
+      INNER JOIN activity_events ae
+        ON ae.tg_user_id = p.tg_user_id
+        AND ae.event_type = 'message'
+        AND ae.tg_chat_id IN (${chatIdsList})
+      WHERE p.org_id = $1
+        AND p.source != 'bot'
+        AND p.tg_user_id IS NOT NULL
+      GROUP BY p.id
+      HAVING COUNT(ae.id) >= 5
+      ORDER BY msg_count DESC
+      LIMIT 2
+    `, [orgId])
 
-    if (!topParticipants || topParticipants.length === 0) {
+    const topParticipants = topByMessages || []
+
+    if (topParticipants.length === 0) {
       return NextResponse.json({
         error: 'no_data',
-        message: 'Нет активных участников для анализа.',
+        message: 'Нет участников с достаточным числом сообщений для анализа.',
       }, { status: 400 })
     }
 
@@ -102,7 +113,7 @@ export async function POST(request: NextRequest) {
           id: p.id,
           name: displayName,
           username: p.username,
-          activityScore: p.activity_score || 0,
+          messageCount: Number(p.msg_count) || 0,
           lastActive: p.last_activity_at,
           interests: result.ai_analysis?.interests_keywords || [],
           topics: result.ai_analysis?.topics_discussed || {},
@@ -120,7 +131,7 @@ export async function POST(request: NextRequest) {
           id: p.id,
           name: displayName,
           username: p.username,
-          activityScore: p.activity_score || 0,
+          messageCount: Number(p.msg_count) || 0,
           interests: [],
           topics: {},
           recentAsks: [],
@@ -193,15 +204,24 @@ export async function GET(request: NextRequest) {
     const total = org?.ai_credits_total ?? 3
     const used = org?.ai_credits_used ?? 0
 
-    // Check if there are active participants
-    const { count } = await supabase
-      .from('participants')
-      .select('*', { count: 'exact', head: true })
+    // Check if there are groups with active participants
+    const { data: orgGroups } = await supabase
+      .from('org_telegram_groups')
+      .select('tg_chat_id')
       .eq('org_id', orgId)
-      .neq('source', 'bot')
-      .gt('activity_score', 0)
 
-    const hasData = (count || 0) > 0
+    let hasData = false
+    if (orgGroups && orgGroups.length > 0) {
+      const gIds = orgGroups.map(g => `'${g.tg_chat_id}'`).join(',')
+      const { data: check } = await (supabase as any).raw(`
+        SELECT 1 FROM activity_events ae
+        INNER JOIN participants p ON p.tg_user_id = ae.tg_user_id AND p.org_id = $1
+        WHERE ae.event_type = 'message' AND ae.tg_chat_id IN (${gIds})
+        AND p.source != 'bot'
+        LIMIT 1
+      `, [orgId])
+      hasData = check && check.length > 0
+    }
 
     return NextResponse.json({
       credits: { total, used, remaining: total - used },

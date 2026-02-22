@@ -1,9 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useBillingGate } from '@/lib/hooks/useBillingGate';
-import UpgradeDialog from '@/components/billing/upgrade-dialog';
 
 interface AIEnrichmentButtonProps {
   participantId: string;
@@ -21,15 +19,18 @@ export function AIEnrichmentButton({
   const router = useRouter();
   const [isEnriching, setIsEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showUpgrade, setShowUpgrade] = useState(false);
-  const { status: billingStatus, showUpgradeForFeature } = useBillingGate(orgId);
+  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/ai/community-insights?orgId=${orgId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.credits) setCreditsRemaining(data.credits.remaining)
+      })
+      .catch(() => {})
+  }, [orgId])
 
   const handleEnrich = async () => {
-    if (showUpgradeForFeature('ai_analysis')) {
-      setShowUpgrade(true);
-      return;
-    }
-
     setIsEnriching(true);
     setError(null);
     
@@ -49,11 +50,22 @@ export function AIEnrichmentButton({
         }
       );
       
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Enrichment failed');
+        if (data.error === 'no_credits') {
+          setError('AI-кредиты закончились. Напишите нам для подключения.');
+          setCreditsRemaining(0);
+        } else {
+          setError(data.error || 'Ошибка анализа');
+        }
+        return;
       }
       
+      if (creditsRemaining !== null && creditsRemaining > 0) {
+        setCreditsRemaining(creditsRemaining - 1);
+      }
+
       if (onEnrichmentComplete) {
         onEnrichmentComplete();
       }
@@ -67,11 +79,13 @@ export function AIEnrichmentButton({
     }
   };
 
+  const noCredits = creditsRemaining !== null && creditsRemaining <= 0;
+
   return (
     <div className="inline-flex flex-col items-end">
       <button
         onClick={handleEnrich}
-        disabled={isEnriching}
+        disabled={isEnriching || noCredits}
         className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap flex items-center gap-2"
       >
         {isEnriching ? (
@@ -79,25 +93,21 @@ export function AIEnrichmentButton({
             <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
             <span>Анализ...</span>
           </>
-        ) : showUpgradeForFeature('ai_analysis') ? (
-          'PRO: Запустить анализ'
+        ) : noCredits ? (
+          'Кредиты закончились'
         ) : (
-          'Запустить анализ'
+          '✨ AI-анализ'
         )}
       </button>
+
+      {creditsRemaining !== null && creditsRemaining > 0 && !isEnriching && (
+        <p className="text-xs text-gray-400 mt-1">
+          {creditsRemaining} кредит{creditsRemaining === 1 ? '' : creditsRemaining < 5 ? 'а' : 'ов'}
+        </p>
+      )}
       
       {error && (
         <p className="text-xs text-red-600 mt-1">{error}</p>
-      )}
-
-      {billingStatus && (
-        <UpgradeDialog
-          isOpen={showUpgrade}
-          onClose={() => setShowUpgrade(false)}
-          reason="ai_feature"
-          paymentUrl={billingStatus.paymentUrl}
-          planName={billingStatus.plan?.name || 'Бесплатный'}
-        />
       )}
     </div>
   );
