@@ -350,7 +350,7 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
         html: emailLayout(greeting, `
           <p>Помимо событий и участников, в Orbo есть:</p>
           <ul style="color:#4b5563; padding-left:20px;">
-            <li><strong>✨ AI-анализ сообщества</strong> — запустите на дашборде и получите оценку здоровья, находки и рекомендации. У вас есть 3 бесплатных анализа</li>
+            <li><strong>✨ AI-анализ участников</strong> — запустите на дашборде или в профиле участника: интересы, экспертиза, запросы. У вас 5 бесплатных анализов</li>
             <li><strong>Заявки на вступление</strong> — анкета через MiniApp, spam-score, воронка со статусами</li>
             <li><strong>Анонсы</strong> — бот автоматически публикует в группы по расписанию</li>
             <li><strong>Импорт истории</strong> — загрузите историю чата, чтобы сразу увидеть активных участников</li>
@@ -424,7 +424,7 @@ function getTelegramContent(ctx: UserContext, stepKey: string): string {
         `• Оценку здоровья сообщества\n` +
         `• Конкретные находки по данным\n` +
         `• Рекомендации на ближайшую неделю\n\n` +
-        `У вас 3 бесплатных анализа → <a href="${APP_URL}/orgs">Попробовать</a>`
+        `У вас 5 бесплатных анализов → <a href="${APP_URL}/orgs">Попробовать</a>`
       )
 
     case 'check_in':

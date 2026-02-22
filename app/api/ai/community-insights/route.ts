@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Org not found' }, { status: 404 })
     }
 
-    const creditsTotal = org.ai_credits_total ?? 3
+    const creditsTotal = org.ai_credits_total ?? 5
     const creditsUsed = org.ai_credits_used ?? 0
     const remaining = creditsTotal - creditsUsed
 
@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
       .eq('id', orgId)
       .single()
 
-    const total = org?.ai_credits_total ?? 3
+    const total = org?.ai_credits_total ?? 5
     const used = org?.ai_credits_used ?? 0
 
     // Check if there are groups with active participants

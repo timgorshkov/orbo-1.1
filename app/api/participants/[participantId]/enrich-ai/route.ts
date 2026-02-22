@@ -129,7 +129,7 @@ export async function POST(
         .eq('id', orgId)
         .single();
 
-      const total = orgData?.ai_credits_total ?? 3;
+      const total = orgData?.ai_credits_total ?? 5;
       const used = orgData?.ai_credits_used ?? 0;
       if (total - used <= 0) {
         return NextResponse.json({

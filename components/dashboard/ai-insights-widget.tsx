@@ -104,15 +104,18 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <span>✨</span> AI-анализ участников
             </h3>
-            {remaining > 0 && (
-              <button
-                onClick={runAnalysis}
-                disabled={loading}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
-              >
-                {loading ? 'Анализирую...' : `Обновить (${remaining})`}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">доступен в профиле каждого участника</span>
+              {remaining > 0 && (
+                <button
+                  onClick={runAnalysis}
+                  disabled={loading}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
+                >
+                  {loading ? 'Анализирую...' : `Обновить (${remaining})`}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -120,6 +123,8 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
               <a
                 key={p.id}
                 href={`/p/${orgId}/members/${p.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="block bg-gray-50 rounded-lg p-4 space-y-3 hover:bg-gray-100 transition-colors"
               >
                 {/* Header */}
@@ -189,9 +194,6 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
             ))}
           </div>
 
-          <p className="text-xs text-gray-400 mt-3">
-            AI-анализ также доступен в карточке любого участника — в разделе «Участники».
-          </p>
         </CardContent>
       </Card>
     )
