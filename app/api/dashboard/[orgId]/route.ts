@@ -37,13 +37,13 @@ export async function GET(
       eventsCountResult,
       totalParticipantsResult
     ] = await Promise.all([
+      // Check if ANY owner/admin of this org has a verified telegram account
       adminSupabase
         .from('user_telegram_accounts')
         .select('is_verified')
-        .eq('user_id', user.id)
         .eq('org_id', orgId)
         .eq('is_verified', true)
-        .single(),
+        .limit(1),
       (async () => {
         const { data: orgGroupLinks } = await adminSupabase
           .from('org_telegram_groups')
@@ -77,15 +77,17 @@ export async function GET(
         .neq('source', 'bot')
     ])
 
-    const telegramAccount = telegramAccountResult.data
+    const telegramAccount = telegramAccountResult.data && telegramAccountResult.data.length > 0
     const orgGroupsForCount = orgGroupsForCountResult.data
     const materialsCount = materialsCountResult.count
     const eventsCount = eventsCountResult.count
     const totalParticipants = totalParticipantsResult.count
     
-    const groupsCount = orgGroupsForCount?.filter(
+    const connectedGroupsCount = orgGroupsForCount?.filter(
       (item: any) => item.telegram_groups?.bot_status === 'connected'
     ).length || 0
+    // For onboarding: any linked group counts (even pending)
+    const linkedGroupsCount = orgGroupsForCount?.length || 0
 
     // Check if any event has at least one registration (= event was shared)
     let hasSharedEvent = false;
@@ -110,7 +112,7 @@ export async function GET(
 
     const onboardingStatus = {
       hasTelegramAccount: !!telegramAccount,
-      hasGroups: (groupsCount || 0) > 0,
+      hasGroups: linkedGroupsCount > 0,
       hasEvents: (eventsCount || 0) > 0,
       hasSharedEvent,
       progress: [
@@ -118,7 +120,7 @@ export async function GET(
         (eventsCount || 0) > 0,
         !!telegramAccount,
         hasSharedEvent,
-        (groupsCount || 0) > 0
+        linkedGroupsCount > 0
       ].filter(Boolean).length * 20 // 0-100%
     }
 
@@ -260,7 +262,7 @@ export async function GET(
     // Day of year for rotation of attention zone items
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
     
-    if (!isOnboarding && (groupsCount || 0) > 0) {
+    if (!isOnboarding && connectedGroupsCount > 0) {
       // 4a-c. Parallel fetch for attention zones + resolved items
       const threeDaysFromNow = new Date()
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
