@@ -21,14 +21,14 @@ export default async function SuperadminLayout({
   const navItems = [
     { href: '/superadmin/organizations', label: 'Организации' },
     { href: '/superadmin/users', label: 'Пользователи' },
+    { href: '/superadmin/onboarding', label: 'Онбординг' },
+    { href: '/superadmin/qualification', label: 'Квалификация' },
+    { href: '/superadmin/audit-log', label: 'Audit' },
+    { href: '/superadmin/billing', label: 'Биллинг' },
     { href: '/superadmin/public-apps', label: 'Каталог' },
     { href: '/superadmin/telegram', label: 'Telegram' },
     { href: '/superadmin/errors', label: 'Errors' },
-    { href: '/superadmin/audit-log', label: 'Audit' },
-    { href: '/superadmin/billing', label: 'Биллинг' },
     { href: '/superadmin/ai-costs', label: 'AI' },
-    { href: '/superadmin/onboarding', label: 'Онбординг' },
-    { href: '/superadmin/qualification', label: 'Квалификация' },
     { href: '/superadmin/superadmins', label: 'Суперадмины' },
   ]
   
@@ -64,7 +64,7 @@ export default async function SuperadminLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                className="px-3 py-2 text-xs text-gray-600 hover:text-purple-600 hover:bg-purple-50 border-b-2 border-transparent hover:border-purple-600 transition font-medium"
+                className="px-3 py-2.5 text-[13px] text-gray-600 hover:text-purple-600 hover:bg-purple-50 border-b-2 border-transparent hover:border-purple-600 transition font-medium"
               >
                 {item.label}
               </Link>
