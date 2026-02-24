@@ -380,8 +380,10 @@ export async function GET(request: Request) {
         });
 
         // ✅ ОПТИМИЗАЦИЯ: Получаем актуальное количество участников через Telegram API
+        // + Определяем удалённые/недоступные группы
         const memberCountsStart = Date.now();
         const memberCountsMap = new Map<string, number>();
+        const deletedChatIds = new Set<string>();
         
         try {
           const allChatIdsForCount = Array.from(groupByChatId.keys()).map(id => {
@@ -390,7 +392,6 @@ export async function GET(request: Request) {
           }).filter((id): id is number => id !== null);
           
           if (allChatIdsForCount.length > 0) {
-            // Получаем актуальные данные из Telegram API параллельно
             let telegramService: TelegramService | null = null;
             try {
               telegramService = new TelegramService('main');
@@ -405,19 +406,30 @@ export async function GET(request: Request) {
                   if (result?.ok && typeof result.result === 'number') {
                     memberCountsMap.set(String(chatId), result.result);
                     
-                    // Обновляем member_count в БД для кэширования
                     await supabaseService
                       .from('telegram_groups')
                       .update({ member_count: result.result })
                       .filter('tg_chat_id::text', 'eq', String(chatId));
+                  } else if (!result?.ok) {
+                    const desc = (result?.description || '').toLowerCase();
+                    const errCode = result?.error_code;
+                    const isGroupGone =
+                      (errCode === 400 && desc.includes('chat not found')) ||
+                      (errCode === 403 && desc.includes('chat was deleted')) ||
+                      (errCode === 403 && desc.includes('chat was deactivated')) ||
+                      (errCode === 400 && desc.includes('group chat was upgraded')) ||
+                      (errCode === 400 && desc.includes('peer_id_invalid'));
+                    
+                    if (isGroupGone) {
+                      deletedChatIds.add(String(chatId));
+                      logger.info({ chat_id: chatId, description: result?.description }, 'Group detected as deleted/deactivated in Telegram');
+                    }
                   }
                 } catch (e) {
-                  // Ignore individual chat errors (bot might not have access)
                   logger.debug({ chat_id: chatId, error: e instanceof Error ? e.message : String(e) }, 'Could not get member count from Telegram');
                 }
               });
               
-              // Ждём все запросы с таймаутом 5 секунд
               await Promise.race([
                 Promise.all(countPromises),
                 new Promise(resolve => setTimeout(resolve, 5000))
@@ -425,7 +437,7 @@ export async function GET(request: Request) {
             }
             
             // Fallback: если Telegram API не вернул данные, используем participant_groups
-            const missingChatIds = allChatIdsForCount.filter(id => !memberCountsMap.has(String(id)));
+            const missingChatIds = allChatIdsForCount.filter(id => !memberCountsMap.has(String(id)) && !deletedChatIds.has(String(id)));
             if (missingChatIds.length > 0) {
               const { data: memberCounts, error: countError } = await supabaseService
                 .from('participant_groups')
@@ -439,7 +451,6 @@ export async function GET(request: Request) {
                   const key = String(row.tg_group_id);
                   dbCounts.set(key, (dbCounts.get(key) || 0) + 1);
                 });
-                // Добавляем только те, которых нет из Telegram API
                 dbCounts.forEach((count, key) => {
                   if (!memberCountsMap.has(key)) {
                     memberCountsMap.set(key, count);
@@ -455,11 +466,18 @@ export async function GET(request: Request) {
         }
         track('member_counts', memberCountsStart);
 
+        if (deletedChatIds.size > 0) {
+          logger.info({ deleted_count: deletedChatIds.size, deleted_ids: Array.from(deletedChatIds) }, 'Filtering out deleted/deactivated groups');
+        }
+
         const availableGroups = [] as any[];
         const existingGroups = [] as any[];
 
         // Проходим по ВСЕМ группам (включая те, где нет подтвержденных прав админа)
         for (const [chatKey, group] of Array.from(groupByChatId.entries())) {
+          // Пропускаем группы, удалённые в Telegram
+          if (deletedChatIds.has(chatKey)) continue;
+
           const right = adminRightsMap.get(chatKey);
 
           const groupAny = group as any;

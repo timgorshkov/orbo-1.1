@@ -1,6 +1,6 @@
 # Документация пользователя Orbo
 
-> Руководство по использованию платформы управления Telegram-сообществами
+> CRM участников и событий для Telegram-сообществ
 
 ---
 
@@ -12,11 +12,12 @@
 - [Подключение Telegram-аккаунта](./01-getting-started/connect-telegram.md)
 - [Создание первой организации](./01-getting-started/first-organization.md)
 
-### 2. Telegram-группы
+### 2. Telegram-группы и каналы
 
 - [Какие боты и для чего](./02-telegram-groups/bots-overview.md)
 - [Как добавить бота в группу](./02-telegram-groups/add-bot-to-group.md)
 - [Подключение группы к организации](./02-telegram-groups/connect-groups.md)
+- [Подключение Telegram-канала](./02-telegram-groups/connect-channel.md)
 - [Импорт истории сообщений](./02-telegram-groups/import-history.md)
 
 ### 3. Участники (CRM)
@@ -29,24 +30,36 @@
 ### 4. События
 
 - [Создание события](./04-events/create-event.md)
+- [MiniApp для регистрации](./04-events/miniapp-registration.md)
 - [Настройка формы регистрации](./04-events/registration-form.md)
 - [Управление оплатами](./04-events/payments.md)
 - [Публикация в Telegram](./04-events/telegram-publish.md)
 
-### 5. Уведомления
+### 5. Анонсы
+
+- [Создание и отправка анонсов](./05-announcements/announcements.md)
+
+### 6. Заявки (Applications)
+
+- [Обзор раздела «Заявки»](./06-applications/overview.md)
+- [Воронки и статусы](./06-applications/pipelines.md)
+- [Формы заявок и MiniApp](./06-applications/forms.md)
+
+### 7. Уведомления
 
 - [Обзор правил уведомлений](./05-notifications/rules-overview.md)
 - [AI-детекция негатива](./05-notifications/ai-negative.md)
 - [Неотвеченные вопросы](./05-notifications/unanswered.md)
 - [Зоны внимания](./05-notifications/attention-zones.md)
 
-### 6. Организация и настройки
+### 8. Организация и настройки
 
 - [Настройки организации](./06-organization/settings.md)
 - [Добавление администраторов](./06-organization/add-admins.md)
 - [Синхронизация команды с Telegram](./06-organization/team-sync.md)
+- [Приглашения участников](./06-organization/invites.md)
 
-### 7. FAQ
+### 9. FAQ
 
 - [Частые вопросы](./07-faq/faq.md)
 
@@ -56,23 +69,23 @@
 
 ### Шаг 1. Регистрация
 
-Перейдите на [my.orbo.ru](https://my.orbo.ru) и создайте аккаунт.
+Перейдите на [my.orbo.ru](https://my.orbo.ru) и создайте аккаунт через email, Google или Яндекс.
 
 ### Шаг 2. Создание организации
 
-Укажите название вашего сообщества.
+Укажите название вашего сообщества. Orbo подскажет первый шаг исходя из вашей роли.
 
-### Шаг 3. Подключение Telegram
+### Шаг 3. Подключение Telegram-группы
 
-Привяжите свой Telegram-аккаунт для управления группами.
+Добавьте бота [@orbo_community_bot](https://t.me/orbo_community_bot) в вашу группу. Участники начнут появляться автоматически.
 
-### Шаг 4. Добавление группы
+### Шаг 4. Создайте событие с MiniApp
 
-Добавьте бота [@orbo_community_bot](https://t.me/orbo_community_bot) в вашу группу.
+Участники регистрируются и платят прямо в Telegram. Напоминания отправляются автоматически.
 
-### Шаг 5. Готово!
+### Шаг 5. Знайте своих людей
 
-Orbo начнёт собирать аналитику. Создавайте события, настраивайте уведомления, изучайте аудиторию.
+Карточки участников с историей посещений, активностью и контактами. AI-анализ интересов доступен прямо с дашборда.
 
 ---
 
@@ -80,9 +93,9 @@ Orbo начнёт собирать аналитику. Создавайте со
 
 | Бот | Username | Назначение |
 |-----|----------|------------|
-| Community Bot | [@orbo_community_bot](https://t.me/orbo_community_bot) | Сбор аналитики из групп |
-| Assist Bot | [@orbo_assist_bot](https://t.me/orbo_assist_bot) | Уведомления и авторизация |
-| Event Bot | [@orbo_event_bot](https://t.me/orbo_event_bot) | Регистрация на события (MiniApp) |
+| Community Bot | [@orbo_community_bot](https://t.me/orbo_community_bot) | Сбор аналитики из групп, публикация анонсов |
+| Assist Bot | [@orbo_assist_bot](https://t.me/orbo_assist_bot) | Уведомления, авторизация, напоминания о событиях |
+| Event Bot | [@orbo_event_bot](https://t.me/orbo_event_bot) | MiniApp для регистрации на события и заявок |
 
 ---
 
@@ -93,4 +106,4 @@ Orbo начнёт собирать аналитику. Создавайте со
 ---
 
 *Документация актуальна для версии Orbo 1.1*  
-*Последнее обновление: Декабрь 2025*
+*Последнее обновление: Январь 2026*
