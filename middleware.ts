@@ -76,13 +76,14 @@ function hasAuthSession(request: NextRequest): boolean {
   return authCookieNames.some(name => request.cookies.has(name))
 }
 
-const SCANNER_PATTERN = /\.(env|git|php|asp|aspx|bak|sql|log|old|orig|swp|yml)$|wp-login|wp-admin|xmlrpc|phpinfo|phpmyadmin|\/admin\/|\/\.well-known\/security|composer\.(json|lock)|package\.json$/i;
+const SCANNER_PATTERN = /\.(env|git|php|asp|aspx|bak|sql|log|old|orig|swp|yml)$|wp-login|wp-admin|xmlrpc|phpinfo|phpmyadmin|\/\.well-known\/security|composer\.(json|lock)|package\.json$/i;
 
 export async function middleware(request: NextRequest) {
   const logger = createServiceLogger('middleware');
   const { pathname } = request.nextUrl
 
-  if (SCANNER_PATTERN.test(pathname)) {
+  // Block scanner probes but allow legitimate /api/admin/ routes
+  if (SCANNER_PATTERN.test(pathname) || (pathname.match(/\/admin\//i) && !pathname.startsWith('/api/'))) {
     return new NextResponse(null, { status: 404 })
   }
 

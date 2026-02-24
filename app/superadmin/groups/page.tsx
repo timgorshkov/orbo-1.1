@@ -123,7 +123,7 @@ export default async function SuperadminGroupsPage() {
       tg_chat_id: group.tg_chat_id,
       bot_status: group.bot_status,
       created_at: group.last_sync_at || null,
-      has_bot: group.bot_status === 'connected',
+      has_bot: group.bot_status === 'connected' || group.bot_status === 'pending',
       has_admin_rights: group.bot_status === 'connected',
       participants_count: memberCountsMap.get(chatId) || group.member_count || 0,
       organizations_count: orgIds.length,

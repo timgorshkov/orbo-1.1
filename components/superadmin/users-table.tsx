@@ -117,14 +117,23 @@ function TelegramLink({ user }: { user: User }) {
   }
   
   if (user.telegram_user_id) {
+    const displayName = user.telegram_display_name || user.full_name
+    const hasName = displayName && displayName !== 'Не указано'
     return (
-      <a
-        href={`tg://user?id=${user.telegram_user_id}`}
-        className={`hover:underline ${user.is_test ? '' : 'text-blue-600'}`}
-        title={`Telegram ID: ${user.telegram_user_id}`}
-      >
-        {user.telegram_verified && '✅ '}{user.telegram_display_name || `ID:${user.telegram_user_id}`}
-      </a>
+      <span className="inline-flex items-center gap-1.5" title={`Telegram ID: ${user.telegram_user_id} (username не задан)`}>
+        {user.telegram_verified && '✅ '}
+        {hasName && <span className={user.is_test ? '' : 'text-gray-900'}>{displayName}</span>}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            navigator.clipboard.writeText(String(user.telegram_user_id))
+          }}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors cursor-pointer"
+          title="Копировать Telegram ID"
+        >
+          ID:{user.telegram_user_id}
+        </button>
+      </span>
     )
   }
   
