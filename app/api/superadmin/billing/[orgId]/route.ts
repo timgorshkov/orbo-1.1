@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { activatePro, cancelSubscription, getOrgBillingStatus, getOrgInvoices } from '@/lib/services/billingService'
+import { activatePro, addPayment, cancelSubscription, getOrgBillingStatus, getOrgInvoices } from '@/lib/services/billingService'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,13 +58,19 @@ export async function POST(
 
     const { orgId } = await params
     const body = await request.json()
-    const { action, months, paymentMethod } = body
+    const { action, months, paymentMethod, amount } = body
 
     switch (action) {
       case 'activate_pro': {
         const success = await activatePro(orgId, months || 1, user.id, paymentMethod)
         if (!success) return NextResponse.json({ error: 'Activation failed' }, { status: 500 })
         return NextResponse.json({ success: true, message: `Pro activated for ${months || 1} month(s)` })
+      }
+      case 'add_payment': {
+        if (!amount || amount <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 })
+        const result = await addPayment(orgId, amount, user.id, paymentMethod || 'manual')
+        if (!result.success) return NextResponse.json({ error: 'Payment failed' }, { status: 500 })
+        return NextResponse.json({ success: true, ...result })
       }
       case 'cancel': {
         const success = await cancelSubscription(orgId)

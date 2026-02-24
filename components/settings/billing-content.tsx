@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import PlanCards from '@/components/billing/plan-cards'
-import { Crown, Users, Calendar, ExternalLink, Clock } from 'lucide-react'
+import { Crown, Users, Calendar, ExternalLink, Clock, CreditCard } from 'lucide-react'
 
 interface BillingData {
   plan: { code: string; name: string; price_monthly: number | null; description: string | null }
@@ -197,6 +197,16 @@ export default function BillingContent() {
         )}
       </div>
 
+      {/* Payment section */}
+      <PaymentSection
+        planCode={data.plan.code}
+        priceMonthly={data.plan.price_monthly}
+        currentExpiresAt={data.subscription?.expires_at || null}
+        paymentUrl={data.paymentUrl}
+        isTrial={data.isTrial}
+        trialExpired={data.trialExpired}
+      />
+
       {/* Plan cards */}
       <div>
         <h2 className="text-xl font-semibold mb-4">Доступные тарифы</h2>
@@ -244,6 +254,89 @@ export default function BillingContent() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function PaymentSection({
+  planCode,
+  priceMonthly,
+  currentExpiresAt,
+  paymentUrl,
+  isTrial,
+  trialExpired,
+}: {
+  planCode: string
+  priceMonthly: number | null
+  currentExpiresAt: string | null
+  paymentUrl: string
+  isTrial: boolean
+  trialExpired: boolean
+}) {
+  const price = priceMonthly || 1500
+  const now = new Date()
+
+  const periodStart = currentExpiresAt && new Date(currentExpiresAt) > now && planCode === 'pro' && !trialExpired
+    ? new Date(currentExpiresAt)
+    : now
+  const periodEnd = new Date(periodStart)
+  periodEnd.setMonth(periodEnd.getMonth() + 1)
+
+  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > now && planCode === 'pro' && !isTrial
+
+  const actionLabel = trialExpired
+    ? 'Оплатить подписку'
+    : isTrial
+      ? 'Оплатить и продолжить'
+      : isExtension
+        ? 'Продлить подписку'
+        : planCode === 'free'
+          ? 'Перейти на Pro'
+          : 'Оплатить'
+
+  if (planCode === 'enterprise') return null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <CreditCard className="h-6 w-6 text-purple-600" />
+        <h2 className="text-xl font-semibold">Оплата</h2>
+      </div>
+
+      <div className="bg-purple-50 rounded-lg p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-purple-700 font-medium">Тариф Профессиональный</span>
+          <span className="text-lg font-bold text-purple-900">{price.toLocaleString('ru-RU')} ₽/мес</span>
+        </div>
+        <div className="text-sm text-purple-600">
+          {isExtension ? (
+            <>Продление: с {periodStart.toLocaleDateString('ru-RU')} по {periodEnd.toLocaleDateString('ru-RU')}</>
+          ) : (
+            <>Период: с {periodStart.toLocaleDateString('ru-RU')} по {periodEnd.toLocaleDateString('ru-RU')}</>
+          )}
+        </div>
+        {isExtension && (
+          <div className="text-xs text-purple-500 mt-1">
+            Текущая подписка активна до {new Date(currentExpiresAt!).toLocaleDateString('ru-RU')}. Оплата продлит период.
+          </div>
+        )}
+      </div>
+
+      <a
+        href={paymentUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition"
+      >
+        <CreditCard className="h-4 w-4" />
+        {actionLabel}
+        <ExternalLink className="h-3.5 w-3.5 ml-1" />
+      </a>
+
+      <p className="text-xs text-gray-500 mt-3">
+        После оплаты подписка активируется автоматически или подтверждается администратором.
+        По вопросам оплаты: <a href="mailto:tg@orbo.ru" className="text-purple-600 hover:underline">tg@orbo.ru</a>
+      </p>
     </div>
   )
 }

@@ -44,7 +44,7 @@ export default function BillingManagement() {
   const [filter, setFilter] = useState<'all' | 'pro' | 'free' | 'overdue'>('all')
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null)
   const [activatingOrg, setActivatingOrg] = useState<string | null>(null)
-  const [activateMonths, setActivateMonths] = useState(1)
+  const [paymentAmount, setPaymentAmount] = useState(1500)
   const [actionLoading, setActionLoading] = useState(false)
 
   const fetchData = async () => {
@@ -76,17 +76,22 @@ export default function BillingManagement() {
     .filter(s => s.plan_code === 'pro' && s.status === 'active')
     .length * 1500
 
-  const handleActivate = async (orgId: string) => {
+  const handleAddPayment = async (orgId: string) => {
+    if (paymentAmount <= 0) return
     setActionLoading(true)
     try {
       const res = await fetch(`/api/superadmin/billing/${orgId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'activate_pro', months: activateMonths }),
+        body: JSON.stringify({ action: 'add_payment', amount: paymentAmount }),
       })
       if (res.ok) {
+        const result = await res.json()
+        if (result.periodEnd) {
+          alert(`Оплата добавлена. Подписка до ${new Date(result.periodEnd).toLocaleDateString('ru-RU')}`)
+        }
         setActivatingOrg(null)
-        setActivateMonths(1)
+        setPaymentAmount(1500)
         await fetchData()
       }
     } catch {}
@@ -220,19 +225,25 @@ export default function BillingManagement() {
                     <div className="flex items-center gap-2">
                       {activatingOrg === sub.org_id ? (
                         <div className="flex items-center gap-2">
-                          <select
-                            value={activateMonths}
-                            onChange={e => setActivateMonths(Number(e.target.value))}
-                            className="text-xs border rounded px-2 py-1"
-                          >
-                            {[1, 3, 6, 12].map(m => (
-                              <option key={m} value={m}>{m} мес ({(1500 * m).toLocaleString('ru-RU')} ₽)</option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={paymentAmount}
+                              onChange={e => setPaymentAmount(Number(e.target.value))}
+                              min={100}
+                              step={100}
+                              className="w-24 text-xs border rounded px-2 py-1"
+                              placeholder="Сумма ₽"
+                            />
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                              ≈ {Math.round(paymentAmount / 1500 * 30)} дн.
+                            </span>
+                          </div>
                           <button
-                            onClick={() => handleActivate(sub.org_id)}
-                            disabled={actionLoading}
+                            onClick={() => handleAddPayment(sub.org_id)}
+                            disabled={actionLoading || paymentAmount <= 0}
                             className="px-2 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50"
+                            title="Добавить оплату"
                           >
                             <Check className="h-3 w-3" />
                           </button>
@@ -245,14 +256,12 @@ export default function BillingManagement() {
                         </div>
                       ) : (
                         <>
-                          {sub.plan_code !== 'pro' && (
-                            <button
-                              onClick={() => setActivatingOrg(sub.org_id)}
-                              className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg font-medium hover:bg-purple-100"
-                            >
-                              Активировать Pro
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setActivatingOrg(sub.org_id); setPaymentAmount(1500) }}
+                            className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg font-medium hover:bg-purple-100"
+                          >
+                            {sub.plan_code === 'pro' ? 'Добавить оплату' : 'Активировать Pro'}
+                          </button>
                           {sub.plan_code === 'pro' && (
                             <button
                               onClick={() => handleCancel(sub.org_id)}
