@@ -3,20 +3,21 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, CheckCircle, TrendingUp, BarChart3 } from 'lucide-react';
+import { Loader2, Users, CheckCircle, TrendingUp, BarChart3, EyeOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
+
+const VISIBLE_STAT_FIELDS = ['community_type', 'pain_points'];
+const STAT_TITLES: Record<string, string> = {
+  community_type: 'По типу сообщества',
+  pain_points: 'По болям',
+};
 
 interface QualificationSummary {
   total_users: number;
   completed_qualification: number;
   completion_rate: number;
-  responses_by_field: {
-    role?: Record<string, number>;
-    community_type?: Record<string, number>;
-    groups_count?: Record<string, number>;
-    pain_points?: Record<string, number>;
-  };
+  responses_by_field: Record<string, Record<string, number>>;
 }
 
 interface QualificationResponse {
@@ -45,6 +46,7 @@ export default function QualificationPage() {
   const [recent, setRecent] = useState<QualificationResponse[]>([]);
   const [labels, setLabels] = useState<Labels>({});
   const [error, setError] = useState<string | null>(null);
+  const [hideTest, setHideTest] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -64,6 +66,8 @@ export default function QualificationPage() {
       setLoading(false);
     }
   };
+
+  const filteredRecent = hideTest ? recent.filter(q => !q.is_test) : recent;
 
   if (loading) {
     return (
@@ -133,16 +137,17 @@ export default function QualificationPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-purple-500" />
-              <span className="text-2xl font-bold">{recent.length}</span>
+              <span className="text-2xl font-bold">{filteredRecent.length}</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Statistics by Field */}
-      {summary?.responses_by_field && Object.keys(summary.responses_by_field).length > 0 && (
+      {/* Statistics by Field — only community_type and pain_points */}
+      {summary?.responses_by_field && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Object.entries(summary.responses_by_field).map(([field, counts]) => {
+          {VISIBLE_STAT_FIELDS.map((field) => {
+            const counts = summary.responses_by_field[field];
             if (!counts || Object.keys(counts).length === 0) return null;
             const fieldLabels = labels[field] || {};
             const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -151,10 +156,7 @@ export default function QualificationPage() {
               <Card key={field}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">
-                    {field === 'role' && 'По роли'}
-                    {field === 'community_type' && 'По типу сообщества'}
-                    {field === 'groups_count' && 'По количеству групп'}
-                    {field === 'pain_points' && 'По болям'}
+                    {STAT_TITLES[field] || field}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -191,24 +193,40 @@ export default function QualificationPage() {
       {/* Recent Responses */}
       <Card>
         <CardHeader>
-          <CardTitle>Последние ответы</CardTitle>
-          <CardDescription>Новые пользователи и их квалификация</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Последние ответы</CardTitle>
+              <CardDescription>Новые пользователи и их квалификация</CardDescription>
+            </div>
+            <button
+              onClick={() => setHideTest(prev => !prev)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                hideTest 
+                  ? 'bg-primary/10 border-primary/20 text-primary' 
+                  : 'bg-muted border-border text-muted-foreground'
+              }`}
+            >
+              <EyeOff className="h-3.5 w-3.5" />
+              {hideTest ? 'Тестовые скрыты' : 'Показать все'}
+            </button>
+          </div>
         </CardHeader>
         <CardContent>
-          {recent.length === 0 ? (
+          {filteredRecent.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
-              Пока нет ответов на квалификацию
+              {hideTest && recent.length > 0 
+                ? 'Нет ответов (кроме тестовых). Нажмите «Показать все» для просмотра.'
+                : 'Пока нет ответов на квалификацию'}
             </p>
           ) : (
             <div className="divide-y">
-              {recent.map((q) => (
+              {filteredRecent.map((q) => (
                 <div 
                   key={q.id} 
                   className={`py-3 first:pt-0 last:pb-0 ${q.is_test ? 'opacity-50' : ''}`}
                 >
                   {/* Compact Row */}
                   <div className="flex items-center justify-between gap-3">
-                    {/* User + Status */}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className={`font-medium truncate ${q.is_test ? 'text-gray-400' : ''}`}>
                         {q.user_name || q.user_email || 'Неизвестный пользователь'}
@@ -241,21 +259,11 @@ export default function QualificationPage() {
                     </div>
                   </div>
                   
-                  {/* Answers Row */}
+                  {/* Answers Row — only community_type and pain_points */}
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {q.responses_readable.role && (
-                      <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
-                        {q.responses_readable.role}
-                      </Badge>
-                    )}
                     {q.responses_readable.community_type && (
                       <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
                         {q.responses_readable.community_type}
-                      </Badge>
-                    )}
-                    {q.responses_readable.groups_count && (
-                      <Badge variant="outline" className={`text-xs py-0 ${q.is_test ? 'border-gray-300 text-gray-400' : ''}`}>
-                        {q.responses_readable.groups_count} групп
                       </Badge>
                     )}
                     {q.responses_readable.pain_points && (

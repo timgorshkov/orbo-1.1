@@ -183,127 +183,63 @@ export function AuditLog() {
   const uniqueResources = Object.keys(data.statistics.by_resource).sort()
 
   return (
-    <div className="space-y-4">
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-600">
-              Всего действий
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.statistics.total}</div>
-            <p className="text-xs text-neutral-500">за выбранный период</p>
-          </CardContent>
-        </Card>
+    <div className="space-y-3">
+      {/* Compact filters bar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={hoursFilter}
+          onChange={(e) => setHoursFilter(parseInt(e.target.value, 10))}
+          className="px-2.5 py-1.5 text-sm border rounded-md bg-white"
+        >
+          <option value="1">Час</option>
+          <option value="6">6 часов</option>
+          <option value="24">Сутки</option>
+          <option value="72">3 дня</option>
+          <option value="168">Неделя</option>
+          <option value="720">Месяц</option>
+        </select>
         
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-600">
-              Типов действий
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Object.keys(data.statistics.by_action).length}
-            </div>
-            <p className="text-xs text-neutral-500">уникальных операций</p>
-          </CardContent>
-        </Card>
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          className="px-2.5 py-1.5 text-sm border rounded-md bg-white"
+        >
+          <option value="all">Все действия</option>
+          {uniqueActions.map(action => (
+            <option key={action} value={action}>
+              {getActionDescription(action)} ({data.statistics.by_action[action]})
+            </option>
+          ))}
+        </select>
         
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-neutral-600">
-              Типов ресурсов
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Object.keys(data.statistics.by_resource).length}
-            </div>
-            <p className="text-xs text-neutral-500">затронутых объектов</p>
-          </CardContent>
-        </Card>
-      </div>
+        <select
+          value={resourceFilter}
+          onChange={(e) => setResourceFilter(e.target.value)}
+          className="px-2.5 py-1.5 text-sm border rounded-md bg-white"
+        >
+          <option value="all">Все ресурсы</option>
+          {uniqueResources.map(resource => (
+            <option key={resource} value={resource}>
+              {getResourceDescription(resource)} ({data.statistics.by_resource[resource]})
+            </option>
+          ))}
+        </select>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Фильтры</span>
-            <Button 
-              onClick={fetchLogs} 
-              size="sm" 
-              variant="outline"
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Обновить
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4 flex-wrap">
-            {/* Time filter */}
-            <div>
-              <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Период
-              </label>
-              <select
-                value={hoursFilter}
-                onChange={(e) => setHoursFilter(parseInt(e.target.value, 10))}
-                className="px-3 py-1.5 text-sm border rounded-md"
-              >
-                <option value="1">Последний час</option>
-                <option value="6">6 часов</option>
-                <option value="24">24 часа</option>
-                <option value="72">3 дня</option>
-                <option value="168">Неделя</option>
-                <option value="720">Месяц</option>
-              </select>
-            </div>
-            
-            {/* Action filter */}
-            <div>
-              <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Действие
-              </label>
-              <select
-                value={actionFilter}
-                onChange={(e) => setActionFilter(e.target.value)}
-                className="px-3 py-1.5 text-sm border rounded-md"
-              >
-                <option value="all">Все действия</option>
-                {uniqueActions.map(action => (
-                  <option key={action} value={action}>
-                    {getActionDescription(action)} ({data.statistics.by_action[action]})
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Resource filter */}
-            <div>
-              <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                Ресурс
-              </label>
-              <select
-                value={resourceFilter}
-                onChange={(e) => setResourceFilter(e.target.value)}
-                className="px-3 py-1.5 text-sm border rounded-md"
-              >
-                <option value="all">Все ресурсы</option>
-                {uniqueResources.map(resource => (
-                  <option key={resource} value={resource}>
-                    {getResourceDescription(resource)} ({data.statistics.by_resource[resource]})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <Button 
+          onClick={fetchLogs} 
+          size="sm" 
+          variant="outline"
+          disabled={loading}
+          className="ml-auto"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+          Обновить
+        </Button>
+        
+        <span className="text-xs text-neutral-400">
+          {data.statistics.total} действий
+        </span>
+      </div>
 
       {/* Audit logs */}
       <Card>

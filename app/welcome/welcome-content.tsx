@@ -156,8 +156,8 @@ export function WelcomeContent({
     
     // Track qualification completion (once per session)
     ymGoal('qualification_completed', { 
-      use_case: responses.use_case,
-      group_size: responses.group_size
+      community_type: responses.community_type,
+      pain_points: responses.pain_points,
     }, { once: true });
     
     // Если у пользователя есть организации — редирект на /orgs

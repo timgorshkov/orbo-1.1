@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { QUALIFICATION_STEPS, QualificationStep, QualificationQuestion } from '@/lib/qualification/config';
+import { QUALIFICATION_STEPS, QualificationQuestion } from '@/lib/qualification/config';
 import { CheckCircle2, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
-import { ymGoal } from '@/components/analytics/YandexMetrika';
 
 interface QualificationFormProps {
   onComplete: (responses: Record<string, unknown>) => void;
@@ -25,9 +24,6 @@ export function QualificationForm({
   const [responses, setResponses] = useState<Record<string, unknown>>(initialResponses);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Track which steps have been sent to prevent duplicates
-  const sentSteps = useRef(new Set<number>());
 
   const currentStep = QUALIFICATION_STEPS[currentStepIndex];
   const isLastStep = currentStepIndex === QUALIFICATION_STEPS.length - 1;
@@ -103,15 +99,6 @@ export function QualificationForm({
         // Silent fail for progress save
       }
       
-      // Track qualification step completion (prevent duplicates)
-      const stepNumber = currentStepIndex + 1;
-      if (!sentSteps.current.has(stepNumber)) {
-        sentSteps.current.add(stepNumber);
-        ymGoal(`qualification_step_${stepNumber}`, {
-          step_id: currentStep.id
-        }, { once: true });
-      }
-      
       setCurrentStepIndex(prev => prev + 1);
     }
   };
@@ -124,23 +111,6 @@ export function QualificationForm({
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      {/* Progress indicator */}
-      <div className="flex items-center justify-center gap-2 mb-8">
-        {QUALIFICATION_STEPS.map((step, index) => (
-          <div
-            key={step.id}
-            className={cn(
-              'h-2 rounded-full transition-all duration-300',
-              index === currentStepIndex 
-                ? 'w-8 bg-primary' 
-                : index < currentStepIndex 
-                  ? 'w-8 bg-primary/50' 
-                  : 'w-2 bg-muted'
-            )}
-          />
-        ))}
-      </div>
-
       <Card className="border-0 shadow-lg">
         <CardHeader className="text-center pb-4">
           <CardTitle className="text-2xl">{currentStep.title}</CardTitle>
