@@ -121,6 +121,24 @@ export async function POST(request: NextRequest) {
 
     logger.info({ tg_user_id: tgUserId, user_id: userId }, 'TG login: authorized')
 
+    // Send follow-up bot message with "Open Orbo" button (non-blocking)
+    const regBotTokenForMsg = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
+    if (regBotTokenForMsg) {
+      fetch(`https://api.telegram.org/bot${regBotTokenForMsg}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: tgUserId,
+          text: `✅ Вы вошли как ${user.name || user.email}.\n\nНажмите кнопку ниже, чтобы перейти в Orbo:`,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🚀 Открыть Orbo', url: `${baseUrl}/orgs` },
+            ]],
+          },
+        }),
+      }).catch(() => {})
+    }
+
     return NextResponse.json({
       status: 'ok',
       loginUrl,

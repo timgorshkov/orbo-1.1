@@ -9,6 +9,7 @@ export default function TelegramLoginPage() {
   const [status, setStatus] = useState<LoginStatus>('loading');
   const [message, setMessage] = useState('');
   const [userName, setUserName] = useState('');
+  const [loginUrl, setLoginUrl] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => attemptLogin(), 200);
@@ -54,13 +55,7 @@ export default function TelegramLoginPage() {
       if (data.status === 'ok') {
         setStatus('success');
         setUserName(data.userName || '');
-        // Redirect to auto-login via opening in external browser
-        if (tg.openLink) {
-          tg.openLink(data.loginUrl, { try_instant_view: false });
-        } else {
-          window.open(data.loginUrl, '_blank');
-        }
-        setTimeout(() => tg.close(), 1500);
+        setLoginUrl(data.loginUrl || '');
         return;
       }
 
@@ -88,6 +83,16 @@ export default function TelegramLoginPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp;
     if (tg?.close) tg.close();
+  }
+
+  function openLink(url: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+    } else {
+      window.open(url, '_blank');
+    }
   }
 
   function handleGoToSignup() {
@@ -138,10 +143,19 @@ export default function TelegramLoginPage() {
                 {userName ? `Здравствуйте, ${userName}!` : 'Вход выполнен!'}
               </h1>
               <p style={{ color: '#6b7280' }}>
-                Открываем Orbo в браузере...
+                Нажмите кнопку ниже, чтобы перейти в Orbo.
               </p>
+              {loginUrl && (
+                <button
+                  onClick={() => openLink(loginUrl)}
+                  className="w-full py-3.5 rounded-xl font-semibold text-lg text-white shadow-lg active:scale-95 transition-transform"
+                  style={{ background: 'linear-gradient(to right, #2563eb, #7c3aed)' }}
+                >
+                  Открыть Orbo →
+                </button>
+              )}
               <p className="text-xs" style={{ color: '#9ca3af' }}>
-                Если ничего не произошло, закройте это окно и перейдите на my.orbo.ru
+                Также можно перейти по ссылке my.orbo.ru в браузере.
               </p>
             </>
           )}

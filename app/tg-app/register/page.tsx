@@ -11,7 +11,7 @@ interface TgUser {
   photo_url?: string;
 }
 
-type Step = 'loading' | 'exists' | 'form' | 'submitting' | 'done' | 'error';
+type Step = 'loading' | 'exists' | 'form' | 'submitting' | 'done' | 'autologin' | 'error';
 
 export default function TelegramRegisterPage() {
   const [step, setStep] = useState<Step>('loading');
@@ -81,7 +81,6 @@ export default function TelegramRegisterPage() {
       }
 
       if (result.exists) {
-        // Auto-login: call the login endpoint instead of showing "already exists"
         try {
           const loginRes = await fetch('/api/telegram/registration/login', {
             method: 'POST',
@@ -92,15 +91,7 @@ export default function TelegramRegisterPage() {
 
           if (loginResult.status === 'ok' && loginResult.loginUrl) {
             setLoginUrl(loginResult.loginUrl);
-            setStep('done');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const tgApp = (window as any).Telegram?.WebApp;
-            if (tgApp?.openLink) {
-              tgApp.openLink(loginResult.loginUrl);
-              setTimeout(() => tgApp.close(), 500);
-            } else {
-              window.open(loginResult.loginUrl, '_blank');
-            }
+            setStep('autologin');
             return;
           }
 
@@ -271,6 +262,29 @@ export default function TelegramRegisterPage() {
             </div>
           )}
 
+          {step === 'autologin' && (
+            <div className="text-center space-y-5">
+              <div className="text-5xl">✅</div>
+              <h1 className="text-xl font-bold" style={{ color: '#111827' }}>
+                Вы авторизованы!
+              </h1>
+              <p style={{ color: '#4b5563' }}>
+                {tgUser?.first_name}, нажмите кнопку ниже, чтобы перейти в Orbo.
+              </p>
+              {loginUrl && (
+                <button
+                  onClick={() => openLink(loginUrl)}
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-lg shadow-lg active:scale-95 transition-transform"
+                >
+                  Открыть Orbo →
+                </button>
+              )}
+              <p className="text-xs" style={{ color: '#9ca3af' }}>
+                Также вы можете перейти по ссылке my.orbo.ru в браузере.
+              </p>
+            </div>
+          )}
+
           {step === 'done' && (
             <div className="text-center space-y-5">
               <div className="text-5xl">🎉</div>
@@ -279,26 +293,24 @@ export default function TelegramRegisterPage() {
               </h1>
               {emailSent ? (
                 <p style={{ color: '#4b5563' }}>
-                  Мы отправили письмо на <strong>{email}</strong> — перейдите по ссылке в письме для подтверждения.
+                  На <strong>{email}</strong> отправлено письмо для подтверждения.
                 </p>
               ) : (
                 <p style={{ color: '#4b5563' }}>
-                  Не удалось отправить письмо на <strong>{email}</strong>. Вы можете подтвердить email позже в настройках.
+                  Не удалось отправить письмо на <strong>{email}</strong>. Подтвердите email позже в настройках.
                 </p>
               )}
               {loginUrl && (
                 <button
                   onClick={() => openLink(loginUrl)}
-                  className="w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium"
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold text-lg shadow-lg active:scale-95 transition-transform"
                 >
-                  Перейти в Orbo
+                  Перейти в Orbo →
                 </button>
               )}
-              {emailSent && (
-                <p className="text-xs" style={{ color: '#9ca3af' }}>
-                  Не пришло письмо? Проверьте папку «Спам».
-                </p>
-              )}
+              <p className="text-xs" style={{ color: '#9ca3af' }}>
+                {emailSent ? 'Не пришло письмо? Проверьте папку «Спам».' : 'Нажмите кнопку выше, чтобы начать работу.'}
+              </p>
             </div>
           )}
 
