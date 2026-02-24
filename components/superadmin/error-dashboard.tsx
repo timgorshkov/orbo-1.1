@@ -102,8 +102,8 @@ export function ErrorDashboard() {
   useEffect(() => {
     fetchErrors()
     
-    // Автообновление каждые 30 секунд
-    const interval = setInterval(fetchErrors, 30000)
+    // Автообновление каждые 2 минуты
+    const interval = setInterval(fetchErrors, 120000)
     return () => clearInterval(interval)
   }, [levelFilter, hoursFilter])
 
@@ -142,11 +142,28 @@ export function ErrorDashboard() {
     ? Array.from(new Set(data.errors.map(e => getErrorCodeInfo(e.error_code || '').category)))
     : []
 
-  // Filter errors by category
-  const filteredErrors = data?.errors.filter(e => {
-    if (categoryFilter === 'all') return true
-    return getErrorCodeInfo(e.error_code || '').category === categoryFilter
-  }) || []
+  // Filter errors by category, then deduplicate by fingerprint (show latest + count)
+  const filteredErrors = (() => {
+    const catFiltered = data?.errors.filter(e => {
+      if (categoryFilter === 'all') return true
+      return getErrorCodeInfo(e.error_code || '').category === categoryFilter
+    }) || []
+
+    const seen = new Map<string, { entry: ErrorLog; count: number }>()
+    for (const err of catFiltered) {
+      const key = err.fingerprint || `${err.error_code}_${err.message}`
+      const existing = seen.get(key)
+      if (existing) {
+        existing.count++
+        if (new Date(err.created_at) > new Date(existing.entry.created_at)) {
+          existing.entry = err
+        }
+      } else {
+        seen.set(key, { entry: err, count: 1 })
+      }
+    }
+    return Array.from(seen.values())
+  })()
 
   if (loading && !data) {
     return (
@@ -387,7 +404,7 @@ export function ErrorDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredErrors.map((err) => {
+              {filteredErrors.map(({ entry: err, count }) => {
                 const isExpanded = expandedErrors.has(err.id)
                 const codeInfo = getErrorCodeInfo(err.error_code || '')
                 
@@ -417,6 +434,12 @@ export function ErrorDashboard() {
                             {err.error_code && (
                               <Badge variant="outline" className="text-xs font-mono">
                                 {err.error_code}
+                              </Badge>
+                            )}
+                            
+                            {count > 1 && (
+                              <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600">
+                                ×{count}
                               </Badge>
                             )}
                             

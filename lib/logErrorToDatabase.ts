@@ -57,6 +57,21 @@ export async function logErrorToDatabase(options: LogErrorOptions): Promise<void
       .digest('hex')
       .substring(0, 16);
 
+    // Deduplicate: skip if same fingerprint was logged within last hour
+    const oneHourAgo = new Date()
+    oneHourAgo.setHours(oneHourAgo.getHours() - 1)
+
+    const { data: existing } = await supabaseAdmin
+      .from('error_logs')
+      .select('id')
+      .eq('fingerprint', fingerprint)
+      .gte('created_at', oneHourAgo.toISOString())
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      return // Same error already logged within the last hour
+    }
+
     // Insert error log
     const { error } = await supabaseAdmin
       .from('error_logs')

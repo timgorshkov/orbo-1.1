@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       info: stats?.filter(s => s.level === 'info').length || 0,
     };
     
-    logger.info({ 
+    logger.debug({ 
       errors_count: errors?.length || 0, 
       statistics 
     }, 'Error logs fetched successfully');

@@ -88,9 +88,32 @@ async function flushErrorQueue(): Promise<void> {
       return;
     }
     
-    // Insert each entry
-    for (const entry of entries) {
+    // Deduplicate within the batch by fingerprint
+    const seen = new Set<string>();
+    const uniqueEntries = entries.filter(entry => {
+      const fp = entry.fingerprint || generateFingerprint(entry);
+      if (seen.has(fp)) return false;
+      seen.add(fp);
+      return true;
+    });
+
+    // Insert each unique entry (with DB-level dedup check)
+    const oneHourAgo = new Date();
+    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+
+    for (const entry of uniqueEntries) {
       try {
+        const fp = entry.fingerprint || generateFingerprint(entry);
+
+        const { data: existing } = await client
+          .from('error_logs')
+          .select('id')
+          .eq('fingerprint', fp)
+          .gte('created_at', oneHourAgo.toISOString())
+          .limit(1);
+
+        if (existing && existing.length > 0) continue;
+
         await client
           .from('error_logs')
           .insert({
@@ -103,11 +126,10 @@ async function flushErrorQueue(): Promise<void> {
             user_id: entry.user_id || null,
             request_id: entry.request_id || null,
             user_agent: entry.user_agent?.substring(0, 500) || null,
-            fingerprint: entry.fingerprint || generateFingerprint(entry),
+            fingerprint: fp,
             created_at: new Date().toISOString()
           });
       } catch (e) {
-        // Log to console but don't recurse
         console.error('[ErrorLoggingService] Failed to insert error log:', e);
       }
     }
