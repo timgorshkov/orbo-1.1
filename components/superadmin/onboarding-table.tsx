@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 
@@ -19,6 +19,15 @@ type OnboardingMessage = {
 }
 
 type FilterStatus = 'all' | 'sent' | 'pending' | 'skipped' | 'failed'
+
+type DiagnosticData = {
+  statusCounts: Record<string, number>
+  overdue: { count: number; byStep: Record<string, number>; maxOverdueHours: number }
+  failedErrors: Record<string, number>
+  lastSentAt: string | null
+  cronRunning: boolean
+  diagnosis: string[]
+}
 
 const STEP_LABELS: Record<string, string> = {
   connect_telegram: 'Подключи TG',
@@ -48,17 +57,17 @@ const EMAIL_SUBJECTS: Record<string, string> = {
 function getEmailPreview(stepKey: string): string {
   switch (stepKey) {
     case 'connect_telegram':
-      return 'Привяжите Telegram-аккаунт, чтобы Orbo заработал в полную силу:\n• Добавите бота в группу — участники начнут появляться в карточках\n• Будете получать уведомления о важных событиях в группе\n• Сможете отправлять анонсы и напоминания от имени бота'
+      return 'Привяжите Telegram-аккаунт:\n• Участники начнут появляться в карточках\n• Уведомления о событиях в группе\n• Анонсы и напоминания от имени бота'
     case 'workspace_ready':
-      return 'Аккаунт создан! Вот что стоит сделать первым:\n1. Подключите Telegram-группу — добавьте бота\n2. Создайте событие — MiniApp для регистрации прямо в Telegram\n3. Поделитесь ссылкой — получите первые регистрации'
+      return 'Аккаунт создан! Первые шаги:\n1. Подключите Telegram-группу\n2. Создайте событие — MiniApp в Telegram\n3. Поделитесь ссылкой'
     case 'add_group':
-      return 'Пока группа не подключена, Orbo не видит ваших участников.\n\nПосле подключения:\n• Участники автоматически появятся в карточках\n• Заработает аналитика: кто пишет, кто молчит\n• Можно будет создавать события с анонсами'
+      return 'Пока группа не подключена, Orbo не видит участников.\n• Карточки с именами\n• Аналитика: кто пишет, кто молчит\n• События с анонсами в группу'
     case 'create_event':
-      return 'Мероприятие — лучший способ проверить Orbo в деле:\n• MiniApp — регистрация в один тап, не покидая Telegram\n• Напоминания — бот пишет в личку за 24ч и за 1ч\n• Учёт — кто зарегистрировался, оплатил, пришёл'
+      return 'Мероприятие — проверьте Orbo в деле:\n• MiniApp — регистрация в один тап\n• Напоминания за 24ч и за 1ч\n• Учёт регистраций и оплат'
     case 'video_overview':
-      return 'Помимо событий и участников, в Orbo есть:\n• ✨ AI-анализ участников (5 бесплатных)\n• Заявки на вступление — анкета через MiniApp, spam-score\n• Анонсы — бот публикует по расписанию\n• Импорт истории — загрузите чат для аналитики'
+      return 'Помимо событий:\n• ✨ AI-анализ участников (5 бесплатных)\n• Заявки через MiniApp\n• Анонсы по расписанию\n• Импорт истории чата'
     case 'check_in':
-      return 'Прошла неделя. Всё получилось?\nЕсли что-то не работает — ответьте на это письмо.\nТелеграм основателя: @timgorshkov'
+      return 'Прошла неделя. Всё получилось?\nОтветьте на письмо или напишите в Telegram.\n@timgorshkov'
     default:
       return ''
   }
@@ -67,15 +76,15 @@ function getEmailPreview(stepKey: string): string {
 function getTelegramPreview(stepKey: string): string {
   switch (stepKey) {
     case 'workspace_ready':
-      return '🏠 аккаунт создан!\n\n1. Подключите Telegram-группу\n2. Создайте событие\n3. Поделитесь ссылкой в группу'
+      return '🏠 аккаунт создан!\n1. Подключите группу\n2. Создайте событие\n3. Поделитесь ссылкой'
     case 'add_group':
-      return '💡 пока нет группы, Orbo не видит участников\n\nДобавьте бота как администратора:\n• Участники появятся в карточках\n• Заработает аналитика\n• Можно создавать события'
+      return '💡 пока нет группы, Orbo не видит участников\n• Карточки с именами\n• Аналитика\n• События с анонсами'
     case 'create_event':
-      return '🎉 попробуйте создать событие\n\n• MiniApp — регистрация в один тап\n• Бот напомнит за 24ч и за 1ч\n• Кто зарегистрировался, оплатил, пришёл'
+      return '🎉 попробуйте создать событие\n• MiniApp-регистрация\n• Напоминания за 24ч/1ч\n• Учёт участников'
     case 'video_overview':
-      return '✨ попробуйте AI-анализ\n\n• Оценка здоровья сообщества\n• Конкретные находки\n• Рекомендации на неделю\n\n5 бесплатных анализов'
+      return '✨ AI-анализ сообщества\n• Здоровье сообщества\n• Находки по данным\n• Рекомендации\n5 бесплатных'
     case 'check_in':
-      return '👋 как дела с Orbo?\n\nПрошла неделя. Если непонятно — напишите.\nТелеграм: @timgorshkov'
+      return '👋 как дела с Orbo?\nНапишите мне.\n@timgorshkov'
     default:
       return ''
   }
@@ -93,18 +102,127 @@ function formatDate(dateStr: string | null): string {
     ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
+function getOverdueHours(scheduledAt: string): number {
+  return Math.max(0, (Date.now() - new Date(scheduledAt).getTime()) / (1000 * 60 * 60))
+}
+
+function formatOverdue(hours: number): string {
+  if (hours < 1) return `${Math.round(hours * 60)} мин.`
+  if (hours < 24) return `${Math.round(hours)} ч.`
+  return `${Math.round(hours / 24)} дн.`
+}
+
 function getPreview(msg: OnboardingMessage): string {
   if (msg.channel === 'email') {
     return `📧 Тема: ${EMAIL_SUBJECTS[msg.stepKey] || msg.stepKey}\n\n${getEmailPreview(msg.stepKey)}`
   }
-  return `📱 Telegram-сообщение:\n\n${getTelegramPreview(msg.stepKey)}`
+  return `📱 Telegram:\n\n${getTelegramPreview(msg.stepKey)}`
 }
 
-export default function OnboardingTable({ messages }: { messages: OnboardingMessage[] }) {
+function DiagnosticsBanner({ onProcessed }: { onProcessed: () => void }) {
+  const [diag, setDiag] = useState<DiagnosticData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
+  const [processResult, setProcessResult] = useState<string | null>(null)
+
+  const fetchDiagnostics = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/superadmin/onboarding')
+      if (res.ok) setDiag(await res.json())
+    } catch { /* ignore */ }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchDiagnostics() }, [fetchDiagnostics])
+
+  const handleProcess = async () => {
+    setProcessing(true)
+    setProcessResult(null)
+    try {
+      const res = await fetch('/api/superadmin/onboarding', { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        setProcessResult(`Обработано: ${data.processed} (отправлено: ${data.sent}, пропущено: ${data.skipped}, ошибки: ${data.failed})`)
+        await fetchDiagnostics()
+        onProcessed()
+      } else {
+        setProcessResult(`Ошибка: ${data.error}`)
+      }
+    } catch (e) {
+      setProcessResult(`Сетевая ошибка: ${e}`)
+    }
+    setProcessing(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 animate-pulse">
+        <div className="h-4 bg-gray-200 rounded w-1/3" />
+      </div>
+    )
+  }
+
+  if (!diag) return null
+
+  const hasProblems = diag.diagnosis.length > 0
+  const borderColor = diag.overdue.count > 0 && !diag.cronRunning
+    ? 'border-red-300 bg-red-50'
+    : diag.overdue.count > 0
+      ? 'border-yellow-300 bg-yellow-50'
+      : 'border-green-300 bg-green-50'
+
+  return (
+    <div className={`border rounded-lg p-4 space-y-3 ${borderColor}`}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900">Диагностика</h3>
+        <div className="flex items-center gap-2">
+          {processResult && (
+            <span className="text-xs text-gray-600">{processResult}</span>
+          )}
+          <button
+            onClick={handleProcess}
+            disabled={processing}
+            className="px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {processing ? 'Обработка...' : 'Запустить отправку вручную'}
+          </button>
+          <button
+            onClick={fetchDiagnostics}
+            className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      {hasProblems ? (
+        <div className="space-y-1">
+          {diag.diagnosis.map((line, i) => (
+            <p key={i} className="text-xs text-gray-800 whitespace-pre-wrap">{line}</p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-green-700">✅ Проблем не обнаружено</p>
+      )}
+
+      <div className="flex gap-4 text-[10px] text-gray-500 pt-1 border-t border-gray-200/50">
+        <span>Просрочено: <strong className={diag.overdue.count > 0 ? 'text-red-600' : ''}>{diag.overdue.count}</strong></span>
+        <span>Макс. просрочка: <strong>{diag.overdue.maxOverdueHours > 0 ? `${diag.overdue.maxOverdueHours} ч.` : '—'}</strong></span>
+        <span>Крон: <strong className={diag.cronRunning ? 'text-green-600' : 'text-red-600'}>{diag.cronRunning ? 'работает' : 'не работает'}</strong></span>
+        <span>Последняя отправка: <strong>{diag.lastSentAt ? formatDate(diag.lastSentAt) : 'никогда'}</strong></span>
+      </div>
+    </div>
+  )
+}
+
+export default function OnboardingTable({ messages: initialMessages }: { messages: OnboardingMessage[] }) {
+  const [messages] = useState(initialMessages)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all')
   const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'telegram'>('all')
   const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const filtered = messages.filter(m => {
     const matchesSearch = !search ||
@@ -137,6 +255,11 @@ export default function OnboardingTable({ messages }: { messages: OnboardingMess
 
   return (
     <div className="space-y-4">
+      <DiagnosticsBanner
+        key={refreshKey}
+        onProcessed={() => setRefreshKey(k => k + 1)}
+      />
+
       <div className="flex flex-wrap items-center gap-3">
         <Input
           placeholder="Поиск по имени, email, telegram..."
@@ -199,7 +322,7 @@ export default function OnboardingTable({ messages }: { messages: OnboardingMess
                 <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-700">Статус</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-700">Запланировано</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-700">Отправлено</th>
-                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-700">Ошибка</th>
+                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-700">Проблема</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -219,11 +342,24 @@ export default function OnboardingTable({ messages }: { messages: OnboardingMess
                       : userName
 
                   const statusConf = STATUS_CONFIG[msg.status]
+                  const isOverdue = msg.status === 'pending' && new Date(msg.scheduledAt) < new Date()
+                  const overdueH = isOverdue ? getOverdueHours(msg.scheduledAt) : 0
+
+                  let problemText = msg.error || ''
+                  if (isOverdue && !problemText) {
+                    problemText = `Просрочено ${formatOverdue(overdueH)} — крон не обработал`
+                  }
 
                   return (
                     <tr
                       key={msg.id}
-                      className="hover:bg-blue-50/50 cursor-default"
+                      className={`cursor-default ${
+                        isOverdue
+                          ? 'bg-red-50/60 hover:bg-red-50'
+                          : msg.status === 'failed'
+                            ? 'bg-red-50/40 hover:bg-red-50/60'
+                            : 'hover:bg-blue-50/50'
+                      }`}
                       onMouseEnter={(e) => handleRowEnter(msg, e)}
                       onMouseLeave={() => setTooltip(null)}
                     >
@@ -237,9 +373,15 @@ export default function OnboardingTable({ messages }: { messages: OnboardingMess
                         <span className="font-medium text-gray-900">{STEP_LABELS[msg.stepKey] || msg.stepKey}</span>
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusConf.className}`}>
-                          {statusConf.label}
-                        </span>
+                        {isOverdue ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">
+                            🔴 Просрочено
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusConf.className}`}>
+                            {statusConf.label}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-500">
                         {formatDate(msg.scheduledAt)}
@@ -247,8 +389,14 @@ export default function OnboardingTable({ messages }: { messages: OnboardingMess
                       <td className="px-3 py-2 text-xs text-gray-500">
                         {formatDate(msg.sentAt)}
                       </td>
-                      <td className="px-3 py-2 text-xs text-red-600 max-w-[150px] truncate" title={msg.error || undefined}>
-                        {msg.error || '—'}
+                      <td className="px-3 py-2 text-xs max-w-[200px] truncate" title={problemText || undefined}>
+                        {isOverdue ? (
+                          <span className="text-red-600 font-medium">Просрочено {formatOverdue(overdueH)}</span>
+                        ) : msg.error ? (
+                          <span className="text-red-600">{msg.error}</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   )
