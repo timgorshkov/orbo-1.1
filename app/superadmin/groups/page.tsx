@@ -134,11 +134,24 @@ export default async function SuperadminGroupsPage() {
   
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
-        <p className="text-gray-600 mt-1">
-          Все Telegram группы с метриками
-        </p>
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Группы</h2>
+          <p className="text-gray-600 mt-1">
+            Все Telegram группы с метриками
+          </p>
+        </div>
+        <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
+          <a
+            href="/superadmin/organizations"
+            className="px-3 py-1.5 text-xs rounded-md text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            Организации
+          </a>
+          <span className="px-3 py-1.5 text-xs rounded-md bg-white shadow-sm text-gray-900 font-medium">
+            Группы
+          </span>
+        </div>
       </div>
       
       <GroupsTable groups={formattedGroups} />

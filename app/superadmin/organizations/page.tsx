@@ -40,7 +40,7 @@ export default async function SuperadminOrganizationsPage() {
     supabase.from('material_pages').select('id, org_id').in('org_id', orgIds),
     supabase.from('events').select('id, org_id').in('org_id', orgIds),
     supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
-    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username').in('org_id', orgIds)
+    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name').in('org_id', orgIds)
   ])
   
   // Получаем telegram_groups для подсчёта bot_status
@@ -80,15 +80,16 @@ export default async function SuperadminOrganizationsPage() {
   }
   
   // Создаём маппинг telegram для организаций (по owner/admin)
-  const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null }>()
+  const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null, telegram_display_name: string | null }>()
   for (const ta of telegramAccounts || []) {
-    // Проверяем что этот telegram аккаунт принадлежит owner или admin
     const isOwnerOrAdmin = memberships?.some(m => m.org_id === ta.org_id && m.user_id === ta.user_id)
     if (isOwnerOrAdmin && !telegramMap.has(ta.org_id)) {
+      const displayName = [ta.telegram_first_name, ta.telegram_last_name].filter(Boolean).join(' ') || null
       telegramMap.set(ta.org_id, {
         has_telegram: true,
         telegram_verified: ta.is_verified || false,
-        telegram_username: ta.telegram_username
+        telegram_username: ta.telegram_username,
+        telegram_display_name: displayName,
       })
     }
   }
@@ -137,7 +138,7 @@ export default async function SuperadminOrganizationsPage() {
   // Форматируем данные
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
-    const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null }
+    const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null, telegram_display_name: null }
     const ownerInfo = orgOwnerMap.get(org.id) || { email: null, name: null }
     
     return {
@@ -151,6 +152,7 @@ export default async function SuperadminOrganizationsPage() {
       has_telegram: telegram.has_telegram,
       telegram_verified: telegram.telegram_verified,
       telegram_username: telegram.telegram_username,
+      telegram_display_name: telegram.telegram_display_name,
       groups_count: groups.count,
       groups_with_bot: groups.withBot,
       participants_count: participantsMap.get(org.id) || 0,
@@ -165,11 +167,24 @@ export default async function SuperadminOrganizationsPage() {
   
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Организации</h2>
-        <p className="text-gray-600 mt-1">
-          Все организации платформы с метриками ({formattedOrgs.length} всего)
-        </p>
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Организации</h2>
+          <p className="text-gray-600 mt-1">
+            Все организации платформы с метриками ({formattedOrgs.length} всего)
+          </p>
+        </div>
+        <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
+          <span className="px-3 py-1.5 text-xs rounded-md bg-white shadow-sm text-gray-900 font-medium">
+            Организации
+          </span>
+          <a
+            href="/superadmin/groups"
+            className="px-3 py-1.5 text-xs rounded-md text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            Группы
+          </a>
+        </div>
       </div>
       
       <OrganizationsTable 

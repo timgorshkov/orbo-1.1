@@ -18,6 +18,7 @@ type Organization = {
   has_telegram: boolean
   telegram_verified: boolean
   telegram_username: string | null
+  telegram_display_name: string | null
   groups_count: number
   groups_with_bot: number
   participants_count: number
@@ -160,8 +161,14 @@ export default function OrganizationsTable({
                             >
                               ✅ @{org.telegram_username}
                             </a>
-                          ) : '✅ Верифицирован'
-                        ) : '⚠️ Добавлен'
+                          ) : (
+                            <span title="Username не задан">
+                              ✅ {org.telegram_display_name || 'Верифицирован'}
+                            </span>
+                          )
+                        ) : (
+                          <span>⚠️ {org.telegram_display_name || 'Добавлен'}</span>
+                        )
                       ) : '❌ Нет'}
                     </td>
                     <td className="px-4 py-3 text-sm text-right">{org.groups_count}</td>
