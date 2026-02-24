@@ -25,46 +25,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // Handle /start [ref_campaign]
+    // Handle /start [param]
     if (text.startsWith('/start')) {
       const parts = text.split(' ')
       const startParam = parts[1] || null
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
-      const botUsername = process.env.TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
 
-      const miniAppUrl = startParam
-        ? `https://t.me/${botUsername}/register?startapp=${startParam}`
-        : `https://t.me/${botUsername}/register`
+      if (startParam === 'login') {
+        const loginText =
+          '🔐 *Вход в Orbo*\n\n' +
+          'Нажмите кнопку ниже для входа в ваш аккаунт:'
 
-      const welcomeText =
-        '🚀 *Orbo — платформа для управления сообществами*\n\n' +
-        'Регистрация, напоминания, карточки участников, события — всё в одном месте.\n\n' +
-        'Нажмите кнопку ниже, чтобы создать пространство:'
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: loginText,
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                {
+                  text: '🔑 Войти в Orbo',
+                  web_app: { url: `${appUrl}/tg-app/login` },
+                }
+              ]]
+            }
+          }),
+        })
 
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        logger.info({
           chat_id: chatId,
-          text: welcomeText,
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              {
-                text: '📱 Создать пространство',
-                web_app: { url: `${appUrl}/tg-app/register` },
-              }
-            ]]
-          }
-        }),
-      })
+          tg_user_id: message.from?.id,
+        }, 'Registration bot /start login handled')
+      } else {
+        const welcomeText =
+          '🚀 *Orbo — платформа для управления сообществами*\n\n' +
+          'Регистрация, напоминания, карточки участников, события — всё в одном месте.\n\n' +
+          'Нажмите кнопку ниже, чтобы создать пространство:'
 
-      logger.info({
-        chat_id: chatId,
-        start_param: startParam,
-        tg_user_id: message.from?.id,
-      }, 'Registration bot /start handled')
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: welcomeText,
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                {
+                  text: '📱 Создать пространство',
+                  web_app: { url: `${appUrl}/tg-app/register` },
+                }
+              ]]
+            }
+          }),
+        })
+
+        logger.info({
+          chat_id: chatId,
+          start_param: startParam,
+          tg_user_id: message.from?.id,
+        }, 'Registration bot /start handled')
+      }
     }
 
     return NextResponse.json({ ok: true })

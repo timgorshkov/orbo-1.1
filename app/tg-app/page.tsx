@@ -102,6 +102,13 @@ export default function TelegramAppHome() {
       }
     }
     
+    // Login deep link
+    if (startParam === 'login') {
+      setStatus('redirecting');
+      router.replace('/tg-app/login');
+      return;
+    }
+
     // Registration deep links
     if (startParam.startsWith('ref_')) {
       setStatus('redirecting');
@@ -142,12 +149,22 @@ export default function TelegramAppHome() {
               <div className="text-6xl">🚀</div>
               <h1 className="text-xl font-bold text-gray-900">Orbo</h1>
               <p className="text-gray-600">
-                Используйте ссылку для перехода к нужному разделу
+                Платформа для управления сообществами
               </p>
-              <p className="text-sm text-gray-400">
-                События: ?startapp=e-EVENT_ID<br />
-                Заявки: ?startapp=apply-FORM_ID
-              </p>
+              <div className="space-y-3 pt-2">
+                <button
+                  onClick={() => router.replace('/tg-app/login')}
+                  className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium"
+                >
+                  Войти
+                </button>
+                <button
+                  onClick={() => router.replace('/tg-app/register')}
+                  className="w-full py-3 rounded-lg bg-gray-100 text-gray-700 font-medium"
+                >
+                  Зарегистрироваться
+                </button>
+              </div>
             </div>
           )}
 
