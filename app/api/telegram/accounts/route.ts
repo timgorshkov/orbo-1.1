@@ -299,3 +299,67 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  const logger = createAPILogger(request, { endpoint: '/api/telegram/accounts' });
+  try {
+    const { searchParams } = new URL(request.url);
+    const orgId = searchParams.get('orgId');
+
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
+    }
+
+    const user = await getUnifiedUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const supabase = createAdminServer();
+
+    // Verify the user owns this telegram account link
+    const { data: tgAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .maybeSingle();
+
+    if (!tgAccount) {
+      return NextResponse.json({ error: 'No linked account found' }, { status: 404 });
+    }
+
+    // Remove connected groups/channels for this org
+    const { error: groupsError } = await supabase
+      .from('org_telegram_groups')
+      .delete()
+      .eq('org_id', orgId);
+
+    if (groupsError) {
+      logger.warn({ error: groupsError.message, org_id: orgId }, 'Error removing org groups (continuing)');
+    }
+
+    // Remove the telegram account link
+    const { error: deleteError } = await supabase
+      .from('user_telegram_accounts')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('org_id', orgId);
+
+    if (deleteError) {
+      logger.error({ error: deleteError.message, user_id: user.id, org_id: orgId }, 'Error deleting telegram account');
+      return NextResponse.json({ error: 'Failed to unlink account' }, { status: 500 });
+    }
+
+    logger.info({ user_id: user.id, org_id: orgId }, 'Telegram account unlinked, groups removed');
+
+    return NextResponse.json({ success: true, message: 'Telegram account unlinked' });
+
+  } catch (error: any) {
+    logger.error({
+      error: error.message || String(error),
+      stack: error.stack
+    }, 'Error in telegram accounts DELETE');
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
