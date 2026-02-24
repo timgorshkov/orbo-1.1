@@ -95,17 +95,6 @@ export default function TelegramLoginPage() {
     }
   }
 
-  function handleGoToSignup() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp;
-    const signupUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru') + '/signup';
-    if (tg?.openLink) {
-      tg.openLink(signupUrl, { try_instant_view: false });
-    } else {
-      window.open(signupUrl, '_blank');
-    }
-  }
-
   function handleGoToSignin() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp;
@@ -167,11 +156,11 @@ export default function TelegramLoginPage() {
                 Аккаунт не найден
               </h1>
               <p style={{ color: '#6b7280' }}>
-                К вашему Telegram не привязан аккаунт Orbo.
+                К вашему Telegram не привязан аккаунт Orbo. Зарегистрируйтесь за минуту.
               </p>
               <div className="space-y-3 pt-2">
                 <button
-                  onClick={handleGoToSignup}
+                  onClick={() => { window.location.href = '/tg-app/register'; }}
                   className="w-full py-3 rounded-lg font-medium text-white"
                   style={{ backgroundColor: '#2563eb' }}
                 >

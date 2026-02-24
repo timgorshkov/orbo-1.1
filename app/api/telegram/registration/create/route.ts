@@ -60,17 +60,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Double-check TG account doesn't already exist
-    const { data: existingTg } = await supabaseAdmin
-      .from('user_telegram_accounts')
+    // Check if this Telegram account is already registered (via accounts table only)
+    const { data: existingAccount } = await supabaseAdmin
+      .from('accounts')
       .select('user_id')
-      .eq('telegram_user_id', tgUserId)
-      .eq('is_verified', true)
+      .eq('provider', 'telegram')
+      .eq('provider_account_id', String(tgUserId))
       .maybeSingle()
 
-    if (existingTg) {
+    if (existingAccount) {
       return NextResponse.json(
-        { error: 'Telegram-аккаунт уже привязан. Войдите через my.orbo.ru' },
+        { error: 'Telegram-аккаунт уже зарегистрирован. Войдите через my.orbo.ru' },
         { status: 409 }
       )
     }
