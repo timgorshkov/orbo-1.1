@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 // GET - List pipelines for organization
 export async function GET(request: NextRequest) {
@@ -187,6 +188,15 @@ export async function POST(request: NextRequest) {
     };
     
     logger.info({ org_id, pipeline_id: pipelineId, type: pipeline_type }, 'Pipeline created');
+    
+    logAdminAction({
+      orgId: org_id,
+      userId: user.id,
+      action: AdminActions.CREATE_PIPELINE,
+      resourceType: ResourceTypes.PIPELINE,
+      resourceId: pipelineId,
+      metadata: { name, pipeline_type },
+    }).catch(() => {});
     
     return NextResponse.json({ pipeline }, { status: 201 });
   } catch (error) {

@@ -158,8 +158,34 @@ export const AdminActions = {
   // ==========================================
   // ORGANIZATION
   // ==========================================
+  CREATE_ORGANIZATION: 'create_organization',
   UPDATE_ORG_SETTINGS: 'update_org_settings',
   UPDATE_ORG_PROFILE: 'update_org_profile',
+  CREATE_INVITE: 'create_invite',
+  ADD_TEAM_MEMBER: 'add_team_member',
+  
+  // ==========================================
+  // ANNOUNCEMENTS
+  // ==========================================
+  CREATE_ANNOUNCEMENT: 'create_announcement',
+  SEND_ANNOUNCEMENT: 'send_announcement',
+  
+  // ==========================================
+  // APPLICATIONS
+  // ==========================================
+  CREATE_PIPELINE: 'create_pipeline',
+  CREATE_APPLICATION_FORM: 'create_application_form',
+  MOVE_APPLICATION_STAGE: 'move_application_stage',
+  
+  // ==========================================
+  // TELEGRAM CHANNELS
+  // ==========================================
+  CONNECT_CHANNEL: 'connect_channel',
+  
+  // ==========================================
+  // AI
+  // ==========================================
+  AI_COMMUNITY_INSIGHTS: 'ai_community_insights',
   
   // ==========================================
   // ERRORS (Superadmin)
@@ -195,6 +221,14 @@ export const ResourceTypes = {
   IMPORT: 'import',
   DIGEST: 'digest',
   ORGANIZATION: 'organization',
+  INVITE: 'invite',
+  TEAM_MEMBER: 'team_member',
+  ANNOUNCEMENT: 'announcement',
+  PIPELINE: 'pipeline',
+  APPLICATION_FORM: 'application_form',
+  APPLICATION: 'application',
+  CHANNEL: 'channel',
+  AI_INSIGHTS: 'ai_insights',
   ERROR: 'error',
   APP: 'app',
   APP_ITEM: 'app_item',

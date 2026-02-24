@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { enrichParticipant } from '@/lib/services/participantEnrichmentService'
 import { createAPILogger } from '@/lib/logger'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 /**
  * POST: Run AI enrichment on top 2 most active participants
@@ -158,6 +159,20 @@ export async function POST(request: NextRequest) {
       duration_ms: duration,
       credits_remaining: newRemaining,
     }, 'AI participant profiles analyzed')
+
+    logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.AI_COMMUNITY_INSIGHTS,
+      resourceType: ResourceTypes.AI_INSIGHTS,
+      resourceId: orgId,
+      metadata: {
+        profiles_analyzed: profiles.filter(p => p.success).length,
+        participant_ids: profiles.map(p => p.id),
+        credits_remaining: newRemaining,
+        duration_ms: duration,
+      },
+    }).catch(() => {});
 
     return NextResponse.json({
       profiles,

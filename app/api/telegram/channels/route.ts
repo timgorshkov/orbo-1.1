@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 // GET - List channels for organization
 export async function GET(request: NextRequest) {
@@ -194,6 +195,15 @@ export async function POST(request: NextRequest) {
       tg_chat_id: tgChatId,
       duration: Date.now() - startTime
     }, 'Channel added to organization');
+    
+    logAdminAction({
+      orgId,
+      userId: user.id,
+      action: AdminActions.CONNECT_CHANNEL,
+      resourceType: ResourceTypes.CHANNEL,
+      resourceId: channelId,
+      metadata: { tg_chat_id: tgChatId, username, title: channelTitle },
+    }).catch(() => {});
     
     return NextResponse.json({
       success: true,

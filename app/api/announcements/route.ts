@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 /**
  * GET /api/announcements - Получить список анонсов организации
@@ -169,6 +170,17 @@ export async function POST(request: NextRequest) {
       scheduledAt: scheduled_at,
       targetGroups: target_groups.length
     }, 'Announcement created');
+    
+    if (createdById) {
+      logAdminAction({
+        orgId: org_id,
+        userId: createdById,
+        action: AdminActions.CREATE_ANNOUNCEMENT,
+        resourceType: ResourceTypes.ANNOUNCEMENT,
+        resourceId: announcement.id,
+        metadata: { title, target_groups_count: target_groups.length, scheduled_at },
+      }).catch(() => {});
+    }
     
     return NextResponse.json({ announcement }, { status: 201 });
   } catch (error) {

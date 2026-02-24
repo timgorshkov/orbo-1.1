@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +112,15 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       org_name: name
     }, 'Organization created successfully');
+    
+    logAdminAction({
+      orgId: org.id,
+      userId: user.id,
+      action: AdminActions.CREATE_ORGANIZATION,
+      resourceType: ResourceTypes.ORGANIZATION,
+      resourceId: org.id,
+      metadata: { org_name: name.trim() },
+    }).catch(() => {});
     
     // Sync to CRM (non-blocking)
     import('@/lib/services/weeekService').then(({ onOrganizationCreated }) => {

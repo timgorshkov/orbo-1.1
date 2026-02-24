@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 export async function POST(
   request: NextRequest,
@@ -89,6 +90,15 @@ export async function POST(
           })
           .eq('id', existingMembership.id)
 
+        logAdminAction({
+          orgId: orgId!,
+          userId: user.id,
+          action: AdminActions.ADD_TEAM_MEMBER,
+          resourceType: ResourceTypes.TEAM_MEMBER,
+          resourceId: existingUser.id,
+          metadata: { email, role: 'admin', method: 'promote' },
+        }).catch(() => {});
+
         return NextResponse.json({
           success: true,
           message: 'Участник повышен до администратора',
@@ -146,6 +156,15 @@ export async function POST(
           org_id: orgId
         }, 'Failed to send admin notification');
       }
+
+      logAdminAction({
+        orgId: orgId!,
+        userId: user.id,
+        action: AdminActions.ADD_TEAM_MEMBER,
+        resourceType: ResourceTypes.TEAM_MEMBER,
+        resourceId: existingUser.id,
+        metadata: { email, role: 'admin', method: 'direct_add' },
+      }).catch(() => {});
 
       return NextResponse.json({
         success: true,
@@ -306,6 +325,15 @@ export async function POST(
           link: inviteLink
         }, 'DEV: Invitation created');
       }
+
+      logAdminAction({
+        orgId: orgId!,
+        userId: user.id,
+        action: AdminActions.ADD_TEAM_MEMBER,
+        resourceType: ResourceTypes.TEAM_MEMBER,
+        resourceId: invitation.id,
+        metadata: { email, role: 'admin', method: 'invitation' },
+      }).catch(() => {});
 
       return NextResponse.json({
         success: true,

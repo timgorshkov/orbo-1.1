@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 
 // GET - получить все приглашения организации
 export async function GET(
@@ -166,6 +167,16 @@ export async function POST(
       org_id: orgId,
       access_type
     }, 'Invite created');
+    
+    logAdminAction({
+      orgId: orgId!,
+      userId: user.id,
+      action: AdminActions.CREATE_INVITE,
+      resourceType: ResourceTypes.INVITE,
+      resourceId: invite.id,
+      metadata: { access_type, max_uses, has_expiry: !!expires_at },
+    }).catch(() => {});
+    
     return NextResponse.json(invite, { status: 201 })
   } catch (error) {
     logger.error({ 

@@ -41,8 +41,26 @@ export const ActionDescriptions: Record<string, string> = {
   update_digest_settings: 'Изменение настроек дайджеста',
   
   // Organization
+  create_organization: 'Создание организации',
   update_org_settings: 'Изменение настроек организации',
   update_org_profile: 'Обновление профиля организации',
+  create_invite: 'Создание приглашения',
+  add_team_member: 'Добавление члена команды',
+  
+  // Announcements
+  create_announcement: 'Создание анонса',
+  send_announcement: 'Отправка анонса в группы',
+  
+  // Applications
+  create_pipeline: 'Создание воронки заявок',
+  create_application_form: 'Создание формы заявки',
+  move_application_stage: 'Перемещение заявки по воронке',
+  
+  // Telegram channels
+  connect_channel: 'Подключение Telegram-канала',
+  
+  // AI
+  ai_community_insights: 'AI-анализ участников (дашборд)',
   
   // Errors
   resolve_error: 'Разрешение ошибки',
@@ -76,6 +94,14 @@ export const ResourceDescriptions: Record<string, string> = {
   import: 'Импорт',
   digest: 'Дайджест',
   organization: 'Организация',
+  invite: 'Приглашение',
+  team_member: 'Команда',
+  announcement: 'Анонс',
+  pipeline: 'Воронка заявок',
+  application_form: 'Форма заявки',
+  application: 'Заявка',
+  channel: 'Telegram-канал',
+  ai_insights: 'AI-анализ',
   error: 'Ошибка',
   app: 'Приложение',
   app_item: 'Элемент приложения',

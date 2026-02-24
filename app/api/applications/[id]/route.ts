@@ -11,6 +11,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { executeStageAutoActions } from '@/lib/services/applicationService';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 // Force dynamic rendering - don't cache API responses
 export const dynamic = 'force-dynamic';
@@ -294,6 +295,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           terminal_type: rpcResult.terminal_type
         }, '⚠️ [API] No auto-actions to execute');
       }
+      
+      logAdminAction({
+        orgId: application.org_id,
+        userId: user.id,
+        action: AdminActions.MOVE_APPLICATION_STAGE,
+        resourceType: ResourceTypes.APPLICATION,
+        resourceId: id,
+        changes: { before: { stage_id: application.stage_id }, after: { stage_id } },
+        metadata: {
+          is_terminal: rpcResult.is_terminal,
+          terminal_type: rpcResult.terminal_type,
+        },
+      }).catch(() => {});
       
       return NextResponse.json({
         success: true,

@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { requireOrgAccess } from '@/lib/orgGuard';
 import { sendAnnouncementToGroups } from '@/lib/services/announcementService';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 /**
  * POST /api/announcements/[id]/send - Отправить анонс немедленно
@@ -44,6 +46,8 @@ export async function POST(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     
+    const user = await getUnifiedUser();
+    
     // Отправляем
     const result = await sendAnnouncementToGroups(announcement);
     
@@ -52,6 +56,21 @@ export async function POST(
       successCount: result.successCount,
       failCount: result.failCount
     }, 'Announcement sent');
+    
+    if (user) {
+      logAdminAction({
+        orgId: announcement.org_id,
+        userId: user.id,
+        action: AdminActions.SEND_ANNOUNCEMENT,
+        resourceType: ResourceTypes.ANNOUNCEMENT,
+        resourceId: id,
+        metadata: {
+          title: announcement.title,
+          success_count: result.successCount,
+          fail_count: result.failCount,
+        },
+      }).catch(() => {});
+    }
     
     return NextResponse.json({ 
       success: true,

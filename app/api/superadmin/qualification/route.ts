@@ -104,27 +104,30 @@ export async function GET(request: NextRequest) {
       // 3. Get organization names (first org where user is owner/admin)
       const { data: memberships } = await adminSupabase
         .from('memberships')
-        .select(`
-          user_id,
-          role,
-          organizations (
-            name
-          )
-        `)
+        .select('user_id, role, org_id')
         .in('user_id', userIds)
         .in('role', ['owner', 'admin'])
-        .order('role', { ascending: true }); // owner first
+        .order('role', { ascending: true });
       
-      memberships?.forEach(m => {
-        const existing = userInfoMap[m.user_id] || {};
-        if (!existing.org_name) {
-          const org = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
-          userInfoMap[m.user_id] = {
-            ...existing,
-            org_name: org?.name || undefined,
-          };
-        }
-      });
+      if (memberships && memberships.length > 0) {
+        const orgIds = [...new Set(memberships.map(m => m.org_id))];
+        const { data: orgs } = await adminSupabase
+          .from('organizations')
+          .select('id, name')
+          .in('id', orgIds);
+        
+        const orgMap = new Map((orgs || []).map(o => [o.id, o.name]));
+        
+        memberships.forEach(m => {
+          const existing = userInfoMap[m.user_id] || {};
+          if (!existing.org_name) {
+            userInfoMap[m.user_id] = {
+              ...existing,
+              org_name: orgMap.get(m.org_id) || undefined,
+            };
+          }
+        });
+      }
     }
 
     // Enrich qualifications with readable labels and user info (include test users but mark them)

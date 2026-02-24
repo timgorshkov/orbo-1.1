@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 
 // GET - List forms for organization
 export async function GET(request: NextRequest) {
@@ -172,6 +173,15 @@ export async function POST(request: NextRequest) {
     }
     
     logger.info({ org_id, form_id: form.id }, 'Form created');
+    
+    logAdminAction({
+      orgId: org_id,
+      userId: user.id,
+      action: AdminActions.CREATE_APPLICATION_FORM,
+      resourceType: ResourceTypes.APPLICATION_FORM,
+      resourceId: form.id,
+      metadata: { name, pipeline_id },
+    }).catch(() => {});
     
     return NextResponse.json({ form }, { status: 201 });
   } catch (error) {
