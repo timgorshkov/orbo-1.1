@@ -92,7 +92,7 @@
 
 Добавьте других администраторов, если работаете не один.
 
-[→ Как добавить администратора](../06-organization/add-admins.md)
+[→ Как добавить администратора](../08-organization/add-admins.md)
 
 ---
 
@@ -136,4 +136,4 @@
 
 - [Подключение Telegram-аккаунта](./connect-telegram.md)
 - [Как добавить бота в группу](../02-telegram-groups/add-bot-to-group.md)
-- [Настройки организации](../06-organization/settings.md)
+- [Настройки организации](../08-organization/settings.md)

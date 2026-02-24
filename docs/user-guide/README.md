@@ -47,21 +47,21 @@
 
 ### 7. Уведомления
 
-- [Обзор правил уведомлений](./05-notifications/rules-overview.md)
-- [AI-детекция негатива](./05-notifications/ai-negative.md)
-- [Неотвеченные вопросы](./05-notifications/unanswered.md)
-- [Зоны внимания](./05-notifications/attention-zones.md)
+- [Обзор правил уведомлений](./07-notifications/rules-overview.md)
+- [AI-детекция негатива](./07-notifications/ai-negative.md)
+- [Неотвеченные вопросы](./07-notifications/unanswered.md)
+- [Зоны внимания](./07-notifications/attention-zones.md)
 
 ### 8. Организация и настройки
 
-- [Настройки организации](./06-organization/settings.md)
-- [Добавление администраторов](./06-organization/add-admins.md)
-- [Синхронизация команды с Telegram](./06-organization/team-sync.md)
-- [Приглашения участников](./06-organization/invites.md)
+- [Настройки организации](./08-organization/settings.md)
+- [Добавление администраторов](./08-organization/add-admins.md)
+- [Синхронизация команды с Telegram](./08-organization/team-sync.md)
+- [Приглашения участников](./08-organization/invites.md)
 
 ### 9. FAQ
 
-- [Частые вопросы](./07-faq/faq.md)
+- [Частые вопросы](./09-faq/faq.md)
 
 ---
 

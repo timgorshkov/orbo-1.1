@@ -77,7 +77,7 @@
 - Создание новых
 - Редактирование существующих
 
-[→ Обзор правил уведомлений](../05-notifications/rules-overview.md)
+[→ Обзор правил уведомлений](../07-notifications/rules-overview.md)
 
 ### Telegram
 

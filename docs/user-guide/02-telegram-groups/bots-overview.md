@@ -194,4 +194,4 @@ t.me/orbo_event_bot?startapp=f-{slug_формы}
 
 - [Как добавить бота в группу](./add-bot-to-group.md)
 - [Подключение групп к организации](./connect-groups.md)
-- [Настройка уведомлений](../05-notifications/rules-overview.md)
+- [Настройка уведомлений](../07-notifications/rules-overview.md)
