@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     { data: allMessages },
     { data: overdueMessages },
     { data: recentSent },
+    { data: recentActivity },
   ] = await Promise.all([
     supabase
       .from('onboarding_messages')
@@ -30,6 +31,12 @@ export async function GET(request: NextRequest) {
       .from('onboarding_messages')
       .select('sent_at')
       .eq('status', 'sent')
+      .order('sent_at', { ascending: false })
+      .limit(1),
+    supabase
+      .from('onboarding_messages')
+      .select('sent_at')
+      .in('status', ['sent', 'skipped'])
       .order('sent_at', { ascending: false })
       .limit(1),
   ])
@@ -61,17 +68,31 @@ export async function GET(request: NextRequest) {
     failedErrors[err] = (failedErrors[err] || 0) + 1
   }
 
+  const lastActivity = recentActivity?.[0]?.sent_at || null
+
   let cronRunning = false
-  if (lastSent) {
-    const hoursSinceLastSend = (Date.now() - new Date(lastSent).getTime()) / (1000 * 60 * 60)
-    cronRunning = hoursSinceLastSend < 1
+  if (overdue.length === 0) {
+    cronRunning = true
+  } else if (lastSent || lastActivity) {
+    const latestTimestamp = lastSent && lastActivity
+      ? new Date(Math.max(new Date(lastSent).getTime(), new Date(lastActivity).getTime()))
+      : new Date((lastSent || lastActivity)!)
+    const hoursSinceActivity = (Date.now() - latestTimestamp.getTime()) / (1000 * 60 * 60)
+    cronRunning = hoursSinceActivity < 2
+  }
+
+  const hasFuturePending = msgs.some(m =>
+    m.status === 'pending' && new Date(m.scheduled_at) > new Date()
+  )
+  if (cronRunning && overdue.length === 0 && !hasFuturePending && statusCounts.pending === 0) {
+    cronRunning = true
   }
 
   const diagnosis: string[] = []
   if (overdue.length > 0 && !cronRunning) {
     diagnosis.push(`🔴 Крон send-onboarding не работает. ${overdue.length} сообщений просрочены (макс. ${Math.round(maxOverdueHours)} ч.)`)
-    diagnosis.push('Вероятная причина: скрипт setup-cron.sh не был перезапущен после добавления send-onboarding')
-    diagnosis.push('Решение: подключитесь к серверу и запустите: bash ~/orbo/scripts/setup-cron.sh')
+    diagnosis.push('Вероятная причина: скрипт cron-send-onboarding.sh не работает (проверьте CRLF / права / crontab)')
+    diagnosis.push('Решение: подключитесь к серверу и запустите: sed -i \'s/\\r$//\' ~/orbo/cron-send-onboarding.sh && bash ~/orbo/scripts/setup-cron.sh')
   }
   if (overdue.length > 0 && cronRunning) {
     diagnosis.push(`⚠️ Крон работает, но есть ${overdue.length} просроченных сообщений. Возможно, processOnboardingMessages обрабатывает только 20 за раз.`)
@@ -87,6 +108,12 @@ export async function GET(request: NextRequest) {
   }
   if (statusCounts.pending === 0 && overdue.length === 0 && statusCounts.sent > 0) {
     diagnosis.push('✅ Все запланированные сообщения обработаны.')
+  }
+  if (overdue.length === 0 && hasFuturePending) {
+    diagnosis.push(`✅ Крон в порядке. ${msgs.filter(m => m.status === 'pending').length} сообщений ожидают отправки по расписанию.`)
+  }
+  if (overdue.length === 0 && !hasFuturePending && statusCounts.total > 0 && statusCounts.pending === 0) {
+    diagnosis.push('✅ Все сообщения обработаны, новых запланированных нет.')
   }
 
   return NextResponse.json({

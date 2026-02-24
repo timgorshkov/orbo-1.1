@@ -96,15 +96,16 @@ export default async function OrganizationsPage() {
   }
 
   // Проверяем наличие АКТИВНЫХ организаций (не в архиве)
-  // Если все организации архивированы, пользователь должен пройти квалификацию заново
+  // Если нет активных организаций — повторно проходим квалификацию и онбординг
   const hasActiveOrganizations = orgsMap.size > 0;
   
-  if (!qualification?.completed_at && !hasActiveOrganizations) {
+  if (!hasActiveOrganizations) {
     logger.debug({ 
       user_id: user.id,
       memberships_count: memberships?.length || 0,
-      active_orgs_count: orgsMap.size
-    }, 'Qualification not completed and no active orgs, redirecting to welcome');
+      active_orgs_count: orgsMap.size,
+      qualification_completed: !!qualification?.completed_at
+    }, 'No active orgs, redirecting to welcome for qualification/onboarding');
     redirect('/welcome');
   }
 

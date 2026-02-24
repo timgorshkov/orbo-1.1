@@ -81,6 +81,39 @@ export default function TelegramRegisterPage() {
       }
 
       if (result.exists) {
+        // Auto-login: call the login endpoint instead of showing "already exists"
+        try {
+          const loginRes = await fetch('/api/telegram/registration/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData: data }),
+          });
+          const loginResult = await loginRes.json();
+
+          if (loginResult.status === 'ok' && loginResult.loginUrl) {
+            setLoginUrl(loginResult.loginUrl);
+            setStep('done');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const tgApp = (window as any).Telegram?.WebApp;
+            if (tgApp?.openLink) {
+              tgApp.openLink(loginResult.loginUrl);
+              setTimeout(() => tgApp.close(), 500);
+            } else {
+              window.open(loginResult.loginUrl, '_blank');
+            }
+            return;
+          }
+
+          if (loginResult.status === 'multiple') {
+            setMaskedEmail(result.maskedEmail || '');
+            setLoginUrl(result.loginUrl || 'https://my.orbo.ru/signin');
+            setStep('exists');
+            return;
+          }
+        } catch {
+          // Fall through to exists step on error
+        }
+
         setMaskedEmail(result.maskedEmail || '');
         setLoginUrl(result.loginUrl || 'https://my.orbo.ru/signin');
         setStep('exists');
@@ -157,17 +190,17 @@ export default function TelegramRegisterPage() {
             <div className="text-center space-y-5">
               <div className="text-5xl">👋</div>
               <h1 className="text-xl font-bold" style={{ color: '#111827' }}>
-                У вас уже есть аккаунт
+                У вас несколько аккаунтов
               </h1>
               <p style={{ color: '#4b5563' }}>
-                Telegram-аккаунт {tgUser?.first_name} уже привязан к Orbo
-                {maskedEmail && <> ({maskedEmail})</>}.
+                К Telegram-аккаунту {tgUser?.first_name} привязано несколько аккаунтов Orbo. 
+                Войдите по email{maskedEmail && <> ({maskedEmail})</>}.
               </p>
               <button
                 onClick={() => openLink(loginUrl)}
                 className="w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium"
               >
-                Войти на my.orbo.ru
+                Войти по email на my.orbo.ru
               </button>
             </div>
           )}

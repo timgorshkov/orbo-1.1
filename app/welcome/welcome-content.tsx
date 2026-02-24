@@ -127,7 +127,7 @@ export function WelcomeContent({
 }: WelcomeContentProps) {
   const router = useRouter();
   const [emailVerified, setEmailVerified] = useState(!needsEmailVerification);
-  const [showQualification, setShowQualification] = useState(!initialCompleted);
+  const [showQualification, setShowQualification] = useState(!initialCompleted || !hasOrganizations);
   const [qualificationDone, setQualificationDone] = useState(initialCompleted);
   
   // Prevent duplicate goal sends (React StrictMode, re-renders)
