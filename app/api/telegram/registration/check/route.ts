@@ -34,15 +34,8 @@ export async function POST(request: NextRequest) {
 
     const tgUserId = parsed.user.id
 
-    // Look up verified telegram accounts
-    const { data: tgAccount } = await supabaseAdmin
-      .from('user_telegram_accounts')
-      .select('user_id')
-      .eq('telegram_user_id', tgUserId)
-      .eq('is_verified', true)
-      .maybeSingle()
-
-    // Also check accounts table
+    // Check accounts table only — this is the auth-level link.
+    // user_telegram_accounts is org-level (participants from groups), not auth.
     const { data: providerAccount } = await supabaseAdmin
       .from('accounts')
       .select('user_id')
@@ -50,7 +43,7 @@ export async function POST(request: NextRequest) {
       .eq('provider_account_id', String(tgUserId))
       .maybeSingle()
 
-    const existingUserId = tgAccount?.user_id || providerAccount?.user_id
+    const existingUserId = providerAccount?.user_id
 
     if (existingUserId) {
       const { data: user } = await supabaseAdmin

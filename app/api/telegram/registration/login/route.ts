@@ -37,18 +37,9 @@ export async function POST(request: NextRequest) {
     const tgUser = parsed.user
     const tgUserId = tgUser.id
 
-    // Find ALL users linked to this Telegram ID
+    // Find registered users linked to this Telegram ID via accounts table only.
+    // user_telegram_accounts is org-level (participants), not auth-level.
     const linkedUserIds = new Set<string>()
-
-    const { data: tgAccounts } = await supabaseAdmin
-      .from('user_telegram_accounts')
-      .select('user_id')
-      .eq('telegram_user_id', tgUserId)
-      .eq('is_verified', true)
-
-    if (tgAccounts) {
-      tgAccounts.forEach(a => linkedUserIds.add(a.user_id))
-    }
 
     const { data: providerAccounts } = await supabaseAdmin
       .from('accounts')
