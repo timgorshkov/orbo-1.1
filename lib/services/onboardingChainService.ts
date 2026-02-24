@@ -67,9 +67,20 @@ const TELEGRAM_CHAIN: ChainStep[] = [
 
 export async function scheduleOnboardingChain(
   userId: string,
-  channel: 'email' | 'telegram'
+  channel: 'email' | 'telegram',
+  options?: { restart?: boolean }
 ): Promise<void> {
   const supabase = createAdminServer()
+
+  if (options?.restart) {
+    await supabase
+      .from('onboarding_messages')
+      .delete()
+      .eq('user_id', userId)
+      .eq('channel', channel)
+    logger.info({ user_id: userId, channel }, 'Cleared existing onboarding chain for restart')
+  }
+
   const now = Date.now()
   const chain = channel === 'email' ? EMAIL_CHAIN : TELEGRAM_CHAIN
 
@@ -154,6 +165,32 @@ export async function processOnboardingMessages(): Promise<{
         .eq('id', msg.id)
       stats.skipped++
       logger.info({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key }, 'Step skipped (condition already met)')
+
+      // Shift subsequent pending messages: each takes the previous one's slot
+      const { data: remaining } = await supabase
+        .from('onboarding_messages')
+        .select('id, scheduled_at')
+        .eq('user_id', msg.user_id)
+        .eq('channel', msg.channel)
+        .eq('status', 'pending')
+        .gt('scheduled_at', msg.scheduled_at)
+        .order('scheduled_at', { ascending: true })
+
+      if (remaining && remaining.length > 0) {
+        let prevSlot = msg.scheduled_at
+        for (const rem of remaining) {
+          const currentSlot = rem.scheduled_at
+          await supabase
+            .from('onboarding_messages')
+            .update({ scheduled_at: prevSlot })
+            .eq('id', rem.id)
+          prevSlot = currentSlot
+        }
+        logger.info({
+          user_id: msg.user_id, channel: msg.channel, shifted: remaining.length,
+        }, 'Shifted subsequent messages after skip')
+      }
+
       continue
     }
 
@@ -500,4 +537,88 @@ function ctaButton(href: string, text: string): string {
       ${text}
     </a>
   </div>`
+}
+
+// ---------------------------------------------------------------------------
+// Template preview export (for superadmin)
+// ---------------------------------------------------------------------------
+
+const STEP_LABELS: Record<string, string> = {
+  connect_telegram: 'Привяжите Telegram',
+  workspace_ready: 'Аккаунт создан',
+  add_group: 'Подключите группу',
+  create_event: 'Создайте событие',
+  video_overview: 'AI-анализ и возможности',
+  check_in: 'Как дела?',
+}
+
+const SKIP_LABELS: Record<string, string> = {
+  connect_telegram: 'Telegram уже привязан',
+  add_group: 'Группа уже подключена',
+  create_event: 'Событие уже создано',
+}
+
+export interface TemplatePreview {
+  stepKey: string
+  label: string
+  channel: 'email' | 'telegram'
+  stepNumber: number
+  delayLabel: string
+  subject?: string
+  bodyHtml?: string
+  bodyText?: string
+  skipCondition?: string
+}
+
+export function getAllTemplatesForPreview(): TemplatePreview[] {
+  const sampleCtx: UserContext = {
+    userId: 'preview',
+    email: 'user@example.com',
+    name: 'Тим',
+    tgUserId: 154588486,
+    hasOrg: true,
+    hasTelegramLinked: false,
+    hasGroup: false,
+    hasEvent: false,
+    emailVerified: true,
+  }
+
+  const delayMap: Record<number, string> = {
+    [1 * HOUR]: '+1 час',
+    [1 * DAY]: '+1 день',
+    [3 * DAY]: '+3 дня',
+    [5 * DAY]: '+5 дней',
+    [7 * DAY]: '+7 дней',
+  }
+
+  const templates: TemplatePreview[] = []
+
+  EMAIL_CHAIN.forEach((step, i) => {
+    const content = getEmailContent(sampleCtx, step.key)
+    templates.push({
+      stepKey: step.key,
+      label: STEP_LABELS[step.key] || step.key,
+      channel: 'email',
+      stepNumber: i + 1,
+      delayLabel: delayMap[step.delayMs] || `+${Math.round(step.delayMs / HOUR)}ч`,
+      subject: content.subject,
+      bodyHtml: content.html,
+      skipCondition: SKIP_LABELS[step.key],
+    })
+  })
+
+  TELEGRAM_CHAIN.forEach((step, i) => {
+    const content = getTelegramContent(sampleCtx, step.key)
+    templates.push({
+      stepKey: step.key,
+      label: STEP_LABELS[step.key] || step.key,
+      channel: 'telegram',
+      stepNumber: i + 1,
+      delayLabel: delayMap[step.delayMs] || `+${Math.round(step.delayMs / HOUR)}ч`,
+      bodyText: content,
+      skipCondition: SKIP_LABELS[step.key],
+    })
+  })
+
+  return templates
 }

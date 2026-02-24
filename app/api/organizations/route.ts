@@ -187,6 +187,21 @@ export async function POST(req: NextRequest) {
     import('@/lib/services/weeekService').then(({ onOrganizationCreated }) => {
       onOrganizationCreated(user.id, org.id, name.trim()).catch(() => {});
     }).catch(() => {});
+
+    // Re-schedule onboarding chain for this organization (non-blocking)
+    ;(async () => {
+      try {
+        const { scheduleOnboardingChain } = await import('@/lib/services/onboardingChainService')
+        const tgRes = await supabase
+          .from('accounts')
+          .select('provider_account_id')
+          .eq('user_id', user.id)
+          .eq('provider', 'telegram')
+          .maybeSingle()
+        const channel = tgRes.data?.provider_account_id ? 'telegram' as const : 'email' as const
+        await scheduleOnboardingChain(user.id, channel, { restart: true })
+      } catch { /* non-critical */ }
+    })()
     
     return NextResponse.json({ success: true, org_id: org.id })
     
