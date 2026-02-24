@@ -12,20 +12,21 @@ export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
 
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    logger.warn('Unauthorized cron call attempt')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
+    logger.info('Onboarding cron triggered')
     const stats = await processOnboardingMessages()
 
-    if (stats.processed > 0) {
-      logger.info(stats, 'Onboarding cron completed')
-    }
+    logger.info(stats, `Onboarding cron done: sent=${stats.sent} skipped=${stats.skipped} failed=${stats.failed} processed=${stats.processed}`)
 
     return NextResponse.json({ success: true, ...stats })
   } catch (error) {
     logger.error({
       error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     }, 'Onboarding cron failed')
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }

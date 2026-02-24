@@ -19,6 +19,7 @@ import { createClientLogger } from '@/lib/logger'
 import { AlertTriangle, Sparkles, Clock, MessageSquare, Users, Crown } from 'lucide-react'
 import { useBillingGate } from '@/lib/hooks/useBillingGate'
 import UpgradeDialog from '@/components/billing/upgrade-dialog'
+import AssistBotBanner from '@/components/notifications/assist-bot-banner'
 
 const logger = createClientLogger('NotificationRuleForm')
 
@@ -209,6 +210,7 @@ export default function NotificationRuleForm({
 
   return (
     <>
+    <AssistBotBanner orgId={orgId} compact />
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic Info */}
       <div className="space-y-4">

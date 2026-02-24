@@ -105,17 +105,28 @@ export async function processOnboardingMessages(): Promise<{
   const supabase = createAdminServer()
   const stats = { processed: 0, sent: 0, skipped: 0, failed: 0 }
 
+  const now = new Date().toISOString()
+  logger.info({ now }, 'processOnboardingMessages: querying pending messages')
+
   const { data: pending, error } = await supabase
     .from('onboarding_messages')
     .select('*')
     .eq('status', 'pending')
-    .lte('scheduled_at', new Date().toISOString())
+    .lte('scheduled_at', now)
     .order('scheduled_at', { ascending: true })
     .limit(20)
 
-  if (error || !pending || pending.length === 0) {
+  if (error) {
+    logger.error({ error: error.message, code: error.code }, 'processOnboardingMessages: DB query failed')
     return stats
   }
+
+  if (!pending || pending.length === 0) {
+    logger.info('processOnboardingMessages: no pending messages due')
+    return stats
+  }
+
+  logger.info({ count: pending.length, ids: pending.map(m => m.id) }, 'processOnboardingMessages: found pending messages')
 
   // Group by user to avoid repeated context lookups
   const userIds = [...new Set(pending.map(m => m.user_id))]
@@ -131,14 +142,18 @@ export async function processOnboardingMessages(): Promise<{
     const chain = msg.channel === 'email' ? EMAIL_CHAIN : TELEGRAM_CHAIN
     const stepDef = chain.find(s => s.key === msg.step_key)
 
-    // Check skip logic
+    logger.info({
+      msg_id: msg.id, user_id: msg.user_id, channel: msg.channel,
+      step: msg.step_key, scheduled_at: msg.scheduled_at,
+    }, 'Processing onboarding message')
+
     if (stepDef?.skipIf?.(ctx)) {
       await supabase
         .from('onboarding_messages')
         .update({ status: 'skipped', sent_at: new Date().toISOString() })
         .eq('id', msg.id)
       stats.skipped++
-      logger.debug({ user_id: msg.user_id, step: msg.step_key }, 'Step skipped (condition met)')
+      logger.info({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key }, 'Step skipped (condition already met)')
       continue
     }
 
@@ -147,9 +162,10 @@ export async function processOnboardingMessages(): Promise<{
         await sendEmailStep(ctx, msg.step_key)
       } else {
         await sendTelegramStep(ctx, msg.step_key)
-        // Also send email if user has a verified email (dual-channel for TG users)
         if (ctx.emailVerified && ctx.email && !ctx.email.endsWith('@telegram.user')) {
-          await sendEmailStep(ctx, msg.step_key).catch(() => {})
+          await sendEmailStep(ctx, msg.step_key).catch((e) => {
+            logger.warn({ user_id: msg.user_id, step: msg.step_key, error: String(e) }, 'Dual-channel email failed (non-critical)')
+          })
         }
       }
 
@@ -158,6 +174,7 @@ export async function processOnboardingMessages(): Promise<{
         .update({ status: 'sent', sent_at: new Date().toISOString() })
         .eq('id', msg.id)
       stats.sent++
+      logger.info({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel }, 'Message sent successfully')
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       await supabase
@@ -165,7 +182,7 @@ export async function processOnboardingMessages(): Promise<{
         .update({ status: 'failed', error: errMsg })
         .eq('id', msg.id)
       stats.failed++
-      logger.error({ user_id: msg.user_id, step: msg.step_key, error: errMsg }, 'Step send failed')
+      logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Step send failed')
     }
   }
 
@@ -256,24 +273,34 @@ async function buildUserContext(userId: string): Promise<UserContext> {
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
 
 async function sendEmailStep(ctx: UserContext, stepKey: string): Promise<void> {
-  if (!ctx.email) throw new Error('No email')
+  if (!ctx.email) throw new Error('No email for user ' + ctx.userId)
   const { subject, html } = getEmailContent(ctx, stepKey)
+  logger.info({ user_id: ctx.userId, email: ctx.email, step: stepKey, subject }, 'Sending onboarding email')
   const result = await sendEmail({ to: ctx.email, subject, html, tags: ['onboarding', stepKey] })
-  if (!result.success) throw new Error(result.error || 'Email send failed')
+  if (!result.success) {
+    logger.error({ user_id: ctx.userId, email: ctx.email, step: stepKey, error: result.error }, 'Email send failed')
+    throw new Error(result.error || 'Email send failed')
+  }
+  logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding email sent OK')
 }
 
 async function sendTelegramStep(ctx: UserContext, stepKey: string): Promise<void> {
-  if (!ctx.tgUserId) throw new Error('No tg_user_id')
+  if (!ctx.tgUserId) throw new Error('No tg_user_id for user ' + ctx.userId)
 
   const text = getTelegramContent(ctx, stepKey)
   const tg = new TelegramService('registration')
 
+  logger.info({ user_id: ctx.userId, tg_user_id: ctx.tgUserId, step: stepKey }, 'Sending onboarding TG message')
   const result = await tg.sendMessage(ctx.tgUserId, text, {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   })
 
-  if (!result.ok) throw new Error(result.description || 'TG send failed')
+  if (!result.ok) {
+    logger.error({ user_id: ctx.userId, tg_user_id: ctx.tgUserId, step: stepKey, error: result.description }, 'TG send failed')
+    throw new Error(result.description || 'TG send failed')
+  }
+  logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding TG message sent OK')
 }
 
 // ---------------------------------------------------------------------------

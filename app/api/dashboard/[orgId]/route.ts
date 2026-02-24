@@ -32,6 +32,7 @@ export async function GET(
     // 1. Check onboarding status - PARALLEL queries
     const [
       telegramAccountResult,
+      telegramProviderResult,
       orgGroupsForCountResult,
       materialsCountResult,
       eventsCountResult,
@@ -44,6 +45,23 @@ export async function GET(
         .eq('org_id', orgId)
         .eq('is_verified', true)
         .limit(1),
+      // Fallback: check if org owner registered via Telegram (accounts table)
+      (async () => {
+        const { data: owners } = await adminSupabase
+          .from('memberships')
+          .select('user_id')
+          .eq('org_id', orgId)
+          .in('role', ['owner', 'admin'])
+        if (!owners || owners.length === 0) return { data: [] }
+        const ownerIds = owners.map(o => o.user_id)
+        const { data } = await adminSupabase
+          .from('accounts')
+          .select('user_id')
+          .eq('provider', 'telegram')
+          .in('user_id', ownerIds)
+          .limit(1)
+        return { data: data || [] }
+      })(),
       (async () => {
         const { data: orgGroupLinks } = await adminSupabase
           .from('org_telegram_groups')
@@ -77,7 +95,8 @@ export async function GET(
         .neq('source', 'bot')
     ])
 
-    const telegramAccount = telegramAccountResult.data && telegramAccountResult.data.length > 0
+    const telegramAccount = (telegramAccountResult.data && telegramAccountResult.data.length > 0)
+      || (telegramProviderResult.data && telegramProviderResult.data.length > 0)
     const orgGroupsForCount = orgGroupsForCountResult.data
     const materialsCount = materialsCountResult.count
     const eventsCount = eventsCountResult.count
@@ -110,18 +129,61 @@ export async function GET(
       }
     }
 
+    // Check if assist bot (orbo_assist_bot) has been started by an owner/admin
+    let assistBotStarted = false
+    if (telegramAccount) {
+      try {
+        // Get the telegram_user_id of any org owner/admin
+        let tgUserId: number | null = null
+        
+        if (telegramAccountResult.data && telegramAccountResult.data.length > 0) {
+          // Get from user_telegram_accounts
+          const { data: tgLink } = await adminSupabase
+            .from('user_telegram_accounts')
+            .select('telegram_user_id')
+            .eq('org_id', orgId)
+            .eq('is_verified', true)
+            .limit(1)
+            .single()
+          tgUserId = tgLink?.telegram_user_id || null
+        }
+        
+        if (!tgUserId && telegramProviderResult.data && telegramProviderResult.data.length > 0) {
+          const ownerUserId = telegramProviderResult.data[0].user_id
+          const { data: acc } = await adminSupabase
+            .from('accounts')
+            .select('provider_account_id')
+            .eq('user_id', ownerUserId)
+            .eq('provider', 'telegram')
+            .maybeSingle()
+          tgUserId = acc?.provider_account_id ? Number(acc.provider_account_id) : null
+        }
+        
+        if (tgUserId) {
+          const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
+          if (notifBotToken) {
+            const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`)
+            const chatData = await res.json()
+            assistBotStarted = chatData.ok === true
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+
     const onboardingStatus = {
       hasTelegramAccount: !!telegramAccount,
       hasGroups: linkedGroupsCount > 0,
       hasEvents: (eventsCount || 0) > 0,
       hasSharedEvent,
+      assistBotStarted,
       progress: [
         true, // organization created (always true if here)
         (eventsCount || 0) > 0,
         !!telegramAccount,
+        assistBotStarted,
         hasSharedEvent,
         linkedGroupsCount > 0
-      ].filter(Boolean).length * 20 // 0-100%
+      ].filter(Boolean).length * (100 / 6) // 0-100% across 6 steps
     }
 
     const isOnboarding = onboardingStatus.progress < 60 // Less than 3 of 5 steps complete

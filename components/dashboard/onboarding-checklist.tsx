@@ -9,6 +9,7 @@ interface OnboardingStatus {
   hasGroups: boolean
   hasEvents: boolean
   hasSharedEvent: boolean
+  assistBotStarted?: boolean
   progress: number
 }
 
@@ -42,6 +43,15 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
       completed: status.hasTelegramAccount,
       link: `/p/${orgId}/telegram/account`,
       action: 'Привязать'
+    },
+    {
+      id: 'assist_bot',
+      label: 'Запустите бота уведомлений',
+      description: 'Бот @orbo_assist_bot будет присылать вам уведомления в Telegram',
+      completed: !!status.assistBotStarted,
+      link: 'https://t.me/orbo_assist_bot',
+      action: 'Запустить',
+      external: true
     },
     {
       id: 'share',
@@ -119,11 +129,19 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
               </div>
             </div>
             {!step.completed && step.link && step.action && (
-              <Link href={step.link} className="flex-shrink-0 ml-3">
-                <Button variant="outline" size="sm" className="text-sm whitespace-nowrap">
-                  {step.action}
-                </Button>
-              </Link>
+              step.external ? (
+                <a href={step.link} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 ml-3">
+                  <Button variant="outline" size="sm" className="text-sm whitespace-nowrap">
+                    {step.action}
+                  </Button>
+                </a>
+              ) : (
+                <Link href={step.link} className="flex-shrink-0 ml-3">
+                  <Button variant="outline" size="sm" className="text-sm whitespace-nowrap">
+                    {step.action}
+                  </Button>
+                </Link>
+              )
             )}
           </div>
         ))}

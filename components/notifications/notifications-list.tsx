@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import NotificationCard, { UnifiedNotification } from './notification-card';
+import AssistBotBanner from './assist-bot-banner';
 import { createClientLogger } from '@/lib/logger';
 
 const logger = createClientLogger('NotificationsList');
@@ -140,6 +141,9 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
   
   return (
     <div className="space-y-6">
+      {/* Banner: start assist bot for Telegram notifications */}
+      <AssistBotBanner orgId={orgId} />
+
       {/* Header with stats */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

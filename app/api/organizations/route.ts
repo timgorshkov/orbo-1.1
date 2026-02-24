@@ -112,6 +112,67 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       org_name: name
     }, 'Organization created successfully');
+
+    // Auto-link Telegram account if user registered via Telegram
+    try {
+      const { data: tgAccount } = await supabase
+        .from('accounts')
+        .select('provider_account_id')
+        .eq('user_id', user.id)
+        .eq('provider', 'telegram')
+        .maybeSingle()
+
+      if (tgAccount?.provider_account_id) {
+        const tgUserId = Number(tgAccount.provider_account_id)
+
+        // Check if this org already has a link for this user (shouldn't, but be safe)
+        const { data: existing } = await supabase
+          .from('user_telegram_accounts')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('org_id', org.id)
+          .maybeSingle()
+
+        if (!existing) {
+          // Fetch Telegram profile info via Bot API (non-critical)
+          let tgUsername = ''
+          let tgFirstName = ''
+          let tgLastName = ''
+          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          if (botToken) {
+            try {
+              const chatRes = await fetch(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${tgUserId}`)
+              const chatData = await chatRes.json()
+              if (chatData.ok) {
+                tgUsername = chatData.result.username || ''
+                tgFirstName = chatData.result.first_name || ''
+                tgLastName = chatData.result.last_name || ''
+              }
+            } catch { /* non-critical */ }
+          }
+
+          await supabase
+            .from('user_telegram_accounts')
+            .insert({
+              user_id: user.id,
+              org_id: org.id,
+              telegram_user_id: tgUserId,
+              telegram_username: tgUsername,
+              telegram_first_name: tgFirstName,
+              telegram_last_name: tgLastName,
+              is_verified: true,
+            })
+
+          logger.info({
+            user_id: user.id,
+            org_id: org.id,
+            tg_user_id: tgUserId,
+          }, 'Auto-linked Telegram account to new organization')
+        }
+      }
+    } catch (tgError: any) {
+      logger.warn({ error: tgError.message }, 'Failed to auto-link Telegram (non-critical)')
+    }
     
     logAdminAction({
       orgId: org.id,

@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import AssistBotBanner from '@/components/notifications/assist-bot-banner';
 
 interface DigestSettings {
   enabled: boolean;
@@ -103,6 +104,7 @@ export default function DigestSettingsForm({ orgId, initialSettings }: DigestSet
 
   return (
     <div className="space-y-6">
+      <AssistBotBanner orgId={orgId} compact />
       {/* Main Settings Card */}
       <Card>
         <CardHeader>
