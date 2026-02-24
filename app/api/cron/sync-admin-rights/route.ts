@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createTelegramService } from '@/lib/services/telegramService';
 import { createCronLogger } from '@/lib/logger';
+import { verifyOrgGroupAccess } from '@/lib/server/orgGroupAccess';
 
 /**
  * Cron job: Синхронизация прав администраторов из Telegram
@@ -362,11 +363,45 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Check each group: if no org admin has TG admin rights, mark as access_revoked
+      let revokedCount = 0;
+      for (const groupBinding of groups || []) {
+        const chatId = groupBinding.tg_chat_id;
+        try {
+          const hasAccess = await verifyOrgGroupAccess(org.id, chatId);
+
+          if (!hasAccess) {
+            // Mark as access_revoked
+            await supabaseService
+              .from('org_telegram_groups')
+              .update({ status: 'access_revoked' })
+              .eq('org_id', org.id)
+              .eq('tg_chat_id', chatId)
+              .eq('status', 'active');
+            revokedCount++;
+            logger.warn({
+              org_id: org.id, tg_chat_id: chatId,
+            }, 'Group marked as access_revoked — no org admin has TG admin rights');
+          } else {
+            // Restore if previously revoked
+            await supabaseService
+              .from('org_telegram_groups')
+              .update({ status: 'active' })
+              .eq('org_id', org.id)
+              .eq('tg_chat_id', chatId)
+              .eq('status', 'access_revoked');
+          }
+        } catch (e: any) {
+          logger.warn({ org_id: org.id, tg_chat_id: chatId, error: e.message }, 'Error checking group access');
+        }
+      }
+
       results.push({
         org_id: org.id,
         org_name: org.name,
         updated_groups: updatedGroups,
-        total_groups: groups?.length || 0
+        total_groups: groups?.length || 0,
+        revoked_groups: revokedCount,
       });
     }
 

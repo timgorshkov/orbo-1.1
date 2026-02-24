@@ -1,6 +1,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { TelegramService } from '@/lib/services/telegramService';
+import { verifyOrgGroupAccessBatch } from '@/lib/server/orgGroupAccess';
 
 const logger = createServiceLogger('AnnouncementService');
 
@@ -59,13 +60,31 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       return { successCount: 0, failCount: announcement.target_groups.length, results };
     }
     
-    // Инициализируем Telegram сервис
+    // Verify org admins still have Telegram admin rights in target groups
+    const chatIds = groups.map(g => g.tg_chat_id).filter(Boolean)
+    const accessibleGroups = await verifyOrgGroupAccessBatch(announcement.org_id, chatIds)
+
+    if (accessibleGroups.size === 0) {
+      logger.warn({
+        announcementId: announcement.id, org_id: announcement.org_id,
+        target_groups: chatIds,
+      }, 'ACCESS REVOKED: No org admin has TG admin rights in any target group')
+    }
+
     const telegram = new TelegramService();
     
-    // Отправляем в каждую группу
     for (const group of groups) {
       const chatId = group.tg_chat_id;
       const groupTitle = group.title || 'Unknown';
+
+      if (chatId && !accessibleGroups.has(String(chatId))) {
+        results[String(chatId)] = { success: false, error: 'Access revoked: no org admin is TG group admin' }
+        failCount++
+        logger.warn({
+          announcementId: announcement.id, chatId, groupTitle,
+        }, 'Skipped group — org admin lost TG admin rights')
+        continue
+      }
       
       if (!chatId) {
         results[String(group.tg_chat_id)] = { success: false, error: 'No chat_id' };

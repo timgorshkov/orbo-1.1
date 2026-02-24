@@ -18,6 +18,7 @@ type TelegramGroup = {
   title: string | null;
   bot_status: 'connected' | 'pending' | 'inactive' | null;
   last_sync_at: string | null;
+  access_status?: string;
 };
 
 
@@ -30,7 +31,7 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     // Получаем список подключенных групп через org_telegram_groups
     const { data: orgGroupLinks, error: linksError } = await supabase
       .from('org_telegram_groups')
-      .select('tg_chat_id')
+      .select('tg_chat_id, status')
       .eq('org_id', orgId)
     
     let groups: TelegramGroup[] | null = null
@@ -38,13 +39,16 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     
     if (orgGroupLinks && !linksError && orgGroupLinks.length > 0) {
       const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
+      const statusMap = new Map(orgGroupLinks.map(link => [String(link.tg_chat_id), link.status]))
       const { data: telegramGroups, error: groupsError } = await supabase
         .from('telegram_groups')
         .select('id, tg_chat_id, title, bot_status, last_sync_at')
         .in('tg_chat_id', chatIds);
       
       error = groupsError;
-      groups = ((telegramGroups || []) as TelegramGroup[]).sort((a, b) => (a.id || 0) - (b.id || 0))
+      groups = ((telegramGroups || []) as TelegramGroup[])
+        .map(g => ({ ...g, access_status: statusMap.get(String(g.tg_chat_id)) || 'active' }))
+        .sort((a, b) => (a.id || 0) - (b.id || 0))
     }
     
     if (error) {
@@ -200,6 +204,47 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
             </Card>
           )}
           
+          {/* Access revoked groups warning */}
+          {groups && groups.filter(g => g.access_status === 'access_revoked').length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-red-700 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  Доступ отозван
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-red-800 mb-3">
+                  Ни один администратор организации не является администратором следующих Telegram-групп. 
+                  Отправка анонсов в эти группы заблокирована.
+                </p>
+                <div className="space-y-2">
+                  {groups
+                    .filter(g => g.access_status === 'access_revoked')
+                    .map(group => (
+                      <div key={group.id} className="flex items-center justify-between border border-red-200 bg-red-50 rounded-lg p-3">
+                        <div>
+                          <h3 className="font-medium text-sm text-red-900">{group.title || `Группа ${group.tg_chat_id}`}</h3>
+                          <p className="text-xs text-red-700">ID: {group.tg_chat_id}</p>
+                        </div>
+                        <DeleteGroupButton
+                          groupId={group.id}
+                          groupTitle={group.title}
+                          orgId={orgId}
+                        />
+                      </div>
+                    ))}
+                </div>
+                <p className="text-xs text-red-600 mt-3">
+                  Чтобы восстановить доступ, убедитесь, что владелец или администратор организации 
+                  является администратором этих групп в Telegram, и выполните синхронизацию.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Статистика */}
           </div>
         </TabsLayout>
