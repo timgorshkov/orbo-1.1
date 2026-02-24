@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if this Telegram account is already registered (via accounts table only)
+    // Check if this Telegram is already linked to a registered user
     const { data: existingAccount } = await supabaseAdmin
       .from('accounts')
       .select('user_id')
@@ -73,6 +73,30 @@ export async function POST(request: NextRequest) {
         { error: 'Telegram-аккаунт уже зарегистрирован. Войдите через my.orbo.ru' },
         { status: 409 }
       )
+    }
+
+    // Also check user_telegram_accounts — but only for users with a real email
+    const { data: tgLinks } = await supabaseAdmin
+      .from('user_telegram_accounts')
+      .select('user_id')
+      .eq('telegram_user_id', tgUserId)
+      .eq('is_verified', true)
+
+    if (tgLinks && tgLinks.length > 0) {
+      const { data: realUser } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .in('id', tgLinks.map(l => l.user_id))
+        .not('email', 'is', null)
+        .limit(1)
+        .maybeSingle()
+
+      if (realUser) {
+        return NextResponse.json(
+          { error: 'Telegram-аккаунт уже привязан к аккаунту. Войдите через my.orbo.ru' },
+          { status: 409 }
+        )
+      }
     }
 
     // --- Create user ---

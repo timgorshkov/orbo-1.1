@@ -34,8 +34,11 @@ export async function POST(request: NextRequest) {
 
     const tgUserId = parsed.user.id
 
-    // Check accounts table only — this is the auth-level link.
-    // user_telegram_accounts is org-level (participants from groups), not auth.
+    // Check both auth sources:
+    // 1) accounts table: users who registered via Telegram MiniApp
+    // 2) user_telegram_accounts: users who linked TG later — only those with a real email
+    let existingUserId: string | null = null
+
     const { data: providerAccount } = await supabaseAdmin
       .from('accounts')
       .select('user_id')
@@ -43,7 +46,30 @@ export async function POST(request: NextRequest) {
       .eq('provider_account_id', String(tgUserId))
       .maybeSingle()
 
-    const existingUserId = providerAccount?.user_id
+    if (providerAccount) {
+      existingUserId = providerAccount.user_id
+    } else {
+      const { data: tgAccounts } = await supabaseAdmin
+        .from('user_telegram_accounts')
+        .select('user_id')
+        .eq('telegram_user_id', tgUserId)
+        .eq('is_verified', true)
+
+      if (tgAccounts && tgAccounts.length > 0) {
+        const tgUserIds = tgAccounts.map(a => a.user_id)
+        const { data: validUser } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .in('id', tgUserIds)
+          .not('email', 'is', null)
+          .limit(1)
+          .maybeSingle()
+
+        if (validUser) {
+          existingUserId = validUser.id
+        }
+      }
+    }
 
     if (existingUserId) {
       const { data: user } = await supabaseAdmin
