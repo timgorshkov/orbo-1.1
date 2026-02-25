@@ -199,23 +199,7 @@ export async function POST(request: NextRequest) {
 
     scheduleOnboardingChain(userId, 'telegram').catch(() => {})
 
-    // --- Send bot message with "Open Orbo" button (non-blocking) ---
-    const regBotTokenForMsg = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
-    if (regBotTokenForMsg) {
-      fetch(`https://api.telegram.org/bot${regBotTokenForMsg}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: tgUserId,
-          text: `🎉 Аккаунт создан, ${fullName}!\n\nНажмите кнопку ниже, чтобы перейти в Orbo и настроить своё пространство:`,
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🚀 Открыть Orbo', url: `${baseUrl}/orgs` },
-            ]],
-          },
-        }),
-      }).catch(() => {})
-    }
+    // Bot confirmation message is sent from /api/auth/auto-login after session is created
 
     logger.info({
       user_id: userId,
