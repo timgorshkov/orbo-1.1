@@ -1,6 +1,6 @@
 /**
  * Telegram Notification Service
- * Sends messages via orbo_assist_bot
+ * Sends messages via orbo_assistant_bot
  * 
  * Used for:
  * - Weekly digests

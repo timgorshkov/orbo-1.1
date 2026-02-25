@@ -231,7 +231,7 @@ export default function ProductPage() {
               <div className="feature-card__icon">
                 <MessageSquare size={24} />
               </div>
-              <h4 className="feature-card__title">@orbo_assist_bot</h4>
+              <h4 className="feature-card__title">@orbo_assistant_bot</h4>
               <p className="feature-card__text">
                 Отправляет уведомления и коды авторизации
               </p>

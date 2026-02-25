@@ -99,7 +99,7 @@ orbo-1.1/
 - **Telegram Bots:**
   - `@orbo_community_bot` — управление группами, MiniApp
   - `@orbo_event_bot` — MiniApp регистрации на события
-  - `@orbo_assist_bot` — системные уведомления
+  - `@orbo_assistant_bot` — системные уведомления
 
 ---
 

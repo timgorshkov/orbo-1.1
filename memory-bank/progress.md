@@ -101,7 +101,7 @@ All Supabase dependencies eliminated. Project now runs entirely on self-hosted i
 
 - **Features:**
   - 5 rule types: negative_discussion, unanswered_question, group_inactive, churning_participant, inactive_newcomer
-  - Telegram notifications via @orbo_assist_bot
+  - Telegram notifications via @orbo_assistant_bot
   - 6-hour deduplication window
   - check_interval_minutes per rule
   - Color-coded notification cards

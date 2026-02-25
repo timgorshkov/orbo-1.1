@@ -15,7 +15,7 @@
 
 - Аккаунт в Orbo (уже вошли в систему)
 - Telegram-аккаунт
-- Доступ к боту [@orbo_assist_bot](https://t.me/orbo_assist_bot)
+- Доступ к боту [@orbo_assistant_bot](https://t.me/orbo_assistant_bot)
 
 ---
 
@@ -35,7 +35,7 @@
 
 ### Шаг 3. Получите свой Telegram User ID
 
-Напишите `/start` боту [@orbo_assist_bot](https://t.me/orbo_assist_bot).
+Напишите `/start` боту [@orbo_assistant_bot](https://t.me/orbo_assistant_bot).
 
 Бот ответит сообщением с вашим **User ID** — это числовой идентификатор.
 
@@ -43,7 +43,7 @@
 Привет! Ваш Telegram User ID: 123456789
 ```
 
-[СКРИНШОТ: Диалог с ботом @orbo_assist_bot — сообщение с User ID]
+[СКРИНШОТ: Диалог с ботом @orbo_assistant_bot — сообщение с User ID]
 
 ### Шаг 4. Введите User ID в Orbo
 
@@ -55,7 +55,7 @@
 
 ### Шаг 5. Введите код верификации
 
-Бот [@orbo_assist_bot](https://t.me/orbo_assist_bot) пришлёт 6-значный код.
+Бот [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) пришлёт 6-значный код.
 
 Введите его в появившееся поле и нажмите **"Подтвердить код"**.
 
@@ -88,7 +88,7 @@
 
 ### Бот не отвечает на /start
 
-- Убедитесь, что пишете боту [@orbo_assist_bot](https://t.me/orbo_assist_bot)
+- Убедитесь, что пишете боту [@orbo_assistant_bot](https://t.me/orbo_assistant_bot)
 - Попробуйте написать `/start` ещё раз
 - Проверьте, не заблокирован ли бот
 

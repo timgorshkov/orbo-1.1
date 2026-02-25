@@ -75,7 +75,7 @@ Orbo поддерживает несколько способов авториз
 
 ### Шаг 2. Узнайте свой Telegram User ID
 
-Напишите `/start` боту [@orbo_assist_bot](https://t.me/orbo_assist_bot) — он ответит вашим User ID.
+Напишите `/start` боту [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) — он ответит вашим User ID.
 
 ### Шаг 3. Введите User ID
 
@@ -83,7 +83,7 @@ Orbo поддерживает несколько способов авториз
 
 ### Шаг 4. Получите код от бота
 
-Бот [@orbo_assist_bot](https://t.me/orbo_assist_bot) пришлёт 6-значный код.
+Бот [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) пришлёт 6-значный код.
 
 ### Шаг 5. Введите код
 
@@ -126,7 +126,7 @@ Orbo поддерживает несколько способов авториз
 
 - Проверьте, что вводите код без пробелов
 - Код действует 10 минут — запросите новый
-- Убедитесь, что получаете код от [@orbo_assist_bot](https://t.me/orbo_assist_bot)
+- Убедитесь, что получаете код от [@orbo_assistant_bot](https://t.me/orbo_assistant_bot)
 
 ---
 

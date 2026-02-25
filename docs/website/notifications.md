@@ -157,7 +157,7 @@
 
 ### Telegram-бот
 
-Уведомления приходят от [@orbo_assist_bot](https://t.me/orbo_assist_bot):
+Уведомления приходят от [@orbo_assistant_bot](https://t.me/orbo_assistant_bot):
 
 - Мгновенная доставка
 - Кнопка "Открыть в Telegram" — переход к сообщению

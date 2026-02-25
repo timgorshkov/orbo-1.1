@@ -174,7 +174,7 @@ export default function DigestSettingsForm({ orgId, initialSettings }: DigestSet
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-600">
-            Отправить тестовый дайджест за последние 7 дней себе в Telegram (@orbo_assist_bot).
+            Отправить тестовый дайджест за последние 7 дней себе в Telegram (@orbo_assistant_bot).
             Дайджест будет содержать AI-комментарии и рекомендации.
           </p>
 

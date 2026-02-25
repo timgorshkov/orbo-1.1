@@ -94,7 +94,7 @@
 | Бот | Username | Назначение |
 |-----|----------|------------|
 | Community Bot | [@orbo_community_bot](https://t.me/orbo_community_bot) | Сбор аналитики из групп, публикация анонсов |
-| Assist Bot | [@orbo_assist_bot](https://t.me/orbo_assist_bot) | Уведомления, авторизация, напоминания о событиях |
+| Assist Bot | [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) | Уведомления, авторизация, напоминания о событиях |
 | Event Bot | [@orbo_event_bot](https://t.me/orbo_event_bot) | MiniApp для регистрации на события и заявок |
 
 ---

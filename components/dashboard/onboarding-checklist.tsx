@@ -47,9 +47,9 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
     {
       id: 'assist_bot',
       label: 'Запустите бота уведомлений',
-      description: 'Бот @orbo_assist_bot будет присылать вам уведомления в Telegram',
+      description: 'Бот @orbo_assistant_bot будет присылать вам уведомления в Telegram',
       completed: !!status.assistBotStarted,
-      link: 'https://t.me/orbo_assist_bot',
+      link: 'https://t.me/orbo_assistant_bot',
       action: 'Запустить',
       external: true
     },

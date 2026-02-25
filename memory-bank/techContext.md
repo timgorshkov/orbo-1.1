@@ -31,7 +31,7 @@
 - Bucket: configured via `S3_BUCKET_NAME` env var
 
 ## Telegram Integration
-- 3 bots: @orbo_community_bot, @orbo_assist_bot, @orbo_event_bot
+- 3 bots: @orbo_community_bot, @orbo_assistant_bot, @orbo_event_bot
 - Webhooks at `/api/telegram/webhook`, `/api/telegram/notifications/webhook`, `/api/telegram/event-bot/webhook`
 - grammY-style handlers in Next.js API routes
 

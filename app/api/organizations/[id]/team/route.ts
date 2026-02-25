@@ -244,7 +244,7 @@ export async function GET(
           is_owner_in_groups: shadowAdmin.is_owner_in_groups
         },
         // Hint for UI - how to become a full admin
-        activation_hint: 'Для получения полного доступа администратору нужно написать боту @orbo_assist_bot и пройти верификацию Telegram-аккаунта'
+        activation_hint: 'Для получения полного доступа администратору нужно написать боту @orbo_assistant_bot и пройти верификацию Telegram-аккаунта'
       })
     }
 

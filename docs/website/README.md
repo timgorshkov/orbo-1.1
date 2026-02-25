@@ -168,7 +168,7 @@ CRM активного ядра аудитории — помогает авто
 - **Продукт:** [my.orbo.ru](https://my.orbo.ru)
 - **Боты:**
   - [@orbo_community_bot](https://t.me/orbo_community_bot) — основной бот для групп и каналов
-  - [@orbo_assist_bot](https://t.me/orbo_assist_bot) — уведомления и авторизация
+  - [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) — уведомления и авторизация
   - [@orbo_event_bot](https://t.me/orbo_event_bot) — MiniApp для событий и заявок
 
 ---

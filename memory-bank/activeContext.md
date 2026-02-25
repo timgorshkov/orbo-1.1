@@ -40,7 +40,7 @@
 - UI для правил и уведомлений
 - 5 типов правил: негатив (AI), неотвеченные вопросы (AI), неактивные группы, churning, newcomers
 - AI-анализ с OpenAI (gpt-4o-mini)
-- Отправка уведомлений через @orbo_assist_bot
+- Отправка уведомлений через @orbo_assistant_bot
 - @orbo_event_bot и WebApp для регистрации на события
 - NextAuth.js интеграция (Google + Yandex OAuth)
 - Unified Auth Layer (`lib/auth/unified-auth.ts`)
@@ -65,7 +65,7 @@
 - **AI:** OpenAI gpt-4o-mini (обогащение, анализ негатива/вопросов)
 - **Logging:** pino structured logging
 - **Storage:** Selectel S3
-- **Bots:** @orbo_community_bot, @orbo_assist_bot, @orbo_event_bot
+- **Bots:** @orbo_community_bot, @orbo_assistant_bot, @orbo_event_bot
 - **Deployment:** Selectel VPS, Docker Compose, Nginx, Let's Encrypt SSL
 
 ---

@@ -40,7 +40,7 @@
 
 ### В Telegram
 
-Уведомления приходят от бота [@orbo_assist_bot](https://t.me/orbo_assist_bot):
+Уведомления приходят от бота [@orbo_assistant_bot](https://t.me/orbo_assistant_bot):
 - Мгновенная доставка
 - Ссылки на сообщения
 - Детали инцидента

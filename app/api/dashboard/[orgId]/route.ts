@@ -129,7 +129,7 @@ export async function GET(
       }
     }
 
-    // Check if assist bot (orbo_assist_bot) has been started by an owner/admin
+    // Check if assist bot (orbo_assistant_bot) has been started by an owner/admin
     let assistBotStarted = false
     if (telegramAccount) {
       try {

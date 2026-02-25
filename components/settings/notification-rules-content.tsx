@@ -295,7 +295,7 @@ export default function NotificationRulesContent() {
             <h4 className="font-medium text-blue-900">Как это работает?</h4>
             <p className="text-sm text-blue-700 mt-1">
               Правила проверяются автоматически. При срабатывании вы получите 
-              уведомление в Telegram через бота @orbo_assist_bot.
+              уведомление в Telegram через бота @orbo_assistant_bot.
             </p>
           </div>
         </div>

@@ -501,7 +501,7 @@ export default function NotificationRuleForm({
         </div>
 
         <p className="text-xs text-gray-500">
-          Уведомления будут отправлены через бота @orbo_assist_bot в Telegram
+          Уведомления будут отправлены через бота @orbo_assistant_bot в Telegram
         </p>
       </div>
 

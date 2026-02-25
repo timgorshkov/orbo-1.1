@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/telegram/bot-status?orgId=...
- * Check if the current user has started orbo_assist_bot (notifications bot).
+ * Check if the current user has started orbo_assistant_bot (notifications bot).
  * Returns { telegramLinked, assistBotStarted }
  */
 export async function GET(request: NextRequest) {
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Check if user has started orbo_assist_bot via getChat
+    // Check if user has started orbo_assistant_bot via getChat
     const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
     if (!notifBotToken) {
       return NextResponse.json({

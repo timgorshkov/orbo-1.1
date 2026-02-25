@@ -2,7 +2,7 @@
 
 import { useBotStatus } from '@/lib/hooks/useBotStatus'
 
-const ASSIST_BOT_USERNAME = 'orbo_assist_bot'
+const ASSIST_BOT_USERNAME = 'orbo_assistant_bot'
 
 interface AssistBotBannerProps {
   orgId: string
@@ -10,7 +10,7 @@ interface AssistBotBannerProps {
 }
 
 /**
- * Shows a banner prompting users to start @orbo_assist_bot
+ * Shows a banner prompting users to start @orbo_assistant_bot
  * when their Telegram is linked but the notifications bot hasn't been started.
  */
 export default function AssistBotBanner({ orgId, compact = false }: AssistBotBannerProps) {

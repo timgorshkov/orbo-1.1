@@ -153,7 +153,7 @@ export async function uploadOrgLogo(orgId: string, file: Buffer): Promise<string
 |-----|------------|
 | `@orbo_community_bot` | Групповые уведомления, личные напоминания, MiniApp регистрация |
 | `@orbo_event_bot` | MiniApp регистрации на события (deep link) |
-| `@orbo_assist_bot` | Системные уведомления (негатив, неактивность, вопросы) |
+| `@orbo_assistant_bot` | Системные уведомления (негатив, неактивность, вопросы) |
 
 **Webhook:** `/api/telegram/webhook`
 

@@ -91,8 +91,8 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
           setError(
             <span>
               Пожалуйста, сначала запустите диалог с{' '}
-              <a href="https://t.me/orbo_assist_bot" target="_blank" rel="noopener noreferrer" className="text-red-700 hover:underline font-medium">
-                @orbo_assist_bot
+              <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-red-700 hover:underline font-medium">
+                @orbo_assistant_bot
               </a>
               {' '}в Telegram
             </span>
@@ -360,8 +360,8 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>
                       Откройте{' '}
-                      <a href="https://t.me/orbo_assist_bot" target="_blank" rel="noopener noreferrer" className="text-amber-900 hover:underline font-medium">
-                        @orbo_assist_bot
+                      <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-amber-900 hover:underline font-medium">
+                        @orbo_assistant_bot
                       </a>{' '}
                       в Telegram
                     </li>
@@ -410,8 +410,8 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>
                       Откройте{' '}
-                      <a href="https://t.me/orbo_assist_bot" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                        @orbo_assist_bot
+                      <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                        @orbo_assistant_bot
                       </a>{' '}
                       и нажмите <code className="bg-blue-100 px-1 rounded">/start</code>
                     </li>

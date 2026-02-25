@@ -29,7 +29,7 @@
 | Бот | Назначение |
 |-----|------------|
 | [@orbo_community_bot](https://t.me/orbo_community_bot) | Сбор аналитики из групп, публикация анонсов |
-| [@orbo_assist_bot](https://t.me/orbo_assist_bot) | Уведомления, авторизация, напоминания о событиях |
+| [@orbo_assistant_bot](https://t.me/orbo_assistant_bot) | Уведомления, авторизация, напоминания о событиях |
 | [@orbo_event_bot](https://t.me/orbo_event_bot) | MiniApp для регистрации на события и подачи заявок |
 
 [→ Подробнее о ботах](../02-telegram-groups/bots-overview.md)
@@ -196,7 +196,7 @@ MiniApp позволяет регистрироваться на событие 
 ### Куда приходят уведомления?
 
 - В раздел «Уведомления» в Orbo
-- В Telegram от бота [@orbo_assist_bot](https://t.me/orbo_assist_bot)
+- В Telegram от бота [@orbo_assistant_bot](https://t.me/orbo_assistant_bot)
 
 ---
 
