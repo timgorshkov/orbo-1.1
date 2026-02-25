@@ -104,6 +104,63 @@ export async function scheduleOnboardingChain(
 }
 
 // ---------------------------------------------------------------------------
+// Error classification & retry config
+// ---------------------------------------------------------------------------
+
+const PERMANENT_TG_ERRORS = [
+  'bot was blocked by the user',
+  'user is deactivated',
+  'chat not found',
+  'have no rights to send a message',
+  'bot was kicked',
+  'need administrator rights',
+  'bot is not a member',
+]
+
+const TRANSIENT_ERROR_PATTERNS = [
+  'fetch failed',
+  'is not valid json',
+  'unexpected token',
+  'econnreset',
+  'econnrefused',
+  'etimedout',
+  'socket hang up',
+  'network',
+  'abort',
+  '502',
+  '503',
+  '504',
+]
+
+const MAX_RETRIES = 3
+const RETRY_DELAY_MS = 15 * 60 * 1000 // 15 minutes
+
+async function cancelRemainingMessages(
+  supabase: ReturnType<typeof createAdminServer>,
+  userId: string,
+  channel: string,
+  reason: string,
+): Promise<void> {
+  const { data: remaining } = await supabase
+    .from('onboarding_messages')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('channel', channel)
+    .eq('status', 'pending')
+
+  if (remaining && remaining.length > 0) {
+    await supabase
+      .from('onboarding_messages')
+      .update({ status: 'skipped', error: `Auto-cancelled: ${reason}` })
+      .eq('user_id', userId)
+      .eq('channel', channel)
+      .eq('status', 'pending')
+
+    logger.info({ user_id: userId, channel, cancelled: remaining.length, reason }, 'Cancelled remaining onboarding messages')
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Process pending messages (called by cron)
 // ---------------------------------------------------------------------------
 
@@ -208,18 +265,51 @@ export async function processOnboardingMessages(): Promise<{
 
       await supabase
         .from('onboarding_messages')
-        .update({ status: 'sent', sent_at: new Date().toISOString() })
+        .update({ status: 'sent', sent_at: new Date().toISOString(), error: null })
         .eq('id', msg.id)
       stats.sent++
       logger.info({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel }, 'Message sent successfully')
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      await supabase
-        .from('onboarding_messages')
-        .update({ status: 'failed', error: errMsg })
-        .eq('id', msg.id)
-      stats.failed++
-      logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Step send failed')
+      const errLower = errMsg.toLowerCase()
+
+      const isTgPermanent = PERMANENT_TG_ERRORS.some(p => errLower.includes(p))
+      const isTransient = TRANSIENT_ERROR_PATTERNS.some(p => errLower.includes(p))
+
+      if (isTgPermanent) {
+        await supabase
+          .from('onboarding_messages')
+          .update({ status: 'failed', error: errMsg })
+          .eq('id', msg.id)
+        stats.failed++
+        logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, error: errMsg }, 'Permanent TG error — cancelling remaining messages')
+
+        await cancelRemainingMessages(supabase, msg.user_id, msg.channel, errMsg)
+      } else if (isTransient) {
+        const retryCount = (msg.retry_count || 0) + 1
+        if (retryCount >= MAX_RETRIES) {
+          await supabase
+            .from('onboarding_messages')
+            .update({ status: 'failed', error: `${errMsg} (after ${retryCount} retries)` })
+            .eq('id', msg.id)
+          stats.failed++
+          logger.error({ msg_id: msg.id, user_id: msg.user_id, retries: retryCount, error: errMsg }, 'Transient error — max retries reached')
+        } else {
+          const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString()
+          await supabase
+            .from('onboarding_messages')
+            .update({ scheduled_at: retryAt, error: `retry ${retryCount}: ${errMsg}`, retry_count: retryCount })
+            .eq('id', msg.id)
+          logger.info({ msg_id: msg.id, user_id: msg.user_id, retry: retryCount, retry_at: retryAt }, 'Transient error — scheduled retry')
+        }
+      } else {
+        await supabase
+          .from('onboarding_messages')
+          .update({ status: 'failed', error: errMsg })
+          .eq('id', msg.id)
+        stats.failed++
+        logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Step send failed')
+      }
     }
   }
 
