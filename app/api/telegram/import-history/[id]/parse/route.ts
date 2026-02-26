@@ -359,21 +359,35 @@ export async function POST(
     }
 
     // Получаем статистику сообщений для существующих участников
-    const participantIds = (existingParticipants || []).map((p: any) => p.id);
-    const { data: messageStats } = await supabaseAdmin
-      .from('activity_events')
-      .select('participant_id')
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', group.tg_chat_id)
-      .eq('event_type', 'message')
-      .in('participant_id', participantIds);
+    // activity_events uses tg_user_id, not participant_id
+    const tgUserIds = (existingParticipants || [])
+      .filter((p: any) => p.tg_user_id)
+      .map((p: any) => p.tg_user_id);
 
-    // Подсчитываем сообщения для каждого участника
-    const messageCountMap = new Map<string, number>();
-    (messageStats || []).forEach((stat: any) => {
-      const count = messageCountMap.get(stat.participant_id) || 0;
-      messageCountMap.set(stat.participant_id, count + 1);
+    const tgToParticipantId = new Map<number, string>();
+    (existingParticipants || []).forEach((p: any) => {
+      if (p.tg_user_id) tgToParticipantId.set(Number(p.tg_user_id), p.id);
     });
+
+    const messageCountMap = new Map<string, number>();
+
+    if (tgUserIds.length > 0) {
+      const { data: messageStats } = await supabaseAdmin
+        .from('activity_events')
+        .select('tg_user_id')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', group.tg_chat_id)
+        .eq('event_type', 'message')
+        .in('tg_user_id', tgUserIds);
+
+      (messageStats || []).forEach((stat: any) => {
+        const participantId = tgToParticipantId.get(Number(stat.tg_user_id));
+        if (participantId) {
+          const count = messageCountMap.get(participantId) || 0;
+          messageCountMap.set(participantId, count + 1);
+        }
+      });
+    }
 
     // Сопоставляем авторов из импорта с существующими участниками
     const matches: ParticipantMatch[] = [];
