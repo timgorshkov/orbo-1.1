@@ -47,7 +47,7 @@ export function ParticipantAvatar({
 
   const baseClass = `rounded-full object-cover ${sizeClasses[size]} ${className}`
 
-  if (photoUrl) {
+  if (photoUrl && photoUrl !== 'none') {
     return (
       <img
         src={photoUrl}

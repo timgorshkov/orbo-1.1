@@ -189,12 +189,17 @@ export class TelegramJsonParser {
     // Extract author name
     const authorName = msg.from || 'Unknown';
 
-    // ⭐ Extract user ID from from_id (format: "user1234567890")
+    // Extract user/channel ID from from_id (format: "user1234567890" or "channel1234567890")
     let authorUserId: number | undefined;
     if (msg.from_id) {
-      const match = msg.from_id.match(/user(\d+)/);
-      if (match) {
-        authorUserId = parseInt(match[1], 10);
+      const userMatch = msg.from_id.match(/user(\d+)/);
+      if (userMatch) {
+        authorUserId = parseInt(userMatch[1], 10);
+      } else {
+        const channelMatch = msg.from_id.match(/channel(\d+)/);
+        if (channelMatch) {
+          authorUserId = -parseInt(channelMatch[1], 10);
+        }
       }
     }
 

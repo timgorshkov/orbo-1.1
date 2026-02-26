@@ -61,6 +61,11 @@ export async function POST(request: NextRequest) {
       p => p.tg_user_id && (!p.photo_url || !p.photo_url.includes('participant-photos'))
     )
 
+    if (needSync.length === 0) {
+      logger.info({ org_id: orgId, total: ids.length }, 'Batch photo sync: all already have photos')
+      return NextResponse.json({ synced: 0, skipped: 0, failed: 0 })
+    }
+
     logger.info({ org_id: orgId, total: ids.length, need_sync: needSync.length }, 'Batch photo sync started')
 
     let synced = 0
@@ -70,9 +75,17 @@ export async function POST(request: NextRequest) {
     for (const participant of needSync) {
       try {
         const result = await syncOnePhoto(supabase, participant, logger)
-        if (result === 'synced') synced++
-        else if (result === 'skipped') skipped++
-        else failed++
+        if (result === 'synced') {
+          synced++
+        } else if (result === 'no_photo') {
+          skipped++
+          await supabase
+            .from('participants')
+            .update({ photo_url: 'none', updated_at: new Date().toISOString() })
+            .eq('id', participant.id)
+        } else {
+          failed++
+        }
       } catch {
         failed++
       }
@@ -95,16 +108,18 @@ async function syncOnePhoto(
   supabase: ReturnType<typeof createAdminServer>,
   participant: { id: string; tg_user_id: number | string; org_id: string },
   logger: ReturnType<typeof createAPILogger>,
-): Promise<'synced' | 'skipped' | 'failed'> {
+): Promise<'synced' | 'no_photo' | 'failed'> {
   const tgUserId = Number(participant.tg_user_id)
   const botTypes: Array<'main' | 'notifications' | 'event'> = ['main', 'notifications', 'event']
   let tg: TelegramService | null = null
   let photosResponse: any = null
+  let apiReached = false
 
   for (const botType of botTypes) {
     try {
       tg = new TelegramService(botType)
       const resp = await tg.getUserProfilePhotos(tgUserId, 0, 1)
+      apiReached = true
       if (resp.ok && resp.result.photos.length > 0) {
         photosResponse = resp
         break
@@ -115,7 +130,7 @@ async function syncOnePhoto(
     }
   }
 
-  if (!photosResponse || !tg) return 'skipped'
+  if (!photosResponse || !tg) return apiReached ? 'no_photo' : 'failed'
 
   try {
     const photos = photosResponse.result.photos[0]

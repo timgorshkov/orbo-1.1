@@ -56,7 +56,7 @@ export default function MemberCard({ participant }: MemberCardProps) {
       </div>
 
       {/* Имя */}
-      <div className="font-medium text-xs text-neutral-900 mb-0.5 line-clamp-2 leading-tight">
+      <div className="font-medium text-xs text-neutral-900 mb-0.5 line-clamp-2 leading-tight max-w-full overflow-hidden break-all" dir="auto">
         {displayName}
       </div>
 

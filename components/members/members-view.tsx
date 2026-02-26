@@ -292,7 +292,7 @@ export default function MembersView({
     batchSyncFired.current = true
 
     const needPhoto = initialParticipants
-      .filter(p => p.tg_user_id && (!p.photo_url || !p.photo_url.includes('participant-photos')))
+      .filter(p => p.tg_user_id && (!p.photo_url || !p.photo_url.includes('participant-photos')) && p.photo_url !== 'none')
       .map(p => p.id)
 
     if (needPhoto.length === 0) return
@@ -301,6 +301,24 @@ export default function MembersView({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orgId, participantIds: needPhoto.slice(0, 20) }),
+    }).catch(() => {})
+  }, [initialParticipants, orgId])
+
+  const usernameSyncFired = useRef(false)
+  useEffect(() => {
+    if (usernameSyncFired.current) return
+    usernameSyncFired.current = true
+
+    const needUsername = initialParticipants
+      .filter(p => p.tg_user_id && !p.tg_username)
+      .map(p => p.id)
+
+    if (needUsername.length === 0) return
+
+    fetch('/api/participants/batch-sync-usernames', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId, participantIds: needUsername.slice(0, 50) }),
     }).catch(() => {})
   }, [initialParticipants, orgId])
 

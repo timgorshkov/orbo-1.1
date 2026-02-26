@@ -445,7 +445,7 @@ export default function ParticipantProfileCard({
             </div>
           ) : (
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-gray-900 break-all overflow-hidden max-w-full" dir="auto">
                 {participant.full_name || 'Без имени'}
               </h1>
             </div>

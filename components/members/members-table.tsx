@@ -153,8 +153,8 @@ export default function MembersTable({
                     displayName={participant.full_name || 'Без имени'}
                     size="md"
                   />
-                  <div>
-                    <div className="font-medium text-gray-900">
+                  <div className="min-w-0 max-w-[200px]">
+                    <div className="font-medium text-gray-900 truncate" dir="auto">
                       {participant.full_name || 'Без имени'}
                     </div>
                     {participant.tg_user_id && (

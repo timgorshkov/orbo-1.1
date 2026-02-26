@@ -32,8 +32,13 @@ export function useTelegramPhoto(participantId: string, currentPhotoUrl: string 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentPhotoUrl) {
+    if (currentPhotoUrl && currentPhotoUrl !== 'none') {
       setPhotoUrl(currentPhotoUrl);
+      return;
+    }
+
+    if (currentPhotoUrl === 'none') {
+      setPhotoUrl(null);
       return;
     }
 
