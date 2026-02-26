@@ -73,6 +73,12 @@ export default async function MembersPage({ params, searchParams }: {
       };
     })
 
+    participants.sort((a: any, b: any) => {
+      const aTime = a.real_last_activity ? new Date(a.real_last_activity).getTime() : 0;
+      const bTime = b.real_last_activity ? new Date(b.real_last_activity).getTime() : 0;
+      return bTime - aTime;
+    });
+
     logger.debug({ 
       participant_count: participants.length,
       org_id: orgId,
@@ -89,7 +95,7 @@ export default async function MembersPage({ params, searchParams }: {
       .eq('org_id', orgId)
       .neq('participant_status', 'excluded')
       .is('merged_into', null)
-      .order('full_name', { ascending: true, nullsFirst: false })
+      .order('last_activity_at', { ascending: false, nullsFirst: true })
 
     if (error) {
       logger.error({ error: error.message, org_id: orgId }, 'Error fetching participants');

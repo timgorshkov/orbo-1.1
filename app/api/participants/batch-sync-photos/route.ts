@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const needSync = participants.filter(
-      p => p.tg_user_id && (!p.photo_url || !p.photo_url.includes('participant-photos'))
+      p => p.tg_user_id && Number(p.tg_user_id) > 0 && (!p.photo_url || !p.photo_url.includes('participant-photos'))
     )
 
     if (needSync.length === 0) {

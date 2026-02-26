@@ -748,9 +748,11 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                           </thead>
                           <tbody className="bg-white divide-y divide-neutral-200">
                             {participants.map(participant => {
-                              const key = participant.tg_user_id
-                                ? `tg-${participant.tg_user_id}`
-                                : `anon-${participant.username ?? participant.full_name ?? Math.random().toString(36).slice(2)}`;
+                              const key = participant.participant_id
+                                ? `pid-${participant.participant_id}`
+                                : participant.tg_user_id
+                                  ? `tg-${participant.tg_user_id}`
+                                  : `anon-${participant.username ?? participant.full_name ?? Math.random().toString(36).slice(2)}`;
                               const displayName = participant.full_name || (participant.username ? `@${participant.username}` : participant.tg_user_id ? `ID: ${participant.tg_user_id}` : 'Неизвестный пользователь');
                               const handleRowClick = () => {
                                 if (participant.participant_id) {
@@ -760,25 +762,19 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                               return (
                                 <tr 
                                   key={key}
-                                  className={participant.participant_id ? "cursor-pointer hover:bg-gray-50" : ""}
+                                  className={participant.participant_id ? "cursor-pointer hover:bg-gray-50" : "opacity-60"}
                                   onClick={participant.participant_id ? handleRowClick : undefined}
                                 >
                                   <td className="px-4 py-3 text-sm text-neutral-900">
                                     <div className="flex items-center gap-3">
-                                      {participant.participant_id ? (
-                                        <ParticipantAvatar
-                                          participantId={participant.participant_id}
-                                          photoUrl={participant.photo_url || null}
-                                          tgUserId={participant.tg_user_id ? String(participant.tg_user_id) : null}
-                                          displayName={displayName}
-                                          size="sm"
-                                        />
-                                      ) : (
-                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-                                          {displayName.charAt(0).toUpperCase()}
-                                        </div>
-                                      )}
-                                      <span>{displayName}</span>
+                                      <ParticipantAvatar
+                                        participantId={participant.participant_id || key}
+                                        photoUrl={participant.photo_url || null}
+                                        tgUserId={participant.tg_user_id ? String(participant.tg_user_id) : null}
+                                        displayName={displayName}
+                                        size="sm"
+                                      />
+                                      <span className="truncate max-w-[200px]" dir="auto">{displayName}</span>
                                     </div>
                                   </td>
                                   <td className="px-4 py-3 text-sm text-neutral-500">

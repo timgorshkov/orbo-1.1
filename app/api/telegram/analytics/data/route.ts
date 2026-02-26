@@ -100,6 +100,11 @@ export async function GET(request: Request) {
 
     const participantsMap = new Map<number, ParticipantAggregate>()
     const usernameToUserId = new Map<string, number>()
+    const membershipParticipantData = new Map<string, {
+      tg_user_id: number | null; username: string | null; full_name: string | null;
+      photo_url: string | null; last_activity_at: string | null;
+      activity_score: number | null; risk_score: number | null;
+    }>()
 
     const addOrUpdateParticipant = (
       tgUserId: number | null,
@@ -194,21 +199,31 @@ export async function GET(request: Request) {
         const participantIds = membershipLinks.map(m => m.participant_id);
         const { data: participants } = await supabase
           .from('participants')
-          .select('tg_user_id, username, full_name, last_activity_at, activity_score, risk_score')
+          .select('id, tg_user_id, username, tg_username, full_name, photo_url, last_activity_at, activity_score, risk_score')
           .in('id', participantIds);
         
         (participants || []).forEach(member => {
-          if (!member || member.tg_user_id == null) {
-            return
+          if (!member) return
+
+          if (member.tg_user_id != null) {
+            addOrUpdateParticipant(member.tg_user_id, {
+              username: member.tg_username || member.username || null,
+              fullName: member.full_name ?? null,
+              lastActivity: member.last_activity_at ?? null,
+              activityScore: member.activity_score ?? null,
+              riskScore: member.risk_score ?? null,
+              fromMembership: true
+            })
           }
 
-          addOrUpdateParticipant(member.tg_user_id, {
-            username: member.username ?? null,
-            fullName: member.full_name ?? null,
-            lastActivity: member.last_activity_at ?? null,
-            activityScore: member.activity_score ?? null,
-            riskScore: member.risk_score ?? null,
-            fromMembership: true
+          membershipParticipantData.set(member.id, {
+            tg_user_id: member.tg_user_id,
+            username: member.tg_username || member.username || null,
+            full_name: member.full_name,
+            photo_url: member.photo_url,
+            last_activity_at: member.last_activity_at,
+            activity_score: member.activity_score,
+            risk_score: member.risk_score
           })
         })
       }
@@ -532,8 +547,8 @@ export async function GET(request: Request) {
       .slice()
       .sort(
         (a, b) =>
-          b.message_count - a.message_count ||
-          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
+          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime() ||
+          b.message_count - a.message_count
       )
       .map(record => {
         const adminInfo = adminMap.get(record.tg_user_id)
@@ -552,6 +567,25 @@ export async function GET(request: Request) {
           photo_url: participantInfo?.photo_url || null
         }
       })
+
+    // Add group participants that don't have tg_user_id (channels, anonymous)
+    const includedPids = new Set(participantsResponse.filter(p => p.participant_id).map(p => p.participant_id))
+    for (const [pid, data] of membershipParticipantData) {
+      if (includedPids.has(pid)) continue
+      participantsResponse.push({
+        tg_user_id: data.tg_user_id || 0,
+        participant_id: pid,
+        username: data.username,
+        full_name: data.full_name,
+        message_count: 0,
+        last_activity: data.last_activity_at,
+        risk_score: null,
+        is_owner: false,
+        is_admin: false,
+        custom_title: null,
+        photo_url: data.photo_url
+      })
+    }
 
     const dailyMetricsArray = Object.values(dailyMetrics)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
