@@ -110,7 +110,9 @@ export async function POST(
     if (!botUserId) {
       return NextResponse.json({ 
         error: 'Could not resolve bot user ID. Bot may not be accessible.',
-        connected_groups: [] 
+        connected_groups: [],
+        total_checked: 0,
+        total_connected: 0
       }, { status: 200 });
     }
     

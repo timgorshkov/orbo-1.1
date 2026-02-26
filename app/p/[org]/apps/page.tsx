@@ -175,13 +175,16 @@ export default function AppsPage() {
       
       if (response.ok) {
         const data = await response.json();
-        // Update connected_groups for this app locally
         setApps(prev => prev.map(a => 
           a.id === app.id 
             ? { ...a, connected_groups: data.connected_groups }
             : a
         ));
-        setSuccessMessage(`Найдено групп: ${data.total_connected} из ${data.total_checked}`);
+        if (data.error) {
+          setSuccessMessage(`Не удалось определить бота приложения: ${data.error}`);
+        } else {
+          setSuccessMessage(`Найдено групп: ${data.total_connected ?? 0} из ${data.total_checked ?? 0}`);
+        }
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 5000);
       } else {
