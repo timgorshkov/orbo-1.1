@@ -2,7 +2,6 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { requireOrgAccess } from '@/lib/orgGuard';
-import { TelegramService } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +41,7 @@ export async function POST(
     // Get the partner app's bot_username
     const { data: app, error: appError } = await adminSupabase
       .from('public_apps')
-      .select('id, name, bot_username')
+      .select('id, name, bot_username, config')
       .eq('id', appId)
       .single();
     
@@ -83,42 +82,86 @@ export async function POST(
       });
     }
     
-    // Resolve bot's numeric user ID using our main bot
-    const tgService = new TelegramService('main');
+    // Resolve bot's numeric user ID
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
     let botUserId: number | null = null;
+    const botUsernameLower = app.bot_username.toLowerCase().replace(/^@/, '');
     
-    try {
-      // Try to get bot info by calling getChat with @username
-      // This works if the bot has been seen by our bot
-      const botInfoUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getChat`;
-      const botInfoResp = await fetch(botInfoUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: `@${app.bot_username}` })
-      });
-      
-      if (botInfoResp.ok) {
-        const botInfoData = await botInfoResp.json();
-        if (botInfoData.ok && botInfoData.result?.id) {
-          botUserId = botInfoData.result.id;
+    // Method 1: Check if bot_user_id is cached in app config
+    if (app.config && typeof app.config === 'object' && (app.config as any).bot_user_id) {
+      botUserId = Number((app.config as any).bot_user_id);
+      if (!Number.isFinite(botUserId)) botUserId = null;
+    }
+    
+    // Method 2: Try getChat with @username
+    if (!botUserId) {
+      try {
+        const botInfoResp = await fetch(`https://api.telegram.org/bot${botToken}/getChat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: `@${botUsernameLower}` })
+        });
+        if (botInfoResp.ok) {
+          const botInfoData = await botInfoResp.json();
+          if (botInfoData.ok && botInfoData.result?.id) {
+            botUserId = botInfoData.result.id;
+          }
+        }
+      } catch (err) {
+        logger.debug({ bot_username: botUsernameLower }, 'getChat lookup failed, trying getChatAdministrators fallback');
+      }
+    }
+    
+    // Method 3: Scan group admins to find the partner bot by username
+    if (!botUserId) {
+      for (const group of groups) {
+        try {
+          const adminsResp = await fetch(`https://api.telegram.org/bot${botToken}/getChatAdministrators`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: group.tg_chat_id })
+          });
+          if (adminsResp.ok) {
+            const adminsData = await adminsResp.json();
+            if (adminsData.ok && Array.isArray(adminsData.result)) {
+              const match = adminsData.result.find(
+                (m: any) => m.user?.username?.toLowerCase() === botUsernameLower
+              );
+              if (match?.user?.id) {
+                botUserId = match.user.id;
+                break;
+              }
+            }
+          }
+        } catch {
+          // continue to next group
         }
       }
-    } catch (err) {
-      logger.warn({ bot_username: app.bot_username, error: err }, 'Failed to resolve bot user ID via getChat');
+    }
+    
+    // Cache resolved bot_user_id in public_apps.config for future lookups
+    if (botUserId) {
+      const currentConfig = (app.config && typeof app.config === 'object') ? app.config as Record<string, unknown> : {};
+      if (!currentConfig.bot_user_id || currentConfig.bot_user_id !== botUserId) {
+        await adminSupabase
+          .from('public_apps')
+          .update({ config: { ...currentConfig, bot_user_id: botUserId } })
+          .eq('id', appId);
+      }
     }
     
     if (!botUserId) {
       return NextResponse.json({ 
-        error: 'Could not resolve bot user ID. Bot may not be accessible.',
+        error: `Бот @${botUsernameLower} не найден ни в одной группе. Убедитесь, что бот добавлен как администратор хотя бы в одну группу.`,
         connected_groups: [],
-        total_checked: 0,
+        total_checked: groups.length,
         total_connected: 0
       }, { status: 200 });
     }
     
     logger.info({ 
       app_name: app.name, 
-      bot_username: app.bot_username, 
+      bot_username: botUsernameLower, 
       bot_user_id: botUserId,
       groups_count: groups.length 
     }, 'Checking partner bot presence in groups');
@@ -128,8 +171,7 @@ export async function POST(
     
     for (const group of groups) {
       try {
-        const memberUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getChatMember`;
-        const memberResp = await fetch(memberUrl, {
+        const memberResp = await fetch(`https://api.telegram.org/bot${botToken}/getChatMember`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -142,7 +184,6 @@ export async function POST(
           const memberData = await memberResp.json();
           if (memberData.ok && memberData.result) {
             const status = memberData.result.status;
-            // Bot is present if status is member, administrator, or creator
             if (['member', 'administrator', 'creator'].includes(status)) {
               connectedGroups.push({
                 chat_id: group.tg_chat_id,
