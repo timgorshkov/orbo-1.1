@@ -44,7 +44,7 @@ export default function ParticipantProfileCard({
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState(participant.photo_url)
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archivePending, setArchivePending] = useState(false)
-  const [telegramIdCopied, setTelegramIdCopied] = useState(false)
+  const [nameCopied, setNameCopied] = useState(false)
   
   const isArchived = participant.participant_status === 'excluded'
   
@@ -277,17 +277,47 @@ export default function ParticipantProfileCard({
     }
   }
 
-  const handleCopyTelegramId = async () => {
-    if (!participant.tg_user_id) return;
-    
+  const handleCopyName = async () => {
+    const name = participant.full_name
+    if (!name) return
     try {
-      await navigator.clipboard.writeText(participant.tg_user_id.toString());
-      setTelegramIdCopied(true);
-      setTimeout(() => setTelegramIdCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
+      await navigator.clipboard.writeText(name)
+      setNameCopied(true)
+      setTimeout(() => setNameCopied(false), 2000)
+    } catch { /* clipboard not available */ }
   }
+
+  // Find last message link for Telegram deep linking
+  const lastMessageLink = (() => {
+    if (participant.username) return null
+    const messageEvents = detail.events
+      .filter(e => e.event_type === 'message' && e.tg_chat_id && e.message_id)
+    if (messageEvents.length === 0) return null
+    const lastMsg = messageEvents[0] // events are sorted by created_at DESC
+    const chatId = Number(lastMsg.tg_chat_id)
+    if (!chatId || chatId >= 0) return null
+    const internalId = String(Math.abs(chatId)).replace(/^100/, '')
+    const group = detail.groups.find(g => String(g.tg_chat_id) === String(chatId) || String(g.tg_group_id) === String(chatId))
+    return {
+      url: `https://t.me/c/${internalId}/${lastMsg.message_id}`,
+      groupTitle: group?.title || 'Группа',
+      date: lastMsg.created_at
+    }
+  })()
+
+  // Find first available group for fallback link
+  const fallbackGroupLink = (() => {
+    if (participant.username || lastMessageLink) return null
+    const activeGroup = detail.groups.find(g => g.is_active && g.tg_chat_id)
+    if (!activeGroup) return null
+    const chatId = Number(activeGroup.tg_chat_id)
+    if (!chatId || chatId >= 0) return null
+    const internalId = String(Math.abs(chatId)).replace(/^100/, '')
+    return {
+      url: `https://t.me/c/${internalId}/1`,
+      title: activeGroup.title || 'Группа'
+    }
+  })()
 
   return (
     <Card className={`overflow-hidden ${isArchived ? 'opacity-75' : ''}`}>
@@ -444,10 +474,23 @@ export default function ParticipantProfileCard({
               />
             </div>
           ) : (
-            <div>
+            <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold text-gray-900 break-all overflow-hidden max-w-full" dir="auto">
                 {participant.full_name || 'Без имени'}
               </h1>
+              {participant.full_name && (
+                <button
+                  onClick={handleCopyName}
+                  className="p-1.5 rounded-md hover:bg-gray-100 transition-colors flex-shrink-0"
+                  title="Скопировать имя"
+                >
+                  {nameCopied ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+              )}
             </div>
           )}
 
@@ -481,7 +524,7 @@ export default function ParticipantProfileCard({
               <MessageCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <span className="text-sm text-gray-500 w-20">Telegram</span>
               <div className="flex-1 space-y-1">
-                {participant.username && (
+                {participant.username ? (
                   <a
                     href={`https://t.me/${participant.username}`}
                     target="_blank"
@@ -490,25 +533,41 @@ export default function ParticipantProfileCard({
                   >
                     @{participant.username}
                   </a>
-                )}
-                {participant.tg_user_id ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600">ID: {participant.tg_user_id}</span>
-                    <button
-                      onClick={handleCopyTelegramId}
-                      className="p-1 rounded hover:bg-gray-100 transition-colors"
-                      title="Скопировать ID"
+                ) : lastMessageLink ? (
+                  <div className="space-y-1">
+                    <span className="text-xs text-gray-500">Username не указан</span>
+                    <a
+                      href={lastMessageLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline block"
                     >
-                      {telegramIdCopied ? (
-                        <Check className="h-3 w-3 text-green-600" />
-                      ) : (
-                        <Copy className="h-3 w-3 text-gray-400" />
-                      )}
-                    </button>
+                      Последнее сообщение в «{lastMessageLink.groupTitle}»
+                    </a>
                   </div>
-                ) : !participant.username ? (
+                ) : fallbackGroupLink ? (
+                  <div className="space-y-1">
+                    <span className="text-xs text-gray-500">Username не указан</span>
+                    <p className="text-xs text-gray-400">
+                      Скопируйте имя выше и найдите профиль в группе:
+                    </p>
+                    <a
+                      href={fallbackGroupLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline block"
+                    >
+                      {fallbackGroupLink.title}
+                    </a>
+                  </div>
+                ) : participant.tg_user_id ? (
+                  <span className="text-xs text-gray-500">Username не указан</span>
+                ) : (
                   <span className="text-sm text-gray-400">Не указан</span>
-                ) : null}
+                )}
+                {participant.tg_user_id && (
+                  <span className="text-xs text-gray-400">ID: {participant.tg_user_id}</span>
+                )}
               </div>
             </div>
 

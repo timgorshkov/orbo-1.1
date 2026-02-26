@@ -26,6 +26,7 @@ export interface ParticipantTimelineEvent {
   event_type: string;
   created_at: string;
   tg_chat_id: string | number | null;
+  message_id?: number | null;
   meta: Record<string, any> | null;
 }
 

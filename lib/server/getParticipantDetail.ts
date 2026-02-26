@@ -317,6 +317,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                 event_type: event.event_type,
                 created_at: event.created_at,
                 tg_chat_id: String(event.tg_chat_id),
+                message_id: event.message_id ?? null,
                 meta: eventMeta
               };
             });
