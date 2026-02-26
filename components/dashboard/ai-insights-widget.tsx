@@ -84,8 +84,11 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
   const remaining = credits?.remaining ?? 0
   const isUnlimited = remaining === -1
 
-  // No credits left and no results to show (unlimited plans always pass)
-  if (!isUnlimited && remaining <= 0 && !profiles) return null
+  // PRO/Enterprise: AI available in every profile, no need for dashboard demo widget
+  if (isUnlimited) return null
+
+  // No credits left and no results to show
+  if (remaining <= 0 && !profiles) return null
 
   const roleLabels: Record<string, string> = {
     'leader': 'Лидер',
@@ -107,13 +110,13 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
             </h3>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">доступен в профиле каждого участника</span>
-              {(isUnlimited || remaining > 0) && (
+              {remaining > 0 && (
                 <button
                   onClick={runAnalysis}
                   disabled={loading}
                   className="text-xs text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50"
                 >
-                  {loading ? 'Анализирую...' : isUnlimited ? 'Обновить' : `Обновить (${remaining})`}
+                  {loading ? 'Анализирую...' : `Обновить (${remaining})`}
                 </button>
               )}
             </div>
@@ -221,7 +224,7 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
             <div className="flex items-center gap-3">
               <button
                 onClick={runAnalysis}
-                disabled={loading || (!isUnlimited && remaining <= 0)}
+                disabled={loading || remaining <= 0}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {loading ? (
@@ -236,14 +239,12 @@ export default function AiInsightsWidget({ orgId }: { orgId: string }) {
                   'Запустить анализ'
                 )}
               </button>
-              {!isUnlimited && (
-                <span className="text-xs text-gray-500">
-                  {remaining > 0
-                    ? `${remaining} бесплатн${remaining === 1 ? 'ый' : 'ых'} анализ${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
-                    : 'Кредиты закончились'
-                  }
-                </span>
-              )}
+              <span className="text-xs text-gray-500">
+                {remaining > 0
+                  ? `${remaining} бесплатн${remaining === 1 ? 'ый' : 'ых'} анализ${remaining === 1 ? '' : remaining < 5 ? 'а' : 'ов'}`
+                  : 'Кредиты закончились'
+                }
+              </span>
             </div>
           </div>
         </div>
