@@ -211,8 +211,12 @@ export async function GET(request: Request) {
         allMembers.forEach(member => {
           if (!member) return
 
-          if (member.tg_user_id != null) {
-            addOrUpdateParticipant(member.tg_user_id, {
+          // PostgreSQL bigint may arrive as string — normalize to number
+          const memberTgUserId = member.tg_user_id != null ? Number(member.tg_user_id) : null
+          const safeTgUserId = memberTgUserId != null && Number.isFinite(memberTgUserId) ? memberTgUserId : null
+
+          if (safeTgUserId != null) {
+            addOrUpdateParticipant(safeTgUserId, {
               username: member.username ?? null,
               fullName: member.full_name ?? null,
               lastActivity: member.last_activity_at ?? null,
@@ -223,7 +227,7 @@ export async function GET(request: Request) {
           }
 
           membershipParticipantData.set(member.id, {
-            tg_user_id: member.tg_user_id,
+            tg_user_id: safeTgUserId,
             username: member.username || null,
             full_name: member.full_name,
             photo_url: member.photo_url,
@@ -412,9 +416,11 @@ export async function GET(request: Request) {
 
         (rows || []).forEach(row => {
           if (!row?.tg_user_id) return
-          participantIdMap.set(row.tg_user_id, { id: row.id, photo_url: row.photo_url })
+          const numericTgUserId = Number(row.tg_user_id)
+          if (!Number.isFinite(numericTgUserId)) return
+          participantIdMap.set(numericTgUserId, { id: row.id, photo_url: row.photo_url })
 
-          const record = participantsMap.get(row.tg_user_id)
+          const record = participantsMap.get(numericTgUserId)
           if (!record) return
 
           if (row.username && !record.username) {
@@ -444,7 +450,7 @@ export async function GET(request: Request) {
     const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
     if (adminDataRaw) {
       for (const admin of adminDataRaw) {
-        adminMap.set(admin.tg_user_id, {
+        adminMap.set(Number(admin.tg_user_id), {
           isOwner: admin.is_owner || false,
           isAdmin: admin.is_admin || false,
           customTitle: admin.custom_title || null
@@ -573,10 +579,23 @@ export async function GET(request: Request) {
         }
       })
 
-    // Add group participants that don't have tg_user_id (channels, anonymous)
+    // Merge membership participants that are missing from participantsMap
     const includedPids = new Set(participantsResponse.filter(p => p.participant_id).map(p => p.participant_id))
+    const includedTgUserIds = new Set(participantsResponse.filter(p => p.tg_user_id).map(p => p.tg_user_id))
+
     for (const [pid, data] of membershipParticipantData) {
       if (includedPids.has(pid)) continue
+
+      // Participant might already be in the response by tg_user_id but without participant_id
+      if (data.tg_user_id && includedTgUserIds.has(data.tg_user_id)) {
+        const existing = participantsResponse.find(p => p.tg_user_id === data.tg_user_id)
+        if (existing && !existing.participant_id) {
+          existing.participant_id = pid
+          existing.photo_url = existing.photo_url || data.photo_url
+        }
+        continue
+      }
+
       participantsResponse.push({
         tg_user_id: data.tg_user_id || 0,
         participant_id: pid,
@@ -584,7 +603,7 @@ export async function GET(request: Request) {
         full_name: data.full_name,
         message_count: 0,
         last_activity: data.last_activity_at,
-        risk_score: null,
+        risk_score: data.risk_score != null ? calculateRiskScore(data.last_activity_at, data.risk_score) : null,
         is_owner: false,
         is_admin: false,
         custom_title: null,

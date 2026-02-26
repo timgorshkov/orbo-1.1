@@ -42,17 +42,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { data: orgGroups } = await supabase
-      .from('org_telegram_groups')
-      .select('tg_chat_id')
-      .eq('org_id', orgId)
-
-    if (!orgGroups || orgGroups.length === 0) {
-      return NextResponse.json({ updated: 0, skipped: 0, failed: 0 })
-    }
-
-    const tgChatIds = orgGroups.map((g: any) => g.tg_chat_id)
-
     const ids = participantIds.slice(0, BATCH_LIMIT)
 
     const { data: participants } = await supabase
@@ -75,6 +64,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ updated: 0, skipped: 0, failed: 0 })
     }
 
+    // Load each participant's actual groups to avoid querying all org groups
+    const syncParticipantIds = needSync.map((p: any) => p.id)
+    const { data: participantGroupLinks } = await supabase
+      .from('participant_groups')
+      .select('participant_id, tg_group_id')
+      .in('participant_id', syncParticipantIds)
+      .is('left_at', null)
+
+    const participantGroupMap = new Map<string, number[]>()
+    for (const link of participantGroupLinks || []) {
+      const groups = participantGroupMap.get(link.participant_id) || []
+      groups.push(Number(link.tg_group_id))
+      participantGroupMap.set(link.participant_id, groups)
+    }
+
     logger.info({ org_id: orgId, need_sync: needSync.length, total: ids.length }, 'Batch username sync started')
 
     const botTypes: Array<'main' | 'notifications' | 'event'> = ['main', 'notifications', 'event']
@@ -88,26 +92,30 @@ export async function POST(request: NextRequest) {
         let username: string | null = null
         let bio: string | null = null
 
-        for (const chatId of tgChatIds) {
-          for (const botType of botTypes) {
-            try {
-              const tg = new TelegramService(botType)
-              const resp = await tg.getChatMember(chatId, tgUserId)
-              if (resp.ok && resp.result?.user) {
-                if (resp.result.user.username) {
-                  username = resp.result.user.username
+        const participantChatIds = participantGroupMap.get(participant.id) || []
+
+        if (!participant.username && participantChatIds.length > 0) {
+          for (const chatId of participantChatIds) {
+            for (const botType of botTypes) {
+              try {
+                const tg = new TelegramService(botType)
+                const resp = await tg.getChatMember(chatId, tgUserId)
+                if (resp.ok && resp.result?.user) {
+                  if (resp.result.user.username) {
+                    username = resp.result.user.username
+                  }
+                  break
                 }
-                break
+                if (resp.ok) break
+              } catch {
+                continue
               }
-              if (resp.ok) break
-            } catch {
-              continue
             }
+            if (username) break
           }
-          if (username) break
         }
 
-        if (!bio) {
+        if (!participant.bio) {
           for (const botType of botTypes) {
             try {
               const tg = new TelegramService(botType)

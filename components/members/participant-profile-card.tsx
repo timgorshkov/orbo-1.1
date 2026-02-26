@@ -468,8 +468,9 @@ export default function ParticipantProfileCard({
               </p>
             </div>
           ) : participant.bio ? (
-            <div>
-              <p className="text-lg text-gray-600">{participant.bio}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Описание:</span>
+              <p className="text-base text-gray-700">{participant.bio}</p>
             </div>
           ) : null}
 

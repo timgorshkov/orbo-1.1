@@ -448,6 +448,8 @@ async getChatMember(chatId: number, userId: number) {
         const isExpectedError = 
           (responseData.error_code === 400 && responseData.description?.includes('user not found')) ||
           (responseData.error_code === 400 && responseData.description?.includes('chat not found')) ||
+          (responseData.error_code === 400 && responseData.description?.includes('member not found')) ||
+          (responseData.error_code === 400 && responseData.description?.includes('PARTICIPANT_ID_INVALID')) ||
           (responseData.error_code === 403 && responseData.description?.includes('bot was blocked')) ||
           (responseData.error_code === 403 && responseData.description?.includes('user is deactivated'));
 
