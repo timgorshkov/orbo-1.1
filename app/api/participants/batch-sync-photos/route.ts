@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
 const BUCKET_NAME = 'participant-photos'
-const BATCH_LIMIT = 20
-const DELAY_BETWEEN_MS = 300
+const BATCH_LIMIT = 100
+const DELAY_BETWEEN_MS = 200
 
 /**
  * POST /api/participants/batch-sync-photos

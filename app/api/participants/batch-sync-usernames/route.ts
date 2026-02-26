@@ -7,8 +7,8 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-const BATCH_LIMIT = 50
-const DELAY_BETWEEN_MS = 200
+const BATCH_LIMIT = 100
+const DELAY_BETWEEN_MS = 150
 
 /**
  * POST /api/participants/batch-sync-usernames
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     const { data: participants } = await supabase
       .from('participants')
-      .select('id, tg_user_id, tg_username, bio, org_id')
+      .select('id, tg_user_id, username, bio, org_id')
       .in('id', ids)
       .eq('org_id', orgId)
       .is('merged_into', null)
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     const needSync = participants.filter(
-      (p: any) => p.tg_user_id && Number(p.tg_user_id) > 0 && (!p.tg_username || !p.bio)
+      (p: any) => p.tg_user_id && Number(p.tg_user_id) > 0 && (!p.username || !p.bio)
     )
 
     if (needSync.length === 0) {
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
         }
 
         const updateData: Record<string, any> = { updated_at: new Date().toISOString() }
-        if (username && !participant.tg_username) updateData.tg_username = username
+        if (username && !participant.username) updateData.username = username
         if (bio && !participant.bio) updateData.bio = bio
 
         if (Object.keys(updateData).length > 1) {

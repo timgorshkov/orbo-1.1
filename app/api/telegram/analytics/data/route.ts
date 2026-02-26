@@ -197,17 +197,23 @@ export async function GET(request: Request) {
         logger.error({ error: membershipError.message, chat_id: chatId }, 'Error fetching participant memberships for analytics');
       } else if (membershipLinks && membershipLinks.length > 0) {
         const participantIds = membershipLinks.map(m => m.participant_id);
-        const { data: participants } = await supabase
-          .from('participants')
-          .select('id, tg_user_id, username, tg_username, full_name, photo_url, last_activity_at, activity_score, risk_score')
-          .in('id', participantIds);
+        const CHUNK = 500
+        const allMembers: any[] = []
+        for (let c = 0; c < participantIds.length; c += CHUNK) {
+          const chunk = participantIds.slice(c, c + CHUNK)
+          const { data } = await supabase
+            .from('participants')
+            .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
+            .in('id', chunk)
+          if (data) allMembers.push(...data)
+        }
         
-        (participants || []).forEach(member => {
+        allMembers.forEach(member => {
           if (!member) return
 
           if (member.tg_user_id != null) {
             addOrUpdateParticipant(member.tg_user_id, {
-              username: member.tg_username || member.username || null,
+              username: member.username ?? null,
               fullName: member.full_name ?? null,
               lastActivity: member.last_activity_at ?? null,
               activityScore: member.activity_score ?? null,
@@ -218,7 +224,7 @@ export async function GET(request: Request) {
 
           membershipParticipantData.set(member.id, {
             tg_user_id: member.tg_user_id,
-            username: member.tg_username || member.username || null,
+            username: member.username || null,
             full_name: member.full_name,
             photo_url: member.photo_url,
             last_activity_at: member.last_activity_at,
@@ -379,66 +385,65 @@ export async function GET(request: Request) {
     // Получаем все tg_user_id для последующих запросов
     const allTgUserIds = participantList.map(p => p.tg_user_id)
     
-    // Выполняем запросы параллельно: обогащение данных, админы, и id/photo
-    const [participantsEnrichmentResult, adminDataResult] = await Promise.all([
-      // Единый запрос для обогащения участников (включая id, photo_url, username, full_name, scores)
-      allTgUserIds.length > 0 
-        ? supabase
-            .from('participants')
-            .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
-            .eq('org_id', orgId)
-            .in('tg_user_id', allTgUserIds)
-        : Promise.resolve({ data: null, error: null }),
-      
-      // Запрос информации об админах
-      supabase
-        .from('telegram_group_admins')
-        .select('tg_user_id, is_owner, is_admin, custom_title')
-        .eq('tg_chat_id', parseInt(chatId))
-        .gt('expires_at', new Date().toISOString())
-    ])
+    // Запрос информации об админах
+    const { data: adminDataRaw } = await supabase
+      .from('telegram_group_admins')
+      .select('tg_user_id, is_owner, is_admin, custom_title')
+      .eq('tg_chat_id', parseInt(chatId))
+      .gt('expires_at', new Date().toISOString())
 
-    // Обработка результатов обогащения участников
+    // Обогащение участников (chunked for large groups)
     const participantIdMap = new Map<number, { id: string; photo_url: string | null }>()
-    
-    if (participantsEnrichmentResult.error) {
-      logger.error({ error: participantsEnrichmentResult.error.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
-    } else if (participantsEnrichmentResult.data) {
-      participantsEnrichmentResult.data.forEach(row => {
-        if (!row?.tg_user_id) return
 
-        // Сохраняем id и photo_url для последующего использования
-        participantIdMap.set(row.tg_user_id, { id: row.id, photo_url: row.photo_url })
+    if (allTgUserIds.length > 0) {
+      const CHUNK = 500
+      for (let c = 0; c < allTgUserIds.length; c += CHUNK) {
+        const chunk = allTgUserIds.slice(c, c + CHUNK)
+        const { data: rows, error: enrichErr } = await supabase
+          .from('participants')
+          .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
+          .eq('org_id', orgId)
+          .in('tg_user_id', chunk)
 
-        const record = participantsMap.get(row.tg_user_id)
-        if (!record) return
+        if (enrichErr) {
+          logger.error({ error: enrichErr.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
+          continue
+        }
 
-        if (row.username && !record.username) {
-          record.username = row.username
-          const normalized = normalizeUsername(row.username)
-          if (normalized) {
-            usernameToUserId.set(normalized, record.tg_user_id)
+        (rows || []).forEach(row => {
+          if (!row?.tg_user_id) return
+          participantIdMap.set(row.tg_user_id, { id: row.id, photo_url: row.photo_url })
+
+          const record = participantsMap.get(row.tg_user_id)
+          if (!record) return
+
+          if (row.username && !record.username) {
+            record.username = row.username
+            const normalized = normalizeUsername(row.username)
+            if (normalized) {
+              usernameToUserId.set(normalized, record.tg_user_id)
+            }
           }
-        }
 
-        if (row.full_name && !record.full_name) {
-          record.full_name = row.full_name
-        }
+          if (row.full_name && !record.full_name) {
+            record.full_name = row.full_name
+          }
 
-        record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
-        if (row.activity_score != null) {
-          record.activity_score = row.activity_score
-        }
-        if (row.risk_score != null) {
-          record.risk_score = row.risk_score
-        }
-      })
+          record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
+          if (row.activity_score != null) {
+            record.activity_score = row.activity_score
+          }
+          if (row.risk_score != null) {
+            record.risk_score = row.risk_score
+          }
+        })
+      }
     }
 
     // Обработка результатов запроса админов
     const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
-    if (adminDataResult.data) {
-      for (const admin of adminDataResult.data) {
+    if (adminDataRaw) {
+      for (const admin of adminDataRaw) {
         adminMap.set(admin.tg_user_id, {
           isOwner: admin.is_owner || false,
           isAdmin: admin.is_admin || false,
