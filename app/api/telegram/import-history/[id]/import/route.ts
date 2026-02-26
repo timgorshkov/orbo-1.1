@@ -11,6 +11,13 @@ export const maxDuration = 300;
 
 const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB for large group histories
 
+/** Strip characters that are invalid in PostgreSQL JSON/JSONB (null bytes, etc.) */
+function sanitizeForJson(str: string | null | undefined): string {
+  if (!str) return '';
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\u0000/g, '');
+}
+
 interface ImportDecision {
   importName: string;
   importUsername?: string;
@@ -291,12 +298,16 @@ export async function POST(
             .single();
 
           if (participantError || !newParticipant) {
-            logger.error({ 
-              author_name: author.name,
-              author_key: authorKey,
-              org_id: orgId,
-              error: participantError?.message
-            }, 'Failed to create participant');
+            if (participantError?.code === '23505') {
+              logger.debug({ author_key: authorKey }, 'Participant already exists, skipping');
+            } else {
+              logger.warn({ 
+                author_name: author.name,
+                author_key: authorKey,
+                org_id: orgId,
+                error: participantError?.message
+              }, 'Failed to create participant');
+            }
             continue;
           }
 
@@ -517,7 +528,7 @@ async function processBatch(
 
     const tgUserId = msg.authorUserId || null;
     const messageId = msg.messageId || null;
-    const textPreview = msg.text ? msg.text.substring(0, 500) : '';
+    const textPreview = sanitizeForJson(msg.text ? msg.text.substring(0, 500) : '');
 
     const normalizedTimestamp = new Date(Date.UTC(
       msg.timestamp.getUTCFullYear(),
@@ -547,7 +558,7 @@ async function processBatch(
         import_source: 'html_import',
         import_batch_id: batchId,
         meta: {
-          user: { name: msg.authorName, username: msg.authorUsername || null, tg_user_id: tgUserId },
+          user: { name: sanitizeForJson(msg.authorName), username: msg.authorUsername || null, tg_user_id: tgUserId },
           message: {
             id: messageId, thread_id: null, reply_to_id: (msg as any).replyToMessageId || null,
             text_preview: textPreview, text_length: msg.text?.length || 0, has_media: false, media_type: null
@@ -555,7 +566,7 @@ async function processBatch(
           source: { type: 'import', format: isJson ? 'json' : 'html', batch_id: batchId }
         }
       },
-      fullText: msg.text || null,
+      fullText: msg.text ? sanitizeForJson(msg.text) : null,
       participantId,
       tgUserId,
       messageId,

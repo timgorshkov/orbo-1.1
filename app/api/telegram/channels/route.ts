@@ -175,15 +175,29 @@ export async function POST(request: NextRequest) {
     logger.info({ channel_id: channelId, rpc_result: rpcResult }, 'Channel upserted');
     
     // Link channel to organization
-    const { error: linkError } = await supabase
+    let linkError;
+    ({ error: linkError } = await supabase
       .from('org_telegram_channels')
       .upsert({
         org_id: orgId,
         channel_id: channelId,
         created_by: user.id,
         is_primary: isPrimary || false
-      }, { onConflict: 'org_id,channel_id' });
+      }, { onConflict: 'org_id,channel_id' }));
     
+    // FK error: user not in profiles table — retry without created_by
+    if (linkError?.code === '23503') {
+      logger.warn({ user_id: user.id, channel_id: channelId }, 'Profile missing for user, linking channel without created_by');
+      ({ error: linkError } = await supabase
+        .from('org_telegram_channels')
+        .upsert({
+          org_id: orgId,
+          channel_id: channelId,
+          created_by: null,
+          is_primary: isPrimary || false
+        }, { onConflict: 'org_id,channel_id' }));
+    }
+
     if (linkError) {
       logger.error({ error: linkError, org_id: orgId, channel_id: channelId }, 'Failed to link channel');
       return NextResponse.json({ error: 'Failed to link channel to organization' }, { status: 500 });

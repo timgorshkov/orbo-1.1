@@ -759,12 +759,18 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       
       return transformResult<T>(result, true);
     } catch (error: any) {
-      logger.error({ 
+      const logData = { 
         table: this.tableName,
         operation: this.operation,
         error: error.message,
         code: error.code
-      }, 'Query execution error');
+      };
+      // 23505 = unique constraint violation — expected during upserts/imports, handled by callers
+      if (error.code === '23505') {
+        logger.debug(logData, 'Query execution error');
+      } else {
+        logger.error(logData, 'Query execution error');
+      }
       return { data: null, error: transformError(error) };
     }
   }
@@ -795,12 +801,17 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
       }
       return transformed as unknown as TResult;
     } catch (error: any) {
-      logger.error({
+      const logData = {
         table: this.tableName,
         operation: this.operation,
         error: error.message,
         code: error.code
-      }, 'Query execution error');
+      };
+      if (error.code === '23505') {
+        logger.debug(logData, 'Query execution error');
+      } else {
+        logger.error(logData, 'Query execution error');
+      }
       const errorResult: DbResult<T[]> = { data: null, error: transformError(error) };
       if (onfulfilled) {
         return onfulfilled(errorResult);
