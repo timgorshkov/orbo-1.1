@@ -131,11 +131,21 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected: (fileRejections) => {
+      const rejection = fileRejections[0];
+      if (rejection?.errors?.some(e => e.code === 'file-too-large')) {
+        setError(`Файл слишком большой (${(rejection.file.size / 1024 / 1024).toFixed(0)}MB). Максимальный размер — 150MB.`);
+      } else if (rejection?.errors?.some(e => e.code === 'file-invalid-type')) {
+        setError('Неподдерживаемый формат файла. Принимаются .json и .html файлы экспорта из Telegram.');
+      } else {
+        setError('Не удалось загрузить файл. Проверьте формат и размер.');
+      }
+    },
     accept: {
       'application/json': ['.json'],
       'text/html': ['.html'],
     },
-    maxSize: 5 * 1024 * 1024, // 5MB (JSON files are typically larger)
+    maxSize: 150 * 1024 * 1024, // 150MB for large group histories
     multiple: false,
   });
 
@@ -329,7 +339,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
           <CardHeader>
             <CardTitle>Загрузить файл истории</CardTitle>
             <CardDescription>
-              Макс. размер: 5MB{simplified ? '.' : '. Поддерживаются JSON и HTML файлы экспорта из Telegram.'}
+              Макс. размер: 150MB{simplified ? '.' : '. Поддерживаются JSON и HTML файлы экспорта из Telegram.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -359,7 +369,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                       Перетащите файл экспорта сюда или нажмите для выбора
                     </p>
                     <p className="text-sm text-neutral-500">
-                      Принимаются файлы формата .json (рекомендуется) или .html размером до 5MB
+                      Принимаются файлы формата .json (рекомендуется) или .html размером до 150MB
                     </p>
                   </>
                 )}

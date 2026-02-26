@@ -7,8 +7,9 @@ import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (increased for JSON files)
+const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB for large group histories
 
 interface ParticipantMatch {
   // Данные из импорта
@@ -116,7 +117,7 @@ export async function POST(
           .maybeSingle();
         
         if (orgLink) {
-          group = { ...data, org_telegram_groups: orgLink };
+          group = { ...data, org_telegram_groups: [orgLink] };
           break;
         }
       }
@@ -202,7 +203,7 @@ export async function POST(
       })
       return NextResponse.json({
         error: 'File too large',
-        message: `Размер файла превышает ${MAX_FILE_SIZE / 1024 / 1024}MB. Telegram автоматически разбивает экспорт на файлы < 1MB. Загрузите файлы по одному.`,
+        message: `Размер файла превышает ${MAX_FILE_SIZE / 1024 / 1024}MB. Попробуйте экспортировать только текстовые сообщения (без медиа).`,
         maxSize: MAX_FILE_SIZE,
       }, { status: 400 });
     }
