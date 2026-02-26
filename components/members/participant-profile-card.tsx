@@ -306,7 +306,7 @@ export default function ParticipantProfileCard({
       <CardContent className="relative pt-20 pb-6">
         {/* Profile Photo */}
         <div className="absolute -top-16 left-6 group">
-          {currentPhotoUrl ? (
+          {currentPhotoUrl && currentPhotoUrl.startsWith('http') ? (
             <img
               src={currentPhotoUrl}
               alt={participant.full_name || 'User'}

@@ -26,18 +26,25 @@ function markChecked(participantId: string) {
  * Хук для автоматической подгрузки фото участника из Telegram.
  * Кэширует отрицательный результат на 24ч чтобы не спамить Telegram API.
  */
+function sanitizePhotoUrl(url: string | null): string | null {
+  if (!url || url === 'none') return null;
+  return url;
+}
+
 export function useTelegramPhoto(participantId: string, currentPhotoUrl: string | null, tgUserId: number | null) {
-  const [photoUrl, setPhotoUrl] = useState<string | null>(currentPhotoUrl);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(sanitizePhotoUrl(currentPhotoUrl));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentPhotoUrl && currentPhotoUrl !== 'none') {
-      setPhotoUrl(currentPhotoUrl);
+    const safeUrl = sanitizePhotoUrl(currentPhotoUrl);
+
+    if (safeUrl) {
+      setPhotoUrl(safeUrl);
       return;
     }
 
-    if (currentPhotoUrl === 'none') {
+    if (!safeUrl && currentPhotoUrl) {
       setPhotoUrl(null);
       return;
     }
