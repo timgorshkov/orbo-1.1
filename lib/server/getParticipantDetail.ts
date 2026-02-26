@@ -11,8 +11,16 @@ import type {
   ParticipantEventRegistration
 } from '@/lib/types/participant';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getParticipantDetail(orgId: string, participantId: string): Promise<ParticipantDetailResult | null> {
   const logger = createServiceLogger('getParticipantDetail');
+
+  if (!UUID_RE.test(participantId) || !UUID_RE.test(orgId)) {
+    logger.warn({ org_id: orgId, participant_id: participantId }, 'Invalid UUID format in getParticipantDetail');
+    return null;
+  }
+
   const supabase = createAdminServer();
 
   const { data: requestedParticipant, error: participantError } = await supabase

@@ -309,16 +309,16 @@ export default function MembersView({
     if (usernameSyncFired.current) return
     usernameSyncFired.current = true
 
-    const needUsername = initialParticipants
-      .filter(p => p.tg_user_id && !(p.tg_username || p.username))
+    const needSync = initialParticipants
+      .filter(p => p.tg_user_id && (!(p.tg_username || p.username) || !p.bio))
       .map(p => p.id)
 
-    if (needUsername.length === 0) return
+    if (needSync.length === 0) return
 
     fetch('/api/participants/batch-sync-usernames', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgId, participantIds: needUsername.slice(0, 100) }),
+      body: JSON.stringify({ orgId, participantIds: needSync.slice(0, 100) }),
     }).catch(() => {})
   }, [initialParticipants, orgId])
 
