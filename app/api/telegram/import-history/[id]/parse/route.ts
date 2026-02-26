@@ -416,11 +416,28 @@ export async function POST(
     const exactMatches = matches.filter(m => m.matchType === 'exact' || m.matchType === 'username').length;
     const fuzzyMatches = matches.filter(m => m.matchType === 'fuzzy').length;
     const newParticipants = matches.filter(m => m.matchType === 'none').length;
+    const botsFiltered = authors.length - matches.length;
+
+    // Count how many messages are already imported for this group
+    const { count: existingMessagesInDb } = await supabaseAdmin
+      .from('activity_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('tg_chat_id', group.tg_chat_id)
+      .eq('event_type', 'message');
+
+    // Count total participants in this group
+    const { count: existingParticipantsInGroup } = await supabaseAdmin
+      .from('participant_groups')
+      .select('*', { count: 'exact', head: true })
+      .eq('tg_group_id', group.tg_chat_id);
 
     logger.info({ 
       exact_matches: exactMatches,
       fuzzy_matches: fuzzyMatches,
-      new_participants: newParticipants
+      new_participants: newParticipants,
+      bots_filtered: botsFiltered,
+      existing_messages_in_db: existingMessagesInDb,
+      existing_participants_in_group: existingParticipantsInGroup
     }, 'Participant matching complete');
 
     return NextResponse.json({
@@ -432,6 +449,9 @@ export async function POST(
           totalMessages: parsingResult.stats.totalMessages,
           uniqueAuthors: parsingResult.stats.uniqueAuthors,
           dateRange: parsingResult.dateRange,
+          existingMessagesInDb: existingMessagesInDb || 0,
+          existingParticipantsInGroup: existingParticipantsInGroup || 0,
+          botsFiltered,
         },
         matches: matches.map(m => ({
           ...m,

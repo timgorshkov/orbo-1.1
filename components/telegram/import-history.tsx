@@ -38,6 +38,9 @@ interface PreviewData {
       start: string;
       end: string;
     };
+    existingMessagesInDb?: number;
+    existingParticipantsInGroup?: number;
+    botsFiltered?: number;
   };
   matches: ParticipantMatch[];
   matchStats: {
@@ -214,29 +217,39 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
 
       const result = await response.json();
       
-      // Build detailed success message with all statistics
       const stats = result.data || {};
-      const parts = [
-        `Импортировано: ${stats.importedMessages || 0} сообщений`,
-      ];
-      
-      if (stats.duplicateMessages > 0) {
-        parts.push(`Пропущено дубликатов: ${stats.duplicateMessages}`);
+      const parts: string[] = [];
+
+      if (stats.importedMessages > 0) {
+        parts.push(`✅ Новых сообщений: ${stats.importedMessages}`);
       }
-      if (stats.skippedMessages > 0) {
-        parts.push(`Пропущено: ${stats.skippedMessages}`);
+      if (stats.alreadyInDb > 0) {
+        parts.push(`📦 Уже в базе: ${stats.alreadyInDb}`);
+      }
+      if (stats.textsBackfilled > 0) {
+        parts.push(`📝 Текстов дозаписано: ${stats.textsBackfilled}`);
       }
       if (stats.messagesSaved > 0) {
-        parts.push(`Сохранено текстов: ${stats.messagesSaved}`);
+        parts.push(`💾 Текстов сохранено: ${stats.messagesSaved}`);
+      }
+      if (stats.totalMessagesInDb > 0) {
+        parts.push(`📊 Всего в базе: ${stats.totalMessagesInDb}`);
       }
       if (stats.newParticipants > 0) {
-        parts.push(`Создано участников: ${stats.newParticipants}`);
+        parts.push(`👤 Создано участников: ${stats.newParticipants}`);
       }
       if (stats.matchedParticipants > 0) {
-        parts.push(`Связано с существующими: ${stats.matchedParticipants}`);
+        parts.push(`🔗 Связано с существующими: ${stats.matchedParticipants}`);
+      }
+      if (stats.skippedNoDecision > 0) {
+        parts.push(`⏭️ Без решения: ${stats.skippedNoDecision}`);
+      }
+
+      if (parts.length === 0) {
+        parts.push('Импорт завершён, новых сообщений не обнаружено');
       }
       
-      setSuccess(parts.join(' • '));
+      setSuccess(parts.join('\n'));
       setPreview(null);
       setFile(null);
       setProgress(100);
@@ -417,12 +430,28 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                 </div>
               </div>
 
-              <div className="mt-4 text-sm text-neutral-600">
+              <div className="mt-4 text-sm text-neutral-600 space-y-1">
                 <p>
                   <strong>Период:</strong>{' '}
-                  {new Date(preview.stats.dateRange.start).toLocaleDateString('ru-RU')} -{' '}
+                  {new Date(preview.stats.dateRange.start).toLocaleDateString('ru-RU')} –{' '}
                   {new Date(preview.stats.dateRange.end).toLocaleDateString('ru-RU')}
                 </p>
+                {(preview.stats.existingMessagesInDb ?? 0) > 0 && (
+                  <p>
+                    <strong>Уже в базе:</strong> {preview.stats.existingMessagesInDb!.toLocaleString('ru-RU')} сообщений
+                    {preview.stats.existingMessagesInDb! >= preview.stats.totalMessages
+                      ? ' (все сообщения из файла уже импортированы, будут дозаписаны тексты)'
+                      : ` (новых: ~${(preview.stats.totalMessages - preview.stats.existingMessagesInDb!).toLocaleString('ru-RU')})`
+                    }
+                  </p>
+                )}
+                {(preview.stats.existingParticipantsInGroup ?? 0) > 0 && (
+                  <p>
+                    <strong>Участников в группе:</strong> {preview.stats.existingParticipantsInGroup!.toLocaleString('ru-RU')} в Orbo
+                    {' / '}{preview.stats.uniqueAuthors.toLocaleString('ru-RU')} авторов в файле
+                    {(preview.stats.botsFiltered ?? 0) > 0 && ` (${preview.stats.botsFiltered} ботов отфильтровано)`}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -562,7 +591,10 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                   Отмена
                 </Button>
                 <Button onClick={handleImport}>
-                  Импортировать {preview.stats.totalMessages} сообщений
+                  {(preview.stats.existingMessagesInDb ?? 0) > 0
+                    ? `Импортировать и дозаписать тексты`
+                    : `Импортировать ${preview.stats.totalMessages.toLocaleString('ru-RU')} сообщений`
+                  }
                 </Button>
               </div>
             </CardContent>
@@ -588,8 +620,8 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
       {/* Успех */}
       {success && !importing && (
         <Alert className="bg-green-50 border-green-200">
-          <AlertDescription className="text-green-800">
-            ✅ {success}
+          <AlertDescription className="text-green-800 whitespace-pre-line">
+            {success}
           </AlertDescription>
         </Alert>
       )}

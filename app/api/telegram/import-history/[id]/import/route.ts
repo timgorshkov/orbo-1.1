@@ -14,9 +14,9 @@ const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB for large group histories
 interface ImportDecision {
   importName: string;
   importUsername?: string;
-  importUserId?: number; // ⭐ Telegram User ID из JSON
-  action: 'merge' | 'create_new' | 'skip'; // ⭐ Добавлена опция "Игнорировать"
-  targetParticipantId?: string; // Если merge
+  importUserId?: number;
+  action: 'merge' | 'create_new' | 'skip';
+  targetParticipantId?: string;
 }
 
 interface ImportRequest {
@@ -36,16 +36,14 @@ export async function POST(
     const paramsResolved = await params;
     groupId = paramsResolved.id;
     const requestUrl = new URL(request.url)
-    const expectedOrgId = requestUrl.searchParams.get('orgId') // ✅ Получаем orgId из query параметров
+    const expectedOrgId = requestUrl.searchParams.get('orgId')
 
-    // Проверяем авторизацию через unified auth
     const user = await getUnifiedUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // ✅ Если передан orgId, сначала проверяем доступ к организации
     if (expectedOrgId) {
       const supabaseAdmin = createAdminServer();
       const { data: membership } = await supabaseAdmin
@@ -65,21 +63,15 @@ export async function POST(
       }
     }
 
-    // Получаем группу и проверяем доступ
-    // ⚠️ ID группы может быть отрицательным (после получения прав админа ботом)
-    // или положительным (в JSON экспорте), поэтому ищем по обоим вариантам
-    // Также groupId может быть как id (автоинкремент), так и tg_chat_id
     const supabaseAdmin = createAdminServer();
     const numericGroupId = Number(groupId);
     const absGroupId = Math.abs(numericGroupId);
     
-    // Пробуем найти группу по разным вариантам (как в detail/route.ts)
     const searchVariants = [
       { column: 'id', value: numericGroupId, enabled: !Number.isNaN(numericGroupId) },
       { column: 'id', value: groupId, enabled: true },
       { column: 'tg_chat_id', value: groupId, enabled: true },
       { column: 'tg_chat_id', value: numericGroupId, enabled: !Number.isNaN(numericGroupId) },
-      // Также пробуем по абсолютному значению для tg_chat_id (на случай изменения знака)
       { column: 'tg_chat_id', value: absGroupId, enabled: !Number.isNaN(numericGroupId) },
       { column: 'tg_chat_id', value: -absGroupId, enabled: !Number.isNaN(numericGroupId) },
     ];
@@ -97,7 +89,6 @@ export async function POST(
         .maybeSingle();
 
       if (data) {
-        // Проверяем что группа привязана к организации
         const { data: orgLink } = await supabaseAdmin
           .from('org_telegram_groups')
           .select('org_id')
@@ -110,7 +101,7 @@ export async function POST(
         }
       }
 
-      if (error?.code !== 'PGRST116') { // not-a-single-row error from maybeSingle
+      if (error?.code !== 'PGRST116') {
         groupError = error;
       }
     }
@@ -126,15 +117,11 @@ export async function POST(
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    // ✅ Получаем все организации, связанные с группой
     const orgTelegramGroups = (group as any).org_telegram_groups || [];
     
-    // ✅ Если передан expectedOrgId, используем его (уже проверили доступ выше)
-    // Иначе берем первую организацию и проверяем доступ
     let orgId: string | null = null;
     
     if (expectedOrgId) {
-      // Проверяем, что группа действительно связана с ожидаемой организацией
       const orgLink = orgTelegramGroups.find((link: any) => link.org_id === expectedOrgId);
       if (orgLink) {
         orgId = expectedOrgId;
@@ -145,13 +132,11 @@ export async function POST(
         }, { status: 400 });
       }
     } else {
-      // Если orgId не передан, берем первую организацию и проверяем доступ
       orgId = orgTelegramGroups[0]?.org_id;
       if (!orgId) {
         return NextResponse.json({ error: 'Group not linked to organization' }, { status: 400 });
       }
 
-      // Проверяем права пользователя в организации
       const { data: membership } = await supabaseAdmin
         .from('memberships')
         .select('role')
@@ -169,7 +154,6 @@ export async function POST(
       }
     }
 
-    // Получаем данные из FormData
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const decisionsJson = formData.get('decisions') as string;
@@ -180,7 +164,6 @@ export async function POST(
 
     const decisions: ImportDecision[] = JSON.parse(decisionsJson);
 
-    // Проверяем размер файла
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ 
         error: 'File too large',
@@ -189,7 +172,6 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Определяем формат файла
     const isJson = file.name.endsWith('.json') || file.type === 'application/json';
     const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
     
@@ -200,13 +182,11 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Читаем и парсим файл
     const fileContent = await file.text();
     let parsingResult: any;
     let authors: Map<string, any>;
     
     if (isJson) {
-      // Parse JSON format
       const validation = TelegramJsonParser.validate(fileContent);
       if (!validation.valid) {
         return NextResponse.json({ error: validation.error }, { status: 400 });
@@ -220,7 +200,6 @@ export async function POST(
         group_id: groupId
       }, 'Importing from JSON');
     } else {
-      // Parse HTML format
       const validation = TelegramHistoryParser.validate(fileContent);
       if (!validation.valid) {
         return NextResponse.json({ error: validation.error }, { status: 400 });
@@ -235,7 +214,6 @@ export async function POST(
       }, 'Importing from HTML');
     }
 
-    // Создаем батч импорта
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('telegram_import_batches')
       .insert({
@@ -264,31 +242,24 @@ export async function POST(
     const batchId = batch.id;
 
     try {
-      // Создаем мапу решений
       const decisionsMap = new Map<string, ImportDecision>();
       decisions.forEach(d => {
-        // ⭐ Используем ту же логику ключа, что и в UI
         const key = d.importUserId 
           ? `user_${d.importUserId}` 
           : (d.importUsername || d.importName);
         decisionsMap.set(key, d);
       });
 
-      // Создаем мапу участников (имя -> participant_id)
       const participantMap = new Map<string, string>();
-
       let newParticipantsCount = 0;
 
-      // Обрабатываем каждого автора
       for (const [authorKey, author] of Array.from(authors.entries())) {
         const decision = decisionsMap.get(authorKey);
         if (!decision) {
-          // Author was filtered out (bot) or not included in decisions - skip silently
           logger.debug({ author_key: authorKey }, 'Skipping author without decision');
           continue;
         }
 
-        // ⭐ Пропускаем, если выбрано "Игнорировать"
         if (decision.action === 'skip') {
           logger.debug({ author_key: authorKey }, 'Skipping author (skip action)');
           continue;
@@ -297,11 +268,8 @@ export async function POST(
         let participantId: string;
 
         if (decision.action === 'merge' && decision.targetParticipantId) {
-          // Используем существующего участника
           participantId = decision.targetParticipantId;
         } else {
-          // Создаем нового участника
-          // Пытаемся разбить имя на first_name и last_name
           const nameParts = author.name.trim().split(/\s+/);
           const tgFirstName = nameParts[0] || author.name;
           const tgLastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
@@ -311,11 +279,11 @@ export async function POST(
             .insert({
               org_id: orgId,
               full_name: author.name,
-              tg_first_name: tgFirstName, // Telegram имя (из импорта)
-              tg_last_name: tgLastName, // Telegram фамилия (из импорта)
+              tg_first_name: tgFirstName,
+              tg_last_name: tgLastName,
               username: author.username,
-              tg_user_id: author.userId || null, // ⭐ Сохраняем Telegram User ID если есть (из JSON)
-              source: 'import', // Общий источник для всех импортов
+              tg_user_id: author.userId || null,
+              source: 'import',
               created_at: author.firstMessageDate,
               last_activity_at: author.lastMessageDate,
             })
@@ -336,8 +304,6 @@ export async function POST(
           newParticipantsCount++;
         }
 
-        // ⭐ ВАЖНО: Создаем связь с группой для ВСЕХ участников (и новых, и существующих)
-        // Это позволяет добавить в эту группу участников, которые уже есть в других группах организации
         await supabaseAdmin
           .from('participant_groups')
           .upsert({
@@ -357,457 +323,81 @@ export async function POST(
         org_id: orgId
       }, 'Created new participants');
 
-      // Импортируем сообщения батчами по 500
+      // ──────────────────────────────────────────────────────────────
+      // Pre-check: fetch existing message_ids to split new vs existing
+      // ──────────────────────────────────────────────────────────────
+      const existingMessageIdSet = new Set<number>();
+      {
+        let pgOffset = 0;
+        const PG_SIZE = 5000;
+        while (true) {
+          const { data: page } = await supabaseAdmin
+            .from('activity_events')
+            .select('message_id')
+            .eq('tg_chat_id', group.tg_chat_id)
+            .eq('event_type', 'message')
+            .not('message_id', 'is', null)
+            .range(pgOffset, pgOffset + PG_SIZE - 1);
+          if (!page || page.length === 0) break;
+          page.forEach((r: any) => { if (r.message_id) existingMessageIdSet.add(r.message_id); });
+          if (page.length < PG_SIZE) break;
+          pgOffset += PG_SIZE;
+        }
+      }
+      const previouslyImportedCount = existingMessageIdSet.size;
+      logger.info({ previously_imported: previouslyImportedCount }, 'Pre-check: existing messages in DB');
+
+      // ──────────────────────────────────────────────────────────────
+      // Batch import loop
+      // ──────────────────────────────────────────────────────────────
       const BATCH_SIZE = 500;
       let importedCount = 0;
-      let skippedCount = 0;
-      let duplicateCount = 0;
+      let alreadyInDbCount = 0;
+      let skippedNoDecisionCount = 0;
       let messagesSavedCount = 0;
-      let messagesSkippedCount = 0;
+      let textsBackfilledCount = 0;
 
       for (let i = 0; i < parsingResult.messages.length; i += BATCH_SIZE) {
         const messageBatch = parsingResult.messages.slice(i, i + BATCH_SIZE);
 
-        const activityEvents = messageBatch
-          .map((msg: any) => {
-            // ⭐ Используем ту же логику ключа, что и в парсере
-            const authorKey = msg.authorUserId 
-              ? `user_${msg.authorUserId}` 
-              : (msg.authorUsername || msg.authorName);
-            const participantId = participantMap.get(authorKey);
+        const result = await processBatch(
+          supabaseAdmin, messageBatch, participantMap,
+          orgId!, group.tg_chat_id, batchId, isJson,
+          existingMessageIdSet, logger
+        );
 
-            if (!participantId) {
-              skippedCount++;
-              return null;
-            }
+        importedCount += result.imported;
+        alreadyInDbCount += result.alreadyInDb;
+        skippedNoDecisionCount += result.skippedNoDecision;
+        messagesSavedCount += result.textsSaved;
+        textsBackfilledCount += result.textsBackfilled;
 
-            // Unified metadata structure (same as webhook)
-            const textPreview = msg.text ? msg.text.substring(0, 500) : ''; // First 500 chars
-            const tgUserId = (msg as any).authorUserId || null;
-            const messageId = (msg as any).messageId || null;
-            
-            // Normalize timestamp to UTC to avoid timezone-related duplicates
-            // Store original timestamp for debugging
-            const originalTimestamp = msg.timestamp;
-            const normalizedTimestamp = new Date(Date.UTC(
-              msg.timestamp.getUTCFullYear(),
-              msg.timestamp.getUTCMonth(),
-              msg.timestamp.getUTCDate(),
-              msg.timestamp.getUTCHours(),
-              msg.timestamp.getUTCMinutes(),
-              msg.timestamp.getUTCSeconds(),
-              msg.timestamp.getUTCMilliseconds()
-            ));
-            
-            return {
-              org_id: orgId,
-              event_type: 'message',
-              tg_user_id: tgUserId,
-              tg_chat_id: group.tg_chat_id,
-              message_id: messageId,
-              chars_count: msg.charCount,
-              links_count: msg.linksCount,
-              mentions_count: msg.mentionsCount,
-              reply_to_message_id: (msg as any).replyToMessageId || null,
-              has_media: false, // TODO: detect media from parsed data
-              created_at: normalizedTimestamp.toISOString(),
-              import_source: 'html_import', // Используем 'html_import' для любых файловых импортов (JSON/HTML)
-              import_batch_id: batchId,
-              meta: {
-                user: {
-                  name: msg.authorName,
-                  username: msg.authorUsername || null,
-                  tg_user_id: tgUserId
-                },
-                message: {
-                  id: messageId,
-                  thread_id: null,
-                  reply_to_id: (msg as any).replyToMessageId || null,
-                  text_preview: textPreview,
-                  text_length: msg.text?.length || 0,
-                  has_media: false, // TODO: detect from parsed data
-                  media_type: null
-                },
-                source: {
-                  type: 'import',
-                  format: isJson ? 'json' : 'html',
-                  batch_id: batchId
-                }
-              },
-              // ⭐ Store full text and participant_id for participant_messages insert
-              _fullText: msg.text,
-              _participantId: participantId,
-              // Store original timestamp for debugging timezone issues
-              _originalTimestamp: originalTimestamp.toISOString()
-            };
-          })
-          .filter((e: any): e is NonNullable<typeof e> => e !== null);
-
-        if (activityEvents.length > 0) {
-          logger.debug({ 
-            batch_size: activityEvents.length,
-            batch_index: Math.floor(i / BATCH_SIZE) + 1
-          }, 'Attempting to insert activity events');
-          
-          // Store full texts and participant IDs before insert (they're not DB columns)
-          const messageTextsMap = new Map<number, { text: string; participantId: string; tgUserId: number | null; messageId: number | null; timestamp: string }>();
-          activityEvents.forEach((event: any, idx: number) => {
-            if (event._fullText) {
-              messageTextsMap.set(idx, {
-                text: event._fullText,
-                participantId: event._participantId,
-                tgUserId: event.tg_user_id,
-                messageId: event.message_id,
-                timestamp: event.created_at
-              });
-            }
-            // Remove temporary fields before DB insert
-            delete event._fullText;
-            delete event._participantId;
-          });
-          
-          // Log first event with timezone info for debugging
-          if (activityEvents.length > 0) {
-            const firstEvent = activityEvents[0];
-            const timezoneDebug = {
-              originalTimestamp: firstEvent._originalTimestamp,
-              normalizedTimestamp: firstEvent.created_at,
-              timeDifference: firstEvent._originalTimestamp !== firstEvent.created_at ? 
-                `${Math.abs(new Date(firstEvent.created_at).getTime() - new Date(firstEvent._originalTimestamp).getTime()) / 1000 / 60} minutes` : 
-                'none'
-            };
-            
-            // Remove debug fields before logging
-            const { _originalTimestamp, ...eventForLog } = firstEvent;
-            
-            logger.debug({ 
-              first_event: {
-                ...eventForLog,
-                _timezoneDebug: timezoneDebug
-              }
-            }, 'First event sample');
-            
-            // Remove debug field before DB insert
-            activityEvents.forEach((event: any) => {
-              delete event._originalTimestamp;
-            });
-          }
-          
-          const { data, error: insertError } = await supabaseAdmin
-            .from('activity_events')
-            .insert(activityEvents as any)
-            .select('id') as { data: any[] | null; error: any };
-
-          logger.debug({ 
-            inserted_count: data?.length || 0,
-            attempted_count: activityEvents.length,
-            has_error: !!insertError
-          }, 'Insert result');
-          
-          if (insertError) {
-            logger.error({ 
-              batch_size: activityEvents.length,
-              error: insertError.message,
-              code: insertError.code
-            }, 'Error inserting activity events');
-            // Проверяем дубликаты
-            if (insertError.code === '23505') {
-              logger.warn({ batch_size: activityEvents.length }, 'Some messages were duplicates, attempting to find existing records');
-              
-              // Try to find existing records for duplicate messages
-              // Query all potential duplicates in one batch query
-              const existingEventsMap = new Map<string, any>();
-              
-              // Build a query to find all existing events matching our batch
-              // Use message_id for precise matching (more reliable than composite key)
-              const chatId = group.tg_chat_id;
-              const messageIds = activityEvents
-                .map((e: any) => e.message_id)
-                .filter((id: any): id is number => id !== null && id !== undefined);
-              
-              // Query existing events by message_id (most precise match)
-              const { data: existingEvents, error: findError } = await supabaseAdmin
-                .from('activity_events')
-                .select('id, tg_chat_id, tg_user_id, created_at, chars_count, message_id')
-                .eq('tg_chat_id', chatId)
-                .in('message_id', messageIds.length > 0 ? messageIds : [-1]) // Use -1 if empty to avoid SQL error
-                .eq('event_type', 'message')
-                .eq('import_source', 'html_import');
-              
-              if (!findError && existingEvents) {
-                // Build map by message_id (most precise)
-                existingEvents.forEach((existing: any) => {
-                  if (existing.message_id) {
-                    existingEventsMap.set(existing.message_id.toString(), existing);
-                  }
-                });
-              }
-              
-              logger.debug({ 
-                existing_count: existingEventsMap.size,
-                attempted_count: activityEvents.length
-              }, 'Found existing records by message_id');
-              
-              // Match existing events with our activity events
-              // First by message_id (most precise), then by composite key for unmatched events
-              const matchedEvents: any[] = [];
-              const unmatchedEvents: Array<{ event: any; idx: number }> = [];
-              
-              // Step 1: Match by message_id
-              activityEvents.forEach((event: any, idx: number) => {
-                if (event.message_id) {
-                  const existing = existingEventsMap.get(event.message_id.toString());
-                  if (existing) {
-                    // Confirmed duplicate - found in DB by message_id
-                    matchedEvents.push({ ...existing, _originalIndex: idx });
-                  } else {
-                    // Event with message_id but not found - check composite key
-                    unmatchedEvents.push({ event, idx });
-                  }
-                } else {
-                  // Event without message_id - check composite key
-                  unmatchedEvents.push({ event, idx });
-                }
-              });
-              
-              // Step 2: For unmatched events, check by composite key (tg_chat_id, tg_user_id, created_at, chars_count)
-              // This matches the unique index idx_activity_dedup_imported
-              if (unmatchedEvents.length > 0) {
-                const compositeKeyQueries = unmatchedEvents.map(async ({ event, idx }) => {
-                  if (!event.tg_user_id || !event.created_at || event.chars_count === undefined) {
-                    return null; // Cannot check composite key without required fields
-                  }
-                  
-                  const { data: existing, error } = await supabaseAdmin
-                    .from('activity_events')
-                    .select('id, tg_chat_id, tg_user_id, created_at, chars_count, message_id')
-                    .eq('tg_chat_id', event.tg_chat_id)
-                    .eq('tg_user_id', event.tg_user_id)
-                    .eq('created_at', event.created_at)
-                    .eq('chars_count', event.chars_count)
-                    .eq('event_type', 'message')
-                    .eq('import_source', 'html_import')
-                    .maybeSingle();
-                  
-                  if (!error && existing) {
-                    return { existing, idx };
-                  }
-                  return null;
-                });
-                
-                const compositeMatches = await Promise.all(compositeKeyQueries);
-                compositeMatches.forEach((match) => {
-                  if (match) {
-                    matchedEvents.push({ ...match.existing, _originalIndex: match.idx });
-                  }
-                });
-              }
-              
-              const confirmedDuplicates = matchedEvents.length;
-              const unconfirmedCount = activityEvents.length - confirmedDuplicates;
-              
-              logger.info({ 
-                confirmed_duplicates: confirmedDuplicates,
-                unconfirmed: unconfirmedCount,
-                total_in_batch: activityEvents.length
-              }, 'Duplicate batch analysis');
-              
-              // Only count confirmed duplicates (found in DB) as duplicates
-              duplicateCount += confirmedDuplicates;
-              
-              // Events not found in DB are skipped (cannot confirm if they're duplicates)
-              // They failed to insert but we couldn't find existing records to confirm
-              skippedCount += unconfirmedCount;
-              
-              // DO NOT increment importedCount - none were newly imported
-              // (either confirmed duplicates or unconfirmed, but all failed to insert)
-              
-              // Try to save message texts for existing events
-              if (matchedEvents.length > 0) {
-                const participantMessagesData = matchedEvents
-                  .map((existingEvent: any) => {
-                    const messageData = messageTextsMap.get(existingEvent._originalIndex);
-                    if (!messageData || !messageData.text || !existingEvent.id) return null;
-                    
-                    const wordsCount = messageData.text.trim().split(/\s+/).filter(w => w.length > 0).length;
-                    
-                    return {
-                      org_id: orgId,
-                      participant_id: messageData.participantId,
-                      tg_user_id: messageData.tgUserId,
-                      tg_chat_id: group.tg_chat_id,
-                      activity_event_id: existingEvent.id,
-                      message_id: messageData.messageId,
-                      message_text: messageData.text,
-                      message_thread_id: null,
-                      reply_to_message_id: null,
-                      has_media: false,
-                      media_type: null,
-                      chars_count: messageData.text.length,
-                      words_count: wordsCount,
-                      sent_at: messageData.timestamp
-                    };
-                  })
-                  .filter((m: any): m is NonNullable<typeof m> => m !== null);
-                
-                if (participantMessagesData.length > 0) {
-                  logger.debug({ 
-                    messages_count: participantMessagesData.length
-                  }, 'Attempting to save message texts for existing events');
-                  
-                  const { data: savedMessages, error: messagesError } = await supabaseAdmin
-                    .from('participant_messages')
-                    .upsert(participantMessagesData, {
-                      onConflict: 'tg_chat_id,message_id',
-                      ignoreDuplicates: true
-                    })
-                    .select('id');
-                  
-                  if (messagesError) {
-                    logger.warn({ 
-                      error: messagesError.message,
-                      messages_count: participantMessagesData.length
-                    }, 'Failed to save message texts for existing events');
-                  } else {
-                    const savedCount = savedMessages?.length || 0;
-                    const skippedMessagesCount = participantMessagesData.length - savedCount;
-                    messagesSavedCount += savedCount;
-                    messagesSkippedCount += skippedMessagesCount;
-                    logger.info({ 
-                      saved_count: savedCount,
-                      skipped_count: skippedMessagesCount
-                    }, 'Saved message texts for existing events');
-                  }
-                }
-              }
-            } else {
-              throw insertError;
-            }
-          } else {
-            const insertedCount = data?.length || 0;
-            logger.info({ 
-              inserted_count: insertedCount,
-              attempted_count: activityEvents.length
-            }, 'Successfully inserted activity events');
-            importedCount += insertedCount;
-            
-            // Phase 2: Save full message texts to participant_messages
-            if (data && data.length > 0) {
-              const participantMessagesData = data
-                .map((insertedEvent: any, idx: number) => {
-                  const messageData = messageTextsMap.get(idx);
-                  if (!messageData || !messageData.text || !insertedEvent.id) return null;
-                  
-                  const wordsCount = messageData.text.trim().split(/\s+/).filter(w => w.length > 0).length;
-                  
-                  return {
-                    org_id: orgId,
-                    participant_id: messageData.participantId,
-                    tg_user_id: messageData.tgUserId,
-                    tg_chat_id: group.tg_chat_id,
-                    activity_event_id: insertedEvent.id,
-                    message_id: messageData.messageId,
-                    message_text: messageData.text, // ✅ Full text
-                    message_thread_id: null,
-                    reply_to_message_id: null, // TODO: extract from parsed data
-                    has_media: false, // TODO: detect from parsed data
-                    media_type: null,
-                    chars_count: messageData.text.length,
-                    words_count: wordsCount,
-                    sent_at: messageData.timestamp // Original message timestamp
-                  };
-                })
-                .filter((m: any): m is NonNullable<typeof m> => m !== null);
-              
-              if (participantMessagesData.length > 0) {
-                logger.debug({ 
-                  messages_count: participantMessagesData.length
-                }, 'Saving message texts to participant_messages');
-                
-                const { data: savedMessages, error: messagesError } = await supabaseAdmin
-                  .from('participant_messages')
-                  .upsert(participantMessagesData, {
-                    onConflict: 'tg_chat_id,message_id',
-                    ignoreDuplicates: true
-                  })
-                  .select('id');
-                
-                if (messagesError) {
-                  logger.warn({ 
-                    error: messagesError.message,
-                    messages_count: participantMessagesData.length
-                  }, 'Failed to save message texts');
-                  // Non-critical error, continue
-                } else {
-                  const savedCount = savedMessages?.length || 0;
-                  const skippedMessagesCount = participantMessagesData.length - savedCount;
-                  messagesSavedCount += savedCount;
-                  messagesSkippedCount += skippedMessagesCount;
-                  logger.info({ 
-                    saved_count: savedCount,
-                    skipped_count: skippedMessagesCount
-                  }, 'Saved message texts');
-                }
-              }
-            }
-            
-            if (insertedCount === 0 && activityEvents.length > 0) {
-              logger.warn({ 
-                attempted_count: activityEvents.length
-              }, 'Tried to insert events but got 0 back');
-            }
-            
-            // 🔍 ДИАГНОСТИКА: Проверяем, действительно ли записи в БД
-            if (insertedCount > 0) {
-              const { data: checkData, error: checkError } = await supabaseAdmin
-                .from('activity_events')
-                .select('id, tg_chat_id, org_id, event_type, tg_user_id, created_at')
-                .eq('import_batch_id', batchId)
-                .limit(3);
-              
-              logger.debug({ 
-                batch_id: batchId,
-                found_count: checkData?.length || 0
-              }, 'Verification check');
-              
-              if (checkData && checkData.length > 0) {
-                logger.debug({ sample_record: checkData[0] }, 'Sample record');
-              } else {
-                logger.error({ batch_id: batchId }, 'CRITICAL: Records were inserted but cannot be found by batch_id');
-              }
-              
-              if (checkError) {
-                logger.error({ 
-                  batch_id: batchId,
-                  error: checkError.message
-                }, 'Error checking records');
-              }
-            }
-          }
-        }
-
-        // Обновляем прогресс в batch
         await supabaseAdmin
           .from('telegram_import_batches')
-          .update({
-            imported_messages: importedCount,
-          })
+          .update({ imported_messages: importedCount })
           .eq('id', batchId);
       }
 
-      logger.info({ 
+      // Count total messages in DB after import
+      const { count: totalMessagesInDb } = await supabaseAdmin
+        .from('activity_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('tg_chat_id', group.tg_chat_id)
+        .eq('event_type', 'message');
+
+      logger.info({
         imported_count: importedCount,
-        skipped_count: skippedCount,
-        duplicate_count: duplicateCount,
-        messages_saved: messagesSavedCount,
-        messages_skipped: messagesSkippedCount,
+        already_in_db: alreadyInDbCount,
+        skipped_no_decision: skippedNoDecisionCount,
+        texts_saved: messagesSavedCount,
+        texts_backfilled: textsBackfilledCount,
+        total_in_db: totalMessagesInDb,
+        previously_imported: previouslyImportedCount,
         batch_id: batchId
       }, 'Import completed');
 
-      // Пересчитываем метрики группы
       await recalculateGroupMetrics(supabaseAdmin, orgId, group.tg_chat_id, logger);
 
-      // Обновляем статус батча
       await supabaseAdmin
         .from('telegram_import_batches')
         .update({
@@ -819,7 +409,6 @@ export async function POST(
         })
         .eq('id', batchId);
 
-      // Log admin action
       await logAdminAction({
         orgId: orgId!,
         userId: user.id,
@@ -841,16 +430,17 @@ export async function POST(
         data: {
           batchId,
           importedMessages: importedCount,
-          skippedMessages: skippedCount,
-          duplicateMessages: duplicateCount,
+          alreadyInDb: alreadyInDbCount,
+          skippedNoDecision: skippedNoDecisionCount,
           messagesSaved: messagesSavedCount,
-          messagesSkipped: messagesSkippedCount,
+          textsBackfilled: textsBackfilledCount,
           newParticipants: newParticipantsCount,
           matchedParticipants: decisions.filter(d => d.action === 'merge').length,
+          totalMessagesInDb: totalMessagesInDb || 0,
+          previouslyImported: previouslyImportedCount,
         },
       });
     } catch (error: any) {
-      // Помечаем батч как failed
       await supabaseAdmin
         .from('telegram_import_batches')
         .update({
@@ -875,6 +465,229 @@ export async function POST(
   }
 }
 
+// ──────────────────────────────────────────────────────────────
+// Process a single batch of messages: split new vs existing,
+// insert new events, backfill texts for already-imported ones.
+// ──────────────────────────────────────────────────────────────
+interface MappedEvent {
+  event: Record<string, any>;
+  fullText: string | null;
+  participantId: string;
+  tgUserId: number | null;
+  messageId: number | null;
+  timestamp: string;
+}
+
+async function processBatch(
+  supabaseAdmin: ReturnType<typeof createAdminServer>,
+  messageBatch: any[],
+  participantMap: Map<string, string>,
+  orgId: string,
+  tgChatId: number,
+  batchId: string,
+  isJson: boolean,
+  existingMessageIdSet: Set<number>,
+  logger: ReturnType<typeof createAPILogger>
+): Promise<{
+  imported: number;
+  alreadyInDb: number;
+  skippedNoDecision: number;
+  textsSaved: number;
+  textsBackfilled: number;
+}> {
+  let imported = 0;
+  let alreadyInDb = 0;
+  let skippedNoDecision = 0;
+  let textsSaved = 0;
+  let textsBackfilled = 0;
+
+  // Phase 1: Map messages to events
+  const mapped: MappedEvent[] = [];
+
+  for (const msg of messageBatch) {
+    const authorKey = msg.authorUserId
+      ? `user_${msg.authorUserId}`
+      : (msg.authorUsername || msg.authorName);
+    const participantId = participantMap.get(authorKey);
+
+    if (!participantId) {
+      skippedNoDecision++;
+      continue;
+    }
+
+    const tgUserId = msg.authorUserId || null;
+    const messageId = msg.messageId || null;
+    const textPreview = msg.text ? msg.text.substring(0, 500) : '';
+
+    const normalizedTimestamp = new Date(Date.UTC(
+      msg.timestamp.getUTCFullYear(),
+      msg.timestamp.getUTCMonth(),
+      msg.timestamp.getUTCDate(),
+      msg.timestamp.getUTCHours(),
+      msg.timestamp.getUTCMinutes(),
+      msg.timestamp.getUTCSeconds(),
+      msg.timestamp.getUTCMilliseconds()
+    ));
+
+    const createdAt = normalizedTimestamp.toISOString();
+
+    mapped.push({
+      event: {
+        org_id: orgId,
+        event_type: 'message',
+        tg_user_id: tgUserId,
+        tg_chat_id: tgChatId,
+        message_id: messageId,
+        chars_count: msg.charCount,
+        links_count: msg.linksCount,
+        mentions_count: msg.mentionsCount,
+        reply_to_message_id: (msg as any).replyToMessageId || null,
+        has_media: false,
+        created_at: createdAt,
+        import_source: 'html_import',
+        import_batch_id: batchId,
+        meta: {
+          user: { name: msg.authorName, username: msg.authorUsername || null, tg_user_id: tgUserId },
+          message: {
+            id: messageId, thread_id: null, reply_to_id: (msg as any).replyToMessageId || null,
+            text_preview: textPreview, text_length: msg.text?.length || 0, has_media: false, media_type: null
+          },
+          source: { type: 'import', format: isJson ? 'json' : 'html', batch_id: batchId }
+        }
+      },
+      fullText: msg.text || null,
+      participantId,
+      tgUserId,
+      messageId,
+      timestamp: createdAt
+    });
+  }
+
+  if (mapped.length === 0) {
+    return { imported, alreadyInDb, skippedNoDecision, textsSaved, textsBackfilled };
+  }
+
+  // Phase 2: Split into new and already-in-DB using pre-fetched set
+  const newMapped: MappedEvent[] = [];
+  const existingMapped: MappedEvent[] = [];
+
+  for (const m of mapped) {
+    if (m.messageId && existingMessageIdSet.has(m.messageId)) {
+      existingMapped.push(m);
+    } else {
+      newMapped.push(m);
+    }
+  }
+
+  alreadyInDb = existingMapped.length;
+
+  // Phase 3: Insert truly new events
+  if (newMapped.length > 0) {
+    const newEvents = newMapped.map(m => m.event);
+
+    const { data, error } = await supabaseAdmin
+      .from('activity_events')
+      .insert(newEvents)
+      .select('id') as { data: any[] | null; error: any };
+
+    if (error) {
+      if (error.code === '23505') {
+        alreadyInDb += newEvents.length;
+        logger.warn({ batch_size: newEvents.length }, 'Concurrent duplicates detected');
+      } else {
+        throw error;
+      }
+    } else {
+      imported = data?.length || 0;
+
+      // Save texts for newly inserted events
+      if (data && data.length > 0) {
+        const pmData = data.map((row: any, idx: number) => {
+          const m = newMapped[idx];
+          if (!m.fullText || !row.id) return null;
+          return buildParticipantMessage(orgId, tgChatId, row.id, m);
+        }).filter((x: any): x is NonNullable<typeof x> => x !== null);
+
+        if (pmData.length > 0) {
+          const { data: saved } = await supabaseAdmin
+            .from('participant_messages')
+            .upsert(pmData, { onConflict: 'tg_chat_id,message_id', ignoreDuplicates: true })
+            .select('id');
+          textsSaved = saved?.length || 0;
+        }
+      }
+
+      // Track newly inserted message_ids for subsequent batches
+      newMapped.forEach(m => {
+        if (m.messageId) existingMessageIdSet.add(m.messageId);
+      });
+    }
+  }
+
+  // Phase 4: Backfill texts for existing events (dosave participant_messages)
+  if (existingMapped.length > 0) {
+    const existingMsgIds = existingMapped
+      .map(m => m.messageId)
+      .filter((id): id is number => id !== null);
+
+    if (existingMsgIds.length > 0) {
+      const { data: existingRows } = await supabaseAdmin
+        .from('activity_events')
+        .select('id, message_id')
+        .eq('tg_chat_id', tgChatId)
+        .eq('event_type', 'message')
+        .in('message_id', existingMsgIds);
+
+      const aeIdMap = new Map<number, string>();
+      (existingRows || []).forEach((r: any) => {
+        if (r.message_id) aeIdMap.set(r.message_id, r.id);
+      });
+
+      const backfillData = existingMapped.map(m => {
+        if (!m.fullText || !m.messageId) return null;
+        const aeId = aeIdMap.get(m.messageId);
+        if (!aeId) return null;
+        return buildParticipantMessage(orgId, tgChatId, aeId, m);
+      }).filter((x: any): x is NonNullable<typeof x> => x !== null);
+
+      if (backfillData.length > 0) {
+        const { data: saved } = await supabaseAdmin
+          .from('participant_messages')
+          .upsert(backfillData, { onConflict: 'tg_chat_id,message_id', ignoreDuplicates: true })
+          .select('id');
+        textsBackfilled = saved?.length || 0;
+      }
+    }
+  }
+
+  return { imported, alreadyInDb, skippedNoDecision, textsSaved, textsBackfilled };
+}
+
+function buildParticipantMessage(
+  orgId: string,
+  tgChatId: number,
+  activityEventId: string,
+  m: MappedEvent
+) {
+  if (!m.fullText) return null;
+  return {
+    org_id: orgId,
+    participant_id: m.participantId,
+    tg_user_id: m.tgUserId,
+    tg_chat_id: tgChatId,
+    activity_event_id: activityEventId,
+    message_id: m.messageId,
+    message_text: m.fullText,
+    message_thread_id: null,
+    reply_to_message_id: null,
+    has_media: false,
+    media_type: null,
+    chars_count: m.fullText.length,
+    words_count: m.fullText.trim().split(/\s+/).filter((w: string) => w.length > 0).length,
+    sent_at: m.timestamp
+  };
+}
+
 /**
  * Пересчитывает метрики группы после импорта
  */
@@ -886,14 +699,12 @@ async function recalculateGroupMetrics(
 ) {
   logger.debug({ org_id: orgId, chat_id: tgChatId }, 'Recalculating group metrics');
 
-  // 1. Обновляем member_count
   const { count: memberCount } = await supabase
     .from('participant_groups')
     .select('*', { count: 'exact', head: true })
     .eq('tg_group_id', tgChatId)
     .is('left_at', null);
 
-  // 2. Получаем дату последней активности
   const { data: lastActivity } = await supabase
     .from('activity_events')
     .select('created_at')
@@ -902,7 +713,6 @@ async function recalculateGroupMetrics(
     .limit(1)
     .single();
 
-  // 3. Обновляем группу
   await supabase
     .from('telegram_groups')
     .update({
@@ -911,7 +721,6 @@ async function recalculateGroupMetrics(
     })
     .eq('tg_chat_id', tgChatId);
 
-  // 4. Обновляем last_activity_at для всех участников
   const { data: participants } = await supabase
     .from('participants')
     .select('id')
@@ -940,4 +749,3 @@ async function recalculateGroupMetrics(
 
   logger.debug({ org_id: orgId, chat_id: tgChatId }, 'Group metrics recalculated');
 }
-
