@@ -1,11 +1,30 @@
 import { useState, useEffect } from 'react';
 
-// Note: This is a client-side hook, but we can still use console for client-side logging
-// In production, consider using a client-side logger if needed
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getCacheKey(participantId: string) {
+  return `tg_photo_${participantId}`;
+}
+
+function isRecentlyChecked(participantId: string): boolean {
+  try {
+    const cached = localStorage.getItem(getCacheKey(participantId));
+    if (!cached) return false;
+    return Date.now() - parseInt(cached, 10) < CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markChecked(participantId: string) {
+  try {
+    localStorage.setItem(getCacheKey(participantId), String(Date.now()));
+  } catch { /* quota exceeded — non-critical */ }
+}
 
 /**
- * Хук для автоматической подгрузки фото участника из Telegram
- * Использует фото из Telegram только если у участника нет загруженного вручную фото
+ * Хук для автоматической подгрузки фото участника из Telegram.
+ * Кэширует отрицательный результат на 24ч чтобы не спамить Telegram API.
  */
 export function useTelegramPhoto(participantId: string, currentPhotoUrl: string | null, tgUserId: number | null) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(currentPhotoUrl);
@@ -13,18 +32,15 @@ export function useTelegramPhoto(participantId: string, currentPhotoUrl: string 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Если фото уже есть, используем его
     if (currentPhotoUrl) {
       setPhotoUrl(currentPhotoUrl);
       return;
     }
 
-    // Если нет tg_user_id, ничего не делаем
-    if (!tgUserId) {
-      return;
-    }
+    if (!tgUserId) return;
 
-    // Если фото нет, пытаемся загрузить из Telegram
+    if (isRecentlyChecked(participantId)) return;
+
     const syncPhoto = async () => {
       try {
         setIsLoading(true);
@@ -36,14 +52,12 @@ export function useTelegramPhoto(participantId: string, currentPhotoUrl: string 
 
         const data = await response.json();
 
+        markChecked(participantId);
+
         if (data.success && data.photo_url) {
           setPhotoUrl(data.photo_url);
-        } else if (data.message) {
-          // Не выводим ошибку, если просто нет фото в Telegram
-          console.log(`No Telegram photo available: ${data.message}`);
         }
       } catch (err: any) {
-        console.error('Failed to sync Telegram photo:', err);
         setError(err.message);
       } finally {
         setIsLoading(false);

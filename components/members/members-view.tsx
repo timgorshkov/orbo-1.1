@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Search, LayoutGrid, Table as TableIcon, Filter, Download, FileJson } from 'lucide-react'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
@@ -284,6 +284,25 @@ export default function MembersView({
   
   // Show admin features only if user is admin AND in admin mode
   const showAdminFeatures = isAdmin && adminMode
+
+  // Background batch photo sync: fire once on mount for participants missing avatars
+  const batchSyncFired = useRef(false)
+  useEffect(() => {
+    if (batchSyncFired.current) return
+    batchSyncFired.current = true
+
+    const needPhoto = initialParticipants
+      .filter(p => p.tg_user_id && (!p.photo_url || !p.photo_url.includes('participant-photos')))
+      .map(p => p.id)
+
+    if (needPhoto.length === 0) return
+
+    fetch('/api/participants/batch-sync-photos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId, participantIds: needPhoto.slice(0, 20) }),
+    }).catch(() => {})
+  }, [initialParticipants, orgId])
 
   // Фильтрация участников по поисковому запросу и фильтрам
   const filteredParticipants = useMemo(() => {

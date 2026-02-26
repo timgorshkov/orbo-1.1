@@ -37,7 +37,7 @@ export async function POST(
     // Получаем информацию об участнике
     const { data: participant, error: participantError } = await adminSupabase
       .from('participants')
-      .select('id, tg_user_id, org_id, photo_url, full_name')
+      .select('id, tg_user_id, org_id, photo_url, full_name, photo_checked_at')
       .eq('id', participantId)
       .is('merged_into', null)
       .single();
@@ -50,14 +50,26 @@ export async function POST(
       );
     }
     
-    // Если у участника уже есть загруженное фото, не перезаписываем
+    // If participant already has a photo (custom or synced), skip
     if (participant.photo_url && participant.photo_url.includes('participant-photos')) {
-      logger.info({ participant_id: participantId }, 'Participant already has a custom photo, skipping sync');
       return NextResponse.json({
         success: true,
         message: 'Participant already has a custom photo',
         photo_url: participant.photo_url
       });
+    }
+
+    // If we already checked recently and found no photo, don't spam Telegram API (72h cooldown)
+    if (participant.photo_checked_at) {
+      const checkedAt = new Date(participant.photo_checked_at).getTime();
+      const hoursSinceCheck = (Date.now() - checkedAt) / (1000 * 60 * 60);
+      if (hoursSinceCheck < 72) {
+        return NextResponse.json({
+          success: false,
+          message: 'No photo available (checked recently)',
+          skipped: true
+        });
+      }
     }
     
     // Проверяем, есть ли tg_user_id
@@ -68,8 +80,6 @@ export async function POST(
       );
     }
 
-    // Попробуем все доступные боты — пользователь мог взаимодействовать с любым из них
-    // event-бот используется для MiniApp регистрации на мероприятия
     const botTypes: Array<'main' | 'notifications' | 'event'> = ['main', 'notifications', 'event'];
     let photosResponse: any = null;
     let workingBotType: string | null = null;
@@ -87,11 +97,9 @@ export async function POST(
         if (response.ok && response.result.photos.length > 0) {
           photosResponse = response;
           workingBotType = botType;
-          logger.debug({ bot_type: botType, tg_user_id: participant.tg_user_id }, 'Found photos using bot');
           break;
         }
       } catch (err) {
-        // Продолжаем попытки с другими ботами
         logger.debug({ bot_type: botType, error: (err as Error).message }, 'Bot failed to get photos, trying next');
       }
     }
@@ -103,6 +111,13 @@ export async function POST(
           participant_id: participantId,
           bots_tried: botTypes.length
         }, 'No profile photos found for user (privacy settings may restrict access)');
+
+        // Mark as checked so we don't retry for 72 hours
+        await adminSupabase
+          .from('participants')
+          .update({ photo_checked_at: new Date().toISOString() })
+          .eq('id', participantId);
+
         return NextResponse.json({
           success: false,
           message: 'No profile photos found - user may have privacy restrictions'

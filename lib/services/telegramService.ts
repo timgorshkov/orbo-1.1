@@ -419,6 +419,8 @@ async getChatMember(chatId: number, userId: number) {
       }, '🔧 [TG-API] Calling critical Telegram method');
     }
     
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -481,8 +483,15 @@ async getChatMember(chatId: number, userId: number) {
 
       return responseData;
     } catch (error: any) {
-      // Gracefully handle expected errors (don't log as ERROR)
       const errorMessage = error?.message || String(error);
+      const isTransient = errorMessage.includes('fetch failed') ||
+        errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT');
+
+      if (isTransient && attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
       const isExpectedError = 
         errorMessage.includes('user not found') ||
         errorMessage.includes('chat not found') ||
@@ -493,10 +502,10 @@ async getChatMember(chatId: number, userId: number) {
         errorMessage.includes('PEER_ID_INVALID');
       
       if (isExpectedError) {
-        // Log as info for expected errors (common Telegram API responses)
         logger.debug({ method, error: errorMessage }, 'Expected Telegram API response');
+      } else if (isTransient) {
+        logger.warn({ method, error: errorMessage, attempts: attempt + 1 }, 'Telegram API network error after retries');
       } else {
-        // Log as error for unexpected issues
         logger.error({ 
           method,
           error: errorMessage,
@@ -504,13 +513,15 @@ async getChatMember(chatId: number, userId: number) {
         }, 'Error calling Telegram API');
       }
       
-      // Return error response format
       return {
         ok: false,
         error_code: 500,
         description: errorMessage
       };
     }
+    } // end retry loop
+
+    return { ok: false, error_code: 500, description: 'Max retries exceeded' };
   }
 }
 

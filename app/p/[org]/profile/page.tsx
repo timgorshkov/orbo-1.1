@@ -638,6 +638,7 @@ export default function ProfilePage() {
                   tgUserId={profile.participant?.tg_user_id || null}
                   displayName={displayName}
                   size="lg"
+                  enableSync
                 />
                 <div>
                   <div className="flex items-center gap-2 mb-1">

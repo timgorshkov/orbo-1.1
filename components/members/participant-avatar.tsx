@@ -9,6 +9,8 @@ interface ParticipantAvatarProps {
   displayName: string
   size?: 'sm' | 'md' | 'lg'
   className?: string
+  /** Enable auto-sync from Telegram API. Off by default to avoid bulk API calls in lists. */
+  enableSync?: boolean
 }
 
 export function ParticipantAvatar({
@@ -17,13 +19,13 @@ export function ParticipantAvatar({
   tgUserId,
   displayName,
   size = 'md',
-  className = ''
+  className = '',
+  enableSync = false,
 }: ParticipantAvatarProps) {
-  // Автоматически подгружаем фото из Telegram, если его нет
   const { photoUrl } = useTelegramPhoto(
     participantId,
     initialPhotoUrl,
-    tgUserId ? Number(tgUserId) : null
+    enableSync && tgUserId ? Number(tgUserId) : null
   )
 
   // Placeholder для фото
