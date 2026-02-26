@@ -62,7 +62,7 @@ export function AIEnrichmentButton({
         return;
       }
       
-      if (creditsRemaining !== null && creditsRemaining > 0) {
+      if (creditsRemaining !== null && creditsRemaining > 0 && creditsRemaining !== -1) {
         setCreditsRemaining(creditsRemaining - 1);
       }
 
@@ -79,7 +79,8 @@ export function AIEnrichmentButton({
     }
   };
 
-  const noCredits = creditsRemaining !== null && creditsRemaining <= 0;
+  const isUnlimited = creditsRemaining === -1;
+  const noCredits = !isUnlimited && creditsRemaining !== null && creditsRemaining <= 0;
 
   return (
     <div className="inline-flex flex-col items-end">
@@ -100,7 +101,7 @@ export function AIEnrichmentButton({
         )}
       </button>
 
-      {creditsRemaining !== null && creditsRemaining > 0 && !isEnriching && (
+      {!isUnlimited && creditsRemaining !== null && creditsRemaining > 0 && !isEnriching && (
         <p className="text-xs text-gray-400 mt-1">
           {creditsRemaining} кредит{creditsRemaining === 1 ? '' : creditsRemaining < 5 ? 'а' : 'ов'}
         </p>

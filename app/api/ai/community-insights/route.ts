@@ -4,6 +4,7 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { enrichParticipant } from '@/lib/services/participantEnrichmentService'
 import { createAPILogger } from '@/lib/logger'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { getOrgBillingStatus } from '@/lib/services/billingService'
 
 /**
  * POST: Run AI enrichment on top 2 most active participants
@@ -43,14 +44,19 @@ export async function POST(request: NextRequest) {
 
     const creditsTotal = org.ai_credits_total ?? 5
     const creditsUsed = org.ai_credits_used ?? 0
-    const remaining = creditsTotal - creditsUsed
 
-    if (remaining <= 0) {
-      return NextResponse.json({
-        error: 'no_credits',
-        message: 'AI-кредиты закончились.',
-        credits: { total: creditsTotal, used: creditsUsed, remaining: 0 },
-      }, { status: 402 })
+    const billingStatus = await getOrgBillingStatus(orgId)
+    const isUnlimited = billingStatus.plan.limits.ai_requests_per_month === -1
+
+    if (!isUnlimited) {
+      const remaining = creditsTotal - creditsUsed
+      if (remaining <= 0) {
+        return NextResponse.json({
+          error: 'no_credits',
+          message: 'AI-кредиты закончились.',
+          credits: { total: creditsTotal, used: creditsUsed, remaining: 0 },
+        }, { status: 402 })
+      }
     }
 
     // Get org groups
@@ -145,19 +151,23 @@ export async function POST(request: NextRequest) {
 
     const duration = Date.now() - startTime
 
-    // Decrement 1 credit for the batch
-    await supabase
-      .from('organizations')
-      .update({ ai_credits_used: creditsUsed + 1 })
-      .eq('id', orgId)
-
-    const newRemaining = remaining - 1
+    let newRemaining: number
+    if (isUnlimited) {
+      newRemaining = -1
+    } else {
+      await supabase
+        .from('organizations')
+        .update({ ai_credits_used: creditsUsed + 1 })
+        .eq('id', orgId)
+      newRemaining = creditsTotal - creditsUsed - 1
+    }
 
     logger.info({
       org_id: orgId,
       profiles_analyzed: profiles.filter(p => p.success).length,
       duration_ms: duration,
       credits_remaining: newRemaining,
+      unlimited: isUnlimited,
     }, 'AI participant profiles analyzed')
 
     logAdminAction({
@@ -176,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       profiles,
-      credits: { total: creditsTotal, used: creditsUsed + 1, remaining: newRemaining },
+      credits: { total: isUnlimited ? -1 : creditsTotal, used: isUnlimited ? 0 : creditsUsed + 1, remaining: newRemaining },
       meta: { duration_ms: duration, count: profiles.length },
     })
   } catch (error) {
@@ -209,12 +219,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Credits
+    // Credits & billing plan
     const { data: org } = await supabase
       .from('organizations')
       .select('ai_credits_total, ai_credits_used')
       .eq('id', orgId)
       .single()
+
+    const billingStatus = await getOrgBillingStatus(orgId)
+    const isUnlimited = billingStatus.plan.limits.ai_requests_per_month === -1
 
     const total = org?.ai_credits_total ?? 5
     const used = org?.ai_credits_used ?? 0
@@ -239,7 +252,9 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      credits: { total, used, remaining: total - used },
+      credits: isUnlimited
+        ? { total: -1, used: 0, remaining: -1 }
+        : { total, used, remaining: total - used },
       hasData,
     })
   } catch (error) {

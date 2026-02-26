@@ -17,6 +17,7 @@ import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/partic
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getOrgBillingStatus } from '@/lib/services/billingService';
 
 export async function GET(
   request: NextRequest,
@@ -121,8 +122,11 @@ export async function POST(
       );
     }
 
-    // Check AI credits
-    if (useAI) {
+    // Check AI credits (skip for PRO/Enterprise with unlimited AI)
+    const billingStatus = await getOrgBillingStatus(orgId!);
+    const isUnlimited = billingStatus.plan.limits.ai_requests_per_month === -1;
+
+    if (useAI && !isUnlimited) {
       const { data: orgData } = await adminSupabase
         .from('organizations')
         .select('ai_credits_total, ai_credits_used')
@@ -137,8 +141,6 @@ export async function POST(
           message: 'AI-кредиты закончились. Свяжитесь с нами для подключения.',
         }, { status: 402 });
       }
-
-      // Decrement after successful enrichment (done below)
     }
 
     // Run enrichment
@@ -158,8 +160,8 @@ export async function POST(
       return NextResponse.json({ error: result.error || 'Enrichment failed' }, { status: 500 });
     }
     
-    // Decrement AI credits
-    if (useAI && result.success) {
+    // Decrement AI credits (skip for unlimited plans)
+    if (useAI && result.success && !isUnlimited) {
       const { data: currentOrg } = await adminSupabase
         .from('organizations')
         .select('ai_credits_used')
