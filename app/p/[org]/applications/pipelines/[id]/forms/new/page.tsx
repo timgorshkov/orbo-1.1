@@ -107,13 +107,21 @@ export default function NewFormPage({
   
   const [activeTab, setActiveTab] = useState<'landing' | 'form' | 'success'>('landing')
   const [name, setName] = useState(existingForm?.name || 'Форма заявки')
-  const [landing, setLanding] = useState<Landing>(existingForm?.landing || defaultLanding)
+  const [landing, setLanding] = useState<Landing>(() => {
+    const raw = existingForm?.landing
+    if (!raw || typeof raw !== 'object' || Object.keys(raw).length === 0) return defaultLanding
+    return { ...defaultLanding, ...raw, benefits: Array.isArray(raw.benefits) ? raw.benefits : [] }
+  })
   const [formFields, setFormFields] = useState<FormField[]>(
     existingForm?.form_schema?.length > 0
       ? existingForm.form_schema
       : [{ id: '1', type: 'text', label: 'Имя', placeholder: 'Ваше имя', required: true, prefill: 'telegram_name' }]
   )
-  const [successPage, setSuccessPage] = useState<SuccessPage>(existingForm?.success_page || defaultSuccessPage)
+  const [successPage, setSuccessPage] = useState<SuccessPage>(() => {
+    const raw = existingForm?.success_page
+    if (!raw || typeof raw !== 'object' || Object.keys(raw).length === 0) return defaultSuccessPage
+    return { ...defaultSuccessPage, ...raw }
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [orgName, setOrgName] = useState(propsOrgName || '')

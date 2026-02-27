@@ -95,8 +95,14 @@ export default async function ApplicationPage({
 
     const pipelineForms = pipelineFormsRaw || []
 
-    // Auto-created form: name = 'Заявка (авто)' and no form fields on current application
-    const isAutoForm = !!form && form.name === 'Заявка (авто)' && (!form.form_schema || form.form_schema.length === 0)
+    // Auto-created form: name = 'Заявка (авто)' OR pipeline has no real form fields
+    // form_schema may come as array or JSON string, handle both
+    const formSchemaFields: any[] = Array.isArray(form?.form_schema)
+      ? form.form_schema
+      : (typeof form?.form_schema === 'string' ? JSON.parse(form.form_schema || '[]') : [])
+    const isAutoForm = !!form && (
+      form.name === 'Заявка (авто)' || formSchemaFields.length === 0
+    )
     
     // Get participant's group memberships for this org
     let participantGroups: { id: string; title: string }[] = []
