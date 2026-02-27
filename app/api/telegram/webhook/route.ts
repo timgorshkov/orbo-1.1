@@ -491,6 +491,92 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       const userId = chatMember.new_chat_member?.user?.id;
       const newStatus = chatMember.new_chat_member?.status;
       const oldStatus = chatMember.old_chat_member?.status;
+
+      // Auto-approve application when user joins the group (via Telegram directly)
+      const userJoined = ['member', 'administrator', 'creator'].includes(newStatus) &&
+        !['member', 'administrator', 'creator'].includes(oldStatus);
+
+      if (userJoined && adminChatId && userId) {
+        try {
+          // Find org for this group
+          const { data: orgBinding } = await supabaseServiceRole
+            .from('org_telegram_groups')
+            .select('org_id')
+            .eq('tg_chat_id', adminChatId)
+            .limit(1)
+            .maybeSingle();
+
+          if (orgBinding?.org_id) {
+            // Find pending application for this user in this group
+            const { data: pendingApp } = await supabaseServiceRole
+              .from('applications')
+              .select('id, stage_id, form_id, notes')
+              .eq('org_id', orgBinding.org_id)
+              .eq('tg_chat_id', adminChatId)
+              .eq('tg_user_id', userId)
+              .maybeSingle();
+
+            if (pendingApp) {
+              // Skip if already in a terminal stage
+              const { data: currentStage } = await supabaseServiceRole
+                .from('pipeline_stages')
+                .select('is_terminal')
+                .eq('id', pendingApp.stage_id)
+                .maybeSingle();
+
+              if (!currentStage?.is_terminal && pendingApp.form_id) {
+                // Find pipeline via form, then find its terminal-success stage
+                const { data: formData } = await supabaseServiceRole
+                  .from('application_forms')
+                  .select('pipeline_id')
+                  .eq('id', pendingApp.form_id)
+                  .single();
+
+                if (formData?.pipeline_id) {
+                  const { data: approveStage } = await supabaseServiceRole
+                    .from('pipeline_stages')
+                    .select('id, name')
+                    .eq('pipeline_id', formData.pipeline_id)
+                    .eq('is_terminal', true)
+                    .eq('terminal_type', 'success')
+                    .order('position')
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (approveStage) {
+                    const autoNote = '[Авто: принят через Telegram]';
+                    await supabaseServiceRole
+                      .from('applications')
+                      .update({
+                        stage_id: approveStage.id,
+                        processed_at: new Date().toISOString(),
+                        notes: pendingApp.notes
+                          ? `${pendingApp.notes}\n${autoNote}`
+                          : autoNote
+                      })
+                      .eq('id', pendingApp.id);
+
+                    logger.info({
+                      application_id: pendingApp.id,
+                      stage_id: approveStage.id,
+                      stage_name: approveStage.name,
+                      user_id: userId,
+                      chat_id: adminChatId,
+                      org_id: orgBinding.org_id
+                    }, '✅ [WEBHOOK] Application auto-approved: user joined group via Telegram');
+                  }
+                }
+              }
+            }
+          }
+        } catch (autoApproveError) {
+          logger.warn({
+            error: autoApproveError instanceof Error ? autoApproveError.message : String(autoApproveError),
+            user_id: userId,
+            chat_id: adminChatId
+          }, '⚠️ [WEBHOOK] Failed to auto-approve application on member join');
+        }
+      }
       
       const wasAdmin = oldStatus === 'administrator' || oldStatus === 'creator';
       const isAdmin = newStatus === 'administrator' || newStatus === 'creator';

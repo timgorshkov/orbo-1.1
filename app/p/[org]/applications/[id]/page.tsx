@@ -85,13 +85,18 @@ export default async function ApplicationPage({
       : { data: [] }
     
     // Get all forms for this pipeline
-    const { data: pipelineForms } = pipelineId
+    const { data: pipelineFormsRaw } = pipelineId
       ? await supabase
           .from('application_forms')
           .select('id, name')
           .eq('pipeline_id', pipelineId)
           .order('created_at')
       : { data: [] }
+
+    const pipelineForms = pipelineFormsRaw || []
+
+    // Auto-created form: name = 'Заявка (авто)' and no form fields on current application
+    const isAutoForm = !!form && form.name === 'Заявка (авто)' && (!form.form_schema || form.form_schema.length === 0)
     
     // Get participant's group memberships for this org
     let participantGroups: { id: string; title: string }[] = []
@@ -130,8 +135,9 @@ export default async function ApplicationPage({
         application={application}
         events={events || []}
         availableStages={availableStages || []}
-        pipelineForms={pipelineForms || []}
+        pipelineForms={pipelineForms}
         participantGroups={participantGroups}
+        isAutoForm={isAutoForm}
       />
     )
   } catch (error) {

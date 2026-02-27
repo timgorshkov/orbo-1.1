@@ -54,6 +54,7 @@ interface ApplicationDetailProps {
   availableStages: Stage[]
   pipelineForms: PipelineForm[]
   participantGroups: ParticipantGroup[]
+  isAutoForm?: boolean
 }
 
 export default function ApplicationDetail({
@@ -62,7 +63,8 @@ export default function ApplicationDetail({
   events,
   availableStages,
   pipelineForms,
-  participantGroups
+  participantGroups,
+  isAutoForm = false
 }: ApplicationDetailProps) {
   const router = useRouter()
   const [selectedStageId, setSelectedStageId] = useState(application.stage_id)
@@ -425,14 +427,30 @@ export default function ApplicationDetail({
                   
                   {/* Participant Profile Info */}
                   {participant && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                      <div className="flex items-center gap-2 text-blue-700 mb-2">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span className="font-medium text-sm">Уже есть в организации</span>
+                    <div className={`mt-3 p-3 rounded-lg border ${
+                      participantGroups.length > 0
+                        ? 'bg-green-50 border-green-100'
+                        : 'bg-amber-50 border-amber-100'
+                    }`}>
+                      <div className={`flex items-center gap-2 mb-2 ${
+                        participantGroups.length > 0 ? 'text-green-700' : 'text-amber-700'
+                      }`}>
+                        {participantGroups.length > 0
+                          ? <CheckCircle2 className="w-4 h-4" />
+                          : <AlertTriangle className="w-4 h-4" />
+                        }
+                        <span className="font-medium text-sm">
+                          {participantGroups.length > 0
+                            ? 'Участник организации'
+                            : 'Сохранён в базе, но ещё не в группах'
+                          }
+                        </span>
                       </div>
                       <Link 
                         href={`/p/${orgId}/members/${participant.id}`}
-                        className="text-sm text-blue-600 hover:underline"
+                        className={`text-sm hover:underline ${
+                          participantGroups.length > 0 ? 'text-green-600' : 'text-amber-600'
+                        }`}
                       >
                         Открыть профиль участника →
                       </Link>
@@ -497,7 +515,7 @@ export default function ApplicationDetail({
                 </dl>
               </CardContent>
             </Card>
-          ) : (
+          ) : isAutoForm ? null : (
             /* Form not filled - show links to all pipeline forms */
             <Card className="border-amber-200 bg-amber-50/50">
               <CardHeader>
