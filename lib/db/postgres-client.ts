@@ -766,7 +766,8 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         code: error.code
       };
       // 23505 = unique constraint violation — expected during upserts/imports, handled by callers
-      if (error.code === '23505') {
+      // 22P02 = invalid UUID syntax — caused by external probes, validated at route level
+      if (error.code === '23505' || error.code === '22P02') {
         logger.debug(logData, 'Query execution error');
       } else {
         logger.error(logData, 'Query execution error');
@@ -807,7 +808,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         error: error.message,
         code: error.code
       };
-      if (error.code === '23505') {
+      if (error.code === '23505' || error.code === '22P02') {
         logger.debug(logData, 'Query execution error');
       } else {
         logger.error(logData, 'Query execution error');

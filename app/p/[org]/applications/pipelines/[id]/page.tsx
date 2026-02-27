@@ -4,12 +4,18 @@ import { notFound } from 'next/navigation'
 import PipelineHeader from './pipeline-header'
 import PipelineKanban from './pipeline-kanban'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default async function PipelinePage({
   params
 }: {
   params: Promise<{ org: string; id: string }>
 }) {
   const { org: orgId, id: pipelineId } = await params
+
+  if (!UUID_RE.test(pipelineId) || !UUID_RE.test(orgId)) {
+    return notFound()
+  }
   
   try {
     const { role } = await requireOrgAccess(orgId)

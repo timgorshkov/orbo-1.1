@@ -11,12 +11,19 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function generateMetadata({ 
   params 
 }: { 
   params: Promise<{ org: string; id: string }> 
 }): Promise<Metadata> {
   const { org: orgId, id: eventId } = await params
+
+  if (!UUID_RE.test(eventId) || !UUID_RE.test(orgId)) {
+    return { title: 'Событие не найдено' }
+  }
+
   const adminSupabase = createAdminServer()
   
   try {
@@ -158,6 +165,17 @@ export default async function EventDetailPage({
   const { org: orgId, id: eventId } = await params
   const { edit } = await searchParams
   
+  if (!UUID_RE.test(eventId) || !UUID_RE.test(orgId)) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-8">
+          <h2 className="text-xl font-semibold mb-2">Событие не найдено</h2>
+          <p className="text-neutral-600">Это событие не существует или было удалено.</p>
+        </div>
+      </div>
+    )
+  }
+
   const adminSupabase = createAdminServer()
   const logger = createServiceLogger('EventDetailPage');
   
