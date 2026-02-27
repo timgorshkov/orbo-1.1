@@ -2,7 +2,7 @@ import { requireOrgAccess } from '@/lib/orgGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Inbox, Users, FileText } from 'lucide-react'
+import { Plus, Inbox, Users, FileText, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -52,17 +52,24 @@ export default async function ApplicationsPage({
     // Get counts per pipeline
     const pipelinesWithStats = await Promise.all(
       (pipelines || []).map(async (pipeline) => {
+        // Get forms for this pipeline
+        const { data: pipelineForms } = await adminSupabase
+          .from('application_forms')
+          .select('id')
+          .eq('pipeline_id', pipeline.id)
+          .eq('is_active', true)
+
+        const formIds = pipelineForms?.map(f => f.id) || []
+        const hasForms = formIds.length > 0
+
         // Get total applications
-        const { count: totalCount } = await adminSupabase
-          .from('applications')
-          .select('id', { count: 'exact', head: true })
-          .eq('org_id', orgId)
-          .in('form_id', (
-            await adminSupabase
-              .from('application_forms')
-              .select('id')
-              .eq('pipeline_id', pipeline.id)
-          ).data?.map(f => f.id) || [])
+        const { count: totalCount } = formIds.length
+          ? await adminSupabase
+              .from('applications')
+              .select('id', { count: 'exact', head: true })
+              .eq('org_id', orgId)
+              .in('form_id', formIds)
+          : { count: 0 }
         
         // Get pending (non-terminal) applications
         const { data: stages } = await adminSupabase
@@ -73,16 +80,19 @@ export default async function ApplicationsPage({
         
         const stageIds = stages?.map(s => s.id) || []
         
-        const { count: pendingCount } = await adminSupabase
-          .from('applications')
-          .select('id', { count: 'exact', head: true })
-          .eq('org_id', orgId)
-          .in('stage_id', stageIds)
+        const { count: pendingCount } = stageIds.length
+          ? await adminSupabase
+              .from('applications')
+              .select('id', { count: 'exact', head: true })
+              .eq('org_id', orgId)
+              .in('stage_id', stageIds)
+          : { count: 0 }
         
         return {
           ...pipeline,
           total_applications: totalCount || 0,
           pending_applications: pendingCount || 0,
+          has_forms: hasForms,
           telegram_group_name: pipeline.telegram_group_id ? telegramGroupsMap[String(pipeline.telegram_group_id)] || null : null
         }
       })
@@ -195,6 +205,12 @@ export default async function ApplicationsPage({
                         <CardDescription className="line-clamp-2">
                           Группа: {pipeline.telegram_group_name}
                         </CardDescription>
+                      )}
+                      {!pipeline.has_forms && (
+                        <div className="flex items-center gap-1.5 mt-1.5 text-xs text-amber-600">
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>Нет форм — <span className="underline">настройте воронку</span></span>
+                        </div>
                       )}
                     </CardHeader>
                     <CardContent>

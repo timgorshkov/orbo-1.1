@@ -649,12 +649,47 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               form_id: formId
             }, '🔍 [WEBHOOK] Form lookup result for native join request');
             
-            if (!formId) {
-              logger.warn({
+            let resolvedFormId = formId;
+
+            // No form exists — auto-create a minimal default form so the join request is recorded
+            if (!resolvedFormId) {
+              logger.info({
                 chat_id: requestChatId,
                 pipeline_id: pipeline.id
-              }, '⚠️ [WEBHOOK] Pipeline has no forms, cannot create application');
-            } else {
+              }, '⚠️ [WEBHOOK] Pipeline has no forms — auto-creating default form');
+
+              const { data: newForm, error: formCreateError } = await supabaseServiceRole
+                .from('application_forms')
+                .insert({
+                  org_id: pipeline.org_id,
+                  pipeline_id: pipeline.id,
+                  name: 'Заявка (авто)',
+                  form_schema: [],
+                  landing: {},
+                  success_page: {},
+                  settings: {},
+                  is_active: true
+                })
+                .select('id')
+                .single();
+
+              if (formCreateError || !newForm) {
+                logger.error({
+                  chat_id: requestChatId,
+                  pipeline_id: pipeline.id,
+                  error: formCreateError?.message
+                }, '❌ [WEBHOOK] Failed to auto-create default form, dropping join request');
+              } else {
+                resolvedFormId = newForm.id;
+                logger.info({
+                  chat_id: requestChatId,
+                  pipeline_id: pipeline.id,
+                  form_id: resolvedFormId
+                }, '✅ [WEBHOOK] Default form auto-created for pipeline');
+              }
+            }
+
+            if (resolvedFormId) {
             // Prepare tg_user_data with bio (available in join_request)
             // Note: photo_url is not available in join_request, so we don't include it
             // This way spam_score won't penalize for "no_photo"
@@ -673,12 +708,12 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               'create_application',
               {
                 p_org_id: pipeline.org_id,
-                p_form_id: formId,
+                p_form_id: resolvedFormId,
                 p_tg_user_id: userId,
                 p_tg_chat_id: requestChatId,
                 p_tg_user_data: tgUserData,
                 p_form_data: {},
-                p_source_code: inviteLink?.name || null, // Use invite link name as source
+                p_source_code: inviteLink?.name || null,
                 p_utm_data: {
                   source: 'native_telegram',
                   type: 'join_request',
@@ -701,11 +736,11 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 chat_id: requestChatId,
                 user_id: userId,
                 pipeline_id: pipeline.id,
-                form_id: formId,
+                form_id: resolvedFormId,
                 source: 'native_telegram'
               }, '✅ [WEBHOOK] Application created from native Telegram join_request');
             }
-            } // Close else block for formId check
+            } // Close if (resolvedFormId) block
             } // Close else block for existing app check
           }
         } catch (joinRequestError) {
