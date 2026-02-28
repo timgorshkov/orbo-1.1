@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail'
 import ParticipantDetailTabs from '@/components/members/participant-detail-tabs'
+import BackToListButton from '@/components/members/back-to-list-button'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic'
@@ -54,6 +55,7 @@ export default async function ParticipantPage({
 
   return (
     <div className="p-6">
+      <BackToListButton orgId={orgId} participantName={detail.participant.full_name || detail.participant.username || undefined} />
       <ParticipantDetailTabs 
         orgId={orgId} 
         initialDetail={detail}
