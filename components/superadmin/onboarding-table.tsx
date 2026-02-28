@@ -18,7 +18,7 @@ type OnboardingMessage = {
   error: string | null
 }
 
-type FilterStatus = 'all' | 'sent' | 'pending' | 'skipped' | 'failed'
+type ViewMode = 'current' | 'past'
 
 type DiagnosticData = {
   statusCounts: Record<string, number>
@@ -219,30 +219,27 @@ function DiagnosticsBanner({ onProcessed }: { onProcessed: () => void }) {
 export default function OnboardingTable({ messages: initialMessages }: { messages: OnboardingMessage[] }) {
   const [messages] = useState(initialMessages)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all')
-  const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'telegram'>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('current')
   const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const filtered = messages.filter(m => {
-    const matchesSearch = !search ||
-      m.userName.toLowerCase().includes(search.toLowerCase()) ||
-      m.userEmail.toLowerCase().includes(search.toLowerCase()) ||
-      (m.tgUsername || '').toLowerCase().includes(search.toLowerCase())
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-    const matchesStatus = statusFilter === 'all' || m.status === statusFilter
-    const matchesChannel = channelFilter === 'all' || m.channel === channelFilter
+  const matchesSearch = (m: OnboardingMessage) =>
+    !search ||
+    m.userName.toLowerCase().includes(search.toLowerCase()) ||
+    m.userEmail.toLowerCase().includes(search.toLowerCase()) ||
+    (m.tgUsername || '').toLowerCase().includes(search.toLowerCase())
 
-    return matchesSearch && matchesStatus && matchesChannel
-  })
+  const currentMessages = messages
+    .filter(m => m.scheduledAt >= cutoff && matchesSearch(m))
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
 
-  const statusCounts = {
-    all: messages.length,
-    sent: messages.filter(m => m.status === 'sent').length,
-    pending: messages.filter(m => m.status === 'pending').length,
-    skipped: messages.filter(m => m.status === 'skipped').length,
-    failed: messages.filter(m => m.status === 'failed').length,
-  }
+  const pastMessages = messages
+    .filter(m => m.scheduledAt < cutoff && matchesSearch(m))
+    .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
+
+  const filtered = viewMode === 'current' ? currentMessages : pastMessages
 
   const handleRowEnter = (msg: OnboardingMessage, e: React.MouseEvent<HTMLTableRowElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -269,45 +266,26 @@ export default function OnboardingTable({ messages: initialMessages }: { message
         />
 
         <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
-          {([
-            ['all', 'Все'],
-            ['sent', '✅'],
-            ['pending', '⏳'],
-            ['skipped', '⏭'],
-            ['failed', '❌'],
-          ] as [FilterStatus, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setStatusFilter(key)}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                statusFilter === key
-                  ? 'bg-white shadow-sm text-gray-900 font-medium'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {label} ({statusCounts[key]})
-            </button>
-          ))}
-        </div>
-
-        <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
-          {([
-            ['all', 'Все'],
-            ['email', '📧 Email'],
-            ['telegram', '📱 TG'],
-          ] as ['all' | 'email' | 'telegram', string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setChannelFilter(key)}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                channelFilter === key
-                  ? 'bg-white shadow-sm text-gray-900 font-medium'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          <button
+            onClick={() => setViewMode('current')}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${
+              viewMode === 'current'
+                ? 'bg-white shadow-sm text-gray-900 font-medium'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Текущие отправки ({currentMessages.length})
+          </button>
+          <button
+            onClick={() => setViewMode('past')}
+            className={`px-3 py-1 text-xs rounded-md transition-colors ${
+              viewMode === 'past'
+                ? 'bg-white shadow-sm text-gray-900 font-medium'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Прошедшие ({pastMessages.length})
+          </button>
         </div>
       </div>
 

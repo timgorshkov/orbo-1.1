@@ -11,11 +11,11 @@ export const maxDuration = 300;
 
 const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB for large group histories
 
-/** Strip characters that are invalid in PostgreSQL JSON/JSONB (null bytes, etc.) */
+/** Strip characters that are invalid in PostgreSQL JSON/JSONB: null bytes and other bare control chars */
 function sanitizeForJson(str: string | null | undefined): string {
   if (!str) return '';
   // eslint-disable-next-line no-control-regex
-  return str.replace(/\u0000/g, '');
+  return str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 }
 
 interface ImportDecision {
@@ -558,7 +558,7 @@ async function processBatch(
         import_source: 'html_import',
         import_batch_id: batchId,
         meta: {
-          user: { name: sanitizeForJson(msg.authorName), username: msg.authorUsername || null, tg_user_id: tgUserId },
+          user: { name: sanitizeForJson(msg.authorName), username: sanitizeForJson(msg.authorUsername), tg_user_id: tgUserId },
           message: {
             id: messageId, thread_id: null, reply_to_id: (msg as any).replyToMessageId || null,
             text_preview: textPreview, text_length: msg.text?.length || 0, has_media: false, media_type: null
@@ -604,7 +604,7 @@ async function processBatch(
     if (error) {
       if (error.code === '23505') {
         alreadyInDb += newEvents.length;
-        logger.warn({ batch_size: newEvents.length }, 'Concurrent duplicates detected');
+        logger.debug({ batch_size: newEvents.length }, 'Concurrent duplicates detected');
       } else {
         throw error;
       }

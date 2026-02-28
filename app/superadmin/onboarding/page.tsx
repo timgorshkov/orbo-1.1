@@ -10,8 +10,8 @@ export default async function SuperadminOnboardingPage() {
   const { data: messages } = await supabase
     .from('onboarding_messages')
     .select('id, user_id, step_key, channel, status, scheduled_at, sent_at, error, created_at')
-    .order('created_at', { ascending: false })
-    .limit(500)
+    .order('scheduled_at', { ascending: true })
+    .limit(2000)
 
   if (!messages || messages.length === 0) {
     return (

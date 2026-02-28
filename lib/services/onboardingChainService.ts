@@ -117,6 +117,18 @@ const PERMANENT_TG_ERRORS = [
   'bot is not a member',
 ]
 
+const PERMANENT_EMAIL_ERRORS = [
+  'no valid recipients',
+  'invalid email',
+  'email address is invalid',
+  'user unknown',
+  'mailbox not found',
+  'does not exist',
+  'address rejected',
+  'unsubscribed',
+  'blacklisted',
+]
+
 const TRANSIENT_ERROR_PATTERNS = [
   'fetch failed',
   'is not valid json',
@@ -274,15 +286,17 @@ export async function processOnboardingMessages(): Promise<{
       const errLower = errMsg.toLowerCase()
 
       const isTgPermanent = PERMANENT_TG_ERRORS.some(p => errLower.includes(p))
+      const isEmailPermanent = msg.channel === 'email' && PERMANENT_EMAIL_ERRORS.some(p => errLower.includes(p))
+      const isPermanent = isTgPermanent || isEmailPermanent
       const isTransient = TRANSIENT_ERROR_PATTERNS.some(p => errLower.includes(p))
 
-      if (isTgPermanent) {
+      if (isPermanent) {
         await supabase
           .from('onboarding_messages')
           .update({ status: 'failed', error: errMsg })
           .eq('id', msg.id)
         stats.failed++
-        logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, error: errMsg }, 'Permanent TG error — cancelling remaining messages')
+        logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Permanent delivery error — cancelling remaining messages')
 
         await cancelRemainingMessages(supabase, msg.user_id, msg.channel, errMsg)
       } else if (isTransient) {
@@ -309,6 +323,8 @@ export async function processOnboardingMessages(): Promise<{
           .eq('id', msg.id)
         stats.failed++
         logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Step send failed')
+        // Cancel remaining chain steps to avoid repeated failures for the same user
+        await cancelRemainingMessages(supabase, msg.user_id, msg.channel, `first step failed: ${errMsg}`)
       }
     }
   }

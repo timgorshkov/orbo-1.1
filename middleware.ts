@@ -78,6 +78,16 @@ function hasAuthSession(request: NextRequest): boolean {
 
 const SCANNER_PATTERN = /\.(env|git|php|asp|aspx|bak|sql|log|old|orig|swp|yml)$|wp-login|wp-admin|xmlrpc|phpinfo|phpmyadmin|\/\.well-known\/security|composer\.(json|lock)|package\.json$/i;
 
+/**
+ * Checks whether a Next-Action header value looks like a real action ID.
+ * Real Next.js Server Action IDs are 40-char hex strings.
+ * Short/arbitrary values like "dontcare", "r", "x" are scanner probes.
+ */
+function isSuspiciousNextAction(actionId: string): boolean {
+  // Valid action IDs are exactly 40 hex characters
+  return !/^[0-9a-f]{40}$/.test(actionId)
+}
+
 export async function middleware(request: NextRequest) {
   const logger = createServiceLogger('middleware');
   const { pathname } = request.nextUrl
@@ -85,6 +95,12 @@ export async function middleware(request: NextRequest) {
   // Block scanner probes but allow legitimate /api/admin/ routes
   if (SCANNER_PATTERN.test(pathname) || (pathname.match(/\/admin\//i) && !pathname.startsWith('/api/'))) {
     return new NextResponse(null, { status: 404 })
+  }
+
+  // Block bogus Next-Action header scanning (e.g. "dontcare", "r", "x")
+  const nextAction = request.headers.get('next-action')
+  if (nextAction && isSuspiciousNextAction(nextAction)) {
+    return new NextResponse(null, { status: 400 })
   }
 
   // ========================================

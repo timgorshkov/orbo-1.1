@@ -36,6 +36,7 @@ export class UnisenderGoEmailProvider implements EmailProvider {
       return { success: false, error: 'Unisender Go not configured' };
     }
 
+
     try {
       const response = await fetch(`${this.baseUrl}/email/send.json`, {
         method: 'POST',
