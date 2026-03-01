@@ -113,8 +113,18 @@ export default async function SuperadminUsersPage() {
   
   const tgAccountMap = new Map<string, { telegram_user_id: string, telegram_username: string | null, telegram_first_name: string | null, telegram_last_name: string | null, is_verified: boolean }>()
   telegramAccounts?.forEach(acc => {
-    if (!tgAccountMap.has(acc.user_id)) {
+    const existing = tgAccountMap.get(acc.user_id)
+    if (!existing) {
       tgAccountMap.set(acc.user_id, acc)
+    } else {
+      // Merge: prefer the entry with the most data (fill in any missing fields)
+      tgAccountMap.set(acc.user_id, {
+        telegram_user_id: acc.telegram_user_id || existing.telegram_user_id,
+        telegram_username: acc.telegram_username || existing.telegram_username,
+        telegram_first_name: acc.telegram_first_name || existing.telegram_first_name,
+        telegram_last_name: acc.telegram_last_name || existing.telegram_last_name,
+        is_verified: acc.is_verified || existing.is_verified,
+      })
     }
   })
   

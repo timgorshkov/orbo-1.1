@@ -83,13 +83,23 @@ export default async function SuperadminOrganizationsPage() {
   const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null, telegram_display_name: string | null }>()
   for (const ta of telegramAccounts || []) {
     const isOwnerOrAdmin = memberships?.some(m => m.org_id === ta.org_id && m.user_id === ta.user_id)
-    if (isOwnerOrAdmin && !telegramMap.has(ta.org_id)) {
-      const displayName = [ta.telegram_first_name, ta.telegram_last_name].filter(Boolean).join(' ') || null
+    if (!isOwnerOrAdmin) continue
+    const displayName = [ta.telegram_first_name, ta.telegram_last_name].filter(Boolean).join(' ') || null
+    const existing = telegramMap.get(ta.org_id)
+    if (!existing) {
       telegramMap.set(ta.org_id, {
         has_telegram: true,
         telegram_verified: ta.is_verified || false,
-        telegram_username: ta.telegram_username,
+        telegram_username: ta.telegram_username || null,
         telegram_display_name: displayName,
+      })
+    } else {
+      // Merge: prefer entry with more data
+      telegramMap.set(ta.org_id, {
+        has_telegram: true,
+        telegram_verified: ta.is_verified || existing.telegram_verified,
+        telegram_username: ta.telegram_username || existing.telegram_username,
+        telegram_display_name: displayName || existing.telegram_display_name,
       })
     }
   }
@@ -115,21 +125,36 @@ export default async function SuperadminOrganizationsPage() {
   // Создаём маппинг email и имени для организаций (по owner)
   // Приоритет email: users.email -> accounts(email).provider_account_id
   // Приоритет имени: users.name -> telegram full name -> telegram_username
+  // Build merged telegram info per owner user (may have multiple rows, pick best)
+  const ownerTgMerged = new Map<string, { first_name: string | null, last_name: string | null, username: string | null }>()
+  for (const t of ownerTelegramAccounts || []) {
+    const existing = ownerTgMerged.get(t.user_id)
+    if (!existing) {
+      ownerTgMerged.set(t.user_id, { first_name: t.telegram_first_name || null, last_name: t.telegram_last_name || null, username: t.telegram_username || null })
+    } else {
+      ownerTgMerged.set(t.user_id, {
+        first_name: t.telegram_first_name || existing.first_name,
+        last_name: t.telegram_last_name || existing.last_name,
+        username: t.telegram_username || existing.username,
+      })
+    }
+  }
+
   const orgOwnerMap = new Map<string, { email: string | null, name: string | null }>()
   for (const membership of memberships || []) {
     if (membership.role === 'owner' && !orgOwnerMap.has(membership.org_id)) {
       const ownerUser = ownerUsers?.find(u => u.id === membership.user_id)
       const ownerAccount = ownerAccounts?.find(a => a.user_id === membership.user_id && a.provider === 'email')
-      const ownerTelegram = ownerTelegramAccounts?.find(t => t.user_id === membership.user_id)
+      const ownerTelegram = ownerTgMerged.get(membership.user_id)
       
       // Email: только реальные email
       const email = ownerUser?.email || ownerAccount?.provider_account_id || null
       
       // Имя: users.name -> telegram name -> telegram_username
       const telegramName = ownerTelegram 
-        ? [ownerTelegram.telegram_first_name, ownerTelegram.telegram_last_name].filter(Boolean).join(' ') 
+        ? [ownerTelegram.first_name, ownerTelegram.last_name].filter(Boolean).join(' ') 
         : null
-      const name = ownerUser?.name || telegramName || (ownerTelegram?.telegram_username ? `@${ownerTelegram.telegram_username}` : null)
+      const name = ownerUser?.name || telegramName || (ownerTelegram?.username ? `@${ownerTelegram.username}` : null)
       
       orgOwnerMap.set(membership.org_id, { email, name })
     }
