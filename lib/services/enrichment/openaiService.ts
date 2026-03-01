@@ -14,6 +14,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { openai } from '../openaiClient';
 import { createServiceLogger } from '@/lib/logger';
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 
 const logger = createServiceLogger('OpenAI');
 
@@ -356,7 +357,7 @@ ${messagesToAnalyze.map((m, i) => {
       } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
         errorType = 'auth_error';
         errorDetails.hint = 'Check if OPENAI_API_KEY is valid';
-      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+      } else if (error.message.includes('429') || error.message.includes('rate limit') || error.message.toLowerCase().includes('quota')) {
         errorType = 'rate_limit';
         errorDetails.hint = 'OpenAI rate limit exceeded, try again later';
       } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
@@ -365,17 +366,28 @@ ${messagesToAnalyze.map((m, i) => {
       }
     }
     
+    const errMsg = error instanceof Error ? error.message : String(error);
     logger.error({ 
       participant_id: participantId,
       participant_name: participantName,
       org_id: orgId,
       error_type: errorType,
-      error: error instanceof Error ? error.message : String(error),
+      error: errMsg,
       error_name: error instanceof Error ? error.name : undefined,
       stack: error instanceof Error ? error.stack : undefined,
       ...errorDetails
     }, `❌ [OPENAI_CALL] AI enrichment failed: ${errorType}`);
-    throw new Error(`AI analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    if (errorType === 'rate_limit') {
+      await logErrorToDatabase({
+        level: 'error',
+        message: 'OpenAI quota exceeded (429) in participant AI enrichment',
+        errorCode: 'OPENAI_QUOTA_EXCEEDED',
+        context: { service: 'openaiService', error_type: errorType, error: errMsg, ...errorDetails },
+        stackTrace: error instanceof Error ? error.stack : undefined,
+        orgId,
+      }).catch(() => {});
+    }
+    throw new Error(`AI analysis failed: ${errMsg}`);
   }
 }
 

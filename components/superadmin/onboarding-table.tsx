@@ -223,7 +223,7 @@ export default function OnboardingTable({ messages: initialMessages }: { message
   const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const cutoffTime = Date.now() - 24 * 60 * 60 * 1000
 
   const matchesSearch = (m: OnboardingMessage) =>
     !search ||
@@ -231,13 +231,15 @@ export default function OnboardingTable({ messages: initialMessages }: { message
     m.userEmail.toLowerCase().includes(search.toLowerCase()) ||
     (m.tgUsername || '').toLowerCase().includes(search.toLowerCase())
 
+  const getTime = (s: string) => new Date(s).getTime()
+
   const currentMessages = messages
-    .filter(m => m.scheduledAt >= cutoff && matchesSearch(m))
-    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+    .filter(m => m.scheduledAt && getTime(m.scheduledAt) >= cutoffTime && matchesSearch(m))
+    .sort((a, b) => getTime(a.scheduledAt) - getTime(b.scheduledAt))
 
   const pastMessages = messages
-    .filter(m => m.scheduledAt < cutoff && matchesSearch(m))
-    .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt))
+    .filter(m => m.scheduledAt && getTime(m.scheduledAt) < cutoffTime && matchesSearch(m))
+    .sort((a, b) => getTime(b.scheduledAt) - getTime(a.scheduledAt))
 
   const filtered = viewMode === 'current' ? currentMessages : pastMessages
 

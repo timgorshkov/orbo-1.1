@@ -11,6 +11,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { openai } from './openaiClient';
 import { createServiceLogger } from '@/lib/logger';
+import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 
 const logger = createServiceLogger('AINotificationAnalysis');
 
@@ -247,12 +248,24 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       cost_usd: costUsd,
     };
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const is429 = errMsg.includes('429') || errMsg.toLowerCase().includes('quota');
     logger.error({ 
-      error: error instanceof Error ? error.message : String(error),
+      error: errMsg,
       stack: error instanceof Error ? error.stack : undefined,
       rule_id: ruleId,
       org_id: orgId
     }, '❌ [AI-ANALYSIS] Negativity analysis failed');
+    if (is429) {
+      await logErrorToDatabase({
+        level: 'error',
+        message: 'OpenAI quota exceeded (429) in AI notification analysis',
+        errorCode: 'OPENAI_QUOTA_EXCEEDED',
+        context: { service: 'AINotificationAnalysis', rule_id: ruleId, error: errMsg },
+        stackTrace: error instanceof Error ? error.stack : undefined,
+        orgId,
+      }).catch(() => {});
+    }
     return {
       has_negative: false,
       severity: 'low',
