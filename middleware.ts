@@ -97,10 +97,18 @@ export async function middleware(request: NextRequest) {
     return new NextResponse(null, { status: 404 })
   }
 
-  // Block bogus Next-Action header scanning (e.g. "dontcare", "r", "x")
+  // Block Server Action scanning:
+  // 1. Short/arbitrary IDs like "dontcare", "r", "x" → 400
+  // 2. Valid-looking 40-char hex IDs from unauthenticated requests → 401
+  //    (real app users always have a session cookie when triggering Server Actions)
   const nextAction = request.headers.get('next-action')
-  if (nextAction && isSuspiciousNextAction(nextAction)) {
-    return new NextResponse(null, { status: 400 })
+  if (nextAction) {
+    if (isSuspiciousNextAction(nextAction)) {
+      return new NextResponse(null, { status: 400 })
+    }
+    if (!hasAuthSession(request)) {
+      return new NextResponse(null, { status: 401 })
+    }
   }
 
   // ========================================
