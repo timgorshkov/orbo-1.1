@@ -47,7 +47,7 @@ export default async function MaxGroupPage({
     if (!group) return notFound()
 
     // KPI metrics
-    const metricsResult = await db.raw<any[]>(
+    const { data: metricsRows } = await db.raw<any[]>(
       `SELECT
         COUNT(*) FILTER (WHERE event_type = 'message' AND created_at > now() - INTERVAL '30 days') AS messages_30d,
         COUNT(*) FILTER (WHERE event_type = 'join'    AND created_at > now() - INTERVAL '30 days') AS joins_30d,
@@ -56,10 +56,10 @@ export default async function MaxGroupPage({
       WHERE max_chat_id = $1 AND messenger_type = 'max'`,
       [chatId],
     )
-    const kpi = metricsResult?.[0] ?? { messages_30d: 0, joins_30d: 0, active_users_7d: 0 }
+    const kpi = metricsRows?.[0] ?? { messages_30d: 0, joins_30d: 0, active_users_7d: 0 }
 
     // Daily message activity — last 14 days
-    const dailyResult = await db.raw<any[]>(
+    const { data: dailyRows } = await db.raw<any[]>(
       `SELECT
         DATE(created_at) AS date,
         COUNT(*)         AS message_count
@@ -72,13 +72,13 @@ export default async function MaxGroupPage({
       ORDER BY date`,
       [chatId],
     )
-    const dailyActivity = (dailyResult ?? []).map((r: any) => ({
+    const dailyActivity = (dailyRows ?? []).map((r: any) => ({
       date: String(r.date),
       message_count: Number(r.message_count),
     }))
 
     // Participants who had any activity in this chat
-    const participantsResult = await db.raw<any[]>(
+    const { data: participantRows } = await db.raw<any[]>(
       `SELECT
         ae.max_user_id,
         MAX(ae.created_at) AS last_activity,
@@ -97,7 +97,7 @@ export default async function MaxGroupPage({
       LIMIT 200`,
       [chatId, orgId],
     )
-    const participants = (participantsResult ?? []).map((r: any) => ({
+    const participants = (participantRows ?? []).map((r: any) => ({
       max_user_id: Number(r.max_user_id),
       participant_id: r.participant_id ?? null,
       full_name: r.full_name ?? null,
