@@ -58,7 +58,7 @@ export default async function MaxGroupPage({
     )
     const kpi = metricsRows?.[0] ?? { messages_30d: 0, joins_30d: 0, active_users_7d: 0 }
 
-    // Daily message activity — last 14 days
+    // Daily message activity — last 30 days, all days filled (zeros for gaps)
     const { data: dailyRows } = await db.raw<any[]>(
       `SELECT
         DATE(created_at) AS date,
@@ -67,15 +67,22 @@ export default async function MaxGroupPage({
       WHERE max_chat_id = $1
         AND messenger_type = 'max'
         AND event_type = 'message'
-        AND created_at > now() - INTERVAL '14 days'
+        AND created_at > now() - INTERVAL '30 days'
       GROUP BY DATE(created_at)
       ORDER BY date`,
       [chatId],
     )
-    const dailyActivity = (dailyRows ?? []).map((r: any) => ({
-      date: String(r.date),
-      message_count: Number(r.message_count),
-    }))
+
+    // Build a full 30-day array with zeros for days that have no data
+    const activityMap = new Map<string, number>(
+      (dailyRows ?? []).map((r: any) => [String(r.date).slice(0, 10), Number(r.message_count)])
+    )
+    const dailyActivity = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date()
+      d.setDate(d.getDate() - (29 - i))
+      const key = d.toISOString().slice(0, 10)
+      return { date: key, message_count: activityMap.get(key) ?? 0 }
+    })
 
     // Participants who had any activity in this chat
     const { data: participantRows } = await db.raw<any[]>(

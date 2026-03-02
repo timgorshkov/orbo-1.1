@@ -180,7 +180,7 @@ export default function MaxGroupClient({ orgId, group, metrics, dailyActivity, p
           {/* Daily activity bar chart */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Активность за последние 14 дней</CardTitle>
+              <CardTitle className="text-base">Активность за последние 30 дней</CardTitle>
             </CardHeader>
             <CardContent>
               {dailyActivity.length === 0 ? (

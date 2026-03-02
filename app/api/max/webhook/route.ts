@@ -246,7 +246,7 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
     }
   }
 
-  // Record activity event
+  // Record activity event (messageText already declared above)
   await supabase.from('activity_events').insert({
     org_id: orgId,
     event_type: 'message',
@@ -255,7 +255,8 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
     messenger_type: 'max',
     meta: {
       message_id: message.body?.mid,
-      text_length: message.body?.text?.length || 0,
+      text: messageText.slice(0, 500) || undefined,
+      text_length: messageText.length,
     },
   }).then(() => {});
 
