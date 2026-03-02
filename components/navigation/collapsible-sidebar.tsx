@@ -22,7 +22,8 @@ import {
   Eye,
   MessageCircle,
   Bell,
-  Radio
+  Radio,
+  Send
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -580,6 +581,18 @@ export default function CollapsibleSidebar({
                 Нет подключенных групп
               </div>
             )}
+            {/* MAX groups link */}
+            <Link
+              href={`/p/${orgId}/max`}
+              className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors mt-1 ${
+                pathname?.startsWith(`/p/${orgId}/max`)
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Send className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">MAX группы</span>
+            </Link>
           </div>
         )}
       </nav>

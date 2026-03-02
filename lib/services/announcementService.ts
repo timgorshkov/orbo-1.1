@@ -1,6 +1,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { TelegramService } from '@/lib/services/telegramService';
+import { createMaxService } from '@/lib/services/maxService';
 import { verifyOrgGroupAccessBatch } from '@/lib/server/orgGroupAccess';
 
 const logger = createServiceLogger('AnnouncementService');
@@ -11,6 +12,7 @@ interface Announcement {
   title: string;
   content: string;
   target_groups: string[];
+  target_max_groups?: string[];
   status: string;
   image_url?: string | null;
   retry_count?: number;
@@ -179,6 +181,45 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       }
     }
     
+    // ─── Send to MAX groups if specified ─────────────────────
+    if (announcement.target_max_groups && announcement.target_max_groups.length > 0) {
+      try {
+        const maxService = createMaxService('main');
+        const { data: maxGroups } = await supabase
+          .from('max_groups')
+          .select('max_chat_id, title')
+          .in('max_chat_id', announcement.target_max_groups);
+
+        for (const mg of (maxGroups || [])) {
+          const chatId = mg.max_chat_id;
+          if (!chatId) continue;
+
+          try {
+            const result = await maxService.sendMessageToChat(
+              chatId,
+              announcement.content,
+              { format: 'html' },
+            );
+
+            if (result.ok) {
+              results[`max:${chatId}`] = { success: true, message_id: result.data?.body?.mid };
+              successCount++;
+            } else {
+              results[`max:${chatId}`] = { success: false, error: result.error?.message || 'MAX API error' };
+              failCount++;
+            }
+          } catch (err: any) {
+            results[`max:${chatId}`] = { success: false, error: err.message };
+            failCount++;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (maxErr: any) {
+        logger.warn({ error: maxErr.message }, 'Failed to send announcement to MAX groups (service init)');
+      }
+    }
+
     // Обновляем статус анонса
     const MAX_RETRIES = 3;
     const retryCount = (announcement.retry_count || 0);

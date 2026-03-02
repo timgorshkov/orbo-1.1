@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Share2, Link as LinkIcon, Copy, Check, MessageCircle, ExternalLink } from 'lucide-react';
+import { Share2, Link as LinkIcon, Copy, Check, MessageCircle, ExternalLink, Send } from 'lucide-react';
 
 interface EventShareOptionsProps {
   eventId: string;
@@ -18,6 +18,7 @@ export default function EventShareOptions({
 }: EventShareOptionsProps) {
   const [copiedWeb, setCopiedWeb] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
+  const [copiedMax, setCopiedMax] = useState(false);
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -26,8 +27,9 @@ export default function EventShareOptions({
   const webLink = `${typeof window !== 'undefined' ? window.location.origin : 'https://my.orbo.ru'}/e/${eventId}`;
   const telegramBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot';
   const telegramAppShortName = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_APP_SHORT_NAME || 'events';
-  // Format: https://t.me/botusername/appshortname?startapp=param
   const telegramLink = `https://t.me/${telegramBotUsername}/${telegramAppShortName}?startapp=e-${eventId}`;
+  const maxBotUsername = process.env.NEXT_PUBLIC_MAX_EVENT_BOT_USERNAME || '';
+  const maxLink = maxBotUsername ? `https://max.ru/${maxBotUsername}?startapp=e-${eventId}` : '';
   
   // Close popover when clicking outside
   useEffect(() => {
@@ -48,15 +50,18 @@ export default function EventShareOptions({
     }
   }, [open]);
   
-  const copyToClipboard = async (text: string, type: 'web' | 'telegram') => {
+  const copyToClipboard = async (text: string, type: 'web' | 'telegram' | 'max') => {
     try {
       await navigator.clipboard.writeText(text);
       if (type === 'web') {
         setCopiedWeb(true);
         setTimeout(() => setCopiedWeb(false), 2000);
-      } else {
+      } else if (type === 'telegram') {
         setCopiedTelegram(true);
         setTimeout(() => setCopiedTelegram(false), 2000);
+      } else {
+        setCopiedMax(true);
+        setTimeout(() => setCopiedMax(false), 2000);
       }
     } catch (err) {
       console.error('Failed to copy:', err);
@@ -128,6 +133,29 @@ export default function EventShareOptions({
               </div>
             </button>
             
+            {/* MAX MiniApp link */}
+            {maxLink && (
+              <button
+                onClick={() => copyToClipboard(maxLink, 'max')}
+                className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
+              >
+                <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <Send className="h-4 w-4 text-indigo-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">MAX MiniApp</p>
+                  <p className="text-xs text-gray-500 truncate">{maxLink}</p>
+                </div>
+                <div className="flex-shrink-0">
+                  {copiedMax ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4 text-gray-400" />
+                  )}
+                </div>
+              </button>
+            )}
+            
             <div className="h-px bg-gray-100 my-1" />
             
             {/* Open Telegram link */}
@@ -140,6 +168,19 @@ export default function EventShareOptions({
               <ExternalLink className="h-4 w-4 text-gray-400" />
               <span className="text-sm">Открыть в Telegram</span>
             </a>
+            
+            {/* Open MAX link */}
+            {maxLink && (
+              <a 
+                href={maxLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
+              >
+                <ExternalLink className="h-4 w-4 text-gray-400" />
+                <span className="text-sm">Открыть в MAX</span>
+              </a>
+            )}
           </div>
         </div>
       )}

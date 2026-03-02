@@ -62,6 +62,12 @@ interface TelegramGroup {
   bot_status?: string;
 }
 
+interface MaxGroup {
+  max_chat_id: number;
+  title: string | null;
+  bot_status?: string;
+}
+
 interface AnnouncementsClientProps {
   orgId: string;
 }
@@ -71,6 +77,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [groups, setGroups] = useState<TelegramGroup[]>([]);
+  const [maxGroups, setMaxGroups] = useState<MaxGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('calendar');
   
@@ -85,6 +92,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     title: '',
     content: '',
     target_groups: [] as number[],  // tg_chat_id array
+    target_max_groups: [] as number[],
     scheduled_at: ''
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +103,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   useEffect(() => {
     fetchAnnouncements();
     fetchGroups();
+    fetchMaxGroups();
   }, [orgId]);
   
   const fetchAnnouncements = async () => {
@@ -124,6 +133,18 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       console.error('Failed to fetch groups:', error);
     }
   };
+
+  const fetchMaxGroups = async () => {
+    try {
+      const response = await fetch(`/api/max/groups/for-org?orgId=${orgId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMaxGroups(data.groups || []);
+      }
+    } catch {
+      // MAX groups may not be configured
+    }
+  };
   
   // Конвертация UTC в локальный datetime-local формат
   const utcToLocalDatetimeString = (utcString: string) => {
@@ -149,8 +170,9 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     setFormData({
       title: '',
       content: '',
-      target_groups: groups.map(g => g.tg_chat_id), // Все группы по умолчанию
-      scheduled_at: getLocalDatetimeString(1) // +1 час от текущего времени
+      target_groups: groups.map(g => g.tg_chat_id),
+      target_max_groups: maxGroups.map(g => g.max_chat_id),
+      scheduled_at: getLocalDatetimeString(1)
     });
     setImageFile(null);
     setImagePreview(null);
@@ -163,6 +185,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       title: announcement.title,
       content: announcement.content,
       target_groups: announcement.target_groups,
+      target_max_groups: (announcement as any).target_max_groups || [],
       // Конвертируем UTC время из БД в локальное для отображения
       scheduled_at: utcToLocalDatetimeString(announcement.scheduled_at)
     });
@@ -772,10 +795,10 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
             </div>
             
             <div>
-              <Label>Целевые группы</Label>
-              <div className="mt-2 space-y-2 max-h-64 overflow-y-auto border rounded p-2">
+              <Label>Telegram группы</Label>
+              <div className="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2">
                 {groups.length === 0 ? (
-                  <p className="text-gray-500 text-sm">Нет доступных групп</p>
+                  <p className="text-gray-500 text-sm">Нет доступных Telegram групп</p>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 pb-2 border-b">
@@ -789,7 +812,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                           });
                         }}
                       />
-                      <Label htmlFor="all-groups" className="font-medium">Все группы</Label>
+                      <Label htmlFor="all-groups" className="font-medium">Все Telegram группы</Label>
                     </div>
                     {groups.map(group => (
                       <div key={group.tg_chat_id} className="flex items-center gap-2">
@@ -814,6 +837,46 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                 )}
               </div>
             </div>
+
+            {maxGroups.length > 0 && (
+              <div>
+                <Label>MAX группы</Label>
+                <div className="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2">
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <Checkbox
+                      id="all-max-groups"
+                      checked={formData.target_max_groups.length === maxGroups.length}
+                      onCheckedChange={(checked) => {
+                        setFormData({
+                          ...formData,
+                          target_max_groups: checked ? maxGroups.map(g => g.max_chat_id) : []
+                        });
+                      }}
+                    />
+                    <Label htmlFor="all-max-groups" className="font-medium">Все MAX группы</Label>
+                  </div>
+                  {maxGroups.map(group => (
+                    <div key={group.max_chat_id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`max-${group.max_chat_id}`}
+                        checked={formData.target_max_groups.includes(group.max_chat_id)}
+                        onCheckedChange={(checked) => {
+                          setFormData({
+                            ...formData,
+                            target_max_groups: checked
+                              ? [...formData.target_max_groups, group.max_chat_id]
+                              : formData.target_max_groups.filter(id => id !== group.max_chat_id)
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`max-${group.max_chat_id}`}>
+                        {group.title || 'Без названия'} <span className="text-xs text-gray-400">(MAX)</span>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>

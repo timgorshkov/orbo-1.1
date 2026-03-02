@@ -16,6 +16,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { sendEmail } from '@/lib/services/email'
 import { TelegramService } from '@/lib/services/telegramService'
+import { createMaxService } from '@/lib/services/maxService'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('OnboardingChain')
@@ -35,6 +36,7 @@ interface UserContext {
   email: string | null
   name: string | null
   tgUserId: number | null
+  maxUserId: number | null
   hasOrg: boolean
   hasTelegramLinked: boolean
   hasGroup: boolean
@@ -61,13 +63,21 @@ const TELEGRAM_CHAIN: ChainStep[] = [
   { key: 'check_in',         delayMs: 7 * DAY },
 ]
 
+const MAX_CHAIN: ChainStep[] = [
+  { key: 'workspace_ready',  delayMs: 1 * HOUR },
+  { key: 'add_group',        delayMs: 1 * DAY,  skipIf: ctx => ctx.hasGroup },
+  { key: 'create_event',     delayMs: 3 * DAY,  skipIf: ctx => ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 5 * DAY },
+  { key: 'check_in',         delayMs: 7 * DAY },
+]
+
 // ---------------------------------------------------------------------------
 // Schedule chain for a new user
 // ---------------------------------------------------------------------------
 
 export async function scheduleOnboardingChain(
   userId: string,
-  channel: 'email' | 'telegram',
+  channel: 'email' | 'telegram' | 'max',
   options?: { restart?: boolean }
 ): Promise<void> {
   const supabase = createAdminServer()
@@ -82,7 +92,7 @@ export async function scheduleOnboardingChain(
   }
 
   const now = Date.now()
-  const chain = channel === 'email' ? EMAIL_CHAIN : TELEGRAM_CHAIN
+  const chain = channel === 'email' ? EMAIL_CHAIN : channel === 'max' ? MAX_CHAIN : TELEGRAM_CHAIN
 
   const rows = chain.map(step => ({
     user_id: userId,
@@ -219,7 +229,7 @@ export async function processOnboardingMessages(): Promise<{
   for (const msg of pending) {
     stats.processed++
     const ctx = contexts.get(msg.user_id)!
-    const chain = msg.channel === 'email' ? EMAIL_CHAIN : TELEGRAM_CHAIN
+    const chain = msg.channel === 'email' ? EMAIL_CHAIN : msg.channel === 'max' ? MAX_CHAIN : TELEGRAM_CHAIN
     const stepDef = chain.find(s => s.key === msg.step_key)
 
     logger.info({
@@ -266,6 +276,8 @@ export async function processOnboardingMessages(): Promise<{
     try {
       if (msg.channel === 'email') {
         await sendEmailStep(ctx, msg.step_key)
+      } else if (msg.channel === 'max') {
+        await sendMaxStep(ctx, msg.step_key)
       } else {
         await sendTelegramStep(ctx, msg.step_key)
         if (ctx.emailVerified && ctx.email && !ctx.email.endsWith('@telegram.user')) {
@@ -347,7 +359,7 @@ async function buildUserContext(userId: string): Promise<UserContext> {
 
   if (!user) {
     return {
-      userId, email: null, name: null, tgUserId: null,
+      userId, email: null, name: null, tgUserId: null, maxUserId: null,
       hasOrg: false, hasTelegramLinked: false, hasGroup: false,
       hasEvent: false, emailVerified: false,
     }
@@ -396,11 +408,15 @@ async function buildUserContext(userId: string): Promise<UserContext> {
     hasEvent = (count || 0) > 0
   }
 
+  // Check MAX user ID (from user_telegram_accounts or future MAX accounts table)
+  const maxUserId = (user as any).max_user_id || null
+
   return {
     userId,
     email: user.email,
     name: user.name,
     tgUserId,
+    maxUserId,
     hasOrg: !!orgId,
     hasTelegramLinked: !!tgAccount,
     hasGroup,
@@ -444,6 +460,81 @@ async function sendTelegramStep(ctx: UserContext, stepKey: string): Promise<void
     throw new Error(result.description || 'TG send failed')
   }
   logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding TG message sent OK')
+}
+
+async function sendMaxStep(ctx: UserContext, stepKey: string): Promise<void> {
+  if (!ctx.maxUserId) throw new Error('No max_user_id for user ' + ctx.userId)
+
+  const text = getMaxContent(ctx, stepKey)
+
+  let maxService
+  try {
+    maxService = createMaxService('notifications')
+  } catch {
+    maxService = createMaxService('main')
+  }
+
+  logger.info({ user_id: ctx.userId, max_user_id: ctx.maxUserId, step: stepKey }, 'Sending onboarding MAX message')
+  const result = await maxService.sendMessageToUser(ctx.maxUserId, text, { format: 'html' })
+
+  if (!result.ok) {
+    logger.error({ user_id: ctx.userId, max_user_id: ctx.maxUserId, step: stepKey, error: result.error }, 'MAX send failed')
+    throw new Error(typeof result.error === 'string' ? result.error : 'MAX send failed')
+  }
+  logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding MAX message sent OK')
+}
+
+// ---------------------------------------------------------------------------
+// MAX message content
+// ---------------------------------------------------------------------------
+
+function getMaxContent(ctx: UserContext, stepKey: string): string {
+  const name = ctx.name ? ctx.name.split(' ')[0] : ''
+  const hi = name ? `${name}, ` : ''
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://my.orbo.ru'
+
+  switch (stepKey) {
+    case 'workspace_ready':
+      return (
+        `🏠 <b>${hi}аккаунт создан!</b>\n\n` +
+        `Чтобы увидеть Orbo в деле:\n` +
+        `1. Подключите группу MAX — участники появятся в карточках\n` +
+        `2. Создайте событие — участники смогут регистрироваться через MiniApp\n` +
+        `3. Поделитесь ссылкой в группу — и получите первые регистрации\n\n` +
+        `👉 ${APP_URL}/orgs`
+      )
+    case 'add_group':
+      return (
+        `💡 <b>${hi}пока нет группы, Orbo не видит участников</b>\n\n` +
+        `Добавьте бота в группу MAX. После этого:\n` +
+        `• Участники появятся в карточках с именами\n` +
+        `• Заработает аналитика: кто пишет, кто молчит\n` +
+        `• Можно будет создавать события с анонсами в группу\n\n` +
+        `Занимает 2 минуты → ${APP_URL}/orgs`
+      )
+    case 'create_event':
+      return (
+        `🎉 <b>${hi}попробуйте создать событие</b>\n\n` +
+        `MiniApp — участник регистрируется в один тап, не выходя из MAX.\n` +
+        `Бот напомнит каждому в личку.\n` +
+        `Вы видите: кто зарегистрировался, оплатил, пришёл.\n\n` +
+        `Создайте событие → ${APP_URL}/orgs`
+      )
+    case 'video_overview':
+      return (
+        `✨ <b>${hi}попробуйте AI-анализ сообщества</b>\n\n` +
+        `На дашборде есть кнопка «AI-анализ» — запустите для оценки здоровья сообщества.\n\n` +
+        `У вас 5 бесплатных анализов → ${APP_URL}/orgs`
+      )
+    case 'check_in':
+      return (
+        `👋 <b>${hi}как дела с Orbo?</b>\n\n` +
+        `Прошла неделя. Всё получилось? Если что-то непонятно — напишите нам.\n\n` +
+        `Telegram основателя: @timgorshkov`
+      )
+    default:
+      return `Orbo: ${stepKey}`
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -682,6 +773,7 @@ export function getAllTemplatesForPreview(): TemplatePreview[] {
     email: 'user@example.com',
     name: 'Тим',
     tgUserId: 154588486,
+    maxUserId: null,
     hasOrg: true,
     hasTelegramLinked: false,
     hasGroup: false,
