@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "WebFetch(domain:dev.max.ru)",
+      "WebSearch"
     ]
   }
 }
