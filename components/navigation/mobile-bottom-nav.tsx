@@ -12,19 +12,17 @@ import {
   Menu,
   X,
   Settings,
-  ChevronRight,
   Building2,
   User as UserIcon,
   Home,
   Eye,
-  Grid3x3,
+  AppWindow,
   Bell,
   MessageCircle,
   Radio,
   Megaphone
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
-import TelegramGroupsNav from '../telegram-groups-nav'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'guest'
 
@@ -33,13 +31,8 @@ function getRolePermissions(role: UserRole) {
     canViewDashboard: role === 'owner' || role === 'admin',
     canManageTelegram: role === 'owner' || role === 'admin',
     canManageSettings: role === 'owner' || role === 'admin',
-    canEditMaterials: role === 'owner' || role === 'admin',
-    canViewMaterials: role !== 'guest',
-    canCreateEvents: role === 'owner' || role === 'admin',
     canViewEvents: role !== 'guest',
-    canRegisterForEvents: role !== 'guest',
     canViewMembers: role !== 'guest',
-    canEditMembers: role === 'owner' || role === 'admin',
   }
 }
 
@@ -73,7 +66,6 @@ export default function MobileBottomNav({
   const { adminMode, toggleAdminMode, isAdmin } = useAdminMode(role)
   const permissions = getRolePermissions(role)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [showOrgDropdown, setShowOrgDropdown] = useState(false)
 
   // Закрываем меню при переходе на другую страницу
   useEffect(() => {
@@ -96,11 +88,9 @@ export default function MobileBottomNav({
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
 
-  // Определяем видимость пунктов меню
   const showDashboard = isAdmin && adminMode
   const showHome = !isAdmin || !adminMode
 
-  // Динамический первый пункт - Главная или Дашборд
   if (showHome) {
     mainNavItems.push({
       key: 'home',
@@ -119,7 +109,6 @@ export default function MobileBottomNav({
     })
   }
 
-  // Applications (Заявки) for admins in admin mode
   if (permissions.canManageSettings && adminMode) {
     mainNavItems.push({
       key: 'applications',
@@ -150,55 +139,19 @@ export default function MobileBottomNav({
     })
   }
 
-  // Дополнительные пункты меню для боковой панели
-  const menuItems = []
-
-  // ✅ Notifications for admins in admin mode
-  if (permissions.canManageSettings && adminMode) {
-    menuItems.push({
-      key: 'notifications',
-      label: 'Уведомления',
-      icon: Bell,
-      href: `/p/${orgId}/notifications`,
-      active: pathname?.startsWith(`/p/${orgId}/notifications`),
-    })
-  }
-
-  // ✅ Apps in dropdown menu for all non-guests
-  if (role !== 'guest') {
-    menuItems.push({
-      key: 'apps',
-      label: 'Приложения',
-      icon: Grid3x3,
-      href: `/p/${orgId}/apps`,
-      active: pathname?.startsWith(`/p/${orgId}/apps`),
-    })
-  }
-
-  // ✅ Settings only in admin mode
-  if (permissions.canManageSettings && adminMode) {
-    menuItems.push({
-      key: 'settings',
-      label: 'Настройки',
-      icon: Settings,
-      href: `/p/${orgId}/settings`,
-      active: pathname?.startsWith(`/p/${orgId}/settings`),
-    })
-  }
-
   return (
     <>
-      {/* Выдвижное меню */}
+      {/* Выдвижное меню справа — lg:hidden чтобы не показывать на десктопе */}
       {isMenuOpen && (
         <>
           {/* Затемнённый фон */}
           <div 
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
             onClick={() => setIsMenuOpen(false)}
           />
           
           {/* Само меню */}
-          <div className="fixed inset-y-0 right-0 w-80 max-w-[85vw] bg-white z-50 shadow-2xl flex flex-col md:hidden">
+          <div className="fixed inset-y-0 right-0 w-80 max-w-[85vw] bg-white z-50 shadow-2xl flex flex-col lg:hidden">
             {/* Шапка меню */}
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4">
               <div className="flex items-center gap-3">
@@ -236,49 +189,30 @@ export default function MobileBottomNav({
                     <span className="flex-1 text-left">
                       {adminMode ? 'Режим админа' : 'Режим участника'}
                     </span>
-                    <span className="text-xs text-gray-600">
-                      {adminMode ? 'Переключить' : 'Переключить'}
-                    </span>
+                    <span className="text-xs text-gray-600">Переключить</span>
                   </button>
                 </div>
               )}
 
-              {/* Дополнительные пункты */}
+              {/* Дополнительные пункты в порядке: Уведомления → Анонсы → Приложения → Настройки групп → Настройки */}
               <nav className="px-2 py-4 space-y-1">
-                {/* Материалы в выдвижном меню (скрыты из нижней панели) */}
-                {permissions.canViewMaterials && (
+
+                {/* Уведомления (только для админов в режиме админа) */}
+                {permissions.canManageSettings && adminMode && (
                   <Link
-                    href={`/p/${orgId}/materials`}
+                    href={`/p/${orgId}/notifications`}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
-                      pathname?.startsWith(`/p/${orgId}/materials`)
+                      pathname?.startsWith(`/p/${orgId}/notifications`)
                         ? 'bg-blue-50 text-blue-600'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    <FileText className="h-5 w-5 flex-shrink-0" />
-                    <span>Материалы</span>
+                    <Bell className="h-5 w-5 flex-shrink-0" />
+                    <span>Уведомления</span>
                   </Link>
                 )}
 
-                {menuItems.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Link
-                      key={item.key}
-                      href={item.href}
-                      className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
-                        item.active
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5 flex-shrink-0" />
-                      <span>{item.label}</span>
-                    </Link>
-                  )
-                })}
-
-                {/* ✅ Анонсы для админов в режиме админа */}
+                {/* Анонсы (только для админов в режиме админа) */}
                 {permissions.canManageSettings && adminMode && (
                   <Link
                     href={`/p/${orgId}/announcements`}
@@ -293,72 +227,90 @@ export default function MobileBottomNav({
                   </Link>
                 )}
 
-                {/* ✅ Telegram Groups & Channels для админов в режиме админа */}
+                {/* Приложения (для всех авторизованных) */}
+                {role !== 'guest' && (
+                  <Link
+                    href={`/p/${orgId}/apps`}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/apps`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <AppWindow className="h-5 w-5 flex-shrink-0" />
+                    <span>Приложения</span>
+                  </Link>
+                )}
+
+                {/* Telegram-группы и каналы (только для админов в режиме админа) */}
                 {permissions.canManageTelegram && adminMode && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <div className="px-3 mb-2">
-                      <p className="text-xs font-semibold text-gray-500 uppercase">Telegram</p>
-                    </div>
-                    
-                    {/* Main Telegram Settings */}
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    {/* Настройки групп — основная ссылка (шестерёнка) */}
                     <Link
                       href={`/p/${orgId}/telegram`}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
                         pathname === `/p/${orgId}/telegram` || pathname === `/p/${orgId}/telegram/`
                           ? 'bg-blue-50 text-blue-600'
                           : 'text-gray-700 hover:bg-gray-100'
                       }`}
                     >
-                      <MessageCircle className="h-4 w-4 flex-shrink-0" />
-                      <span>Настройки</span>
+                      <Settings className="h-5 w-5 flex-shrink-0" />
+                      <span>Настройки групп</span>
                     </Link>
 
-                    {/* Telegram Groups */}
-                    {telegramGroups && telegramGroups.length > 0 && (
-                      <>
-                        <p className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase mt-2">Группы</p>
-                        {telegramGroups.map((group: any) => (
-                          <Link
-                            key={group.id}
-                            href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
-                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                              pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
-                                ? 'bg-blue-50 text-blue-600'
-                                : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                          >
-                            <MessageCircle className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">{group.title}</span>
-                          </Link>
-                        ))}
-                      </>
-                    )}
+                    {/* Список групп */}
+                    {telegramGroups && telegramGroups.length > 0 && telegramGroups.map((group: any) => (
+                      <Link
+                        key={group.id}
+                        href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          pathname === `/p/${orgId}/telegram/groups/${group.tg_chat_id}`
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <MessageCircle className="h-4 w-4 flex-shrink-0 ml-1" />
+                        <span className="truncate">{group.title}</span>
+                      </Link>
+                    ))}
 
-                    {/* Telegram Channels */}
-                    {telegramChannels && telegramChannels.length > 0 && (
-                      <>
-                        <p className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase mt-2">Каналы</p>
-                        {telegramChannels.map((channel: any) => (
-                          <Link
-                            key={channel.id}
-                            href={`/p/${orgId}/telegram/channels/${channel.id}`}
-                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                              pathname === `/p/${orgId}/telegram/channels/${channel.id}`
-                                ? 'bg-blue-50 text-blue-600'
-                                : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                          >
-                            <Radio className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">{channel.title}</span>
-                          </Link>
-                        ))}
-                      </>
-                    )}
+                    {/* Список каналов */}
+                    {telegramChannels && telegramChannels.length > 0 && telegramChannels.map((channel: any) => (
+                      <Link
+                        key={channel.id}
+                        href={`/p/${orgId}/telegram/channels/${channel.id}`}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          pathname === `/p/${orgId}/telegram/channels/${channel.id}`
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Radio className="h-4 w-4 flex-shrink-0 ml-1" />
+                        <span className="truncate">{channel.title}</span>
+                      </Link>
+                    ))}
                   </div>
                 )}
 
-                {/* Профиль */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                {/* Настройки организации (только для админов в режиме админа) */}
+                {permissions.canManageSettings && adminMode && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <Link
+                      href={`/p/${orgId}/settings`}
+                      className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        pathname?.startsWith(`/p/${orgId}/settings`)
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Settings className="h-5 w-5 flex-shrink-0" />
+                      <span>Настройки</span>
+                    </Link>
+                  </div>
+                )}
+
+                {/* Профиль и смена пространства */}
+                <div className="mt-2 pt-2 border-t border-gray-200">
                   <Link
                     href={`/p/${orgId}/profile`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm hover:bg-gray-100"
@@ -391,7 +343,6 @@ export default function MobileBottomNav({
                     )}
                   </Link>
 
-                  {/* Смена пространства */}
                   <Link
                     href="/orgs"
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100 mt-1"
@@ -406,9 +357,9 @@ export default function MobileBottomNav({
         </>
       )}
 
-      {/* Нижнее меню */}
+      {/* Нижняя панель навигации — lg:hidden (показывается до 1024px, как и скрывается сайдбар) */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 md:hidden"
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 lg:hidden"
         style={{
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
@@ -449,4 +400,3 @@ export default function MobileBottomNav({
     </>
   )
 }
-
