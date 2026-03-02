@@ -296,9 +296,9 @@ export default function MobileBottomNav({
                     {maxGroups && maxGroups.length > 0 && maxGroups.map((group: any) => (
                       <Link
                         key={`max-${group.id}`}
-                        href={`/p/${orgId}/max`}
+                        href={`/p/${orgId}/max/groups/${group.max_chat_id}`}
                         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                          pathname?.startsWith(`/p/${orgId}/max`)
+                          pathname?.startsWith(`/p/${orgId}/max/groups/${group.max_chat_id}`)
                             ? 'bg-blue-50 text-blue-600'
                             : 'text-gray-600 hover:bg-gray-100'
                         }`}

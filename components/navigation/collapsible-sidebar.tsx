@@ -334,7 +334,7 @@ export default function CollapsibleSidebar({
                             {maxGroups.map((group: any) => (
                               <Link
                                 key={`max-${group.id}`}
-                                href={`/p/${orgId}/max`}
+                                href={`/p/${orgId}/max/groups/${group.max_chat_id}`}
                                 className="block px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
                                 onClick={() => setShowMenuDropdown(false)}
                               >

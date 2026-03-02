@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, RefreshCw, Plus, Loader2, CheckCircle2, XCircle, Clock, Unplug } from 'lucide-react';
+import { Users, RefreshCw, Plus, Loader2, CheckCircle2, XCircle, Clock, Unplug, ChevronRight } from 'lucide-react';
 
 interface MaxGroup {
   id: string;
@@ -114,12 +115,17 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
               {linked.map(group => (
                 <div key={group.max_chat_id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <Link
+                    href={`/p/${orgId}/max/groups/${group.max_chat_id}`}
+                    className="flex items-center gap-3 min-w-0 flex-1 group"
+                  >
                     <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
                       <Users className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{group.title || `Chat ${group.max_chat_id}`}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate group-hover:text-indigo-600 transition-colors">
+                        {group.title || `Chat ${group.max_chat_id}`}
+                      </p>
                       <div className="flex items-center gap-2 text-xs text-gray-500">
                         {statusBadge(group.bot_status)}
                         {group.member_count != null && (
@@ -130,7 +136,8 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
                         )}
                       </div>
                     </div>
-                  </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0 mr-2" />
+                  </Link>
                   <Button
                     variant="outline" size="sm"
                     disabled={syncing === String(group.max_chat_id)}
@@ -139,7 +146,7 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
                     {syncing === String(group.max_chat_id) ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <><RefreshCw className="w-4 h-4 mr-1" />Синхронизировать</>
+                      <><RefreshCw className="w-4 h-4 mr-1" />Синхр</>
                     )}
                   </Button>
                 </div>
