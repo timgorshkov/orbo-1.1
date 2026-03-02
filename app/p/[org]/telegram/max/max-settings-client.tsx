@@ -370,16 +370,15 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
                   <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-sm text-amber-800">
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>
-                        Откройте диалог с ботом{' '}
+                        Откройте бота{' '}
                         {botUsername ? (
                           <a href={`https://max.ru/${botUsername}`} target="_blank" rel="noopener noreferrer"
                             className="font-medium text-amber-900 hover:underline">
                             @{botUsername}
                           </a>
-                        ) : 'Orbo'}{' '}в MAX
+                        ) : 'Orbo'}{' '}в MAX и отправьте <b>/start</b>
                       </li>
-                      <li>Нажмите /start если ещё не запускали бота</li>
-                      <li>Вы получите код верификации</li>
+                      <li>Код верификации придёт в этот диалог автоматически</li>
                       <li>Введите код ниже</li>
                     </ol>
                   </div>
@@ -415,23 +414,20 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
                     </div>
                   )}
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800">
-                    <p className="font-medium mb-1">Как узнать MAX User ID:</p>
+                    <p className="font-medium mb-1">Инструкция:</p>
                     <ol className="list-decimal pl-5 space-y-1">
                       <li>
-                        Откройте{' '}
+                        Откройте бота{' '}
                         {botUsername ? (
                           <a href={`https://max.ru/${botUsername}`} target="_blank" rel="noopener noreferrer"
                             className="font-medium text-blue-700 hover:underline">
                             @{botUsername}
                           </a>
-                        ) : 'бота Orbo'}{' '}в MAX
+                        ) : 'Orbo'}{' '}в MAX и отправьте <b>/start</b>
                       </li>
-                      <li>Напишите /start — бот пришлёт ваш User ID и код верификации</li>
-                      <li>Скопируйте ID и вставьте в поле ниже</li>
+                      <li>Бот пришлёт ваш MAX User ID — скопируйте и вставьте ниже</li>
+                      <li>После нажатия кнопки код верификации придёт в этот же диалог</li>
                     </ol>
-                    <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
-                      💡 Сначала запустите бота, иначе код не будет доставлен!
-                    </p>
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">MAX User ID *</label>

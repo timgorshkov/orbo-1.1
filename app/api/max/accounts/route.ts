@@ -114,8 +114,10 @@ export async function POST(request: Request) {
       `⏰ Код действителен 15 минут\n` +
       `🔒 Если вы не запрашивали код — проигнорируйте`;
 
-    const botsToTry = (['main', 'notifications'] as const).filter(botType => {
-      const envKey = botType === 'main' ? 'MAX_MAIN_BOT_TOKEN' : 'MAX_NOTIFICATIONS_BOT_TOKEN';
+    // Notifications bot is the primary DM channel (user opens dialog via /start there).
+    // Fall back to main bot if notifications bot is not configured.
+    const botsToTry = (['notifications', 'main'] as const).filter(botType => {
+      const envKey = botType === 'notifications' ? 'MAX_NOTIFICATIONS_BOT_TOKEN' : 'MAX_MAIN_BOT_TOKEN';
       return !!process.env[envKey];
     });
 

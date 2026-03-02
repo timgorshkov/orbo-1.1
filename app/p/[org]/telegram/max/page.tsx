@@ -12,9 +12,10 @@ export default async function MaxPage({ params }: { params: Promise<{ org: strin
     orgId = org;
     await requireOrgAccess(orgId);
 
+    // Notifications bot is used for verification codes and system DMs — show it in instructions
     const botUsername =
-      process.env.MAX_MAIN_BOT_USERNAME ||
       process.env.MAX_NOTIFICATIONS_BOT_USERNAME ||
+      process.env.MAX_MAIN_BOT_USERNAME ||
       null;
 
     return (
