@@ -432,6 +432,18 @@ export default async function EventDetailPage({
     is_user_registered: isUserRegistered || false
   }
 
+  // Check if org has a verified MAX account (admin only, for share button)
+  let hasMaxAccount = false
+  if (role === 'owner' || role === 'admin') {
+    const { data: maxAccount } = await adminSupabase
+      .from('user_max_accounts')
+      .select('id')
+      .eq('org_id', orgId)
+      .eq('is_verified', true)
+      .maybeSingle()
+    hasMaxAccount = !!maxAccount
+  }
+
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
   if (role === 'owner' || role === 'admin') {
@@ -476,12 +488,13 @@ export default async function EventDetailPage({
 
   return (
     <div className="p-6">
-      <EventDetail 
+      <EventDetail
         event={eventWithStats}
         orgId={orgId}
         role={role as 'owner' | 'admin' | 'member' | 'guest'}
         isEditMode={isEditMode}
         telegramGroups={telegramGroups}
+        hasMaxAccount={hasMaxAccount}
       />
     </div>
   )

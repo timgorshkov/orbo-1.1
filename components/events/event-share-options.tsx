@@ -8,13 +8,15 @@ interface EventShareOptionsProps {
   eventTitle: string;
   orgId: string;
   isPublic?: boolean;
+  hasMaxAccount?: boolean;
 }
 
-export default function EventShareOptions({ 
-  eventId, 
-  eventTitle, 
+export default function EventShareOptions({
+  eventId,
+  eventTitle,
   orgId,
-  isPublic = true 
+  isPublic = true,
+  hasMaxAccount = false,
 }: EventShareOptionsProps) {
   const [copiedWeb, setCopiedWeb] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
@@ -133,8 +135,8 @@ export default function EventShareOptions({
               </div>
             </button>
             
-            {/* MAX MiniApp link */}
-            {maxLink && (
+            {/* MAX MiniApp link — shown only if org has a verified MAX account */}
+            {maxLink && hasMaxAccount && (
               <button
                 onClick={() => copyToClipboard(maxLink, 'max')}
                 className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
@@ -170,7 +172,7 @@ export default function EventShareOptions({
             </a>
             
             {/* Open MAX link */}
-            {maxLink && (
+            {maxLink && hasMaxAccount && (
               <a 
                 href={maxLink}
                 target="_blank"
