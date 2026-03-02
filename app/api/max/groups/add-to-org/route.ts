@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
-import { createMaxService } from '@/lib/services/maxService';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
  * POST /api/max/groups/add-to-org
@@ -12,8 +12,7 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/max/groups/add-to-org' });
 
   try {
-    const supabase = createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -29,9 +28,9 @@ export async function POST(request: NextRequest) {
 
     // Verify user is admin/owner of the org
     const { data: membership } = await adminSupabase
-      .from('organization_members')
+      .from('memberships')
       .select('role')
-      .eq('organization_id', org_id)
+      .eq('org_id', org_id)
       .eq('user_id', user.id)
       .maybeSingle();
 

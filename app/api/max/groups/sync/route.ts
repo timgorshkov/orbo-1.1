@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { createMaxService } from '@/lib/services/maxService';
 
 /**
@@ -12,8 +13,7 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/max/groups/sync' });
 
   try {
-    const supabase = createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
 
     // Verify admin
     const { data: membership } = await adminSupabase
-      .from('organization_members')
+      .from('memberships')
       .select('role')
-      .eq('organization_id', org_id)
+      .eq('org_id', org_id)
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       if (existing) {
         await adminSupabase
           .from('participants')
-          .update({ full_name: userName, username })
+          .update({ full_name: userName, max_username: username })
           .eq('id', existing.id);
         skipped++;
       } else {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
             org_id,
             max_user_id: maxUserId,
             full_name: userName,
-            username,
+            max_username: username,
             source: 'max_group_sync',
             participant_status: 'active',
           });

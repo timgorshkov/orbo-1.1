@@ -53,10 +53,10 @@ export async function GET(request: NextRequest) {
 
     // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно
     const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
-    const [access, membershipResult, telegramResult, organizationResult] = await Promise.all([
+    const [access, membershipResult, telegramResult, maxAccountResult, organizationResult] = await Promise.all([
       // Check access (with superadmin fallback)
       getEffectiveOrgRole(user.id, orgId),
-      
+
       // 2. Membership в организации (may be null for superadmins)
       adminSupabase
         .from('memberships')
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         .eq('org_id', orgId)
         .eq('user_id', user.id)
         .maybeSingle(),
-      
+
       // 3. Telegram аккаунт для организации
       adminSupabase
         .from('user_telegram_accounts')
@@ -72,7 +72,15 @@ export async function GET(request: NextRequest) {
         .eq('user_id', user.id)
         .eq('org_id', orgId)
         .maybeSingle(),
-      
+
+      // 3b. MAX аккаунт для организации
+      adminSupabase
+        .from('user_max_accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .maybeSingle(),
+
       // 6. Информация об организации (перенесено сюда для параллельности)
       adminSupabase
         .from('organizations')
@@ -138,6 +146,7 @@ export async function GET(request: NextRequest) {
             viewing_as: 'superadmin'
           },
           telegram: ownerTelegram || null,
+          maxAccount: null,
           participant: ownerParticipant || null,
           organization: organization || null
         };
@@ -159,6 +168,7 @@ export async function GET(request: NextRequest) {
           viewing_as: 'superadmin'
         },
         telegram: null,
+        maxAccount: null,
         participant: null,
         organization: organization || null
       };
@@ -168,6 +178,7 @@ export async function GET(request: NextRequest) {
 
     const membership = membershipResult.data;
     const { data: telegramAccount, error: telegramError } = telegramResult;
+    const { data: maxAccount } = maxAccountResult;
 
     // Проверяем, является ли пользователь теневым админом
     const isShadowProfile = membership?.metadata?.shadow_profile === true;
@@ -339,6 +350,7 @@ export async function GET(request: NextRequest) {
         is_superadmin: access.isSuperadmin
       },
       telegram: telegramAccount || null,
+      maxAccount: maxAccount || null,
       participant: participant || null,
       organization: organization || null
     };

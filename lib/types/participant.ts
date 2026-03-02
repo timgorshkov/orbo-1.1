@@ -34,7 +34,9 @@ export interface ParticipantRecord {
   id: string;
   org_id: string;
   tg_user_id: number | null;
+  max_user_id: number | null;
   username: string | null;
+  max_username?: string | null;
   full_name: string | null;
   first_name?: string | null;
   last_name?: string | null;

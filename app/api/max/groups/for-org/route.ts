@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminServer, createClientServer } from '@/lib/server/supabaseServer';
+import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 /**
  * GET /api/max/groups/for-org?orgId=...
@@ -15,8 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'orgId required' }, { status: 400 });
     }
 
-    const supabase = createClientServer();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

@@ -123,6 +123,49 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
   const userName = sender.name || 'Unknown';
   const username = sender.username || null;
 
+  // Handle /start or /id commands in DM (for account verification)
+  const messageText: string = message.body?.text?.trim() || '';
+  const isPrivateMessage = !message.recipient?.chat_id || message.recipient.chat_type === 'dialog';
+
+  if (isPrivateMessage && (messageText === '/start' || messageText === '/id' || messageText.startsWith('/start '))) {
+    try {
+      const maxService = createMaxService('main');
+
+      // Check if there's a pending verification code for this user
+      const { data: pendingAccount } = await supabase
+        .from('user_max_accounts')
+        .select('verification_code, verification_expires_at')
+        .eq('max_user_id', maxUserId)
+        .eq('is_verified', false)
+        .gt('verification_expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let replyText: string;
+      if (pendingAccount?.verification_code) {
+        replyText =
+          `👋 Привет от Orbo!\n\n` +
+          `Ваш MAX User ID: <b>${maxUserId}</b>\n\n` +
+          `🔐 Ваш код верификации:\n<b>${pendingAccount.verification_code}</b>\n\n` +
+          `⏰ Код действителен 15 минут\n` +
+          `Введите его на странице настроек Orbo.`;
+      } else {
+        replyText =
+          `👋 Привет от Orbo!\n\n` +
+          `Ваш MAX User ID: <b>${maxUserId}</b>\n\n` +
+          `Используйте этот ID на странице настроек Orbo для привязки аккаунта.\n` +
+          `Код верификации будет отправлен после ввода ID на сайте.`;
+      }
+
+      await maxService.sendMessageToUser(maxUserId, replyText, { format: 'html' });
+      logger.info({ max_user_id: maxUserId }, '✅ MAX /start: sent user ID and verification info');
+    } catch (e: any) {
+      logger.warn({ max_user_id: maxUserId, error: e.message }, 'Failed to send /start reply');
+    }
+    return;
+  }
+
   // Find which org this chat belongs to
   const { data: orgGroup } = await supabase
     .from('org_max_groups')
@@ -156,7 +199,7 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
       .from('participants')
       .update({
         full_name: userName,
-        username: username,
+        max_username: username,
         last_active_at: new Date().toISOString(),
       })
       .eq('id', participantId);
@@ -167,7 +210,7 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
         org_id: orgId,
         max_user_id: maxUserId,
         full_name: userName,
-        username: username,
+        max_username: username,
         source: 'max_group',
         participant_status: 'active',
         last_active_at: new Date().toISOString(),
@@ -305,14 +348,14 @@ async function handleUserAdded(body: any, supabase: any, logger: any) {
   if (existingP) {
     participantId = existingP.id;
     await supabase.from('participants')
-      .update({ full_name: userName, username, last_active_at: new Date().toISOString() })
+      .update({ full_name: userName, max_username: username, last_active_at: new Date().toISOString() })
       .eq('id', participantId);
   } else {
     const { data: newP, error: err } = await supabase.from('participants').insert({
       org_id: orgId,
       max_user_id: maxUserId,
       full_name: userName,
-      username,
+      max_username: username,
       source: 'max_group',
       participant_status: 'active',
       last_active_at: new Date().toISOString(),

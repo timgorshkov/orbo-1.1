@@ -36,6 +36,16 @@ type ProfileData = {
     verified_at?: string
     created_at: string
   } | null
+  maxAccount: {
+    id: string
+    max_user_id: number
+    max_username: string | null
+    max_first_name: string | null
+    max_last_name: string | null
+    is_verified: boolean
+    verified_at: string | null
+    created_at: string
+  } | null
   participant: {
     id: string
     full_name: string | null
@@ -128,6 +138,12 @@ export default function ProfilePage() {
   const [telegramSuccess, setTelegramSuccess] = useState<string | null>(null)
   const [savingTelegram, setSavingTelegram] = useState(false)
   const [verifying, setVerifying] = useState(false)
+
+  // MAX account state
+  const [maxVerificationCode, setMaxVerificationCode] = useState('')
+  const [maxError, setMaxError] = useState<string | null>(null)
+  const [maxSuccess, setMaxSuccess] = useState<string | null>(null)
+  const [verifyingMax, setVerifyingMax] = useState(false)
 
   // Email activation state (for shadow profiles)
   const [showEmailForm, setShowEmailForm] = useState(false)
@@ -353,6 +369,32 @@ export default function ProfilePage() {
       setTelegramError(e.message || 'Failed to verify Telegram')
     } finally {
       setVerifying(false)
+    }
+  }
+
+  const handleVerifyMax = async () => {
+    if (!maxVerificationCode) {
+      setMaxError('Пожалуйста, введите код верификации')
+      return
+    }
+    setVerifyingMax(true)
+    setMaxError(null)
+    setMaxSuccess(null)
+    try {
+      const response = await fetch('/api/max/accounts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: org, verificationCode: maxVerificationCode })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Ошибка верификации')
+      setMaxSuccess('MAX-аккаунт успешно верифицирован!')
+      setMaxVerificationCode('')
+      await fetchProfile()
+    } catch (e: any) {
+      setMaxError(e.message || 'Ошибка верификации')
+    } finally {
+      setVerifyingMax(false)
     }
   }
 
@@ -1265,6 +1307,104 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* MAX Section */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-indigo-600" />
+              MAX аккаунт в этой организации
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {profile.maxAccount ? (
+              <div className="space-y-3">
+                {profile.maxAccount.max_username && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Username:</span>
+                    <span className="font-medium">@{profile.maxAccount.max_username}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">User ID:</span>
+                  <span className="font-medium">{profile.maxAccount.max_user_id}</span>
+                </div>
+                {(profile.maxAccount.max_first_name || profile.maxAccount.max_last_name) && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Имя:</span>
+                    <span className="font-medium">
+                      {[profile.maxAccount.max_first_name, profile.maxAccount.max_last_name].filter(Boolean).join(' ')}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Статус:</span>
+                  {profile.maxAccount.is_verified ? (
+                    <span className="text-sm text-green-600 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span>
+                      Верифицирован {profile.maxAccount.verified_at && `(${new Date(profile.maxAccount.verified_at).toLocaleDateString('ru')})`}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-amber-600 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 bg-amber-600 rounded-full"></span>
+                      Требуется верификация
+                    </span>
+                  )}
+                </div>
+
+                {!profile.maxAccount.is_verified && (
+                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800 mb-3">
+                      Введите код верификации из MAX-бота:
+                    </p>
+                    {maxError && (
+                      <div className="bg-red-50 border border-red-200 rounded p-2 text-sm text-red-800 mb-3">
+                        {maxError}
+                      </div>
+                    )}
+                    {maxSuccess && (
+                      <div className="bg-green-50 border border-green-200 rounded p-2 text-sm text-green-800 mb-3">
+                        {maxSuccess}
+                      </div>
+                    )}
+                    <Input
+                      type="text"
+                      value={maxVerificationCode}
+                      onChange={(e) => setMaxVerificationCode(e.target.value.toUpperCase())}
+                      placeholder="Например: A1B2C3D4"
+                      maxLength={8}
+                      className="mb-3"
+                      disabled={verifyingMax}
+                    />
+                    <Button
+                      onClick={handleVerifyMax}
+                      disabled={verifyingMax || !maxVerificationCode}
+                      className="w-full"
+                    >
+                      {verifyingMax ? 'Верификация...' : 'Верифицировать'}
+                    </Button>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Для получения кода перейдите в{' '}
+                      <a href={`/p/${org}/telegram/max`} className="text-blue-600 hover:underline">
+                        настройки MAX
+                      </a>
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-gray-600 mb-4">MAX-аккаунт не привязан</p>
+                <p className="text-sm text-gray-500 mb-4">
+                  Привяжите MAX-аккаунт для управления MAX-группами организации.
+                </p>
+                <Button variant="outline" onClick={() => router.push(`/p/${org}/telegram/max`)}>
+                  Привязать MAX-аккаунт
+                </Button>
               </div>
             )}
           </CardContent>

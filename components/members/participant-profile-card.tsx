@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ParticipantDetailResult } from '@/lib/types/participant'
-import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity, Archive, RotateCcw, AlertTriangle, Copy, Check, MessageCircle } from 'lucide-react'
+import { User, Mail, Phone, AtSign, Calendar, Edit2, Save, X, Plus, Trash2, Camera, Activity, Archive, RotateCcw, AlertTriangle, Copy, Check, MessageCircle, Send } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import PhotoUploadModal from './photo-upload-modal'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
@@ -570,6 +570,24 @@ export default function ParticipantProfileCard({
                 )}
               </div>
             </div>
+
+            {/* MAX */}
+            {(participant.max_user_id || participant.max_username) && (
+              <div className="flex items-start gap-3">
+                <Send className="h-4 w-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-gray-500 w-20">MAX</span>
+                <div className="flex-1 space-y-1">
+                  {participant.max_username ? (
+                    <span className="text-sm font-medium">@{participant.max_username}</span>
+                  ) : (
+                    <span className="text-xs text-gray-500">Username не указан</span>
+                  )}
+                  {participant.max_user_id && (
+                    <span className="text-xs text-gray-400 block">ID: {participant.max_user_id}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Email */}
             <div className="flex items-center gap-3">
