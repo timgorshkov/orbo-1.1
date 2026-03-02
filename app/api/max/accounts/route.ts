@@ -102,41 +102,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save MAX account' }, { status: 500 });
     }
 
-    // Send verification code via MAX bot
+    // Send verification code via MAX bot.
+    // Try main bot first — user has already opened a dialog with it via /start.
+    // Fall back to notifications bot if main fails (e.g. not configured).
     const maxBotUsername = process.env.MAX_MAIN_BOT_USERNAME || process.env.MAX_NOTIFICATIONS_BOT_USERNAME;
 
-    try {
-      const maxService = createMaxService('notifications');
-      const message =
-        `🔐 Код верификации Orbo\n\n` +
-        `Для подтверждения вашего MAX-аккаунта введите код:\n\n` +
-        `<b>${verificationCode}</b>\n\n` +
-        `⏰ Код действителен 15 минут\n` +
-        `🔒 Если вы не запрашивали код — проигнорируйте`;
+    const verificationMessage =
+      `🔐 Код верификации Orbo\n\n` +
+      `Для подтверждения вашего MAX-аккаунта введите код:\n\n` +
+      `<b>${verificationCode}</b>\n\n` +
+      `⏰ Код действителен 15 минут\n` +
+      `🔒 Если вы не запрашивали код — проигнорируйте`;
 
-      const result = await maxService.sendMessageToUser(Number(maxUserId), message, { format: 'html' });
+    const botsToTry = (['main', 'notifications'] as const).filter(botType => {
+      const envKey = botType === 'main' ? 'MAX_MAIN_BOT_TOKEN' : 'MAX_NOTIFICATIONS_BOT_TOKEN';
+      return !!process.env[envKey];
+    });
 
-      if (!result.ok) {
-        logger.warn({ max_user_id: maxUserId, error: result.error }, 'Failed to send MAX verification code');
-        return NextResponse.json({
-          error: 'Не удалось отправить код. Убедитесь, что вы начали диалог с ботом в MAX.',
-          code: 'BOT_BLOCKED',
-          maxAccount: { ...maxAccount, verification_code: undefined },
-        }, { status: 400 });
-      }
-    } catch (err: any) {
-      // Fallback: try main bot if notifications bot unavailable
+    let codeSent = false;
+    for (const botType of botsToTry) {
       try {
-        const mainService = createMaxService('main');
-        const message = `🔐 Код верификации Orbo: <b>${verificationCode}</b>\n\n⏰ Действителен 15 минут`;
-        await mainService.sendMessageToUser(Number(maxUserId), message, { format: 'html' });
+        const svc = createMaxService(botType);
+        const result = await svc.sendMessageToUser(Number(maxUserId), verificationMessage, { format: 'html' });
+        if (result.ok) {
+          codeSent = true;
+          break;
+        }
+        logger.warn({ max_user_id: maxUserId, bot_type: botType, error: result.error }, 'Failed to send MAX verification code, trying next bot');
       } catch {
-        logger.warn({ max_user_id: maxUserId }, 'Could not send MAX verification code via any bot');
-        return NextResponse.json({
-          error: 'Не удалось отправить код. Откройте диалог с ботом MAX и попробуйте снова.',
-          code: 'BOT_BLOCKED',
-        }, { status: 400 });
+        // try next bot
       }
+    }
+
+    if (!codeSent) {
+      logger.warn({ max_user_id: maxUserId }, 'Could not send MAX verification code via any bot');
+      return NextResponse.json({
+        error: 'Не удалось отправить код. Убедитесь, что вы начали диалог с ботом в MAX.',
+        code: 'BOT_BLOCKED',
+        maxAccount: { ...maxAccount, verification_code: undefined },
+      }, { status: 400 });
     }
 
     logger.info({ user_id: user.id, org_id: orgId, max_user_id: maxUserId }, 'MAX verification code sent');
