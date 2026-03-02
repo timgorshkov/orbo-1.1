@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCronLogger } from '@/lib/logger'
+import { createMaxService, MaxBotType } from '@/lib/services/maxService'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 60 seconds timeout
@@ -135,9 +136,81 @@ export async function GET(request: NextRequest) {
     }
 
     const allHealthy = Object.values(results).every((r: any) => r.status === 'healthy');
-    logger.info({ all_healthy: allHealthy, results }, 'Webhook check complete');
+    logger.info({ all_healthy: allHealthy, results }, 'Telegram webhook check complete');
 
-    return NextResponse.json(results)
+    // ─── MAX bots webhook check ──────────────────────────────────────────────
+    const maxResults: Record<string, any> = {};
+
+    const maxBots: { name: MaxBotType; tokenEnv: string; webhookPath: string; updateTypes: string[] }[] = [
+      {
+        name: 'main',
+        tokenEnv: 'MAX_MAIN_BOT_TOKEN',
+        webhookPath: '/api/max/webhook',
+        updateTypes: ['message_created', 'bot_added', 'bot_removed', 'user_added', 'user_removed', 'message_callback'],
+      },
+      {
+        name: 'notifications',
+        tokenEnv: 'MAX_NOTIFICATIONS_BOT_TOKEN',
+        webhookPath: '/api/max/notifications-bot/webhook',
+        updateTypes: ['bot_started', 'message_created'],
+      },
+      {
+        name: 'event',
+        tokenEnv: 'MAX_EVENT_BOT_TOKEN',
+        webhookPath: '/api/max/event-bot/webhook',
+        updateTypes: ['bot_started', 'message_created', 'message_callback'],
+      },
+    ];
+
+    const webhookSecret = process.env.MAX_WEBHOOK_SECRET;
+
+    for (const bot of maxBots) {
+      if (!process.env[bot.tokenEnv]) {
+        maxResults[bot.name] = { status: 'skipped', reason: `${bot.tokenEnv} not configured` };
+        continue;
+      }
+
+      const expectedUrl = `${baseUrl}${bot.webhookPath}`;
+
+      try {
+        const svc = createMaxService(bot.name);
+        const subsResult = await svc.getWebhooks();
+
+        if (!subsResult.ok) {
+          maxResults[bot.name] = { status: 'error', error: subsResult.error };
+          continue;
+        }
+
+        // subscriptions is an array; find ours by URL
+        const subscriptions: any[] = subsResult.data?.subscriptions ?? [];
+        const current = subscriptions.find((s: any) => s.url === expectedUrl);
+
+        if (current) {
+          maxResults[bot.name] = { status: 'healthy', url: current.url };
+          continue;
+        }
+
+        // Not found — restore
+        logger.info({ bot: bot.name, expected_url: expectedUrl }, 'MAX webhook missing, restoring');
+
+        const setResult = await svc.setWebhook(expectedUrl, bot.updateTypes, webhookSecret);
+
+        if (setResult.ok) {
+          logger.info({ bot: bot.name }, 'MAX webhook restored successfully');
+          maxResults[bot.name] = { status: 'restored', url: expectedUrl };
+        } else {
+          logger.error({ bot: bot.name, error: setResult.error }, 'MAX webhook restore failed');
+          maxResults[bot.name] = { status: 'restore_failed', error: setResult.error };
+        }
+      } catch (err) {
+        maxResults[bot.name] = { status: 'error', error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    const allMaxHealthy = Object.values(maxResults).every((r: any) => ['healthy', 'skipped'].includes(r.status));
+    logger.info({ all_healthy: allMaxHealthy, results: maxResults }, 'MAX webhook check complete');
+
+    return NextResponse.json({ telegram: results, max: maxResults })
 
   } catch (error) {
     logger.error({ error }, 'Unexpected error in check-webhook cron')

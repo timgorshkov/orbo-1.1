@@ -88,11 +88,19 @@ curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check
 EOF
 chmod +x ~/orbo/cron-check-billing.sh
 
+# Create cron script for check-webhook (every 30 minutes)
+# Checks and auto-restores Telegram + MAX bot webhooks if they go missing
+cat > ~/orbo/cron-check-webhook.sh << EOF
+#!/bin/bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-webhook" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-check-webhook.sh
+
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -107,6 +115,7 @@ cat >> "$CRONTAB_FILE" << CRON
 0 */6 * * * ~/orbo/cron-notification-health-check.sh
 */15 * * * * ~/orbo/cron-send-onboarding.sh
 0 9 * * * ~/orbo/cron-check-billing.sh
+*/30 * * * * ~/orbo/cron-check-webhook.sh
 # Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
 0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1
 CRON
@@ -150,7 +159,11 @@ echo "🏥 Notification Health Self-Check:"
 echo "   Schedule: Every 6 hours"
 echo "   Command: ~/orbo/cron-notification-health-check.sh"
 echo ""
+echo "🔗 Webhook Health Check (Telegram + MAX):"
+echo "   Schedule: Every 30 minutes"
+echo "   Command: ~/orbo/cron-check-webhook.sh"
+echo ""
 echo "📋 Management:"
 echo "   View logs: tail -f /var/log/orbo-cron.log"
 echo "   View crontab: crontab -l"
-echo "   Test sync-attention-zones: curl -X POST -H 'x-cron-secret: \$CRON_SECRET' $APP_URL/api/cron/sync-attention-zones"
+echo "   Test webhook check: curl -H 'Authorization: Bearer \$CRON_SECRET' $APP_URL/api/cron/check-webhook"
