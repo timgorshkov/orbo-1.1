@@ -4,6 +4,12 @@ import { createAPILogger } from '@/lib/logger';
 import { getMaxEventBotToken, extractEventId } from '@/lib/max/webAppAuth';
 import { createMaxService, MaxService } from '@/lib/services/maxService';
 
+async function saveDialogChatId(supabase: any, maxUserId: number, chatId: number) {
+  await supabase
+    .from('max_user_dialogs')
+    .upsert({ max_user_id: maxUserId, dialog_chat_id: chatId, updated_at: new Date().toISOString() }, { onConflict: 'max_user_id' });
+}
+
 /**
  * POST /api/max/event-bot/webhook
  * Webhook for MAX Event Bot.
@@ -53,6 +59,8 @@ export async function GET() {
 async function handleBotStarted(body: any, logger: any) {
   const userId = body.user?.user_id;
   const payload = body.payload; // startapp parameter
+  // chat_id of the dialog — MAX API requires chat_id (not user_id) to send messages
+  const chatId: number | undefined = body.chat_id;
 
   if (!userId) return;
 
@@ -69,6 +77,29 @@ async function handleBotStarted(body: any, logger: any) {
     logger.error({}, 'Failed to create MaxService for event bot');
     return;
   }
+
+  // Persist dialog_chat_id so future proactive sends can look it up
+  if (chatId) {
+    const supabase = createAdminServer();
+    await saveDialogChatId(supabase, userId, chatId).catch(() => {});
+  }
+
+  const send = async (text: string, options?: { format?: 'markdown' | 'html'; attachments?: any[] }) => {
+    if (chatId) {
+      return maxService.sendMessageToChat(chatId, text, options);
+    }
+    // Fallback: look up dialog_chat_id from DB
+    const supabase = createAdminServer();
+    const { data: dialog } = await supabase
+      .from('max_user_dialogs')
+      .select('dialog_chat_id')
+      .eq('max_user_id', userId)
+      .maybeSingle();
+    if (dialog?.dialog_chat_id) {
+      return maxService.sendMessageToChat(dialog.dialog_chat_id, text, options);
+    }
+    logger.warn({ max_user_id: userId }, 'No dialog_chat_id found, cannot send DM');
+  };
 
   const eventId = extractEventId(payload);
 
@@ -94,21 +125,12 @@ async function handleBotStarted(body: any, logger: any) {
 
       const keyboard = MaxService.buildOpenAppKeyboard('✅ Зарегистрироваться', webAppUrl);
 
-      await maxService.sendMessageToUser(userId, messageText, {
-        format: 'markdown',
-        attachments: [keyboard],
-      });
+      await send(messageText, { format: 'markdown', attachments: [keyboard] });
     } else {
-      await maxService.sendMessageToUser(
-        userId,
-        '❌ Событие не найдено или недоступно для регистрации.',
-      );
+      await send('❌ Событие не найдено или недоступно для регистрации.');
     }
   } else {
-    await maxService.sendMessageToUser(
-      userId,
-      '👋 Привет!\n\nЯ бот для регистрации на события через Orbo.\n\nПерейдите по ссылке события, чтобы зарегистрироваться.',
-    );
+    await send('👋 Привет!\n\nЯ бот для регистрации на события через Orbo.\n\nПерейдите по ссылке события, чтобы зарегистрироваться.');
   }
 }
 
@@ -124,12 +146,13 @@ async function handleMessageCreated(body: any, logger: any) {
   const parts = text.split(' ');
   const startParam = parts[1];
   const userId = message.sender?.user_id;
+  const chatId = message.recipient?.chat_id;
 
   if (!userId) return;
 
-  // Delegate to the same logic as bot_started
+  // Delegate to the same logic as bot_started, passing chat_id for DM sends
   await handleBotStarted(
-    { user: { user_id: userId }, payload: startParam },
+    { user: { user_id: userId }, payload: startParam, chat_id: chatId },
     logger,
   );
 }

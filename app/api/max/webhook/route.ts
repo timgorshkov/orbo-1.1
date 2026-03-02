@@ -127,6 +127,14 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
   const messageText: string = message.body?.text?.trim() || '';
   const isPrivateMessage = !message.recipient?.chat_id || message.recipient.chat_type === 'dialog';
 
+  // Save dialog_chat_id for future DM sends (MAX API requires chat_id, not user_id)
+  if (isPrivateMessage && chatId) {
+    await supabase
+      .from('max_user_dialogs')
+      .upsert({ max_user_id: maxUserId, dialog_chat_id: chatId, updated_at: new Date().toISOString() }, { onConflict: 'max_user_id' })
+      .then(() => {});
+  }
+
   if (isPrivateMessage && (messageText === '/start' || messageText === '/id' || messageText.startsWith('/start '))) {
     try {
       const maxService = createMaxService('main');
@@ -158,8 +166,9 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
           `Код верификации будет отправлен после ввода ID на сайте.`;
       }
 
-      await maxService.sendMessageToUser(maxUserId, replyText, { format: 'html' });
-      logger.info({ max_user_id: maxUserId }, '✅ MAX /start: sent user ID and verification info');
+      // Use chat_id (dialog) for reply — MAX API requires chat_id, not user_id
+      await maxService.sendMessageToChat(chatId, replyText, { format: 'html' });
+      logger.info({ max_user_id: maxUserId, dialog_chat_id: chatId }, '✅ MAX /start: sent user ID and verification info');
     } catch (e: any) {
       logger.warn({ max_user_id: maxUserId, error: e.message }, 'Failed to send /start reply');
     }

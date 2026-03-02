@@ -96,19 +96,35 @@ export class MaxService {
     return this.callApi('messages', 'POST', body);
   }
 
-  /** POST /messages - send message to a user (DM) */
-  async sendMessageToUser(userId: number, text: string, options: {
-    format?: 'markdown' | 'html';
-    attachments?: any[];
-  } = {}) {
-    const body: any = {
-      user_id: userId,
-      text,
-    };
-    if (options.format) body.format = options.format;
-    if (options.attachments) body.attachments = options.attachments;
+  /**
+   * POST /messages - send DM to a user via their dialog chat_id.
+   * MAX API requires chat_id (not user_id) for sending messages.
+   * Provide supabase client to automatically look up dialog_chat_id from max_user_dialogs.
+   * Returns { ok: false } if no dialog_chat_id is found.
+   */
+  async sendMessageToUser(
+    userId: number,
+    text: string,
+    options: { format?: 'markdown' | 'html'; attachments?: any[] } = {},
+    supabase?: any,
+  ) {
+    let dialogChatId: number | null = null;
 
-    return this.callApi('messages', 'POST', body);
+    if (supabase) {
+      const { data } = await supabase
+        .from('max_user_dialogs')
+        .select('dialog_chat_id')
+        .eq('max_user_id', userId)
+        .maybeSingle();
+      dialogChatId = data?.dialog_chat_id ?? null;
+    }
+
+    if (!dialogChatId) {
+      logger.warn({ user_id: userId }, 'sendMessageToUser: no dialog_chat_id found, cannot send DM');
+      return { ok: false, error: 'no_dialog_chat_id' };
+    }
+
+    return this.sendMessageToChat(dialogChatId, text, options);
   }
 
   /** GET /chats/{chatId} - get chat info */
