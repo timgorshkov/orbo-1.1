@@ -18,55 +18,65 @@ export default function MaxAppHome() {
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      handleRedirect();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
+    // First: check URL query params immediately — no SDK needed.
+    // MAX may append ?startapp=... directly to the configured WebApp URL.
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlStartParam = urlParams.get('startapp') || urlParams.get('start_param') || null;
+    if (urlStartParam) {
+      processStartParam(urlStartParam);
+      return;
+    }
 
-  const handleRedirect = () => {
-    try {
+    // Second: poll for MAX WebApp SDK to become available (up to 2 seconds).
+    // SDK sets window.WebApp and injects initDataUnsafe.start_param.
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20;
+
+    const tryInit = () => {
+      attempts++;
       const wa = (window as any).WebApp;
 
-      let startParam: string | null = null;
-
       if (wa) {
-        wa.ready?.();
-        wa.expand?.();
+        try {
+          wa.ready?.();
+          wa.expand?.();
+        } catch {}
 
-        startParam = wa.initDataUnsafe?.start_param || null;
-
-        if (wa.initData && wa.initData.length > 0) {
+        // Save initData for subsequent pages
+        if (wa.initData?.length > 0) {
           try { sessionStorage.setItem('max_init_data', wa.initData); } catch {}
         }
         if (wa.initDataUnsafe?.user) {
           try { sessionStorage.setItem('max_user', JSON.stringify(wa.initDataUnsafe.user)); } catch {}
         }
+
+        const sdkStartParam = wa.initDataUnsafe?.start_param || null;
+        if (sdkStartParam) {
+          processStartParam(sdkStartParam);
+          return;
+        }
       }
 
-      // Fallback: check URL query params (useful for testing)
-      if (!startParam) {
-        const urlParams = new URLSearchParams(window.location.search);
-        startParam = urlParams.get('startapp') || urlParams.get('start_param') || null;
-      }
-
-      if (startParam) {
-        processStartParam(startParam);
-      } else {
+      if (attempts >= MAX_ATTEMPTS) {
+        // SDK loaded but no start_param — nothing to route to
         setStatus('no-param');
       }
-    } catch (error) {
-      console.error('[MaxApp] Error handling redirect:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
-      setStatus('error');
-    }
-  };
+    };
+
+    const interval = setInterval(() => {
+      tryInit();
+      if (attempts >= MAX_ATTEMPTS) clearInterval(interval);
+    }, 100);
+
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const processStartParam = (startParam: string) => {
     // e-{eventId} → event registration page
     if (startParam.startsWith('e-')) {
       const eventId = startParam.substring(2);
-      if (eventId && eventId.length > 0) {
+      if (eventId.length > 0) {
         setStatus('redirecting');
         router.replace(`/max-app/events/${eventId}`);
         return;
@@ -87,10 +97,7 @@ export default function MaxAppHome() {
 
   return (
     <>
-      <Script
-        src="https://dev.max.ru/max-web-app.js"
-        strategy="beforeInteractive"
-      />
+      <Script src="https://dev.max.ru/max-web-app.js" strategy="afterInteractive" />
 
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">

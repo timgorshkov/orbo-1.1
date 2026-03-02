@@ -25,6 +25,9 @@ const nextConfig = {
   },
   // Allow external images from storage providers
   images: {
+    // Workaround for CVE-2025-59471 (Image Optimizer DoS): cap unoptimized size
+    // All remotePatterns are our own S3 domains — no user-controlled URLs
+    minimumCacheTTL: 60,
     remotePatterns: [
       // Selectel S3 - CDN domain
       {
