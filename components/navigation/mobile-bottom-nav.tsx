@@ -43,6 +43,7 @@ interface MobileBottomNavProps {
   role: UserRole
   telegramGroups?: any[]
   telegramChannels?: any[]
+  maxGroups?: any[]
   userProfile?: {
     id: string
     email: string | null
@@ -60,6 +61,7 @@ export default function MobileBottomNav({
   role,
   telegramGroups = [],
   telegramChannels = [],
+  maxGroups = [],
   userProfile,
 }: MobileBottomNavProps) {
   const pathname = usePathname()
@@ -287,6 +289,23 @@ export default function MobileBottomNav({
                       >
                         <Radio className="h-4 w-4 flex-shrink-0 ml-1" />
                         <span className="truncate">{channel.title}</span>
+                      </Link>
+                    ))}
+
+                    {/* MAX группы */}
+                    {maxGroups && maxGroups.length > 0 && maxGroups.map((group: any) => (
+                      <Link
+                        key={`max-${group.id}`}
+                        href={`/p/${orgId}/max`}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          pathname?.startsWith(`/p/${orgId}/max`)
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <MessageCircle className="h-4 w-4 flex-shrink-0 ml-1" />
+                        <span className="truncate">{group.title || `MAX ${group.max_chat_id}`}</span>
+                        <span className="ml-auto text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded flex-shrink-0">MAX</span>
                       </Link>
                     ))}
                   </div>

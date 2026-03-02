@@ -45,6 +45,7 @@ export default async function PublicOrgLayout({
 
   let role: UserRole = 'guest'
   let telegramGroups: any[] = []
+  let maxGroups: any[] = []
   let userProfile: any = null
 
   // Если пользователь авторизован, загружаем данные параллельно
@@ -73,26 +74,29 @@ export default async function PublicOrgLayout({
       }
     }
 
-    // Telegram-группы загружаем только для админов (после определения роли)
+    // Группы мессенджеров загружаем только для админов (после определения роли)
     if (role === 'owner' || role === 'admin') {
-      // Получаем связи org -> telegram_groups
-      const { data: orgGroupLinks } = await adminSupabase
-        .from('org_telegram_groups')
-        .select('tg_chat_id')
-        .eq('org_id', org.id)
+      const [tgLinksResult, maxLinksResult] = await Promise.all([
+        adminSupabase.from('org_telegram_groups').select('tg_chat_id').eq('org_id', org.id),
+        adminSupabase.from('org_max_groups').select('max_chat_id').eq('org_id', org.id).eq('status', 'active'),
+      ]);
 
-      if (orgGroupLinks && orgGroupLinks.length > 0) {
-        const chatIds = orgGroupLinks.map(link => link.tg_chat_id);
-        
-        // Получаем данные telegram_groups
+      if (tgLinksResult.data && tgLinksResult.data.length > 0) {
+        const chatIds = tgLinksResult.data.map(link => link.tg_chat_id);
         const { data: groups } = await adminSupabase
           .from('telegram_groups')
           .select('id, tg_chat_id, title, bot_status')
-          .in('tg_chat_id', chatIds)
+          .in('tg_chat_id', chatIds);
+        if (groups) telegramGroups = groups;
+      }
 
-        if (groups) {
-          telegramGroups = groups;
-        }
+      if (maxLinksResult.data && maxLinksResult.data.length > 0) {
+        const chatIds = maxLinksResult.data.map(link => link.max_chat_id);
+        const { data: groups } = await adminSupabase
+          .from('max_groups')
+          .select('id, max_chat_id, title, bot_status')
+          .in('max_chat_id', chatIds);
+        if (groups) maxGroups = groups;
       }
     }
   }
@@ -161,6 +165,7 @@ export default async function PublicOrgLayout({
             role={role}
             telegramGroups={telegramGroups}
             telegramChannels={telegramChannels}
+            maxGroups={maxGroups}
             userProfile={userProfile}
           />
         </div>
@@ -180,6 +185,7 @@ export default async function PublicOrgLayout({
               role={role}
               telegramGroups={telegramGroups}
               telegramChannels={telegramChannels}
+              maxGroups={maxGroups}
               userProfile={userProfile}
             />
           </div>

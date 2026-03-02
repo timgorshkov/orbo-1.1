@@ -41,6 +41,7 @@ interface CollapsibleSidebarProps {
   role: UserRole
   telegramGroups?: any[]
   telegramChannels?: any[]
+  maxGroups?: any[]
   userProfile?: {
     name?: string
     username?: string
@@ -62,6 +63,7 @@ export default function CollapsibleSidebar({
   role,
   telegramGroups = [],
   telegramChannels = [],
+  maxGroups = [],
   userProfile,
 }: CollapsibleSidebarProps) {
   const pathname = usePathname()
@@ -301,7 +303,7 @@ export default function CollapsibleSidebar({
                     </button>
                     {showTelegramDropdown && (
                       <div className="pl-6">
-                        {telegramGroups.length > 0 || telegramChannels.length > 0 || whatsappGroups.length > 0 ? (
+                        {telegramGroups.length > 0 || telegramChannels.length > 0 || maxGroups.length > 0 || whatsappGroups.length > 0 ? (
                           <>
                             {telegramGroups.map((group: any) => (
                               <Link
@@ -326,6 +328,20 @@ export default function CollapsibleSidebar({
                                 <span className="inline-flex items-center gap-2">
                                   <Radio className="h-3 w-3" />
                                   {channel.title}
+                                </span>
+                              </Link>
+                            ))}
+                            {maxGroups.map((group: any) => (
+                              <Link
+                                key={`max-${group.id}`}
+                                href={`/p/${orgId}/max`}
+                                className="block px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                                onClick={() => setShowMenuDropdown(false)}
+                              >
+                                <span className="inline-flex items-center gap-2">
+                                  <MessageCircle className="h-3 w-3" />
+                                  {group.title || `MAX ${group.max_chat_id}`}
+                                  <span className="text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1 rounded">MAX</span>
                                 </span>
                               </Link>
                             ))}
@@ -529,8 +545,8 @@ export default function CollapsibleSidebar({
                 <Settings className="h-4 w-4 text-gray-500" />
               </Link>
             </div>
-            {/* Объединённый список всех групп и каналов (Telegram + WhatsApp) */}
-            {telegramGroups.length > 0 || telegramChannels.length > 0 || whatsappGroups.length > 0 ? (
+            {/* Объединённый список всех групп (Telegram + MAX + WhatsApp) */}
+            {telegramGroups.length > 0 || telegramChannels.length > 0 || maxGroups.length > 0 || whatsappGroups.length > 0 ? (
               <>
                 {telegramGroups.map((group: any) => (
                   <Link
@@ -558,6 +574,21 @@ export default function CollapsibleSidebar({
                   >
                     <Radio className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate">{channel.title}</span>
+                  </Link>
+                ))}
+                {maxGroups.map((group: any) => (
+                  <Link
+                    key={`max-${group.id}`}
+                    href={`/p/${orgId}/max`}
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/max`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <MessageCircle className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{group.title || `MAX ${group.max_chat_id}`}</span>
+                    <span className="ml-auto text-[10px] font-medium text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded flex-shrink-0">MAX</span>
                   </Link>
                 ))}
                 {whatsappGroups.map((group) => (
