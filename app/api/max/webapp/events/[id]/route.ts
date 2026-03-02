@@ -23,13 +23,20 @@ export async function GET(
 
     if (initDataString) {
       const botToken = getMaxEventBotToken();
-      if (botToken) {
+      if (!botToken) {
+        logger.error({ event_id: eventId }, 'MAX_EVENT_BOT_TOKEN not configured');
+      } else {
         const initData = validateMaxInitData(initDataString, botToken);
         if (initData?.user) {
           maxUser = initData.user;
           isValidated = true;
+          logger.info({ event_id: eventId, max_user_id: maxUser.id, username: maxUser.username }, 'MAX initData validated');
+        } else {
+          logger.warn({ event_id: eventId }, 'MAX initData validation failed — proceeding as anonymous');
         }
       }
+    } else {
+      logger.info({ event_id: eventId }, 'MAX webapp event load — no initData (anonymous)');
     }
 
     // Get event details
@@ -111,6 +118,13 @@ export async function GET(
         } : null;
       }
     }
+
+    logger.info({
+      event_id: eventId,
+      max_user_id: maxUser?.id ?? null,
+      is_validated: isValidated,
+      is_registered: isRegistered,
+    }, 'MAX webapp event loaded successfully');
 
     return NextResponse.json({
       event: {

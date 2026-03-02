@@ -8,6 +8,9 @@
  */
 
 import crypto from 'crypto';
+import { createServiceLogger } from '@/lib/logger';
+
+const logger = createServiceLogger('MaxWebAppAuth');
 
 export interface MaxWebAppUser {
   id: number;
@@ -49,7 +52,7 @@ export function validateMaxInitData(
     const hash = params.hash;
 
     if (!hash) {
-      console.error('[MaxWebAppAuth] No hash in initData');
+      logger.warn({}, 'No hash in initData');
       return null;
     }
 
@@ -59,7 +62,7 @@ export function validateMaxInitData(
     const maxAgeMs = 24 * 60 * 60 * 1000; // 24 hours
 
     if (now - authDate > maxAgeMs) {
-      console.error('[MaxWebAppAuth] initData expired', { authDate, now, diff: now - authDate });
+      logger.warn({ authDate, now, diffHours: Math.round((now - authDate) / 3600000) }, 'initData expired');
       return null;
     }
 
@@ -83,10 +86,10 @@ export function validateMaxInitData(
       .digest('hex');
 
     if (calculatedHash !== hash) {
-      console.error('[MaxWebAppAuth] Hash mismatch', {
+      logger.warn({
         calculated: calculatedHash.substring(0, 10) + '...',
         received: hash.substring(0, 10) + '...',
-      });
+      }, 'Hash mismatch — invalid initData signature');
       return null;
     }
 
@@ -95,7 +98,7 @@ export function validateMaxInitData(
       try {
         user = JSON.parse(params.user);
       } catch {
-        console.error('[MaxWebAppAuth] Failed to parse user JSON');
+        logger.warn({}, 'Failed to parse user JSON in initData');
       }
     }
 
@@ -117,7 +120,7 @@ export function validateMaxInitData(
       start_param: params.start_param,
     };
   } catch (error) {
-    console.error('[MaxWebAppAuth] Validation error', error);
+    logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Unexpected error validating initData');
     return null;
   }
 }
