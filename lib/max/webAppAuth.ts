@@ -56,13 +56,13 @@ export function validateMaxInitData(
       return null;
     }
 
-    // MAX auth_date is in milliseconds (unlike Telegram which uses seconds)
-    const authDate = parseInt(params.auth_date);
-    const now = Date.now();
-    const maxAgeMs = 24 * 60 * 60 * 1000; // 24 hours
+    // auth_date is in SECONDS (standard Unix timestamp), same as Telegram
+    const authDate = parseInt(params.auth_date); // seconds
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const maxAgeSec = 24 * 60 * 60; // 24 hours
 
-    if (now - authDate > maxAgeMs) {
-      logger.warn({ authDate, now, diffHours: Math.round((now - authDate) / 3600000) }, 'initData expired');
+    if (nowSeconds - authDate > maxAgeSec) {
+      logger.warn({ authDate, nowSeconds, diffHours: Math.round((nowSeconds - authDate) / 3600) }, 'initData expired');
       return null;
     }
 

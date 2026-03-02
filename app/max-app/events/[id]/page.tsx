@@ -65,13 +65,28 @@ export default function MaxEventPage() {
   const [maxUser, setMaxUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
   const [webAppReady, setWebAppReady] = useState(false);
 
-  // Helper: get initData from MAX WebApp or sessionStorage fallback
+  // Helper: extract initData from URL hash (#WebAppData=...) — MAX passes it here
+  const getInitDataFromHash = (): string => {
+    try {
+      const hash = window.location.hash;
+      if (!hash) return '';
+      const hashParams = new URLSearchParams(hash.slice(1));
+      return hashParams.get('WebAppData') || '';
+    } catch { return ''; }
+  };
+
+  // Helper: get initData — URL hash → SDK → sessionStorage
   const getInitData = (): string => {
+    const fromHash = getInitDataFromHash();
+    if (fromHash) {
+      try { sessionStorage.setItem('max_init_data', fromHash); } catch {}
+      return fromHash;
+    }
     const wa = (window as any).WebApp;
-    const initData = wa?.initData;
-    if (initData && initData.length > 0) {
-      try { sessionStorage.setItem('max_init_data', initData); } catch {}
-      return initData;
+    const sdkData = wa?.initData;
+    if (sdkData && sdkData.length > 0) {
+      try { sessionStorage.setItem('max_init_data', sdkData); } catch {}
+      return sdkData;
     }
     try { return sessionStorage.getItem('max_init_data') || ''; } catch { return ''; }
   };
@@ -79,6 +94,25 @@ export default function MaxEventPage() {
   // Initialize MAX WebApp
   useEffect(() => {
     const initWebApp = () => {
+      // Primary: read from URL hash (MAX delivers everything here)
+      const initDataHash = getInitDataFromHash();
+      if (initDataHash) {
+        try { sessionStorage.setItem('max_init_data', initDataHash); } catch {}
+        // Extract user from initData hash
+        try {
+          const innerParams = new URLSearchParams(initDataHash);
+          const userStr = innerParams.get('user');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            setMaxUser(user);
+            try { sessionStorage.setItem('max_user', userStr); } catch {}
+          }
+        } catch {}
+        setWebAppReady(true);
+        return true;
+      }
+
+      // Fallback: SDK (window.WebApp)
       const wa = (window as any).WebApp;
       if (!wa) return false;
       wa.ready?.();
@@ -87,11 +121,9 @@ export default function MaxEventPage() {
       if (wa.themeParams?.bg_color) {
         document.body.style.backgroundColor = wa.themeParams.bg_color;
       }
-
       if (wa.initData && wa.initData.length > 0) {
         try { sessionStorage.setItem('max_init_data', wa.initData); } catch {}
       }
-
       if (wa.initDataUnsafe?.user) {
         setMaxUser(wa.initDataUnsafe.user);
         try { sessionStorage.setItem('max_user', JSON.stringify(wa.initDataUnsafe.user)); } catch {}
@@ -101,7 +133,6 @@ export default function MaxEventPage() {
           if (stored) setMaxUser(JSON.parse(stored));
         } catch {}
       }
-
       setWebAppReady(true);
       return true;
     };
@@ -113,6 +144,7 @@ export default function MaxEventPage() {
         if (initWebApp() || attempts >= 20) {
           clearInterval(interval);
           if (attempts >= 20) {
+            // Last resort: sessionStorage
             try {
               const stored = sessionStorage.getItem('max_user');
               if (stored) setMaxUser(JSON.parse(stored));
@@ -123,6 +155,7 @@ export default function MaxEventPage() {
       }, 100);
       return () => clearInterval(interval);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load event data
