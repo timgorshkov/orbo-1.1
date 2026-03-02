@@ -37,8 +37,17 @@ export class MaxService {
     logger.debug({ bot_type: botType, token_prefix: token.substring(0, 8) }, 'MaxService initialized');
   }
 
-  private async callApi(method: string, httpMethod: string = 'GET', body?: object): Promise<any> {
-    const url = `${MAX_API_BASE}/${method}`;
+  private async callApi(
+    method: string,
+    httpMethod: string = 'GET',
+    body?: object,
+    queryParams?: Record<string, string>,
+  ): Promise<any> {
+    let url = `${MAX_API_BASE}/${method}`;
+    if (queryParams) {
+      const qs = new URLSearchParams(queryParams).toString();
+      if (qs) url += (method.includes('?') ? '&' : '?') + qs;
+    }
 
     const headers: Record<string, string> = {
       'Authorization': this.token,
@@ -77,54 +86,38 @@ export class MaxService {
     return this.callApi('me');
   }
 
-  /** POST /messages - send text message to a chat */
+  /**
+   * POST /messages?chat_id={chatId} — send message to a group/channel chat.
+   * chat_id is passed as a query parameter per MAX Bot API spec.
+   */
   async sendMessageToChat(chatId: number, text: string, options: {
     format?: 'markdown' | 'html';
     attachments?: any[];
     link?: { type: string; mid: string };
     notify?: boolean;
   } = {}) {
-    const body: any = {
-      chat_id: chatId,
-      text,
-    };
+    const body: any = { text };
     if (options.format) body.format = options.format;
     if (options.attachments) body.attachments = options.attachments;
     if (options.link) body.link = options.link;
     if (options.notify !== undefined) body.notify = options.notify;
 
-    return this.callApi('messages', 'POST', body);
+    return this.callApi('messages', 'POST', body, { chat_id: String(chatId) });
   }
 
   /**
-   * POST /messages - send DM to a user via their dialog chat_id.
-   * MAX API requires chat_id (not user_id) for sending messages.
-   * Provide supabase client to automatically look up dialog_chat_id from max_user_dialogs.
-   * Returns { ok: false } if no dialog_chat_id is found.
+   * POST /messages?user_id={userId} — send DM to a user.
+   * user_id is passed as a query parameter per MAX Bot API spec.
    */
-  async sendMessageToUser(
-    userId: number,
-    text: string,
-    options: { format?: 'markdown' | 'html'; attachments?: any[] } = {},
-    supabase?: any,
-  ) {
-    let dialogChatId: number | null = null;
+  async sendMessageToUser(userId: number, text: string, options: {
+    format?: 'markdown' | 'html';
+    attachments?: any[];
+  } = {}) {
+    const body: any = { text };
+    if (options.format) body.format = options.format;
+    if (options.attachments) body.attachments = options.attachments;
 
-    if (supabase) {
-      const { data } = await supabase
-        .from('max_user_dialogs')
-        .select('dialog_chat_id')
-        .eq('max_user_id', userId)
-        .maybeSingle();
-      dialogChatId = data?.dialog_chat_id ?? null;
-    }
-
-    if (!dialogChatId) {
-      logger.warn({ user_id: userId }, 'sendMessageToUser: no dialog_chat_id found, cannot send DM');
-      return { ok: false, error: 'no_dialog_chat_id' };
-    }
-
-    return this.sendMessageToChat(dialogChatId, text, options);
+    return this.callApi('messages', 'POST', body, { user_id: String(userId) });
   }
 
   /** GET /chats/{chatId} - get chat info */

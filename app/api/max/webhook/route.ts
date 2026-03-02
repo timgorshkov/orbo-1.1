@@ -166,9 +166,8 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
           `Код верификации будет отправлен после ввода ID на сайте.`;
       }
 
-      // Use chat_id (dialog) for reply — MAX API requires chat_id, not user_id
-      await maxService.sendMessageToChat(chatId, replyText, { format: 'html' });
-      logger.info({ max_user_id: maxUserId, dialog_chat_id: chatId }, '✅ MAX /start: sent user ID and verification info');
+      await maxService.sendMessageToUser(maxUserId, replyText, { format: 'html' });
+      logger.info({ max_user_id: maxUserId }, '✅ MAX /start: sent user ID and verification info');
     } catch (e: any) {
       logger.warn({ max_user_id: maxUserId, error: e.message }, 'Failed to send /start reply');
     }
