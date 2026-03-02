@@ -51,11 +51,16 @@ export default async function MaxGroupsPage({ params }: { params: Promise<{ org:
 
     // Get available (unlinked) groups where bot is connected
     const linkedChatIds = groups.map(g => g.max_chat_id);
-    const { data: availableGroups } = await adminSupabase
+    let availableQuery = adminSupabase
       .from('max_groups')
       .select('id, max_chat_id, title, bot_status, member_count, created_at')
-      .eq('bot_status', 'connected')
-      .not('max_chat_id', 'in', linkedChatIds.length > 0 ? `(${linkedChatIds.join(',')})` : '(0)');
+      .eq('bot_status', 'connected');
+
+    if (linkedChatIds.length > 0) {
+      availableQuery = availableQuery.not('max_chat_id', 'in', `(${linkedChatIds.join(',')})`);
+    }
+
+    const { data: availableGroups } = await availableQuery;
 
     return (
       <div className="p-6">

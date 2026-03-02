@@ -518,7 +518,22 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
         continue;
       }
       
-      // NOT оператор
+      // NOT IN — parse Supabase-style "(val1,val2,...)" string into individual placeholders
+      if (cond.operator === 'NOT_in' || cond.operator === 'NOT_IN') {
+        const rawStr = String(cond.values[0]);
+        const stripped = rawStr.replace(/^\(/, '').replace(/\)$/, '');
+        const items = stripped.split(',').map(s => s.trim()).filter(Boolean);
+        if (items.length === 0) continue;
+        const placeholders: string[] = [];
+        for (const v of items) {
+          allValues.push(v);
+          placeholders.push(this.nextParam());
+        }
+        whereParts.push(`"${cond.column}" NOT IN (${placeholders.join(', ')})`);
+        continue;
+      }
+
+      // Other NOT operators
       if (cond.operator.startsWith('NOT_')) {
         const actualOp = cond.operator.replace('NOT_', '');
         allValues.push(cond.values[0]);

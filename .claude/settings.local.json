@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run:*)",
       "WebFetch(domain:dev.max.ru)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(ssh selectel-orbo:*)"
     ]
   }
 }
