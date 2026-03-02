@@ -8,7 +8,7 @@ interface EventShareOptionsProps {
   eventTitle: string;
   orgId: string;
   isPublic?: boolean;
-  hasMaxAccount?: boolean;
+  maxEventLink?: string | null;
 }
 
 export default function EventShareOptions({
@@ -16,7 +16,7 @@ export default function EventShareOptions({
   eventTitle,
   orgId,
   isPublic = true,
-  hasMaxAccount = false,
+  maxEventLink = null,
 }: EventShareOptionsProps) {
   const [copiedWeb, setCopiedWeb] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
@@ -24,14 +24,12 @@ export default function EventShareOptions({
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  
+
   // Generate links
   const webLink = `${typeof window !== 'undefined' ? window.location.origin : 'https://my.orbo.ru'}/e/${eventId}`;
   const telegramBotUsername = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot';
   const telegramAppShortName = process.env.NEXT_PUBLIC_TELEGRAM_EVENT_APP_SHORT_NAME || 'events';
   const telegramLink = `https://t.me/${telegramBotUsername}/${telegramAppShortName}?startapp=e-${eventId}`;
-  const maxBotUsername = process.env.NEXT_PUBLIC_MAX_EVENT_BOT_USERNAME || '';
-  const maxLink = maxBotUsername ? `https://max.ru/${maxBotUsername}?startapp=e-${eventId}` : '';
   
   // Close popover when clicking outside
   useEffect(() => {
@@ -136,9 +134,9 @@ export default function EventShareOptions({
             </button>
             
             {/* MAX MiniApp link — shown only if org has a verified MAX account */}
-            {maxLink && hasMaxAccount && (
+            {maxEventLink && (
               <button
-                onClick={() => copyToClipboard(maxLink, 'max')}
+                onClick={() => copyToClipboard(maxEventLink, 'max')}
                 className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
               >
                 <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
@@ -146,7 +144,7 @@ export default function EventShareOptions({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">MAX MiniApp</p>
-                  <p className="text-xs text-gray-500 truncate">{maxLink}</p>
+                  <p className="text-xs text-gray-500 truncate">{maxEventLink}</p>
                 </div>
                 <div className="flex-shrink-0">
                   {copiedMax ? (
@@ -172,9 +170,9 @@ export default function EventShareOptions({
             </a>
             
             {/* Open MAX link */}
-            {maxLink && hasMaxAccount && (
-              <a 
-                href={maxLink}
+            {maxEventLink && (
+              <a
+                href={maxEventLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-colors"

@@ -89,10 +89,10 @@ type Props = {
   isEditMode: boolean
   telegramGroups: Array<{ id: number; tg_chat_id: number; title: string | null }>
   requireAuthForRegistration?: boolean // For public events viewed by unauthenticated users
-  hasMaxAccount?: boolean
+  maxEventLink?: string | null
 }
 
-export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups, requireAuthForRegistration = false, hasMaxAccount = false }: Props) {
+export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups, requireAuthForRegistration = false, maxEventLink = null }: Props) {
   const { adminMode, isAdmin } = useAdminMode(role)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -478,7 +478,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 eventTitle={event.title}
                 orgId={orgId}
                 isPublic={event.is_public}
-                hasMaxAccount={hasMaxAccount}
+                maxEventLink={maxEventLink}
               />
             )}
             <Button

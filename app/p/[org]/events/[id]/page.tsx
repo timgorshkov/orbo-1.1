@@ -432,8 +432,8 @@ export default async function EventDetailPage({
     is_user_registered: isUserRegistered || false
   }
 
-  // Check if org has a verified MAX account (admin only, for share button)
-  let hasMaxAccount = false
+  // Generate MAX mini-app link if org has a verified MAX account (admin only, for share button)
+  let maxEventLink: string | null = null
   if (role === 'owner' || role === 'admin') {
     const { data: maxAccount } = await adminSupabase
       .from('user_max_accounts')
@@ -441,7 +441,10 @@ export default async function EventDetailPage({
       .eq('org_id', orgId)
       .eq('is_verified', true)
       .maybeSingle()
-    hasMaxAccount = !!maxAccount
+    if (maxAccount) {
+      const { generateMaxEventMiniAppLink } = await import('@/lib/max/webAppAuth')
+      maxEventLink = generateMaxEventMiniAppLink(eventId)
+    }
   }
 
   // Fetch telegram groups for notifications (admin only)
@@ -494,7 +497,7 @@ export default async function EventDetailPage({
         role={role as 'owner' | 'admin' | 'member' | 'guest'}
         isEditMode={isEditMode}
         telegramGroups={telegramGroups}
-        hasMaxAccount={hasMaxAccount}
+        maxEventLink={maxEventLink}
       />
     </div>
   )
