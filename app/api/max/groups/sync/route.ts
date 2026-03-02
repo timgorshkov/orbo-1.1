@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
             full_name: userName,
             max_username: username,
             source: 'max_group_sync',
-            participant_status: 'active',
+            participant_status: 'participant',
           });
 
         if (insertErr) {

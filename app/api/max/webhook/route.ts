@@ -208,7 +208,7 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
       .update({
         full_name: userName,
         max_username: username,
-        last_active_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
       })
       .eq('id', participantId);
   } else {
@@ -220,8 +220,8 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
         full_name: userName,
         max_username: username,
         source: 'max_group',
-        participant_status: 'active',
-        last_active_at: new Date().toISOString(),
+        participant_status: 'participant',
+        last_activity_at: new Date().toISOString(),
       })
       .select('id')
       .single();
@@ -356,7 +356,7 @@ async function handleUserAdded(body: any, supabase: any, logger: any) {
   if (existingP) {
     participantId = existingP.id;
     await supabase.from('participants')
-      .update({ full_name: userName, max_username: username, last_active_at: new Date().toISOString() })
+      .update({ full_name: userName, max_username: username, last_activity_at: new Date().toISOString() })
       .eq('id', participantId);
   } else {
     const { data: newP, error: err } = await supabase.from('participants').insert({
@@ -365,8 +365,8 @@ async function handleUserAdded(body: any, supabase: any, logger: any) {
       full_name: userName,
       max_username: username,
       source: 'max_group',
-      participant_status: 'active',
-      last_active_at: new Date().toISOString(),
+      participant_status: 'participant',
+      last_activity_at: new Date().toISOString(),
     }).select('id').single();
 
     if (err) {
