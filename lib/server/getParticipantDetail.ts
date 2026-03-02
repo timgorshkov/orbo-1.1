@@ -382,6 +382,77 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     }, 'WhatsApp events error');
   }
 
+  // Load MAX activity events (by max_user_id, from org's linked MAX groups)
+  const rawMaxUserId = participantRecord.max_user_id;
+  const maxUserIdStr = rawMaxUserId != null ? String(rawMaxUserId) : null;
+
+  if (maxUserIdStr) {
+    try {
+      const { data: orgMaxLinks } = await supabase
+        .from('org_max_groups')
+        .select('max_chat_id')
+        .eq('org_id', orgId)
+        .eq('status', 'active');
+
+      const orgMaxChatIds = (orgMaxLinks || []).map((g: any) => String(g.max_chat_id));
+
+      if (orgMaxChatIds.length > 0) {
+        const { data: maxEvents, error: maxEventsError } = await supabase
+          .from('activity_events')
+          .select('id, event_type, created_at, max_chat_id, meta, org_id')
+          .eq('org_id', orgId)
+          .eq('max_user_id', maxUserIdStr)
+          .eq('messenger_type', 'max')
+          .in('max_chat_id', orgMaxChatIds)
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        if (maxEventsError) {
+          logger.warn({ error: maxEventsError.message }, 'Error loading MAX activity events');
+        } else if (maxEvents && maxEvents.length > 0) {
+          // Load MAX group titles for display
+          const { data: maxGroupRecords } = await supabase
+            .from('max_groups')
+            .select('max_chat_id, title')
+            .in('max_chat_id', orgMaxChatIds);
+
+          const maxGroupTitles = new Map<string, string>(
+            (maxGroupRecords || []).map((g: any) => [String(g.max_chat_id), g.title || `MAX ${g.max_chat_id}`])
+          );
+
+          const maxEventsFormatted: ParticipantTimelineEvent[] = maxEvents.map((event: any) => ({
+            id: event.id,
+            event_type: event.event_type,
+            created_at: event.created_at,
+            tg_chat_id: 'max',
+            message_id: null,
+            meta: {
+              ...(event.meta || {}),
+              source: 'max',
+              group_title: maxGroupTitles.get(String(event.max_chat_id)) || `MAX ${event.max_chat_id}`,
+            },
+          }));
+
+          eventsData = [...eventsData, ...maxEventsFormatted]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 200);
+
+          logger.debug({
+            org_id: orgId,
+            participant_id: participantId,
+            max_event_count: maxEventsFormatted.length,
+          }, 'Loaded MAX activity events');
+        }
+      }
+    } catch (maxError) {
+      logger.error({
+        error: maxError instanceof Error ? maxError.message : String(maxError),
+        org_id: orgId,
+        participant_id: participantId,
+      }, 'Error loading MAX activity events');
+    }
+  }
+
   const { data: externalIdsData, error: externalIdsError } = await supabase
     .from('participant_external_ids')
     .select('system_code, external_id, url, data')

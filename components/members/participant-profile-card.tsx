@@ -578,13 +578,17 @@ export default function ParticipantProfileCard({
                 <span className="text-sm text-gray-500 w-20">MAX</span>
                 <div className="flex-1 space-y-1">
                   {participant.max_username ? (
-                    <span className="text-sm font-medium">@{participant.max_username}</span>
-                  ) : (
-                    <span className="text-xs text-gray-500">Username не указан</span>
-                  )}
-                  {participant.max_user_id && (
-                    <span className="text-xs text-gray-400 block">ID: {participant.max_user_id}</span>
-                  )}
+                    <a
+                      href={`https://max.ru/@${participant.max_username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline block"
+                    >
+                      @{participant.max_username}
+                    </a>
+                  ) : participant.max_user_id ? (
+                    <span className="text-xs text-gray-400">ID: {participant.max_user_id}</span>
+                  ) : null}
                 </div>
               </div>
             )}

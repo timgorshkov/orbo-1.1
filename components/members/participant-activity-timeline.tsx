@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { ParticipantDetailResult } from '@/lib/types/participant';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown, Phone, MessageCircle } from 'lucide-react';
+import { MessageSquare, UserPlus, UserMinus, Heart, ChevronDown, Phone, MessageCircle, Send } from 'lucide-react';
 
 interface ParticipantActivityTimelineProps {
   detail: ParticipantDetailResult;
@@ -58,11 +58,13 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
 
   // Get event icon based on type and source
   const getEventIcon = (eventType: string, source?: string, reactionEmoji?: string) => {
-    // WhatsApp has special icon
     if (source === 'whatsapp') {
       return <Phone className="h-3.5 w-3.5 text-green-600" />;
     }
-    
+    if (source === 'max') {
+      return <Send className="h-3.5 w-3.5 text-indigo-500" />;
+    }
+
     switch (eventType) {
       case 'message':
         return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />;
@@ -140,6 +142,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           let reactionTargetText = '';
           const source = event.meta?.source as string | undefined;
           const isWhatsApp = source === 'whatsapp' || event.tg_chat_id === 'whatsapp';
+          const isMax = source === 'max' || event.tg_chat_id === 'max';
           
           if (event.meta) {
             // Extract reaction emoji and target message for reaction events
@@ -187,8 +190,9 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
 
           // Get group/channel name: first from map, then from meta, then show nothing
           let groupName = '';
-          if (isWhatsApp) {
-            // WhatsApp: get group name from meta
+          if (isMax) {
+            groupName = event.meta?.group_title || 'MAX';
+          } else if (isWhatsApp) {
             groupName = event.meta?.group_name || 'WhatsApp';
           } else if (event.event_type === 'channel_comment' && event.meta?.channel_title) {
             // Channel comment: show channel name
@@ -207,7 +211,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           return (
             <div key={event.id} className="flex items-center gap-2 text-sm py-1 hover:bg-gray-50 rounded px-2 -mx-2">
               <div className="flex-shrink-0">
-                {getEventIcon(event.event_type, isWhatsApp ? 'whatsapp' : undefined, reactionEmoji)}
+                {getEventIcon(event.event_type, isMax ? 'max' : isWhatsApp ? 'whatsapp' : undefined, reactionEmoji)}
               </div>
               <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{formatted}</span>
               {groupName && (
