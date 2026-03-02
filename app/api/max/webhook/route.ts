@@ -249,13 +249,11 @@ async function handleMessageCreated(body: any, supabase: any, logger: any) {
   // Record activity event
   await supabase.from('activity_events').insert({
     org_id: orgId,
-    participant_id: participantId,
     event_type: 'message',
     max_chat_id: chatId,
     max_user_id: maxUserId,
     messenger_type: 'max',
-    event_timestamp: new Date(body.timestamp || Date.now()).toISOString(),
-    metadata: {
+    meta: {
       message_id: message.body?.mid,
       text_length: message.body?.text?.length || 0,
     },
@@ -384,12 +382,10 @@ async function handleUserAdded(body: any, supabase: any, logger: any) {
   // Record join event
   await supabase.from('activity_events').insert({
     org_id: orgId,
-    participant_id: participantId,
     event_type: 'join',
     max_chat_id: chatId,
     max_user_id: maxUserId,
     messenger_type: 'max',
-    event_timestamp: new Date().toISOString(),
   }).then(() => {});
 
   // Check if there's an application pipeline linked to this MAX group
@@ -509,12 +505,10 @@ async function handleUserRemoved(body: any, supabase: any, logger: any) {
   // Record leave event
   await supabase.from('activity_events').insert({
     org_id: orgId,
-    participant_id: participant.id,
     event_type: 'leave',
     max_chat_id: chatId,
     max_user_id: maxUserId,
     messenger_type: 'max',
-    event_timestamp: new Date().toISOString(),
   }).then(() => {});
 
   logger.info({ org_id: orgId, max_user_id: maxUserId, max_chat_id: chatId }, '🔴 MAX user removed');
