@@ -16,6 +16,7 @@ export default function MaxAppHome() {
   const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'redirecting' | 'no-param' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [diagInfo, setDiagInfo] = useState<string>('');
 
   useEffect(() => {
     // First: check URL query params immediately — no SDK needed.
@@ -58,7 +59,21 @@ export default function MaxAppHome() {
       }
 
       if (attempts >= MAX_ATTEMPTS) {
-        // SDK loaded but no start_param — nothing to route to
+        // Collect diagnostics to display on screen
+        const wa = (window as any).WebApp;
+        const diag = {
+          href: window.location.href,
+          search: window.location.search,
+          hash: window.location.hash,
+          waExists: !!wa,
+          waVersion: wa?.version ?? null,
+          initData: wa?.initData ? wa.initData.substring(0, 100) + '...' : null,
+          initDataUnsafe: wa?.initDataUnsafe ? JSON.stringify(wa.initDataUnsafe) : null,
+          windowKeys: Object.keys(window).filter(k =>
+            k.toLowerCase().includes('max') || k.toLowerCase().includes('webapp') || k.toLowerCase().includes('telegram')
+          ),
+        };
+        setDiagInfo(JSON.stringify(diag, null, 2));
         setStatus('no-param');
       }
     };
@@ -109,12 +124,11 @@ export default function MaxAppHome() {
           )}
 
           {status === 'no-param' && (
-            <div className="space-y-4">
-              <div className="text-5xl">🚀</div>
-              <h1 className="text-xl font-bold text-gray-900">Orbo</h1>
-              <p className="text-gray-500 text-sm">
-                Откройте ссылку на событие, чтобы зарегистрироваться.
-              </p>
+            <div className="space-y-3 text-left max-w-sm w-full">
+              <p className="text-sm font-semibold text-gray-700">Диагностика MAX WebApp</p>
+              <pre className="text-xs bg-gray-100 rounded p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all">
+                {diagInfo || 'Сбор данных...'}
+              </pre>
             </div>
           )}
 
