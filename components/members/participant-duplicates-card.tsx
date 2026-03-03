@@ -51,10 +51,10 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
   const [unmerging, setUnmerging] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<DuplicateEntry[]>(initialDuplicates);
+  const [suggestions, setSuggestions] = useState<DuplicateEntry[]>([]);
   const [search, setSearch] = useState('');
   const [checking, setChecking] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(initialDuplicates[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Already-merged (attached) profiles live in detail.duplicates
   const attachedProfiles: ParticipantDetailResult['duplicates'] = detail.duplicates || [];

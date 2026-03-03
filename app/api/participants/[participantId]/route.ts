@@ -687,6 +687,7 @@ async function handleUnmerge(
     .from('participants')
     .update({
       merged_into: null,
+      status: 'active',
       participant_status: 'participant',
       updated_at: new Date().toISOString(),
     })
