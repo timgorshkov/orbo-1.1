@@ -329,7 +329,7 @@ export async function analyzeParticipantWithAI(
 
   let eventsSection = '';
   if (additionalContext?.eventSummary && additionalContext.eventSummary.length > 0) {
-    eventsSection = `\n\n--- УЧАСТИЕ В СОБЫТИЯХ ---\n${additionalContext.eventSummary.map(e => `📅 ${e}`).join('\n')}`;
+    eventsSection = `\n\n--- СОБЫТИЯ, НА КОТОРЫЕ ЗАРЕГИСТРИРОВАЛСЯ УЧАСТНИК (используй названия в interests!) ---\n${additionalContext.eventSummary.map(e => `📅 ${e}`).join('\n')}`;
   }
 
   let applicationsSection = '';
@@ -348,9 +348,12 @@ export async function analyzeParticipantWithAI(
 
   const systemPrompt = `Ты — аналитик сообществ. Проанализируй сообщения участника и заполни ВСЕ поля.
 
-1. **interests** (массив, 5-15 элементов):
-   Конкретные объекты интереса: технологии (React, GPT-4, Python), сервисы (Notion, Miro), компании/бренды (Яндекс, Google), методики (Scrum, JTBD), конкретные сферы (e-commerce, EdTech, UX/UI), имена людей, названия событий из 📅.
-   НЕ голые абстракции ("маркетинг"), а с контекстом ("performance-маркетинг", "B2B-продажи").
+1. **interests** (массив, СТРОГО 3-6 элементов — только самые значимые):
+   ПРАВИЛА: выбирай только то, что можно назвать по имени — конкретный предмет, отрасль, продукт, страна, имя человека.
+   ✅ ХОРОШО: "БАДы", "краткосрочные инвестиции", "Узбекистан", "кальян", "недвижимость", "GPT-4", "Figma", "Notion", "e-commerce", "EdTech"
+   ❌ ПЛОХО (запрещено!): "бизнес", "технологии", "коммуникации", "работа", "развитие", "навигация", "взаимодействие" — это не интересы, это слова-пустышки
+   ОБЯЗАТЕЛЬНО включи: названия событий из раздела 📅, конкретные отрасли/продукты упомянутые участником, страны/города/места.
+   Если конкретики совсем нет — верни 1-3 наиболее специфичных термина, лучше меньше да точнее.
 
 2. **topics_discussed** (объект, 3-8 тем):
    Широкие тематические категории + число упоминаний. Пример: {"маркетинг": 5, "нетворкинг": 3}.
@@ -359,9 +362,9 @@ export async function analyzeParticipantWithAI(
 
 4. **city** (строка или null), **city_confidence** (0-1 или null).
 
-Формат сообщений: ➡️ своё, ↩️ reply-контекст, 🔥 реакция, 💬 контекст треда, 📅 событие, 📋 заявка, 👤 профиль.
+Формат сообщений: ➡️ своё, ↩️ reply-контекст, 🔥 реакция, 💬 контекст треда, 📅 событие (включай в interests!), 📋 заявка, 👤 профиль.
 
-⚠️ interests и topics_discussed — ОБЯЗАТЕЛЬНЫ, не возвращай пустыми если есть хоть какие-то сообщения.
+⚠️ interests и topics_discussed — ОБЯЗАТЕЛЬНЫ. В interests — только конкретные предметные слова, НЕ абстракции.
 Возвращай только JSON.`;
 
   const userPrompt = `Участник: ${participantName}${profileSection}
@@ -388,9 +391,9 @@ ${recentMessages.map((m) => {
   messageBlock += `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
 
   return messageBlock;
-}).join('\n\n')}${reactedSection}${eventsSection}${applicationsSection}
+}).join('\n\n')}${eventsSection}${reactedSection}${applicationsSection}
 
-Верни JSON с полями: interests, topics_discussed, recent_asks, city, city_confidence.`;
+Верни JSON с полями: interests (3-6 конкретных предметов, НЕ абстракций), topics_discussed, recent_asks, city, city_confidence.`;
 
   try {
     const startTime = Date.now();
