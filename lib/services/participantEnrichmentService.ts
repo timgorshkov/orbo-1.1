@@ -303,10 +303,12 @@ export async function enrichParticipant(
       // Prepare reacted messages as interest signals
       const reactedMessages = await prepareReactedMessagesForAI(reactions, chatIds);
       
+      // Scan full history only when intro-derived fields are ALL already filled.
+      // bio_custom alone is not enough — goals/offers/asks may still be empty.
       const existingGoals = !!(
-        existingAttrs.goals_self ||
-        (Array.isArray(existingAttrs.offers) && existingAttrs.offers.length > 0) ||
-        existingAttrs.bio_custom
+        existingAttrs.goals_self &&
+        Array.isArray(existingAttrs.offers) && existingAttrs.offers.length > 0 &&
+        Array.isArray(existingAttrs.asks) && existingAttrs.asks.length > 0
       );
 
       aiAnalysis = await analyzeParticipantWithAI(

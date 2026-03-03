@@ -41,8 +41,6 @@ export function EnrichedProfileDisplay({
   const attrs = participant.custom_attributes || {};
   
   // Extract sections
-  const [introExpanded, setIntroExpanded] = useState(false);
-
   const aiInsights = {
     interests: attrs.interests_keywords || [],
     city: attrs.city_inferred,
@@ -52,7 +50,6 @@ export function EnrichedProfileDisplay({
     topicsDiscussed: attrs.topics_discussed || {},
     recentAsks: attrs.recent_asks || [],
     communicationStyle: attrs.communication_style || {},
-    introductionRaw: attrs.introduction_raw as string | undefined,
   };
   
   const userDefined = {
@@ -301,23 +298,6 @@ export function EnrichedProfileDisplay({
                 </div>
               )}
 
-              {/* Introduction raw (admin-only, collapsible) */}
-              {aiInsights.introductionRaw && (
-                <div>
-                  <button
-                    onClick={() => setIntroExpanded(v => !v)}
-                    className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2"
-                  >
-                    <span>🪪 Сообщение-визитка</span>
-                    <span className="text-xs text-gray-400 ml-1">{introExpanded ? '▲ Свернуть' : '▼ Развернуть'}</span>
-                  </button>
-                  {introExpanded && (
-                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-gray-800 whitespace-pre-wrap">
-                      {aiInsights.introductionRaw}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ) : (
             <p className="text-sm text-gray-600">

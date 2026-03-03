@@ -307,10 +307,10 @@ export async function analyzeParticipantWithAI(
 
   const introJsonFields = introMessage
     ? `,
-  "introduction_bio": "краткое резюме о человеке или null",
-  "introduction_goals": "что ищет в сообществе или null",
-  "introduction_offers": ["чем может помочь1", ...] или [],
-  "introduction_asks": ["что ему нужно1", ...] или []`
+  "introduction_bio": "<2-3 sentence summary of who this person is, or null if not determinable>",
+  "introduction_goals": "<what they are looking for in this community, or null>",
+  "introduction_offers": ["<thing they can help with>"],
+  "introduction_asks": ["<thing they need or are looking for>"]`
     : '';
 
   const userPrompt = `Участник: ${participantName}${profileSection}
@@ -341,13 +341,13 @@ ${messagesToAnalyze.map((m) => {
   return messageBlock;
 }).join('\n\n')}${introSection2}${reactedSection}${eventsSection}${applicationsSection}
 
-Верни результат строго в формате JSON:
+Return ONLY a valid JSON object:
 {
-  "interests": ["конкретная технология/бренд/инструмент", ...],
-  "topics_discussed": {"широкая тема": количество_упоминаний, ...},
-  "recent_asks": ["существенный запрос", ...],
-  "city": "Город" или null,
-  "city_confidence": 0.0-1.0 или null${introJsonFields}
+  "interests": [],
+  "topics_discussed": {},
+  "recent_asks": [],
+  "city": null,
+  "city_confidence": null${introJsonFields}
 }`;
 
   try {
@@ -367,7 +367,7 @@ ${messagesToAnalyze.map((m) => {
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3, // Low temperature for consistency
-      max_tokens: 1000,
+      max_tokens: introMessage ? 1500 : 1000,
       response_format: { type: 'json_object' }
     });
     
