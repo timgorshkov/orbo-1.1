@@ -57,7 +57,7 @@ export async function GET(
         telegramChatIds = [tgChatId];
       }
     } else {
-      // Get all chats for org
+      // Get all Telegram chats for org
       const { data: orgGroups } = await adminSupabase
         .from('org_telegram_groups')
         .select('tg_chat_id')
@@ -67,16 +67,39 @@ export async function GET(
       includeWhatsApp = true; // Include WhatsApp for org-wide timeline
     }
 
-    // Initialize daily data
+    // Linked MAX groups (for org-wide timeline)
+    let maxChatIds: string[] = [];
+    if (!tgChatId) {
+      const { data: orgMaxLinks } = await adminSupabase
+        .from('org_max_groups')
+        .select('max_chat_id')
+        .eq('org_id', orgId);
+      maxChatIds = (orgMaxLinks ?? []).map((r: { max_chat_id: number }) => String(r.max_chat_id));
+    }
+
+    // Org timezone for date bucketing (default Moscow GMT+3)
+    const { data: orgRow } = await adminSupabase
+      .from('organizations')
+      .select('timezone')
+      .eq('id', orgId)
+      .maybeSingle();
+    const orgTimezone = (orgRow?.timezone as string) || 'Europe/Moscow';
+
+    const toDateKey = (iso: string | Date) => {
+      const d = typeof iso === 'string' ? new Date(iso) : iso;
+      return d.toLocaleDateString('en-CA', { timeZone: orgTimezone });
+    };
+
+    // Initialize daily data (keys in org timezone)
     const dailyData: Record<string, { message_count: number; reaction_count: number }> = {};
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
-      const dateKey = date.toISOString().split('T')[0];
+      const dateKey = date.toLocaleDateString('en-CA', { timeZone: orgTimezone });
       dailyData[dateKey] = { message_count: 0, reaction_count: 0 };
     }
 
-    if (telegramChatIds.length === 0 && !includeWhatsApp) {
+    if (telegramChatIds.length === 0 && !includeWhatsApp && maxChatIds.length === 0) {
       // No data sources
       const data = Object.entries(dailyData)
         .sort(([a], [b]) => a.localeCompare(b))
@@ -105,11 +128,10 @@ export async function GET(
         logger.error({ error: telegramError.message }, 'Error fetching telegram events');
       } else {
         telegramEvents?.forEach(event => {
-          // PostgreSQL возвращает Date объект, Supabase - строку
-          const createdAt = event.created_at instanceof Date 
-            ? event.created_at.toISOString() 
+          const createdAt = event.created_at instanceof Date
+            ? event.created_at.toISOString()
             : String(event.created_at);
-          const dateKey = createdAt.split('T')[0];
+          const dateKey = toDateKey(createdAt);
           if (dailyData[dateKey]) {
             if (event.event_type === 'message') {
               dailyData[dateKey].message_count++;
@@ -135,11 +157,10 @@ export async function GET(
         logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
       } else {
         whatsappEvents?.forEach(event => {
-          // PostgreSQL возвращает Date объект, Supabase - строку
-          const createdAt = event.created_at instanceof Date 
-            ? event.created_at.toISOString() 
+          const createdAt = event.created_at instanceof Date
+            ? event.created_at.toISOString()
             : String(event.created_at);
-          const dateKey = createdAt.split('T')[0];
+          const dateKey = toDateKey(createdAt);
           if (dailyData[dateKey]) {
             if (event.event_type === 'message') {
               dailyData[dateKey].message_count++;
@@ -148,6 +169,34 @@ export async function GET(
             }
           }
         });
+      }
+    }
+
+    // Fetch MAX group events - org_id + messenger_type + max_chat_id in linked groups
+    if (maxChatIds.length > 0) {
+      const { data: maxEvents, error: maxError } = await adminSupabase
+        .from('activity_events')
+        .select('created_at, event_type')
+        .eq('org_id', orgId)
+        .eq('messenger_type', 'max')
+        .eq('event_type', 'message')
+        .in('max_chat_id', maxChatIds)
+        .gte('created_at', startDate.toISOString())
+        .order('created_at', { ascending: true });
+
+      if (maxError) {
+        logger.error({ error: maxError.message }, 'Error fetching MAX events');
+      } else {
+        maxEvents?.forEach(event => {
+          const createdAt = event.created_at instanceof Date
+            ? event.created_at.toISOString()
+            : String(event.created_at);
+          const dateKey = toDateKey(createdAt);
+          if (dailyData[dateKey]) {
+            dailyData[dateKey].message_count++;
+          }
+        });
+        logger.debug({ count: maxEvents?.length ?? 0, org_id: orgId }, 'Added MAX events to timeline');
       }
     }
 
