@@ -90,8 +90,20 @@ chmod +x ~/orbo/cron-check-billing.sh
 
 # Create cron script for check-webhook (every 30 minutes)
 # Checks and auto-restores Telegram + MAX bot webhooks if they go missing
-cat > ~/orbo/cron-check-webhook.sh << EOF
+# Uses single-quoted 'EOF' so variables are NOT expanded at write time — they
+# are loaded from .env at runtime, avoiding empty-secret bugs.
+cat > ~/orbo/cron-check-webhook.sh << 'EOF'
 #!/bin/bash
+# Load env vars from app .env file
+ENV_FILE=~/orbo/.env
+if [ -f "$ENV_FILE" ]; then
+  export $(grep -E '^(CRON_SECRET|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | xargs)
+fi
+APP_URL="${NEXT_PUBLIC_APP_URL:-https://my.orbo.ru}"
+if [ -z "$CRON_SECRET" ]; then
+  echo "$(date): CRON_SECRET not set, skipping check-webhook" >> /var/log/orbo-cron.log
+  exit 1
+fi
 curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-webhook" >> /var/log/orbo-cron.log 2>&1
 EOF
 chmod +x ~/orbo/cron-check-webhook.sh
