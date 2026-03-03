@@ -4,7 +4,9 @@
       "Bash(npm run:*)",
       "WebFetch(domain:dev.max.ru)",
       "WebSearch",
-      "Bash(ssh selectel-orbo:*)"
+      "Bash(ssh selectel-orbo:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)"
     ]
   }
 }
