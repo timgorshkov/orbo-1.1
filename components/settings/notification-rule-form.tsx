@@ -7,13 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { createClientLogger } from '@/lib/logger'
 import { AlertTriangle, Sparkles, Clock, MessageSquare, Users, Crown } from 'lucide-react'
@@ -87,11 +80,12 @@ const WEEKDAYS = [
 const DEFAULT_CONFIG: Record<string, Record<string, unknown>> = {
   negative_discussion: {
     groups: null,
-    severity_threshold: 'medium',
+    sensitivity: 3,
     check_interval_minutes: 60,
   },
   unanswered_question: {
     groups: null,
+    sensitivity: 3,
     timeout_hours: 2,
     work_hours_start: '09:00',
     work_hours_end: '18:00',
@@ -106,6 +100,14 @@ const DEFAULT_CONFIG: Record<string, Record<string, unknown>> = {
     work_days: null,
     timezone: 'Europe/Moscow',
   },
+}
+
+const SENSITIVITY_LABELS: Record<number, { label: string; description: string }> = {
+  1: { label: 'Минимальная', description: 'Только угрозы, тяжкие оскорбления' },
+  2: { label: 'Низкая', description: 'Явные конфликты и грубость' },
+  3: { label: 'Нормальная', description: 'Заметный негатив (по умолчанию)' },
+  4: { label: 'Высокая', description: 'Скрытое недовольство и сарказм' },
+  5: { label: 'Максимальная', description: 'Любой намёк на раздражение' },
 }
 
 export default function NotificationRuleForm({
@@ -339,21 +341,33 @@ export default function NotificationRuleForm({
               Дедупликация: одно уведомление на группу раз в 6 часов по одному инциденту.
               Автосокрытие: уведомление остаётся активным, пока вы не отметите его как решённое.
             </div>
+
             <div>
-              <Label>Порог серьёзности</Label>
-              <Select
-                value={(config.severity_threshold as string) || 'medium'}
-                onValueChange={value => updateConfig('severity_threshold', value)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Низкий (любой негатив)</SelectItem>
-                  <SelectItem value="medium">Средний (заметный конфликт)</SelectItem>
-                  <SelectItem value="high">Высокий (только серьёзные конфликты)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="block mb-2">
+                Чувствительность к негативу
+              </Label>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400 w-20">Минимальная</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={(config.sensitivity as number) ?? 3}
+                  onChange={e => updateConfig('sensitivity', parseInt(e.target.value))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-xs text-gray-400 w-20 text-right">Максимальная</span>
+              </div>
+              {(() => {
+                const level = (config.sensitivity as number) ?? 3
+                const info = SENSITIVITY_LABELS[level]
+                return info ? (
+                  <p className="text-xs text-blue-700 mt-1 font-medium">
+                    {level}/5 — {info.label}: {info.description}
+                  </p>
+                ) : null
+              })()}
             </div>
 
             <div>
@@ -368,6 +382,19 @@ export default function NotificationRuleForm({
               />
               <p className="text-xs text-gray-500 mt-1">Минимум 15 минут</p>
             </div>
+
+            <div>
+              <Label htmlFor="neg-custom-prompt">На что обращать внимание (необязательно)</Label>
+              <Textarea
+                id="neg-custom-prompt"
+                value={(config.custom_prompt as string) || ''}
+                onChange={e => updateConfig('custom_prompt', e.target.value || undefined)}
+                placeholder="Например: не считать негативом обсуждение новостей и политики. Обращать внимание на жалобы на качество обслуживания."
+                className="mt-1"
+                rows={2}
+              />
+              <p className="text-xs text-gray-500 mt-1">Дополнительные инструкции для AI-анализа в этой группе</p>
+            </div>
           </div>
         )}
 
@@ -380,6 +407,37 @@ export default function NotificationRuleForm({
               Дедупликация: одно уведомление на вопрос раз в 6 часов. Проверка только в рабочее время.
               Автосокрытие: уведомление остаётся до ручной отметки «Решено».
             </div>
+
+            <div>
+              <Label className="block mb-2">Чувствительность к вопросам без ответа</Label>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400 w-20">Только явные</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={(config.sensitivity as number) ?? 3}
+                  onChange={e => updateConfig('sensitivity', parseInt(e.target.value))}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-xs text-gray-400 w-20 text-right">Все запросы</span>
+              </div>
+              {(() => {
+                const level = (config.sensitivity as number) ?? 3
+                const labels: Record<number, string> = {
+                  1: '1/5 — только явные вопросы с "?"',
+                  2: '2/5 — явные вопросы и прямые просьбы',
+                  3: '3/5 — стандартный уровень (по умолчанию)',
+                  4: '4/5 — включая неявные запросы',
+                  5: '5/5 — любые высказывания, ожидающие ответа',
+                }
+                return labels[level] ? (
+                  <p className="text-xs text-blue-700 mt-1 font-medium">{labels[level]}</p>
+                ) : null
+              })()}
+            </div>
+
             <div>
               <Label>Таймаут без ответа (часы)</Label>
               <Input
@@ -435,6 +493,19 @@ export default function NotificationRuleForm({
                   )
                 })}
               </div>
+            </div>
+
+            <div>
+              <Label htmlFor="q-custom-prompt">На что обращать внимание (необязательно)</Label>
+              <Textarea
+                id="q-custom-prompt"
+                value={(config.custom_prompt as string) || ''}
+                onChange={e => updateConfig('custom_prompt', e.target.value || undefined)}
+                placeholder="Например: считать вопросами запросы о вакансиях и коллаборациях. Не реагировать на риторические вопросы в обсуждении новостей."
+                className="mt-1"
+                rows={2}
+              />
+              <p className="text-xs text-gray-500 mt-1">Дополнительные инструкции для AI-анализа</p>
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ParticipantRecord } from '@/lib/types/participant';
@@ -40,6 +41,8 @@ export function EnrichedProfileDisplay({
   const attrs = participant.custom_attributes || {};
   
   // Extract sections
+  const [introExpanded, setIntroExpanded] = useState(false);
+
   const aiInsights = {
     interests: attrs.interests_keywords || [],
     city: attrs.city_inferred,
@@ -48,7 +51,8 @@ export function EnrichedProfileDisplay({
     roleConfidence: attrs.role_confidence,
     topicsDiscussed: attrs.topics_discussed || {},
     recentAsks: attrs.recent_asks || [],
-    communicationStyle: attrs.communication_style || {}
+    communicationStyle: attrs.communication_style || {},
+    introductionRaw: attrs.introduction_raw as string | undefined,
   };
   
   const userDefined = {
@@ -130,12 +134,12 @@ export function EnrichedProfileDisplay({
   
   const engagementCategory = getEngagementCategory();
   
-  // Check if there are any AI insights to show
-  const hasAIInsights = aiInsights.interests.length > 0 || 
-    aiInsights.city || 
-    aiInsights.role || 
-    aiInsights.recentAsks.length > 0 || 
-    Object.keys(aiInsights.topicsDiscussed).length > 0;
+  const hasAIInsights = aiInsights.interests.length > 0 ||
+    aiInsights.city ||
+    aiInsights.role ||
+    aiInsights.recentAsks.length > 0 ||
+    Object.keys(aiInsights.topicsDiscussed).length > 0 ||
+    !!aiInsights.introductionRaw;
 
   return (
     <div className="space-y-6">
@@ -294,6 +298,24 @@ export function EnrichedProfileDisplay({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Introduction raw (admin-only, collapsible) */}
+              {aiInsights.introductionRaw && (
+                <div>
+                  <button
+                    onClick={() => setIntroExpanded(v => !v)}
+                    className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2"
+                  >
+                    <span>🪪 Сообщение-визитка</span>
+                    <span className="text-xs text-gray-400 ml-1">{introExpanded ? '▲ Свернуть' : '▼ Развернуть'}</span>
+                  </button>
+                  {introExpanded && (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-gray-800 whitespace-pre-wrap">
+                      {aiInsights.introductionRaw}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

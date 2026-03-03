@@ -59,37 +59,69 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get org groups
-    const { data: orgGroups } = await supabase
-      .from('org_telegram_groups')
-      .select('tg_chat_id')
-      .eq('org_id', orgId)
+    // Get Telegram and MAX chat IDs for this org
+    const [{ data: orgGroups }, { data: orgMaxGroups }] = await Promise.all([
+      supabase.from('org_telegram_groups').select('tg_chat_id').eq('org_id', orgId),
+      supabase.from('org_max_groups').select('max_chat_id').eq('org_id', orgId),
+    ])
 
     const chatIds = orgGroups?.map(g => g.tg_chat_id) || []
+    const maxChatIds = (orgMaxGroups || []).map((g: { max_chat_id: number }) => g.max_chat_id)
 
-    if (chatIds.length === 0) {
+    const hasAnyGroups = chatIds.length > 0 || maxChatIds.length > 0
+    if (!hasAnyGroups) {
       return NextResponse.json({
         error: 'no_data',
         message: 'Нет подключённых групп.',
       }, { status: 400 })
     }
 
-    // Find top 2 participants by actual message count (JOIN with activity_events)
-    const chatIdsList = chatIds.map(id => `'${id}'`).join(',')
+    // Build activity count subquery combining Telegram + MAX messages
+    const tgPart = chatIds.length > 0
+      ? `SELECT tg_user_id AS uid, NULL::bigint AS max_uid, COUNT(*) AS cnt
+         FROM activity_events
+         WHERE event_type = 'message'
+           AND tg_chat_id = ANY(ARRAY[${chatIds.map(Number).join(',')}]::bigint[])
+         GROUP BY tg_user_id`
+      : null
+
+    const maxPart = maxChatIds.length > 0
+      ? `SELECT NULL::bigint AS uid, max_user_id AS max_uid, COUNT(*) AS cnt
+         FROM activity_events
+         WHERE event_type = 'message'
+           AND messenger_type = 'max'
+           AND max_chat_id = ANY(ARRAY[${maxChatIds.map(Number).join(',')}]::bigint[])
+         GROUP BY max_user_id`
+      : null
+
+    const activityUnion = [tgPart, maxPart].filter(Boolean).join(' UNION ALL ')
+
+    // Find top 2 UN-ANALYZED participants first, then fall back to already-analyzed
+    // "analyzed" = custom_attributes->>'last_enriched_at' IS NOT NULL
     const { data: topByMessages } = await (supabase as any).raw(`
-      SELECT p.id, p.full_name, p.first_name, p.last_name, p.tg_user_id, p.username, p.last_activity_at,
-             COUNT(ae.id) as msg_count
-      FROM participants p
-      INNER JOIN activity_events ae
-        ON ae.tg_user_id = p.tg_user_id
-        AND ae.event_type = 'message'
-        AND ae.tg_chat_id IN (${chatIdsList})
-      WHERE p.org_id = $1
-        AND p.source != 'bot'
-        AND p.tg_user_id IS NOT NULL
-      GROUP BY p.id
-      HAVING COUNT(ae.id) >= 5
-      ORDER BY msg_count DESC
+      WITH activity AS (
+        SELECT COALESCE(uid, 0) AS tg_uid, COALESCE(max_uid, 0) AS max_uid, SUM(cnt) AS msg_count
+        FROM (${activityUnion}) sub
+        GROUP BY COALESCE(uid, 0), COALESCE(max_uid, 0)
+      ),
+      candidates AS (
+        SELECT p.id, p.full_name, p.first_name, p.last_name, p.tg_user_id, p.max_user_id,
+               p.username, p.last_activity_at,
+               COALESCE(a.msg_count, 0) AS msg_count,
+               CASE WHEN p.custom_attributes->>'last_enriched_at' IS NOT NULL THEN 1 ELSE 0 END AS is_analyzed
+        FROM participants p
+        LEFT JOIN activity a
+          ON (p.tg_user_id IS NOT NULL AND a.tg_uid = p.tg_user_id)
+          OR (p.max_user_id IS NOT NULL AND a.max_uid = p.max_user_id)
+        WHERE p.org_id = $1
+          AND p.source != 'bot'
+          AND (p.tg_user_id IS NOT NULL OR p.max_user_id IS NOT NULL)
+          AND COALESCE(a.msg_count, 0) >= 5
+      )
+      -- Prefer un-analyzed; fall back to analyzed when not enough un-analyzed rows
+      (SELECT * FROM candidates WHERE is_analyzed = 0 ORDER BY msg_count DESC LIMIT 2)
+      UNION ALL
+      (SELECT * FROM candidates WHERE is_analyzed = 1 ORDER BY msg_count DESC LIMIT 2)
       LIMIT 2
     `, [orgId])
 

@@ -128,7 +128,44 @@ export async function enrichParticipant(
     if (!whatsappError && whatsappMessages) {
       messages = [...messages, ...whatsappMessages];
     }
-    
+
+    // Also fetch MAX messages if participant has max_user_id
+    if (participant.max_user_id) {
+      const { data: orgMaxGroups } = await supabaseAdmin
+        .from('org_max_groups')
+        .select('max_chat_id')
+        .eq('org_id', orgId);
+      const maxChatIds = (orgMaxGroups || []).map((g: { max_chat_id: number }) => Number(g.max_chat_id));
+
+      if (maxChatIds.length > 0) {
+        const { data: maxMessages } = await supabaseAdmin
+          .from('activity_events')
+          .select('id, max_user_id, max_chat_id, event_type, created_at, meta')
+          .in('max_chat_id', maxChatIds)
+          .eq('max_user_id', participant.max_user_id)
+          .eq('event_type', 'message')
+          .eq('messenger_type', 'max')
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        if (maxMessages && maxMessages.length > 0) {
+          // Normalize MAX events to the same shape as Telegram events so they pass through
+          // prepareMessagesWithContext. Use tg_user_id = participant.tg_user_id as a
+          // fallback key; text is stored in meta.text (no participant_messages entry for MAX).
+          const normalizedMax = maxMessages.map((m: any) => ({
+            id: m.id,
+            tg_user_id: participant.tg_user_id,
+            tg_chat_id: m.max_chat_id, // repurpose field for chat lookup
+            message_id: null,
+            event_type: m.event_type,
+            created_at: m.created_at,
+            meta: { ...m.meta, messenger_type: 'max', text_preview: m.meta?.text },
+          }));
+          messages = [...messages, ...normalizedMax];
+        }
+      }
+    }
+
     // Filter participant's messages (for Telegram - by tg_user_id, for WhatsApp - already filtered by participant_id)
     const participantMessages = messages.filter(m => 
       m.tg_user_id === participant.tg_user_id || 
@@ -266,19 +303,26 @@ export async function enrichParticipant(
       // Prepare reacted messages as interest signals
       const reactedMessages = await prepareReactedMessagesForAI(reactions, chatIds);
       
+      const existingGoals = !!(
+        existingAttrs.goals_self ||
+        (Array.isArray(existingAttrs.offers) && existingAttrs.offers.length > 0) ||
+        existingAttrs.bio_custom
+      );
+
       aiAnalysis = await analyzeParticipantWithAI(
         messagesWithContext,
         participant.full_name || participant.username || `ID${participant.tg_user_id}`,
-        orgId, // ⭐ For logging
-        userId, // ⭐ Who triggered enrichment
-        participantId, // ⭐ For metadata
+        orgId,
+        userId,
+        participantId,
         allKeywords,
-        reactedMessages, // ⭐ Reacted messages
+        reactedMessages,
         {
           eventSummary,
           applicationSummary,
           profileContext
-        }
+        },
+        { hasGoals: existingGoals }
       );
       
       result.ai_analysis = aiAnalysis;
@@ -317,6 +361,27 @@ export async function enrichParticipant(
       }
       attributesUpdate.ai_analysis_cost = aiAnalysis.cost_usd;
       attributesUpdate.ai_analysis_tokens = aiAnalysis.tokens_used;
+
+      // Store introduction raw text (admin-visible system field)
+      if (aiAnalysis.introduction_raw) {
+        attributesUpdate.introduction_raw = aiAnalysis.introduction_raw;
+      }
+
+      // Auto-fill Goals & Offers from introduction if not already set
+      if (aiAnalysis.introduction_bio && !existingAttrs.bio_custom) {
+        attributesUpdate.bio_custom = aiAnalysis.introduction_bio;
+      }
+      if (aiAnalysis.introduction_goals && !existingAttrs.goals_self) {
+        attributesUpdate.goals_self = aiAnalysis.introduction_goals;
+      }
+      if (Array.isArray(aiAnalysis.introduction_offers) && aiAnalysis.introduction_offers.length > 0 &&
+          (!Array.isArray(existingAttrs.offers) || existingAttrs.offers.length === 0)) {
+        attributesUpdate.offers = aiAnalysis.introduction_offers;
+      }
+      if (Array.isArray(aiAnalysis.introduction_asks) && aiAnalysis.introduction_asks.length > 0 &&
+          (!Array.isArray(existingAttrs.asks) || existingAttrs.asks.length === 0)) {
+        attributesUpdate.asks = aiAnalysis.introduction_asks;
+      }
     }
     
     if (roleClassification) {

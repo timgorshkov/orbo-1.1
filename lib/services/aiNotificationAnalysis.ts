@@ -104,6 +104,59 @@ function calculateCost(promptTokens: number, completionTokens: number): number {
   return inputCost + outputCost;
 }
 
+// ─── Sensitivity helpers ──────────────────────────────────────────────────────
+
+/**
+ * Derive sensitivity level (1-5) from legacy string threshold or stored integer.
+ * 1 = minimal, 3 = normal (default), 5 = maximum.
+ */
+export function resolveSensitivity(
+  sensitivity?: number | null,
+  legacyThreshold?: 'low' | 'medium' | 'high' | null
+): number {
+  if (typeof sensitivity === 'number' && sensitivity >= 1 && sensitivity <= 5) return sensitivity;
+  // Backwards-compat mapping
+  if (legacyThreshold === 'high') return 2;
+  if (legacyThreshold === 'medium') return 3;
+  if (legacyThreshold === 'low') return 4;
+  return 3;
+}
+
+function negativitySensitivityInstructions(level: number): string {
+  switch (level) {
+    case 1:
+      return 'Реагируй ТОЛЬКО на экстремальные случаи: прямые угрозы, тяжёлые оскорбления, открытую агрессию. Обсуждение новостей, лёгкое недовольство, эмоциональные восклицания — игнорируй.';
+    case 2:
+      return 'Реагируй на явные конфликты: оскорбления, агрессивное поведение, открытые претензии. Лёгкое раздражение или эмоциональность — не считай негативом.';
+    case 3:
+      return 'Реагируй на заметный негатив: жалобы, недовольство, пассивная агрессия, риторические претензии. Это стандартный уровень чувствительности.';
+    case 4:
+      return 'Реагируй также на скрытое недовольство: тонкий сарказм, разочарование, осторожные жалобы, риторические вопросы с негативным оттенком.';
+    case 5:
+      return 'Максимальная чувствительность: отмечай любой намёк на раздражение, лёгкую фрустрацию, нейтральные вопросы с негативным подтекстом. Лучше лишний раз уведомить.';
+    default:
+      return '';
+  }
+}
+
+function questionSensitivityInstructions(level: number): string {
+  switch (level) {
+    case 1:
+    case 2:
+      return 'Учитывай ТОЛЬКО явные вопросы (знак "?") и прямые просьбы о помощи. Не включай неявные и косвенные запросы.';
+    case 3:
+      return 'Учитывай явные вопросы, просьбы о помощи и запросы информации. Стандартный уровень.';
+    case 4:
+      return 'Учитывай также неявные запросы: утверждения, ожидающие фидбека, приглашения к диалогу, открытые высказывания требующие реакции.';
+    case 5:
+      return 'Максимальная чувствительность: любой запрос, даже косвенный, который может ожидать ответа от участников.';
+    default:
+      return '';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Analyze messages for negativity (conflicts, rudeness, aggression)
  */
@@ -111,7 +164,9 @@ export async function analyzeNegativeContent(
   messages: Message[],
   orgId: string,
   ruleId: string,
-  severityThreshold: 'low' | 'medium' | 'high' = 'medium'
+  severityThreshold: 'low' | 'medium' | 'high' = 'medium',
+  sensitivity?: number | null,
+  customPrompt?: string | null
 ): Promise<NegativeAnalysisResult> {
   if (messages.length === 0) {
     return {
@@ -124,33 +179,36 @@ export async function analyzeNegativeContent(
     };
   }
 
+  const sensitivityLevel = resolveSensitivity(sensitivity, severityThreshold);
+  const sensitivityNote = negativitySensitivityInstructions(sensitivityLevel);
+
+  const customNote = customPrompt
+    ? `\n\nДополнительные инструкции от администратора:\n${customPrompt}`
+    : '';
+
   const systemPrompt = `Ты - модератор сообщества. Проанализируй сообщения на предмет негатива и недовольства.
 
-Критерии негатива (ищи любые из перечисленных признаков):
+Критерии негатива:
 1. Явный негатив:
    - Ругань, мат, оскорбления
    - Агрессивная тональность, угрозы
    - Конфликты между участниками
    - Токсичное поведение
 
-2. Скрытый негатив и недовольство (важно!):
-   - Жалобы на игнорирование: "Почему никто не отвечает", "Меня игнорируют"
+2. Скрытый негатив и недовольство:
+   - Жалобы на игнорирование: "Почему никто не отвечает"
    - Выражения разочарования: "Опять это не работает", "Как всегда..."
    - Пассивная агрессия: сарказм, язвительность
    - Риторические вопросы с недовольством: "И что мне теперь делать?!"
    - Претензии к организации/участникам
-
-Примеры негатива разной серьёзности:
-- low: "Почему никто не реагирует!", "Опять задержка", "Это уже не первый раз"
-- medium: "Вы вообще читаете сообщения?", "Надоело ждать", "Полный бардак"
-- high: Оскорбления, угрозы, прямая агрессия
 
 Определи серьёзность (severity):
 - "low" - недовольство, раздражение, жалобы
 - "medium" - явный конфликт, грубость, резкие претензии
 - "high" - серьёзные оскорбления, угрозы, агрессия
 
-ВАЖНО: Если видишь признаки недовольства, жалобы или претензии - это негатив уровня "low" минимум!
+УРОВЕНЬ ЧУВСТВИТЕЛЬНОСТИ: ${sensitivityLevel}/5
+${sensitivityNote}${customNote}
 
 Верни JSON:
 {
@@ -170,14 +228,12 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
     rule_id: ruleId,
     org_id: orgId,
     messages_count: messages.length,
-    severity_threshold: severityThreshold
+    severity_threshold: severityThreshold,
+    sensitivity: sensitivityLevel,
   }, '🔄 [AI-ANALYSIS] Starting negativity analysis');
 
   try {
-    logger.info({
-      rule_id: ruleId,
-      model: 'gpt-4o-mini',
-    }, '📞 [AI-ANALYSIS] Calling OpenAI API');
+    logger.info({ rule_id: ruleId, model: 'gpt-4o-mini' }, '📞 [AI-ANALYSIS] Calling OpenAI API');
     logger.debug({
       rule_id: ruleId,
       messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
@@ -195,9 +251,7 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
     });
 
     const responseText = completion.choices[0]?.message?.content;
-    if (!responseText) {
-      throw new Error('Empty AI response');
-    }
+    if (!responseText) throw new Error('Empty AI response');
 
     const result = JSON.parse(responseText);
     const promptTokens = completion.usage?.prompt_tokens || 0;
@@ -213,26 +267,15 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
       tokens: totalTokens,
       cost_usd: costUsd
     }, '📊 [AI-ANALYSIS] Analysis result');
-    logger.debug({
-      rule_id: ruleId,
-      problematic_indices: result.problematic_indices,
-      raw_response: responseText.slice(0, 500),
-    }, '📊 [AI-ANALYSIS] Raw response details');
 
-    // Log API call
     await logAICall({
-      orgId,
-      ruleId,
+      orgId, ruleId,
       requestType: 'notification_negativity',
       model: 'gpt-4o-mini',
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      costUsd,
-      metadata: { messages_count: messages.length }
+      promptTokens, completionTokens, totalTokens, costUsd,
+      metadata: { messages_count: messages.length, sensitivity: sensitivityLevel }
     });
 
-    // Get sample messages based on problematic indices
     const problematicIndices = result.problematic_indices || [];
     const sampleMessages = problematicIndices
       .slice(0, 3)
@@ -250,7 +293,7 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     const is429 = errMsg.includes('429') || errMsg.toLowerCase().includes('quota');
-    logger.error({ 
+    logger.error({
       error: errMsg,
       stack: error instanceof Error ? error.stack : undefined,
       rule_id: ruleId,
@@ -284,21 +327,26 @@ export async function analyzeUnansweredQuestions(
   messages: Message[],
   orgId: string,
   ruleId: string,
-  timeoutHours: number = 2
+  timeoutHours: number = 2,
+  sensitivity?: number | null,
+  customPrompt?: string | null
 ): Promise<UnansweredQuestionsResult> {
   if (messages.length === 0) {
-    return {
-      questions: [],
-      tokens_used: 0,
-      cost_usd: 0,
-    };
+    return { questions: [], tokens_used: 0, cost_usd: 0 };
   }
+
+  const sensitivityLevel = resolveSensitivity(sensitivity, null);
+  const sensitivityNote = questionSensitivityInstructions(sensitivityLevel);
+  const customNote = customPrompt
+    ? `\n\nДополнительные инструкции от администратора:\n${customPrompt}`
+    : '';
 
   logger.info({
     rule_id: ruleId,
     org_id: orgId,
     messages_count: messages.length,
-    timeout_hours: timeoutHours
+    timeout_hours: timeoutHours,
+    sensitivity: sensitivityLevel,
   }, '🔄 [AI-ANALYSIS] Starting unanswered questions analysis');
 
   const systemPrompt = `Ты - аналитик сообщества. Найди вопросы, которые остались без ответа.
@@ -308,10 +356,25 @@ export async function analyzeUnansweredQuestions(
 - Просьба о помощи ("подскажите", "помогите", "кто знает")
 - Запрос информации ("где найти", "как сделать")
 
-Критерии ответа:
-- Сообщение после вопроса от другого участника
-- Содержит полезную информацию или ссылку
-- Явно обращено к автору вопроса
+ВАЖНО — критерии ответа (не только технический reply!):
+Ответ НЕ обязан быть техническим reply на сообщение.
+Если в СЛЕДУЮЩИХ 3-5 сообщениях в диалоге кто-то другой:
+  - Содержательно отвечает на тему вопроса
+  - Предлагает полезную информацию, ссылку, рекомендацию
+  - Явно обращается к автору вопроса
+— считай вопрос ОТВЕЧЕННЫМ, даже без технического reply.
+
+Примеры:
+- [3] Автор А: "Кто знает хорошего бухгалтера?"
+  [5] Автор Б: "Могу порекомендовать Ивана, он ведёт несколько компаний"
+  → ОТВЕЧЕН (тематический ответ, не reply)
+
+- [7] Автор В: "Как настроить CI/CD для монорепы?"
+  [8-12] Другие авторы: флуд не по теме
+  → НЕ ОТВЕЧЕН
+
+УРОВЕНЬ ЧУВСТВИТЕЛЬНОСТИ: ${sensitivityLevel}/5
+${sensitivityNote}${customNote}
 
 Верни JSON:
 {
@@ -331,15 +394,8 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
 Таймаут ответа: ${timeoutHours} часов`;
 
   try {
-    logger.info({
-      rule_id: ruleId,
-      model: 'gpt-4o-mini',
-    }, '📞 [AI-ANALYSIS] Calling OpenAI API for questions');
-    logger.debug({
-      rule_id: ruleId,
-      messages_sample: messages.slice(0, 2).map(m => ({ author: m.author_name, text: m.text.slice(0, 50) }))
-    }, '📞 [AI-ANALYSIS] Messages sample for questions');
-    
+    logger.info({ rule_id: ruleId, model: 'gpt-4o-mini' }, '📞 [AI-ANALYSIS] Calling OpenAI API for questions');
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -347,7 +403,7 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 400,
+      max_tokens: 500,
       response_format: { type: 'json_object' }
     });
 
@@ -358,9 +414,7 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
     }, '✅ [AI-ANALYSIS] OpenAI API response received for questions');
 
     const responseText = completion.choices[0]?.message?.content;
-    if (!responseText) {
-      throw new Error('Empty AI response');
-    }
+    if (!responseText) throw new Error('Empty AI response');
 
     const result = JSON.parse(responseText);
     const promptTokens = completion.usage?.prompt_tokens || 0;
@@ -368,20 +422,14 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
     const totalTokens = completion.usage?.total_tokens || 0;
     const costUsd = calculateCost(promptTokens, completionTokens);
 
-    // Log API call
     await logAICall({
-      orgId,
-      ruleId,
+      orgId, ruleId,
       requestType: 'notification_questions',
       model: 'gpt-4o-mini',
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      costUsd,
-      metadata: { messages_count: messages.length, timeout_hours: timeoutHours }
+      promptTokens, completionTokens, totalTokens, costUsd,
+      metadata: { messages_count: messages.length, timeout_hours: timeoutHours, sensitivity: sensitivityLevel }
     });
 
-    // Transform results
     const questions = (result.questions || [])
       .filter((q: { answered: boolean }) => !q.answered)
       .map((q: { index: number; question_summary: string }) => {
@@ -404,23 +452,15 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
       cost_usd: costUsd
     }, '📊 [AI-ANALYSIS] Questions analysis result');
 
-    return {
-      questions,
-      tokens_used: totalTokens,
-      cost_usd: costUsd,
-    };
+    return { questions, tokens_used: totalTokens, cost_usd: costUsd };
   } catch (error) {
-    logger.error({ 
+    logger.error({
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       rule_id: ruleId,
       org_id: orgId
     }, '❌ [AI-ANALYSIS] Questions analysis failed');
-    return {
-      questions: [],
-      tokens_used: 0,
-      cost_usd: 0,
-    };
+    return { questions: [], tokens_used: 0, cost_usd: 0 };
   }
 }
 

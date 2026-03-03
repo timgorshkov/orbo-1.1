@@ -42,6 +42,9 @@ const RESERVED_FIELDS = new Set([
   // Event behavior
   'event_attendance',
   
+  // Introduction extraction (admin-visible system field)
+  'introduction_raw',
+
   // Meta
   'last_enriched_at',
   'enrichment_version',

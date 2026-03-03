@@ -28,6 +28,8 @@ interface NotificationRule {
   config: {
     groups?: string[] | null;
     severity_threshold?: 'low' | 'medium' | 'high';
+    sensitivity?: number;        // 1-5 sensitivity level (overrides severity_threshold)
+    custom_prompt?: string;      // Optional custom instructions for AI
     check_interval_minutes?: number;
     timeout_hours?: number;
     work_hours_start?: string;
@@ -366,6 +368,90 @@ async function getGroupTitle(chatId: string): Promise<string> {
     return data?.title || `Группа ${chatId}`;
   } catch {
     return `Группа ${chatId}`;
+  }
+}
+
+/**
+ * Get MAX group title by max_chat_id
+ */
+async function getMaxGroupTitle(chatId: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('max_groups')
+      .select('title')
+      .eq('max_chat_id', chatId)
+      .single();
+    return data?.title || `MAX группа ${chatId}`;
+  } catch {
+    return `MAX группа ${chatId}`;
+  }
+}
+
+/**
+ * Get org MAX group chat IDs
+ */
+async function getOrgMaxGroups(orgId: string, specificChatIds?: string[] | null): Promise<string[]> {
+  try {
+    if (specificChatIds && specificChatIds.length > 0) {
+      return specificChatIds.filter(id => id.startsWith('max:')).map(id => id.slice(4));
+    }
+    const { data } = await supabaseAdmin
+      .from('org_max_groups')
+      .select('max_chat_id')
+      .eq('org_id', orgId);
+    return (data || []).map((g: { max_chat_id: number }) => String(g.max_chat_id));
+  } catch (error) {
+    logger.error({ error, org_id: orgId }, 'Error getting MAX org groups');
+    return [];
+  }
+}
+
+/**
+ * Get recent messages from a MAX group
+ */
+async function getRecentMaxMessages(
+  maxChatId: string,
+  sinceMinutes: number = 60,
+  limit: number = 100
+): Promise<Message[]> {
+  try {
+    const since = new Date(Date.now() - sinceMinutes * 60 * 1000).toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('activity_events')
+      .select('id, max_user_id, max_chat_id, org_id, event_type, created_at, meta')
+      .eq('max_chat_id', maxChatId)
+      .eq('event_type', 'message')
+      .eq('messenger_type', 'max')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (error || !data || data.length === 0) return [];
+
+    // Resolve participant names
+    const maxUserIds = Array.from(new Set(data.map((m: any) => String(m.max_user_id))));
+    const { data: participants } = await supabaseAdmin
+      .from('participants')
+      .select('max_user_id, full_name, max_username')
+      .in('max_user_id', maxUserIds);
+
+    const nameMap = new Map<string, string>();
+    (participants || []).forEach((p: any) => {
+      nameMap.set(String(p.max_user_id), p.full_name || p.max_username || 'Участник');
+    });
+
+    return data.map((m: any) => ({
+      id: m.id,
+      text: m.meta?.text || '',
+      author_name: nameMap.get(String(m.max_user_id)) || 'Участник',
+      author_id: String(m.max_user_id),
+      created_at: m.created_at,
+      tg_chat_id: `max:${m.max_chat_id}`,
+    }));
+  } catch (error) {
+    logger.error({ error, max_chat_id: maxChatId }, 'Error getting MAX messages');
+    return [];
   }
 }
 
@@ -744,7 +830,9 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             messages,
             rule.org_id,
             rule.id,
-            severityThreshold
+            severityThreshold,
+            rule.config.sensitivity ?? null,
+            rule.config.custom_prompt ?? null
           );
           
           totalAiCost += analysis.cost_usd;
@@ -889,7 +977,9 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
             messages,
             rule.org_id,
             rule.id,
-            timeoutHours
+            timeoutHours,
+            rule.config.sensitivity ?? null,
+            rule.config.custom_prompt ?? null
           );
           
           totalAiCost += analysis.cost_usd;

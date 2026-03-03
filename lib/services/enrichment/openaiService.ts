@@ -104,16 +104,69 @@ export interface MessageWithContext {
  * AI Enrichment Result
  */
 export interface AIEnrichmentResult {
-  interests_keywords: string[];          // Top interests/expertise
-  topics_discussed: Record<string, number>; // Topic -> mention count
-  recent_asks: string[];                 // Recent questions/requests (last 1-2 weeks)
+  interests_keywords: string[];          // Specific named entities: technologies, tools, brands
+  topics_discussed: Record<string, number>; // Broad thematic categories -> mention count
+  recent_asks: string[];                 // Substantive requests (services, contractors, advice)
   city_inferred?: string;                // City if mentioned
   city_confidence?: number;              // 0-1 confidence
-  
+
+  // Introduction message extraction (if a self-intro was found)
+  introduction_raw?: string;             // Full verbatim text of the intro message
+  introduction_bio?: string;             // 2-3 sentence summary extracted from intro
+  introduction_goals?: string;           // What they want / looking for
+  introduction_offers?: string[];        // What they can help with / offer
+  introduction_asks?: string[];          // What they need / looking for
+
   // Meta
   tokens_used: number;
   cost_usd: number;
   analysis_date: string;
+}
+
+/**
+ * Patterns that indicate an introduction / self-presentation message
+ */
+const INTRO_HASHTAGS = ['#визитка', '#знакомство', '#about', '#мояистория', '#представляюсь', '#новичок'];
+const INTRO_PATTERNS = [
+  /привет[,!]?\s*(всем[,!]?)?\s*меня зовут/i,
+  /добрый день[,!]?\s*я\s+/i,
+  /я\s+(?:занимаюсь|работаю|помогаю|основатель|директор|руководитель|фрилансер)/i,
+  /моя экспертиза/i,
+  /обо мне:/i,
+  /расскажу о себе/i,
+  /немного о себе/i,
+];
+
+/**
+ * Detect an introduction/self-presentation message from a list of messages.
+ * Returns the message with the highest signal strength.
+ */
+function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithContext | null {
+  let best: MessageWithContext | null = null;
+  let bestScore = 0;
+
+  for (const m of messages) {
+    if (!m.is_participant) continue;
+    const text = m.text;
+    let score = 0;
+
+    for (const tag of INTRO_HASHTAGS) {
+      if (text.toLowerCase().includes(tag)) score += 3;
+    }
+    for (const pattern of INTRO_PATTERNS) {
+      if (pattern.test(text)) score += 2;
+    }
+    // Length bonus: real intro messages tend to be longer
+    if (text.length > 200) score += 1;
+    if (text.length > 500) score += 1;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = m;
+    }
+  }
+
+  return bestScore >= 2 ? best : null;
 }
 
 /**
@@ -140,75 +193,86 @@ export async function analyzeParticipantWithAI(
     eventSummary?: string[];
     applicationSummary?: string[];
     profileContext?: string[];
+  },
+  options?: {
+    hasGoals?: boolean; // If false, scan full message history for introduction
   }
 ): Promise<AIEnrichmentResult> {
-  // ⚠️ Don't filter by date - imported history may have old dates
-  // Use all available messages, but prioritize recent ones
   const now = new Date();
-  
-  // Sort by date (most recent first) - this ensures recent messages are analyzed first
-  const sortedMessages = [...messages].sort((a, b) => 
+
+  // Sort by date (most recent first)
+  const sortedMessages = [...messages].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
-  
-  // Use all messages, but limit to last 50 for token efficiency
-  // This allows analyzing imported history with old dates
+
+  // Limit to last 50 for the main analysis (token efficiency)
   const recentMessages = sortedMessages.slice(0, 50);
-  
-  // Prepare prompt
-  const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в Telegram-группе и выделить:
 
-1. **Интересы и экспертизу** (5-10 ключевых слов/фраз):
-   - О чём участник чаще всего говорит в своих сообщениях
-   - В каких темах проявляет экспертизу (даёт советы, делится опытом, упоминает профессиональные термины)
-   - Только существительные или короткие фразы (например: "PPC", "веб-дизайн", "Python", "event-менеджмент", "маркетинг", "программирование")
-   - Можешь включать общие темы, если они часто упоминаются ("работа", "бизнес", "обучение")
-   - Если участник упоминает конкретные технологии, инструменты, навыки - включи их
-   - Даже если сообщения короткие, попробуй найти хотя бы 2-3 интереса
-   - Если участник написал очень мало (<3 сообщений) - верни пустой массив []
+  // --- Introduction scan ---
+  // Scan ALL available messages (not just last 50) when goals are missing
+  const needsIntroScan = !options?.hasGoals;
+  const introMessage = needsIntroScan
+    ? detectIntroductionMessage(sortedMessages)
+    : detectIntroductionMessage(recentMessages);
 
-2. **Актуальные запросы/вопросы** (последние 1-2 недели):
-   - Что участник ищет или спрашивает в своих сообщениях
-   - Формулируй кратко (1-2 предложения на запрос)
-   - Включай как явные вопросы ("Где найти...?", "Как сделать...?"), так и неявные запросы ("Нужен...", "Ищу...")
-   - Если не нашёл запросов - верни пустой массив []
+  // --- Build system prompt ---
+  const introSection = introMessage
+    ? `
+5. **Сообщение-знакомство / визитка** (если найдено):
+   Ищи сообщения с хэштегами (#визитка, #знакомство и т.п.) или начинающиеся с "Привет, меня зовут", "Я занимаюсь" и т.п.
+   Если такое сообщение есть (оно будет отмечено 🪪), извлеки:
+   - "introduction_bio": краткое резюме о человеке (2-3 предложения)
+   - "introduction_goals": чего он ищет / что ему нужно от сообщества
+   - "introduction_offers": чем может помочь другим (массив строк)
+   - "introduction_asks": что ему нужно / его запросы (массив строк)
+   Если сообщения-визитки нет — верни все четыре поля как null / [].`
+    : '';
 
-3. **Обсуждаемые темы** (topics_discussed):
-   - Темы, которые участник упоминает в своих сообщениях
-   - Подсчитай сколько раз участник упоминал каждую тему
-   - Включай даже общие темы, если они упоминаются часто
-   - Если участник почти не писал - верни пустой объект {}
+  const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в группе (Telegram, WhatsApp, MAX) и выделить:
+
+1. **Интересы** (поле "interests", 5-10 элементов):
+   ТОЛЬКО конкретные именованные сущности: технологии (React, GPT-4, Figma, Python), сервисы (Notion, Miro, Stripe), бренды, методологии (Scrum, Jobs-to-be-Done), конкретные инструменты, имена известных людей.
+   НЕ включай широкие категории ("маркетинг", "продажи", "бизнес") — они идут в topics_discussed.
+   Если участник упоминает конкретный инструмент или технологию — включай.
+   Если участник написал очень мало (<3 сообщений) — верни [].
+
+2. **Актуальные запросы** (поле "recent_asks", только из последних 1-2 недель):
+   Включай ТОЛЬКО существенные запросы: поиск подрядчиков, сотрудников, услуг, инструментов, рекомендаций, профессиональных советов.
+   ИСКЛЮЧАЙ: риторические вопросы, реакции на новости/мемы, флуд, смолл-ток ("кто смотрел X?", "что думаете о Y?").
+   Примеры хороших запросов: "Ищу дизайнера для лендинга", "Нужен подрядчик по SEO", "Посоветуйте CRM для малого бизнеса".
+   Если не нашёл реальных запросов — верни [].
+
+3. **Обсуждаемые темы** (поле "topics_discussed"):
+   Широкие тематические категории с подсчётом упоминаний (маркетинг, продажи, HR, дизайн, разработка и т.п.).
+   Формат: {"тема": количество_упоминаний}.
+   Если участник почти не писал — верни {}.
 
 4. **Город/локация** (если упоминается):
-   - Определи город, если участник его упомянул
-   - Уверенность: 0.9 если явно указал ("Я в Москве"), 0.5 если косвенно ("московские события")
+   Уверенность: 0.9 если явно ("Я в Москве"), 0.5 если косвенно ("московские события").${introSection}
 
 **ФОРМАТ СООБЩЕНИЙ:**
 - ➡️ - сообщение самого участника (анализируй в первую очередь)
-- ↩️ - сообщение, на которое участник отвечал (используй как контекст для понимания темы)
-- 🔥 - сообщение, на которое участник поставил реакцию (сигнал об интересах)
-- 💬 - контекст обсуждения (соседние сообщения в треде)
+- ↩️ - сообщение, на которое участник отвечал (контекст)
+- 🔥 - сообщение, на которое участник поставил реакцию (сигнал интересов)
+- 💬 - контекст обсуждения (соседние сообщения)
+- 🪪 - сообщение-визитка / знакомство (особо важно для раздела 5)
 
 **ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ:**
-- 📅 - события, на которые участник зарегистрировался/пришёл (показывает его активность в офлайне)
-- 📋 - заявки участника в воронках (вступление, услуги)
-- 👤 - данные профиля (биография, компания, должность)
+- 📅 - события (активность офлайн)
+- 📋 - заявки в воронки
+- 👤 - данные профиля
 
 **ВАЖНО:**
-- Используй контекст ответов и реакций для более точного определения интересов
-- Если участник отвечает на вопрос о Python - значит он интересуется/разбирается в Python
-- Если участник ставит 🔥 на пост о маркетинге - это сигнал интереса к маркетингу
-- Учитывай события и заявки как дополнительные сигналы интересов и вовлечённости
-- Данные профиля (компания, должность) - важны для определения экспертизы
-- Фокус на последние 2 недели для "актуальных запросов"
-- Интересы - из всего периода, но с приоритетом на свежие
-- Возвращай только данные в формате JSON, без комментариев`;
+- interests = только конкретные именованные сущности (технологии, бренды, инструменты)
+- topics_discussed = широкие тематические категории со статистикой
+- recent_asks = только реальные деловые/профессиональные запросы
+- Возвращай только JSON, без комментариев`;
 
-  const messagesToAnalyze = recentMessages.slice(0, 50);
-  
-  // Build reacted messages section if available
-  const reactedSection = reactedMessages.length > 0 
-    ? `\n\n--- СООБЩЕНИЯ, НА КОТОРЫЕ УЧАСТНИК ПОСТАВИЛ РЕАКЦИИ (сигнал интересов) ---\n\n${
+  const messagesToAnalyze = recentMessages;
+
+  // Build reacted messages section
+  const reactedSection = reactedMessages.length > 0
+    ? `\n\n--- СООБЩЕНИЯ, НА КОТОРЫЕ УЧАСТНИК ПОСТАВИЛ РЕАКЦИИ ---\n\n${
         reactedMessages.map(r => {
           const authorInfo = r.author ? ` (${r.author})` : '';
           return `🔥 ${r.emoji}${authorInfo}: ${r.text}`;
@@ -216,7 +280,16 @@ export async function analyzeParticipantWithAI(
       }`
     : '';
 
-  // Build additional context sections (compact, token-efficient)
+  // Introduction message section (if found and not already in recentMessages)
+  let introSection2 = '';
+  if (introMessage) {
+    const isAlreadyIncluded = messagesToAnalyze.some(m => m.id === introMessage.id);
+    if (!isAlreadyIncluded) {
+      introSection2 = `\n\n--- СООБЩЕНИЕ-ВИЗИТКА (из истории, за пределами последних 50) ---\n\n🪪 ${introMessage.text.slice(0, 2000)}`;
+    }
+  }
+
+  // Additional context sections
   let profileSection = '';
   if (additionalContext?.profileContext && additionalContext.profileContext.length > 0) {
     profileSection = `\n\n--- ПРОФИЛЬ УЧАСТНИКА ---\n${additionalContext.profileContext.join('\n')}`;
@@ -232,42 +305,49 @@ export async function analyzeParticipantWithAI(
     applicationsSection = `\n\n--- ЗАЯВКИ ---\n${additionalContext.applicationSummary.map(a => `📋 ${a}`).join('\n')}`;
   }
 
+  const introJsonFields = introMessage
+    ? `,
+  "introduction_bio": "краткое резюме о человеке или null",
+  "introduction_goals": "что ищет в сообществе или null",
+  "introduction_offers": ["чем может помочь1", ...] или [],
+  "introduction_asks": ["что ему нужно1", ...] или []`
+    : '';
+
   const userPrompt = `Участник: ${participantName}${profileSection}
 
 Сообщения участника с контекстом (от новых к старым):
 
-${messagesToAnalyze.map((m, i) => {
+${messagesToAnalyze.map((m) => {
   const date = new Date(m.created_at);
   const daysAgo = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  
+  const isIntro = introMessage && m.id === introMessage.id;
+
   let messageBlock = '';
-  
-  // Добавляем контекст ответа (если есть)
+
   if (m.reply_to_text) {
     const authorInfo = m.reply_to_author ? ` (${m.reply_to_author})` : '';
     messageBlock += `↩️${authorInfo}: ${m.reply_to_text.slice(0, 200)}${m.reply_to_text.length > 200 ? '...' : ''}\n`;
   }
-  
-  // Добавляем контекст треда (если есть)
+
   if (m.thread_context && m.thread_context.length > 0) {
     m.thread_context.forEach(ctx => {
       messageBlock += `💬 ${ctx.slice(0, 150)}${ctx.length > 150 ? '...' : ''}\n`;
     });
   }
-  
-  // Само сообщение участника
-  messageBlock += `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
-  
+
+  const prefix = isIntro ? '🪪' : '➡️';
+  messageBlock += `${prefix} [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
+
   return messageBlock;
-}).join('\n\n')}${reactedSection}${eventsSection}${applicationsSection}
+}).join('\n\n')}${introSection2}${reactedSection}${eventsSection}${applicationsSection}
 
 Верни результат строго в формате JSON:
 {
-  "interests": ["интерес1", "интерес2", ...],
-  "topics_discussed": {"тема1": количество_упоминаний, "тема2": ...},
-  "recent_asks": ["запрос1", "запрос2", ...],
+  "interests": ["конкретная технология/бренд/инструмент", ...],
+  "topics_discussed": {"широкая тема": количество_упоминаний, ...},
+  "recent_asks": ["существенный запрос", ...],
   "city": "Город" или null,
-  "city_confidence": 0.0-1.0 или null
+  "city_confidence": 0.0-1.0 или null${introJsonFields}
 }`;
 
   try {
@@ -340,7 +420,13 @@ ${messagesToAnalyze.map((m, i) => {
       recent_asks: result.recent_asks || [],
       city_inferred: result.city || undefined,
       city_confidence: result.city_confidence || undefined,
-      
+
+      introduction_raw: introMessage?.text || undefined,
+      introduction_bio: result.introduction_bio || undefined,
+      introduction_goals: result.introduction_goals || undefined,
+      introduction_offers: Array.isArray(result.introduction_offers) ? result.introduction_offers : undefined,
+      introduction_asks: Array.isArray(result.introduction_asks) ? result.introduction_asks : undefined,
+
       tokens_used: totalTokens,
       cost_usd: costUsd,
       analysis_date: new Date().toISOString()
