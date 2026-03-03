@@ -45,6 +45,9 @@ const RESERVED_FIELDS = new Set([
   // Introduction extraction (admin-visible system field)
   'introduction_raw',
 
+  // AI-extracted contacts
+  'ai_extracted_contacts',
+
   // Meta
   'last_enriched_at',
   'enrichment_version',

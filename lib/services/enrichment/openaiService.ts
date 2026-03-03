@@ -566,6 +566,129 @@ ${recentMessages.map((m) => {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Contact extraction from messages (separate, on-demand pass)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface ExtractedContacts {
+  phone?: string;
+  email?: string;
+  telegram_link?: string;
+  company?: string;
+  position?: string;
+  confidence: number; // 0-1 overall confidence
+  tokens_used: number;
+  cost_usd: number;
+}
+
+/**
+ * Extract contact information from participant messages.
+ * Only extracts contacts that the participant shares about THEMSELVES —
+ * not contacts of other people or organizations.
+ */
+export async function extractContactsFromMessages(
+  messages: MessageWithContext[],
+  participantName: string,
+  orgId: string,
+  userId: string | null = null,
+  participantId: string | null = null,
+): Promise<ExtractedContacts> {
+  const ownMessages = messages
+    .filter(m => m.is_participant && m.text.length > 10)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 80);
+
+  if (ownMessages.length === 0) {
+    return { confidence: 0, tokens_used: 0, cost_usd: 0 };
+  }
+
+  const systemPrompt = `Ты — аналитик сообщений сообщества. Из переписки участника извлеки ЕГО СОБСТВЕННЫЕ контактные данные и профессиональную информацию.
+
+КРИТИЧЕСКИ ВАЖНО:
+- Извлекай ТОЛЬКО контакты, которые человек указывает КАК СВОИ (например, "мой телефон", "пишите мне", подпись в визитке, "я работаю в...").
+- НЕ извлекай контакты других людей, компаний-клиентов, сервисов, служб поддержки.
+- НЕ извлекай ссылки на каналы, группы, боты — только личные профили.
+- Если не уверен на 80%+ что контакт принадлежит именно этому участнику — НЕ включай.
+
+Верни JSON:
+- "phone": номер телефона (string) или null
+- "email": email (string) или null
+- "telegram_link": ссылка на личный Telegram (t.me/username) или @username (string) или null
+- "company": название компании где работает/которой владеет (string) или null
+- "position": должность / роль (string) или null
+- "confidence": общая уверенность 0.0-1.0 что найденное верно
+
+Если ничего достоверного не найдено, верни все null и confidence: 0.`;
+
+  const messagesText = ownMessages
+    .map(m => `[${new Date(m.created_at).toLocaleDateString('ru-RU')}] ${m.text.slice(0, 600)}`)
+    .join('\n\n');
+
+  const userPrompt = `Участник: ${participantName}
+
+Его сообщения:
+
+${messagesText}
+
+Извлеки контакты ТОЛЬКО этого участника. JSON.`;
+
+  const startTime = Date.now();
+  logger.info({ participant_id: participantId, participant_name: participantName }, '📇 [OPENAI_CALL] Starting contact extraction');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.1,
+    max_tokens: 300,
+    response_format: { type: 'json_object' }
+  });
+
+  const raw = response.choices[0].message.content || '{}';
+  const result = JSON.parse(raw);
+
+  const inputTokens = response.usage?.prompt_tokens || 0;
+  const outputTokens = response.usage?.completion_tokens || 0;
+  const totalTokens = response.usage?.total_tokens || 0;
+  const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
+
+  logger.info({
+    participant_id: participantId,
+    has_phone: !!result.phone,
+    has_email: !!result.email,
+    has_telegram: !!result.telegram_link,
+    has_company: !!result.company,
+    has_position: !!result.position,
+    confidence: result.confidence,
+    tokens: totalTokens,
+    cost_usd: costUsd,
+    duration_ms: Date.now() - startTime,
+  }, '📇 Contact extraction completed');
+
+  await logOpenAICall({
+    orgId, userId,
+    requestType: 'participant_contact_extraction',
+    model: 'gpt-4o-mini',
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens, costUsd,
+    metadata: { participant_id: participantId, participant_name: participantName }
+  });
+
+  return {
+    phone: result.phone || undefined,
+    email: result.email || undefined,
+    telegram_link: result.telegram_link || undefined,
+    company: result.company || undefined,
+    position: result.position || undefined,
+    confidence: result.confidence || 0,
+    tokens_used: totalTokens,
+    cost_usd: costUsd,
+  };
+}
+
 /**
  * Cost estimation before running analysis
  */

@@ -45,6 +45,8 @@ export default function ParticipantProfileCard({
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [archivePending, setArchivePending] = useState(false)
   const [nameCopied, setNameCopied] = useState(false)
+  const [contactsExtracting, setContactsExtracting] = useState(false)
+  const [contactsError, setContactsError] = useState<string | null>(null)
   
   const isArchived = participant.participant_status === 'excluded'
   
@@ -643,6 +645,89 @@ export default function ParticipantProfileCard({
               )}
             </div>
 
+            {/* AI-extracted contacts (admin-only) */}
+            {isAdmin && !editing && (() => {
+              const ec = participant.custom_attributes?.ai_extracted_contacts;
+              if (!ec) return null;
+              const items: { label: string; value: string; href?: string }[] = [];
+              if (ec.company) items.push({ label: 'Компания', value: ec.company });
+              if (ec.position) items.push({ label: 'Должность', value: ec.position });
+              if (ec.phone && ec.phone !== participant.phone) items.push({ label: 'Телефон (AI)', value: ec.phone, href: `tel:${ec.phone}` });
+              if (ec.email && ec.email !== participant.email) items.push({ label: 'Email (AI)', value: ec.email, href: `mailto:${ec.email}` });
+              if (ec.telegram_link) {
+                const tgVal = ec.telegram_link.startsWith('http') ? ec.telegram_link : `https://t.me/${ec.telegram_link.replace(/^@/, '')}`;
+                items.push({ label: 'Telegram (AI)', value: ec.telegram_link, href: tgVal });
+              }
+              if (items.length === 0) return null;
+              return (
+                <div className="pt-2 mt-2 border-t border-dashed border-gray-200 space-y-1.5">
+                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Найдено из сообщений</span>
+                  {items.map(it => (
+                    <div key={it.label} className="flex items-center gap-3 pl-1">
+                      <span className="text-xs text-gray-500 w-24">{it.label}</span>
+                      {it.href ? (
+                        <a href={it.href} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline truncate">
+                          {it.value}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-gray-800 truncate">{it.value}</span>
+                      )}
+                    </div>
+                  ))}
+                  {ec.confidence != null && (
+                    <span className="text-[10px] text-gray-400">Уверенность: {Math.round(ec.confidence * 100)}%</span>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Extract contacts button (admin-only) */}
+            {isAdmin && !editing && (
+              <div className="pt-1">
+                <button
+                  onClick={async () => {
+                    setContactsExtracting(true);
+                    setContactsError(null);
+                    try {
+                      const res = await fetch(`/api/participants/${participant.id}/extract-contacts`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orgId }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        setContactsError(data.error || 'Ошибка');
+                        return;
+                      }
+                      if (onDetailUpdate) {
+                        const refRes = await fetch(`/api/participants/${participant.id}?orgId=${orgId}`);
+                        if (refRes.ok) {
+                          const refreshed = await refRes.json();
+                          onDetailUpdate(refreshed);
+                        }
+                      }
+                    } catch {
+                      setContactsError('Ошибка сети');
+                    } finally {
+                      setContactsExtracting(false);
+                    }
+                  }}
+                  disabled={contactsExtracting}
+                  className="text-xs text-gray-400 hover:text-blue-600 underline underline-offset-2 transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  {contactsExtracting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border border-gray-400 border-t-transparent" />
+                      <span>Ищу контакты...</span>
+                    </>
+                  ) : (
+                    '📇 Найти контакты из сообщений'
+                  )}
+                </button>
+                {contactsError && <p className="text-xs text-red-500 mt-0.5">{contactsError}</p>}
+              </div>
+            )}
+
             {/* Created At */}
             <div className="flex items-center gap-3">
               <Calendar className="h-4 w-4 text-orange-600 flex-shrink-0" />
@@ -803,7 +888,9 @@ export default function ParticipantProfileCard({
                 // Import metadata (WhatsApp imports) - internal only
                 'import_date', 'whatsapp_imported',
                 // Introduction extraction - admin system field, not for manual editing
-                'introduction_raw'
+                'introduction_raw',
+                // AI-extracted contacts
+                'ai_extracted_contacts'
               ];
               
               const userEditableAttrs = Object.entries(fields.custom_attributes)
