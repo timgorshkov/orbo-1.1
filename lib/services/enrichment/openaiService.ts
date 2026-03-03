@@ -169,17 +169,106 @@ function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithC
   return bestScore >= 2 ? best : null;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Pass 1: Introduction extraction (runs only when goals fields are empty)
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface IntroExtractionResult {
+  introduction_raw: string;
+  introduction_bio: string | null;
+  introduction_goals: string | null;
+  introduction_offers: string[];
+  introduction_asks: string[];
+  tokens_used: number;
+  cost_usd: number;
+}
+
+async function extractIntroduction(
+  introMessage: MessageWithContext,
+  participantName: string,
+  orgId: string,
+  userId: string | null,
+  participantId: string | null,
+): Promise<IntroExtractionResult> {
+  const systemPrompt = `Ты — аналитик сообществ. Тебе дано сообщение-визитка участника (представление в группе). 
+Извлеки из него структурированную информацию.
+
+Верни JSON:
+- "bio": краткое резюме кто этот человек (2-3 предложения). Не пересказывай текст, а обобщи суть.
+- "goals": чего ищет / зачем пришёл в сообщество (строка) или null
+- "offers": чем может помочь другим (массив строк, 1-5 пунктов) или []
+- "asks": что нужно / ищет (массив строк, 1-5 пунктов) или []`;
+
+  const userPrompt = `Участник: ${participantName}
+
+Сообщение-визитка:
+${introMessage.text.slice(0, 3000)}
+
+Извлеки bio, goals, offers, asks. Верни JSON.`;
+
+  const startTime = Date.now();
+  logger.info({ participant_id: participantId, participant_name: participantName }, '🪪 [OPENAI_CALL] Starting introduction extraction');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.3,
+    max_tokens: 600,
+    response_format: { type: 'json_object' }
+  });
+
+  const raw = response.choices[0].message.content || '{}';
+  const result = JSON.parse(raw);
+
+  const inputTokens = response.usage?.prompt_tokens || 0;
+  const outputTokens = response.usage?.completion_tokens || 0;
+  const totalTokens = response.usage?.total_tokens || 0;
+  const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
+
+  logger.info({
+    participant_id: participantId,
+    has_bio: !!result.bio,
+    has_goals: !!result.goals,
+    offers_count: result.offers?.length || 0,
+    asks_count: result.asks?.length || 0,
+    tokens: totalTokens,
+    cost_usd: costUsd,
+    duration_ms: Date.now() - startTime,
+  }, '🪪 Introduction extraction completed');
+
+  await logOpenAICall({
+    orgId, userId,
+    requestType: 'participant_intro_extraction',
+    model: 'gpt-4o-mini',
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens, costUsd,
+    metadata: { participant_id: participantId, participant_name: participantName }
+  });
+
+  return {
+    introduction_raw: introMessage.text,
+    introduction_bio: result.bio || null,
+    introduction_goals: result.goals || null,
+    introduction_offers: Array.isArray(result.offers) ? result.offers : [],
+    introduction_asks: Array.isArray(result.asks) ? result.asks : [],
+    tokens_used: totalTokens,
+    cost_usd: costUsd,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Pass 2: Main analysis (interests, topics, asks)  — always runs
+// ──────────────────────────────────────────────────────────────────────────────
+
 /**
- * Analyze participant's messages with AI
+ * Analyze participant's messages with AI (two-pass approach)
  * 
- * @param messages - Messages with context (last 90 days, prioritize recent)
- * @param participantName - Name of the participant being analyzed
- * @param orgId - Organization ID (for logging)
- * @param userId - User ID who triggered the analysis (for logging)
- * @param participantId - Participant ID (for metadata)
- * @param groupKeywords - Keywords from telegram_groups table (for context)
- * @param reactedMessages - Messages the participant reacted to (interest signals)
- * @returns AI enrichment result
+ * Pass 1 (conditional): Extract introduction message → fill goals/offers/bio
+ * Pass 2 (always): Analyze interests, topics, asks from recent messages
  */
 export async function analyzeParticipantWithAI(
   messages: MessageWithContext[],
@@ -195,104 +284,47 @@ export async function analyzeParticipantWithAI(
     profileContext?: string[];
   },
   options?: {
-    hasGoals?: boolean; // If false, scan full message history for introduction
+    hasGoals?: boolean;
   }
 ): Promise<AIEnrichmentResult> {
   const now = new Date();
 
-  // Sort by date (most recent first)
   const sortedMessages = [...messages].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  // Limit to last 50 for the main analysis (token efficiency)
   const recentMessages = sortedMessages.slice(0, 50);
 
-  // --- Introduction scan ---
-  // Scan ALL available messages (not just last 50) when goals are missing
+  // ── Pass 1: Introduction extraction (only when goals are not filled) ──
+  let introResult: IntroExtractionResult | null = null;
   const needsIntroScan = !options?.hasGoals;
-  const introMessage = needsIntroScan
-    ? detectIntroductionMessage(sortedMessages)
-    : detectIntroductionMessage(recentMessages);
 
-  // --- Build system prompt ---
-  const introSection = introMessage
-    ? `
-5. **Сообщение-знакомство / визитка** (если найдено):
-   Ищи сообщения с хэштегами (#визитка, #знакомство и т.п.) или начинающиеся с "Привет, меня зовут", "Я занимаюсь" и т.п.
-   Если такое сообщение есть (оно будет отмечено 🪪), извлеки:
-   - "introduction_bio": краткое резюме о человеке (2-3 предложения)
-   - "introduction_goals": чего он ищет / что ему нужно от сообщества
-   - "introduction_offers": чем может помочь другим (массив строк)
-   - "introduction_asks": что ему нужно / его запросы (массив строк)
-   Если сообщения-визитки нет — верни все четыре поля как null / [].`
-    : '';
-
-  const systemPrompt = `Ты - аналитик сообществ. Твоя задача: проанализировать сообщения участника в группе (Telegram, WhatsApp, MAX) и выделить:
-
-1. **Интересы** (поле "interests", 5-15 элементов):
-   Конкретные объекты интереса — всё, что можно назвать по имени: технологии (React, GPT-4, Python), сервисы (Notion, Miro, Stripe), компании и бренды (Яндекс, Сбер, Google), методики (Scrum, Jobs-to-be-Done, JTBD), сферы деятельности с уточнением (e-commerce, EdTech, PropTech, UX/UI, prompt engineering), имена известных людей, названия событий из секции 📅.
-   ТАКЖЕ используй события из раздела «Участие в событиях» (📅) — названия событий указывают на интересы участника.
-   НЕ включай голые абстракции без предмета: "маркетинг", "продажи", "бизнес" — только если есть конкретный контекст ("performance-маркетинг", "B2B-продажи", "email-маркетинг").
-   Если совсем не нашёл ничего предметного — верни [].
-
-2. **Актуальные запросы** (поле "recent_asks", только из последних 1-2 недель):
-   Включай ТОЛЬКО существенные запросы: поиск подрядчиков, сотрудников, услуг, инструментов, рекомендаций, профессиональных советов.
-   ИСКЛЮЧАЙ: риторические вопросы, реакции на новости/мемы, флуд, смолл-ток ("кто смотрел X?", "что думаете о Y?").
-   Примеры хороших запросов: "Ищу дизайнера для лендинга", "Нужен подрядчик по SEO", "Посоветуйте CRM для малого бизнеса".
-   Если не нашёл реальных запросов — верни [].
-
-3. **Обсуждаемые темы** (поле "topics_discussed"):
-   Широкие тематические категории с подсчётом упоминаний (маркетинг, продажи, HR, дизайн, разработка и т.п.).
-   Формат: {"тема": количество_упоминаний}.
-   Если участник почти не писал — верни {}.
-
-4. **Город/локация** (если упоминается):
-   Уверенность: 0.9 если явно ("Я в Москве"), 0.5 если косвенно ("московские события").${introSection}
-
-**ФОРМАТ СООБЩЕНИЙ:**
-- ➡️ - сообщение самого участника (анализируй в первую очередь)
-- ↩️ - сообщение, на которое участник отвечал (контекст)
-- 🔥 - сообщение, на которое участник поставил реакцию (сигнал интересов)
-- 💬 - контекст обсуждения (соседние сообщения)
-- 🪪 - сообщение-визитка / знакомство (особо важно для раздела 5)
-
-**ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ:**
-- 📅 - события (активность офлайн)
-- 📋 - заявки в воронки
-- 👤 - данные профиля
-
-**ВАЖНО:**
-- interests = конкретные именованные объекты: технологии, сервисы, компании, бренды, конкретные сферы, имена — включай события из 📅 как сигналы интересов
-- topics_discussed = широкие тематические категории со статистикой упоминаний
-- recent_asks = только реальные деловые/профессиональные запросы
-- Возвращай только JSON, без комментариев`;
-
-  const messagesToAnalyze = recentMessages;
-
-  // Build reacted messages section
-  const reactedSection = reactedMessages.length > 0
-    ? `\n\n--- СООБЩЕНИЯ, НА КОТОРЫЕ УЧАСТНИК ПОСТАВИЛ РЕАКЦИИ ---\n\n${
-        reactedMessages.map(r => {
-          const authorInfo = r.author ? ` (${r.author})` : '';
-          return `🔥 ${r.emoji}${authorInfo}: ${r.text}`;
-        }).join('\n\n')
-      }`
-    : '';
-
-  // Introduction message section (if found and not already in recentMessages)
-  let introSection2 = '';
-  if (introMessage) {
-    const isAlreadyIncluded = messagesToAnalyze.some(m => m.id === introMessage.id);
-    if (!isAlreadyIncluded) {
-      introSection2 = `\n\n--- СООБЩЕНИЕ-ВИЗИТКА (из истории, за пределами последних 50) ---\n\n🪪 ${introMessage.text.slice(0, 2000)}`;
+  if (needsIntroScan) {
+    const introMessage = detectIntroductionMessage(sortedMessages);
+    if (introMessage) {
+      try {
+        introResult = await extractIntroduction(introMessage, participantName, orgId, userId, participantId);
+      } catch (err) {
+        logger.warn({ participant_id: participantId, error: err instanceof Error ? err.message : String(err) },
+          '⚠️ Introduction extraction failed, continuing with main analysis');
+      }
     }
   }
 
-  // Additional context sections
+  // ── Pass 2: Main analysis (interests, topics, asks) ──
+  // Build profile context, including goals from intro if we just extracted them
+  const goalsContext: string[] = [];
+  if (introResult?.introduction_goals) goalsContext.push(`Цели: ${introResult.introduction_goals}`);
+  if (introResult?.introduction_offers?.length) goalsContext.push(`Предлагает: ${introResult.introduction_offers.join(', ')}`);
+  if (introResult?.introduction_asks?.length) goalsContext.push(`Ищет: ${introResult.introduction_asks.join(', ')}`);
+
   let profileSection = '';
-  if (additionalContext?.profileContext && additionalContext.profileContext.length > 0) {
-    profileSection = `\n\n--- ПРОФИЛЬ УЧАСТНИКА ---\n${additionalContext.profileContext.join('\n')}`;
+  const profileLines = [
+    ...(additionalContext?.profileContext || []),
+    ...goalsContext,
+  ];
+  if (profileLines.length > 0) {
+    profileSection = `\n\n--- ПРОФИЛЬ УЧАСТНИКА ---\n${profileLines.join('\n')}`;
   }
 
   let eventsSection = '';
@@ -305,22 +337,40 @@ export async function analyzeParticipantWithAI(
     applicationsSection = `\n\n--- ЗАЯВКИ ---\n${additionalContext.applicationSummary.map(a => `📋 ${a}`).join('\n')}`;
   }
 
-  const introJsonHint = introMessage
-    ? `
-- "introduction_bio": строка (краткое резюме кто этот человек, 2-3 предложения) или null
-- "introduction_goals": строка (чего ищет в сообществе) или null
-- "introduction_offers": массив строк (чем может помочь) или []
-- "introduction_asks": массив строк (что нужно) или []`
+  const reactedSection = reactedMessages.length > 0
+    ? `\n\n--- РЕАКЦИИ УЧАСТНИКА ---\n\n${
+        reactedMessages.map(r => {
+          const authorInfo = r.author ? ` (${r.author})` : '';
+          return `🔥 ${r.emoji}${authorInfo}: ${r.text}`;
+        }).join('\n\n')
+      }`
     : '';
+
+  const systemPrompt = `Ты — аналитик сообществ. Проанализируй сообщения участника и заполни ВСЕ поля.
+
+1. **interests** (массив, 5-15 элементов):
+   Конкретные объекты интереса: технологии (React, GPT-4, Python), сервисы (Notion, Miro), компании/бренды (Яндекс, Google), методики (Scrum, JTBD), конкретные сферы (e-commerce, EdTech, UX/UI), имена людей, названия событий из 📅.
+   НЕ голые абстракции ("маркетинг"), а с контекстом ("performance-маркетинг", "B2B-продажи").
+
+2. **topics_discussed** (объект, 3-8 тем):
+   Широкие тематические категории + число упоминаний. Пример: {"маркетинг": 5, "нетворкинг": 3}.
+
+3. **recent_asks** (массив): Существенные деловые запросы за последние 1-2 недели. [] если нет.
+
+4. **city** (строка или null), **city_confidence** (0-1 или null).
+
+Формат сообщений: ➡️ своё, ↩️ reply-контекст, 🔥 реакция, 💬 контекст треда, 📅 событие, 📋 заявка, 👤 профиль.
+
+⚠️ interests и topics_discussed — ОБЯЗАТЕЛЬНЫ, не возвращай пустыми если есть хоть какие-то сообщения.
+Возвращай только JSON.`;
 
   const userPrompt = `Участник: ${participantName}${profileSection}
 
-Сообщения участника с контекстом (от новых к старым):
+Сообщения (от новых к старым):
 
-${messagesToAnalyze.map((m) => {
+${recentMessages.map((m) => {
   const date = new Date(m.created_at);
   const daysAgo = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  const isIntro = introMessage && m.id === introMessage.id;
 
   let messageBlock = '';
 
@@ -335,20 +385,12 @@ ${messagesToAnalyze.map((m) => {
     });
   }
 
-  const prefix = isIntro ? '🪪' : '➡️';
-  messageBlock += `${prefix} [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
+  messageBlock += `➡️ [${daysAgo}д назад] ${m.text.slice(0, 500)}${m.text.length > 500 ? '...' : ''}`;
 
   return messageBlock;
-}).join('\n\n')}${introSection2}${reactedSection}${eventsSection}${applicationsSection}
+}).join('\n\n')}${reactedSection}${eventsSection}${applicationsSection}
 
-Проанализируй сообщения выше и верни JSON со следующими полями:
-- "interests": массив конкретных объектов интереса (5-15 элементов)
-- "topics_discussed": объект {"тема": количество_упоминаний} (3-8 тем)
-- "recent_asks": массив существенных запросов или []
-- "city": строка или null
-- "city_confidence": число 0-1 или null${introJsonHint}
-
-Верни ТОЛЬКО валидный JSON.`;
+Верни JSON с полями: interests, topics_discussed, recent_asks, city, city_confidence.`;
 
   try {
     const startTime = Date.now();
@@ -357,80 +399,69 @@ ${messagesToAnalyze.map((m) => {
       participant_id: participantId,
       participant_name: participantName,
       messages_count: messages.length,
+      recent_count: recentMessages.length,
+      has_intro: !!introResult,
       org_id: orgId
-    }, '🚀 [OPENAI_CALL] Starting AI enrichment request');
+    }, '🚀 [OPENAI_CALL] Starting main AI analysis');
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Cheaper model, good enough for extraction
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.3, // Low temperature for consistency
-      max_tokens: introMessage ? 2000 : 1200,
+      temperature: 0.3,
+      max_tokens: 1200,
       response_format: { type: 'json_object' }
     });
     
     const finishReason = response.choices[0]?.finish_reason;
-    logger.info({
-      participant_id: participantId,
-      response_id: response.id,
-      model: response.model,
-      usage: response.usage,
-      finish_reason: finishReason,
-    }, '✅ [OPENAI_CALL] Received response from OpenAI');
-    
     if (finishReason === 'length') {
-      logger.warn({
-        participant_id: participantId,
-        output_tokens: response.usage?.completion_tokens,
-      }, '⚠️ [OPENAI_CALL] Response truncated (finish_reason=length), output may be incomplete');
+      logger.warn({ participant_id: participantId }, '⚠️ Main analysis truncated (finish_reason=length)');
     }
     
     const rawResponse = response.choices[0].message.content || '{}';
     const result = JSON.parse(rawResponse);
     
-    // Calculate cost (gpt-4o-mini pricing: $0.15/1M input, $0.60/1M output)
     const inputTokens = response.usage?.prompt_tokens || 0;
     const outputTokens = response.usage?.completion_tokens || 0;
     const totalTokens = response.usage?.total_tokens || 0;
     const costUsd = (inputTokens * 0.15 / 1_000_000) + (outputTokens * 0.60 / 1_000_000);
+
+    // Accumulate cost from both passes
+    const totalCost = costUsd + (introResult?.cost_usd || 0);
+    const totalTokensBoth = totalTokens + (introResult?.tokens_used || 0);
     
     logger.info({ 
       participant_id: participantId,
-      participant_name: participantName,
-      messages_count: messages.length,
       interests_count: result.interests?.length || 0,
       topics_count: Object.keys(result.topics_discussed || {}).length,
       asks_count: result.recent_asks?.length || 0,
-      has_intro_bio: !!result.introduction_bio,
-      total_tokens: totalTokens,
-      cost_usd: costUsd,
-      output_tokens: outputTokens,
-    }, 'AI enrichment completed');
-    
+      total_tokens: totalTokensBoth,
+      cost_usd: totalCost,
+      pass2_tokens: totalTokens,
+      pass1_tokens: introResult?.tokens_used || 0,
+    }, 'AI enrichment completed (two-pass)');
+
     logger.debug({
       participant_id: participantId,
       raw_interests: result.interests,
       raw_topics: result.topics_discussed,
-      raw_asks: result.recent_asks,
     }, 'AI enrichment raw result');
     
-    // ⭐ Log API call to database
     await logOpenAICall({
-      orgId,
-      userId,
+      orgId, userId,
       requestType: 'participant_enrichment',
       model: 'gpt-4o-mini',
       promptTokens: inputTokens,
       completionTokens: outputTokens,
-      totalTokens,
-      costUsd,
+      totalTokens, costUsd,
       metadata: {
         participant_id: participantId,
         participant_name: participantName,
         message_count: messages.length,
-        analysis_duration_ms: Date.now() - startTime
+        analysis_duration_ms: Date.now() - startTime,
+        had_intro_pass: !!introResult,
       }
     });
     
@@ -441,18 +472,17 @@ ${messagesToAnalyze.map((m) => {
       city_inferred: result.city || undefined,
       city_confidence: result.city_confidence || undefined,
 
-      introduction_raw: introMessage?.text || undefined,
-      introduction_bio: result.introduction_bio || undefined,
-      introduction_goals: result.introduction_goals || undefined,
-      introduction_offers: Array.isArray(result.introduction_offers) ? result.introduction_offers : undefined,
-      introduction_asks: Array.isArray(result.introduction_asks) ? result.introduction_asks : undefined,
+      introduction_raw: introResult?.introduction_raw || undefined,
+      introduction_bio: introResult?.introduction_bio || undefined,
+      introduction_goals: introResult?.introduction_goals || undefined,
+      introduction_offers: introResult?.introduction_offers?.length ? introResult.introduction_offers : undefined,
+      introduction_asks: introResult?.introduction_asks?.length ? introResult.introduction_asks : undefined,
 
-      tokens_used: totalTokens,
-      cost_usd: costUsd,
+      tokens_used: totalTokensBoth,
+      cost_usd: totalCost,
       analysis_date: new Date().toISOString()
     };
   } catch (error) {
-    // Determine error type for better diagnostics
     let errorType = 'unknown';
     let errorDetails: any = {};
     
@@ -479,7 +509,6 @@ ${messagesToAnalyze.map((m) => {
       org_id: orgId,
       error_type: errorType,
       error: errMsg,
-      error_name: error instanceof Error ? error.name : undefined,
       stack: error instanceof Error ? error.stack : undefined,
       ...errorDetails
     }, `❌ [OPENAI_CALL] AI enrichment failed: ${errorType}`);
