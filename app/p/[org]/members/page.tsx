@@ -61,7 +61,7 @@ export default async function MembersPage({ params, searchParams }: {
       const { data: fastParticipants, error } = await adminSupabase
         .from('participants')
         .select(
-          'id, full_name, tg_username, tg_user_id, email, photo_url, bio, ' +
+          'id, full_name, username, tg_user_id, email, photo_url, bio, ' +
           'participant_status, created_at, last_activity_at, custom_attributes, ' +
           'source, phone, max_username, max_user_id, user_id'
         )
@@ -87,6 +87,7 @@ export default async function MembersPage({ params, searchParams }: {
         const userRole = p.user_id ? roleMap.get(p.user_id) : undefined
         return {
           ...p,
+          tg_username: p.username,   // column is 'username' in DB; components expect tg_username
           is_org_owner: userRole === 'owner',
           is_owner: userRole === 'owner',
           is_admin: userRole === 'admin',
