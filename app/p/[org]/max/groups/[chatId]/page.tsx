@@ -37,6 +37,14 @@ export default async function MaxGroupPage({
 
     if (!link) return notFound()
 
+    // Org timezone for activity dates (default Moscow GMT+3)
+    const { data: orgRow } = await db
+      .from('organizations')
+      .select('timezone')
+      .eq('id', orgId)
+      .maybeSingle()
+    const orgTimezone = (orgRow?.timezone as string) || 'Europe/Moscow'
+
     // Fetch group info
     const { data: group } = await db
       .from('max_groups')
@@ -58,23 +66,22 @@ export default async function MaxGroupPage({
     )
     const kpi = metricsRows?.[0] ?? { messages_30d: 0, joins_30d: 0, active_users_7d: 0 }
 
-    // Daily message activity — last 30 days, all days filled (zeros for gaps)
+    // Daily message activity — last 30 days in org timezone, all days filled (zeros for gaps)
     const { data: dailyRows } = await db.raw<any[]>(
       `SELECT
-        DATE(created_at) AS date,
-        COUNT(*)         AS message_count
+        DATE(created_at AT TIME ZONE $2) AS date,
+        COUNT(*) AS message_count
       FROM activity_events
       WHERE max_chat_id = $1
         AND messenger_type = 'max'
         AND event_type = 'message'
         AND created_at > now() - INTERVAL '30 days'
-      GROUP BY DATE(created_at)
+      GROUP BY DATE(created_at AT TIME ZONE $2)
       ORDER BY date`,
-      [chatId],
+      [chatId, orgTimezone],
     )
 
-    // Build a full 30-day array with zeros for days that have no data
-    // Normalize date to YYYY-MM-DD (pg may return Date object; String(Date).slice(0,10) would be "Mon Jan 26")
+    // Build a full 30-day array in org timezone (keys YYYY-MM-DD in org TZ)
     const toDateKey = (v: any) => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10)
     const activityMap = new Map<string, number>(
       (dailyRows ?? []).map((r: any) => [toDateKey(r.date), Number(r.message_count)])
@@ -82,7 +89,7 @@ export default async function MaxGroupPage({
     const dailyActivity = Array.from({ length: 30 }, (_, i) => {
       const d = new Date()
       d.setDate(d.getDate() - (29 - i))
-      const key = d.toISOString().slice(0, 10)
+      const key = d.toLocaleDateString('en-CA', { timeZone: orgTimezone }) // YYYY-MM-DD in org TZ
       return { date: key, message_count: activityMap.get(key) ?? 0 }
     })
 

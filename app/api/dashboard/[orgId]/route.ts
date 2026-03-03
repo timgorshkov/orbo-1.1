@@ -188,115 +188,95 @@ export async function GET(
 
     const isOnboarding = onboardingStatus.progress < 60 // Less than 3 of 5 steps complete
 
-    // 2. Get activity for last 14 days (messages per day)
-    // Note: totalParticipants already fetched in parallel above
+    // 2. Get activity for last 14 days (messages per day) in org timezone
     const fourteenDaysAgo = new Date()
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
     fourteenDaysAgo.setHours(0, 0, 0, 0)
 
-    // Reuse orgGroupsForCount data instead of separate query
     const chatIds = orgGroupsForCount?.map(g => String(g.tg_chat_id)) || []
-    
-    logger.debug({ 
-      group_count: chatIds.length,
-      org_id: orgId,
-      chat_ids: chatIds
-    }, 'Found groups for org');
 
-    // Get activity from group_metrics (aggregated daily metrics per group)
-    // Используем ту же логику, что и на странице группы - берём данные из group_metrics
-    const last14Days = []
-    for (let i = 13; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      last14Days.push(date.toISOString().split('T')[0])
-    }
-    
-    const activityByDay: Record<string, number> = {}
-    last14Days.forEach(date => {
-      activityByDay[date] = 0
-    })
-    
-    if (chatIds.length > 0) {
-      const fourteenDaysAgoStr = fourteenDaysAgo.toISOString().split('T')[0]
-      logger.debug({ 
-        since: fourteenDaysAgoStr,
-        chat_ids: chatIds,
-        org_id: orgId
-      }, 'Fetching group_metrics');
-      
-      // NOTE: НЕ фильтруем по org_id - берём все метрики по chat_id
-      // Группа может быть добавлена в несколько организаций, и её история должна быть видна везде
-      const { data: metricsData, error: metricsError } = await adminSupabase
-        .from('group_metrics')
-        .select('date, message_count, tg_chat_id, org_id')
-        .in('tg_chat_id', chatIds)
-        .gte('date', fourteenDaysAgoStr)
-        .order('date')
-      
-      if (metricsError) {
-        logger.warn({ 
-          error: metricsError.message,
-          org_id: orgId
-        }, 'Error fetching group_metrics');
-      } else {
-        logger.debug({ 
-          metrics_count: metricsData?.length || 0,
-          org_id: orgId
-        }, 'Found group_metrics entries');
-      }
-      
-      // Агрегируем по дням (суммируем по всем группам)
-      // Дедупликация: для каждой группы берём максимальное значение за день
-      // (на случай если метрики записаны для разных org_id)
-      const metricsPerGroupPerDay: Record<string, Record<string, number>> = {}
-      
-      metricsData?.forEach(metric => {
-        const chatKey = String(metric.tg_chat_id)
-        const dateKey = metric.date
-        
-        if (!metricsPerGroupPerDay[chatKey]) {
-          metricsPerGroupPerDay[chatKey] = {}
-        }
-        
-        // Берём максимальное значение (на случай дублей из разных org)
-        const currentVal = metricsPerGroupPerDay[chatKey][dateKey] || 0
-        metricsPerGroupPerDay[chatKey][dateKey] = Math.max(currentVal, metric.message_count || 0)
-      })
-      
-      // Теперь суммируем по группам
-      Object.values(metricsPerGroupPerDay).forEach(groupMetrics => {
-        Object.entries(groupMetrics).forEach(([dateKey, count]) => {
-          if (activityByDay[dateKey] !== undefined) {
-            activityByDay[dateKey] += count
-          }
-        })
-      })
-    } else {
-      logger.debug({ org_id: orgId }, 'No groups found, skipping activity fetch');
-    }
-    
-    // Also add WhatsApp activity (tg_chat_id = 0)
-    const { data: whatsappActivity } = await adminSupabase
-      .from('activity_events')
-      .select('created_at')
+    // Org timezone for chart (default Moscow GMT+3)
+    const { data: orgRow } = await adminSupabase
+      .from('organizations')
+      .select('timezone')
+      .eq('id', orgId)
+      .maybeSingle()
+    const orgTimezone = (orgRow?.timezone as string) || 'Europe/Moscow'
+
+    // Linked MAX groups for this org (to include MAX activity in chart)
+    const { data: orgMaxLinks } = await adminSupabase
+      .from('org_max_groups')
+      .select('max_chat_id')
       .eq('org_id', orgId)
-      .eq('tg_chat_id', 0)
-      .eq('event_type', 'message')
-      .gte('created_at', fourteenDaysAgo.toISOString())
-    
-    if (whatsappActivity) {
-      whatsappActivity.forEach(event => {
-        const dateKey = new Date(event.created_at).toISOString().split('T')[0]
-        if (activityByDay[dateKey] !== undefined) {
-          activityByDay[dateKey] += 1
-        }
-      })
-      logger.debug({ 
-        whatsapp_messages: whatsappActivity.length,
-        org_id: orgId
-      }, 'Added WhatsApp messages to activity chart');
+    const maxChatIds = (orgMaxLinks ?? []).map((r: { max_chat_id: string }) => String(r.max_chat_id))
+
+    logger.debug({
+      group_count: chatIds.length,
+      max_group_count: maxChatIds.length,
+      org_id: orgId,
+      org_timezone: orgTimezone
+    }, 'Found groups for org')
+
+    // Build 14 days in org timezone (YYYY-MM-DD)
+    const last14Days: string[] = []
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      last14Days.push(d.toLocaleDateString('en-CA', { timeZone: orgTimezone }))
     }
+    const activityByDay: Record<string, number> = {}
+    last14Days.forEach(date => { activityByDay[date] = 0 })
+
+    // Activity from activity_events: Telegram groups + WhatsApp + MAX groups, bucketed by org timezone
+    const activityPromises: Promise<{ data: { created_at: string }[] | null }>[] = []
+    if (chatIds.length > 0) {
+      activityPromises.push(
+        adminSupabase
+          .from('activity_events')
+          .select('created_at')
+          .eq('org_id', orgId)
+          .eq('event_type', 'message')
+          .gte('created_at', fourteenDaysAgo.toISOString())
+          .in('tg_chat_id', chatIds)
+          .then(r => ({ data: r.data }))
+      )
+    }
+    activityPromises.push(
+      adminSupabase
+        .from('activity_events')
+        .select('created_at')
+        .eq('org_id', orgId)
+        .eq('tg_chat_id', 0)
+        .eq('event_type', 'message')
+        .gte('created_at', fourteenDaysAgo.toISOString())
+        .then(r => ({ data: r.data }))
+    )
+    if (maxChatIds.length > 0) {
+      activityPromises.push(
+        adminSupabase
+          .from('activity_events')
+          .select('created_at')
+          .eq('org_id', orgId)
+          .eq('event_type', 'message')
+          .eq('messenger_type', 'max')
+          .gte('created_at', fourteenDaysAgo.toISOString())
+          .in('max_chat_id', maxChatIds)
+          .then(r => ({ data: r.data }))
+      )
+    }
+    const activityResults = await Promise.all(activityPromises)
+    const toOrgDateKey = (iso: string) =>
+      new Date(iso).toLocaleDateString('en-CA', { timeZone: orgTimezone })
+    activityResults.forEach(result => {
+      result.data?.forEach((event: { created_at: string }) => {
+        const dateKey = toOrgDateKey(event.created_at)
+        if (activityByDay[dateKey] !== undefined) activityByDay[dateKey] += 1
+      })
+    })
+    logger.debug({
+      total_events: activityResults.reduce((s, r) => s + (r.data?.length ?? 0), 0),
+      org_id: orgId
+    }, 'Activity chart from Telegram + WhatsApp + MAX (org TZ)')
 
     const activityChart = last14Days.map(date => ({
       date,
