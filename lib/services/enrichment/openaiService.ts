@@ -131,45 +131,57 @@ export interface AIEnrichmentResult {
  *  - Strong pattern → +3 (explicit self-description)
  *  - Weak pattern   → +2 (likely self-description)
  *  - Length bonus   → +1 only when score > 0 already (real intro messages tend to be long)
- *  - Negative hit   → score = 0, skip entirely
+ *  - Negative hit   → skip entirely
  *
- * Threshold: >= 4  (hashtag alone passes; 2 weak patterns pass; length alone never passes)
+ * Threshold: >= 3  (1 strong pattern passes; 1 weak + length passes)
  */
-const INTRO_HASHTAGS = ['#визитка', '#знакомство', '#about', '#мояистория', '#представляюсь', '#новичок'];
+const INTRO_HASHTAGS = [
+  '#визитка', '#знакомство', '#about', '#мояистория', '#представляюсь', '#новичок',
+  '#intro', '#aboutme', '#обомне', '#самопрезентация',
+];
 
 // Strong signals: explicitly describes who the person IS
 const INTRO_PATTERNS_STRONG = [
-  /меня зовут\s+\S/i,                              // "меня зовут Иван"
-  /я\s+(?:основатель|сооснователь|директор|руководитель|генеральный|ceo|cto|coo|cfo)/i,
-  /я\s+(?:занимаюсь|управляю|развиваю|строю|создаю)\s+\S/i,
-  /моя\s+(?:компания|студия|агентство|команда|сфера|экспертиза)/i,
-  /обо мне[:：]/i,
-  /о себе[:：]/i,
+  /меня зовут\s+\S/i,
+  /я\s+[-–—]\s*\S/i,                               // "Я — Тимур, ..."
+  /я\s+(?:основатель|сооснователь|директор|руководитель|генеральный|ceo|cto|coo|cfo|cmo|cpo)/i,
+  /я\s+(?:занимаюсь|управляю|развиваю|строю|создаю|веду|возглавляю)\s+\S/i,
+  /моя?\s+(?:компания|студия|агентство|команда|сфера|экспертиза|фирма|бизнес)/i,
+  /обо мне/i,
+  /о себе/i,
   /кратко о себе/i,
+  /представлюсь/i,
+  /давайте познакомимся/i,
+  /коллеги,?\s*привет/i,                            // "Коллеги, привет! Я..."
 ];
 
 // Weak signals: may indicate self-description
 const INTRO_PATTERNS_WEAK = [
   /привет[,!]?\s*(всем)?[,!]?\s*я\s+/i,
   /добрый день[,!]?\s*(?:всем[,!]?\s*)?я\s+/i,
+  /здравствуйте[,!]?\s*я\s+/i,
   /расскажу о себе/i,
   /немного о себе/i,
-  /я\s+(?:работаю|помогаю|фрилансер|консультант|эксперт)\s/i,
+  /я\s+(?:работаю|помогаю|фрилансер|консультант|эксперт|предприниматель|специалист|инженер|аналитик|маркетолог)\b/i,
   /чем я занимаюсь/i,
   /моя деятельность/i,
+  /сферы?\s+(?:моей|моих)\s+(?:деятельности|интересов|компетенций)/i,
+  /специализируюсь\s+(?:на|в)\s+/i,
+  /мой\s+(?:опыт|бэкграунд|профиль)/i,
+  /открыт[аы]?\s+(?:к|для)\s+(?:сотрудничеств|предложени|контакт)/i,
+  /могу быть полез/i,
+  /готов[аы]?\s+(?:помочь|поделиться|сотрудничать)/i,
+  /ищу\s+(?:партнёр|подрядчик|клиент|заказ|проект|работу|сотруднич)/i,
 ];
 
 // Negative indicators: these strongly suggest the message is NOT a self-introduction
 const INTRO_NEGATIVE = [
-  /\b(он|она|они|его|её|им|ему|ей)\b.*\b(ответил|написал|сказал|спросил)\b/i,  // talking about others
-  /^из всех/i,         // "Из всех последних..." — narrative about events, not self
-  /^напомн/i,          // "Напомню..." — not self-intro
-  /^вчера|^сегодня|^недавно/i,  // temporal narrative
+  /\b(он|она|они)\b.{0,30}\b(ответил|написал|сказал|спросил|сообщил)\b/i,
 ];
 
 /**
  * Detect an introduction/self-presentation message from a list of messages.
- * Returns the highest-scoring message only when the score is >= 4.
+ * Returns the highest-scoring message only when the score is >= 3.
  */
 function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithContext | null {
   let best: MessageWithContext | null = null;
@@ -203,7 +215,7 @@ function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithC
     }
   }
 
-  return bestScore >= 4 ? best : null;
+  return bestScore >= 3 ? best : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
