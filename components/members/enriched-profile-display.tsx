@@ -43,6 +43,29 @@ export function EnrichedProfileDisplay({
   // Extract sections
   const [introExpanded, setIntroExpanded] = useState(false);
   const toggleIntro = useCallback(() => setIntroExpanded(v => !v), []);
+  const [introDismissed, setIntroDismissed] = useState(false);
+  const [introDismissing, setIntroDismissing] = useState(false);
+
+  const handleDismissIntro = useCallback(async () => {
+    if (!participant.id || introDismissing) return;
+    setIntroDismissing(true);
+    try {
+      const currentAttrs = participant.custom_attributes || {};
+      const { introduction_raw: _removed, introduction_bio: _bio, introduction_goals: _goals,
+              introduction_offers: _offers, introduction_asks: _asks, ...rest } = currentAttrs as any;
+      await fetch(`/api/participants/${participant.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ custom_attributes: rest }),
+      });
+      setIntroDismissed(true);
+      setIntroExpanded(false);
+    } catch {
+      // silently ignore
+    } finally {
+      setIntroDismissing(false);
+    }
+  }, [participant.id, participant.custom_attributes, introDismissing]);
 
   const aiInsights = {
     interests: attrs.interests_keywords || [],
@@ -390,19 +413,30 @@ export function EnrichedProfileDisplay({
         )}
         
         {/* Introduction raw message (admin-only, collapsible) */}
-        {isAdmin && attrs.introduction_raw && (
+        {isAdmin && attrs.introduction_raw && !introDismissed && (
           <div className="mt-4 pt-4 border-t border-gray-100">
-            <button
-              onClick={toggleIntro}
-              className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 mb-2"
-            >
-              <span>🪪 Сообщение-визитка</span>
-              <span className="text-xs text-gray-400 ml-1">{introExpanded ? '▲ Свернуть' : '▼ Показать'}</span>
-            </button>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={toggleIntro}
+                className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                <span>🪪 Сообщение-визитка</span>
+                <span className="text-xs text-gray-400 ml-1">{introExpanded ? '▲ Свернуть' : '▼ Показать'}</span>
+              </button>
+            </div>
             {introExpanded && (
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-gray-800 whitespace-pre-wrap">
-                {String(attrs.introduction_raw)}
-              </div>
+              <>
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-gray-800 whitespace-pre-wrap mb-2">
+                  {String(attrs.introduction_raw)}
+                </div>
+                <button
+                  onClick={handleDismissIntro}
+                  disabled={introDismissing}
+                  className="text-xs text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors disabled:opacity-50"
+                >
+                  {introDismissing ? 'Сбрасываю...' : '✕ Не является визиткой — сбросить'}
+                </button>
+              </>
             )}
           </div>
         )}

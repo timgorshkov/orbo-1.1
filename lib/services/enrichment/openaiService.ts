@@ -124,22 +124,52 @@ export interface AIEnrichmentResult {
 }
 
 /**
- * Patterns that indicate an introduction / self-presentation message
+ * Patterns that indicate an introduction / self-presentation message.
+ *
+ * Scoring rules:
+ *  - Hashtag match  → +4 (near-certain signal)
+ *  - Strong pattern → +3 (explicit self-description)
+ *  - Weak pattern   → +2 (likely self-description)
+ *  - Length bonus   → +1 only when score > 0 already (real intro messages tend to be long)
+ *  - Negative hit   → score = 0, skip entirely
+ *
+ * Threshold: >= 4  (hashtag alone passes; 2 weak patterns pass; length alone never passes)
  */
 const INTRO_HASHTAGS = ['#визитка', '#знакомство', '#about', '#мояистория', '#представляюсь', '#новичок'];
-const INTRO_PATTERNS = [
-  /привет[,!]?\s*(всем[,!]?)?\s*меня зовут/i,
-  /добрый день[,!]?\s*я\s+/i,
-  /я\s+(?:занимаюсь|работаю|помогаю|основатель|директор|руководитель|фрилансер)/i,
-  /моя экспертиза/i,
-  /обо мне:/i,
+
+// Strong signals: explicitly describes who the person IS
+const INTRO_PATTERNS_STRONG = [
+  /меня зовут\s+\S/i,                              // "меня зовут Иван"
+  /я\s+(?:основатель|сооснователь|директор|руководитель|генеральный|ceo|cto|coo|cfo)/i,
+  /я\s+(?:занимаюсь|управляю|развиваю|строю|создаю)\s+\S/i,
+  /моя\s+(?:компания|студия|агентство|команда|сфера|экспертиза)/i,
+  /обо мне[:：]/i,
+  /о себе[:：]/i,
+  /кратко о себе/i,
+];
+
+// Weak signals: may indicate self-description
+const INTRO_PATTERNS_WEAK = [
+  /привет[,!]?\s*(всем)?[,!]?\s*я\s+/i,
+  /добрый день[,!]?\s*(?:всем[,!]?\s*)?я\s+/i,
   /расскажу о себе/i,
   /немного о себе/i,
+  /я\s+(?:работаю|помогаю|фрилансер|консультант|эксперт)\s/i,
+  /чем я занимаюсь/i,
+  /моя деятельность/i,
+];
+
+// Negative indicators: these strongly suggest the message is NOT a self-introduction
+const INTRO_NEGATIVE = [
+  /\b(он|она|они|его|её|им|ему|ей)\b.*\b(ответил|написал|сказал|спросил)\b/i,  // talking about others
+  /^из всех/i,         // "Из всех последних..." — narrative about events, not self
+  /^напомн/i,          // "Напомню..." — not self-intro
+  /^вчера|^сегодня|^недавно/i,  // temporal narrative
 ];
 
 /**
  * Detect an introduction/self-presentation message from a list of messages.
- * Returns the message with the highest signal strength.
+ * Returns the highest-scoring message only when the score is >= 4.
  */
 function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithContext | null {
   let best: MessageWithContext | null = null;
@@ -148,17 +178,24 @@ function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithC
   for (const m of messages) {
     if (!m.is_participant) continue;
     const text = m.text;
+
+    // Skip messages that clearly describe events/actions about others
+    const hasNegative = INTRO_NEGATIVE.some(p => p.test(text));
+    if (hasNegative) continue;
+
     let score = 0;
 
     for (const tag of INTRO_HASHTAGS) {
-      if (text.toLowerCase().includes(tag)) score += 3;
+      if (text.toLowerCase().includes(tag)) score += 4;
     }
-    for (const pattern of INTRO_PATTERNS) {
+    for (const pattern of INTRO_PATTERNS_STRONG) {
+      if (pattern.test(text)) score += 3;
+    }
+    for (const pattern of INTRO_PATTERNS_WEAK) {
       if (pattern.test(text)) score += 2;
     }
-    // Length bonus: real intro messages tend to be longer
-    if (text.length > 200) score += 1;
-    if (text.length > 500) score += 1;
+    // Length bonus only when there is already a positive signal
+    if (score > 0 && text.length > 300) score += 1;
 
     if (score > bestScore) {
       bestScore = score;
@@ -166,7 +203,7 @@ function detectIntroductionMessage(messages: MessageWithContext[]): MessageWithC
     }
   }
 
-  return bestScore >= 2 ? best : null;
+  return bestScore >= 4 ? best : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
