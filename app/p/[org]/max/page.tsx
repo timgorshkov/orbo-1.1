@@ -1,4 +1,5 @@
 import { requireOrgAccess } from '@/lib/orgGuard';
+import { notFound } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { createAdminServer } from '@/lib/server/supabaseServer';
@@ -8,9 +9,9 @@ import MaxGroupsClient from './max-groups-client';
 
 export default async function MaxGroupsPage({ params }: { params: Promise<{ org: string }> }) {
   const logger = createServiceLogger('MaxGroupsPage');
+  const { org: orgId } = await params;
 
   try {
-    const { org: orgId } = await params;
     const { supabase, role } = await requireOrgAccess(orgId);
 
     if (!['owner', 'admin'].includes(role)) {
@@ -88,7 +89,12 @@ export default async function MaxGroupsPage({ params }: { params: Promise<{ org:
       </div>
     );
   } catch (error: any) {
-    logger.error({ error: error.message }, 'Error loading MAX groups page');
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === 'Unauthorized' || msg === 'Forbidden') {
+      logger.debug({ org_id: orgId }, 'MAX groups page: unauthenticated/forbidden access');
+      return notFound();
+    }
+    logger.error({ error: msg }, 'Error loading MAX groups page');
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold mb-4">MAX Группы</h1>

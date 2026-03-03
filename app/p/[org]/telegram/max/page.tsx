@@ -30,10 +30,12 @@ export default async function MaxPage({ params }: { params: Promise<{ org: strin
       </div>
     )
   } catch (error) {
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      org_id: orgId || 'unknown'
-    }, 'Max page error');
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === 'Unauthorized' || msg === 'Forbidden') {
+      logger.debug({ org_id: orgId || 'unknown' }, 'Max page: unauthenticated/forbidden access');
+    } else {
+      logger.error({ error: msg, org_id: orgId || 'unknown' }, 'Max page error');
+    }
     return notFound()
   }
 }

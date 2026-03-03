@@ -153,7 +153,12 @@ export default async function MaxGroupPage({
       </div>
     )
   } catch (error: any) {
-    logger.error({ error: error.message }, 'Error loading MAX group page')
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === 'Unauthorized' || msg === 'Forbidden') {
+      logger.debug({ org_id: orgId }, 'MAX group page: unauthenticated/forbidden access');
+      return notFound();
+    }
+    logger.error({ error: msg, org_id: orgId }, 'Error loading MAX group page')
     return (
       <div className="p-6">
         <p className="text-red-500">Ошибка загрузки страницы</p>
