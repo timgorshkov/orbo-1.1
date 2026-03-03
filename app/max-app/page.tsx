@@ -17,7 +17,6 @@ export default function MaxAppHome() {
   const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'redirecting' | 'no-param' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [diagInfo, setDiagInfo] = useState<string>('');
 
   useEffect(() => {
     try {
@@ -63,13 +62,6 @@ export default function MaxAppHome() {
       if (startParam) {
         processStartParam(startParam);
       } else {
-        const diag = {
-          href: window.location.href,
-          search: window.location.search,
-          hash: window.location.hash.substring(0, 200),
-          initDataFromHash: initDataFromHash ? initDataFromHash.substring(0, 100) + '...' : null,
-        };
-        setDiagInfo(JSON.stringify(diag, null, 2));
         setStatus('no-param');
       }
     } catch (err) {
@@ -109,11 +101,13 @@ export default function MaxAppHome() {
         )}
 
         {status === 'no-param' && (
-          <div className="space-y-3 text-left max-w-sm w-full">
-            <p className="text-sm font-semibold text-gray-700">Диагностика MAX WebApp</p>
-            <pre className="text-xs bg-gray-100 rounded p-3 overflow-auto max-h-96 whitespace-pre-wrap break-all">
-              {diagInfo || 'Нет данных'}
-            </pre>
+          <div className="space-y-3 text-center max-w-sm">
+            <p className="text-base font-medium text-gray-700">
+              Бот событий Orbo
+            </p>
+            <p className="text-sm text-gray-500">
+              Откройте событие по ссылке из чата или из списка — тогда здесь откроется форма регистрации.
+            </p>
           </div>
         )}
 
