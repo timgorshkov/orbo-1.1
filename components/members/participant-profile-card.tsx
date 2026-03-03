@@ -801,7 +801,9 @@ export default function ParticipantProfileCard({
                 // Event behavior (shown in separate section)
                 'event_attendance',
                 // Import metadata (WhatsApp imports) - internal only
-                'import_date', 'whatsapp_imported'
+                'import_date', 'whatsapp_imported',
+                // Introduction extraction - admin system field, not for manual editing
+                'introduction_raw'
               ];
               
               const userEditableAttrs = Object.entries(fields.custom_attributes)

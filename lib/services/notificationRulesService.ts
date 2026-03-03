@@ -537,12 +537,15 @@ async function getRecentMessages(
       const userIds = Array.from(new Set(activityData.map(m => m.tg_user_id)));
       const { data: participants } = await supabaseAdmin
         .from('participants')
-        .select('tg_user_id, full_name, username')
+        .select('tg_user_id, full_name, first_name, last_name, username')
         .in('tg_user_id', userIds);
       
       const nameMap = new Map<string, string>();
       (participants || []).forEach(p => {
-        nameMap.set(String(p.tg_user_id), p.full_name || p.username || 'Участник');
+        const nameFromParts = [p.first_name, p.last_name].filter(Boolean).join(' ');
+        const fullNameClean = p.full_name && !p.full_name.includes('@') ? p.full_name : '';
+        const displayName = fullNameClean || p.username || nameFromParts || 'Участник';
+        nameMap.set(String(p.tg_user_id), displayName);
       });
       
       return activityData.map(m => {
@@ -573,12 +576,16 @@ async function getRecentMessages(
     const userIds = Array.from(new Set(data.map(m => m.tg_user_id)));
     const { data: participants } = await supabaseAdmin
       .from('participants')
-      .select('tg_user_id, full_name, username')
+      .select('tg_user_id, full_name, first_name, last_name, username')
       .in('tg_user_id', userIds);
     
     const nameMap = new Map<string, string>();
     (participants || []).forEach(p => {
-      nameMap.set(String(p.tg_user_id), p.full_name || p.username || 'Участник');
+      // Prefer Telegram-style name; skip full_name if it looks like an email
+      const nameFromParts = [p.first_name, p.last_name].filter(Boolean).join(' ');
+      const fullNameClean = p.full_name && !p.full_name.includes('@') ? p.full_name : '';
+      const displayName = fullNameClean || p.username || nameFromParts || 'Участник';
+      nameMap.set(String(p.tg_user_id), displayName);
     });
     
     return data.map(m => ({
@@ -951,7 +958,8 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         }
         
         const timeoutHours = rule.config.timeout_hours || 2;
-        const allMessages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 50);
+        // Fetch up to 150 messages so answers that follow a question are included
+        const allMessages = await getRecentMessages(chatId, timeoutHours * 60 + 30, 150);
         
         logger.debug({ rule_name: rule.name, chat: groupTitle, message_count: allMessages.length, timeout_hours: timeoutHours, window_minutes: timeoutHours * 60 + 30 }, '❓ Unanswered question check: fetched messages');
         
