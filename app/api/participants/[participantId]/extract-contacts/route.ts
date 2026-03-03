@@ -175,9 +175,20 @@ export async function POST(
       participantId,
     );
 
-    // Save extracted contacts to custom_attributes (ai_extracted_contacts)
+    // Save extracted contacts:
+    // 1. Phone → promote to main participant.phone if currently empty (since Telegram/MAX
+    //    APIs do NOT expose phone numbers — a phone found in messages was shared by the user)
+    // 2. Everything else → save in custom_attributes.ai_extracted_contacts (additional block)
     const hasData = contacts.phone || contacts.email || contacts.telegram_link || contacts.company || contacts.position;
     if (hasData && contacts.confidence >= 0.5) {
+      const participantUpdate: Record<string, any> = {};
+
+      // Promote phone to main field if participant has no phone yet
+      if (contacts.phone && !participant.phone) {
+        participantUpdate.phone = contacts.phone;
+      }
+
+      // Save full extraction result to custom_attributes
       const currentAttrs = participant.custom_attributes || {};
       const contactsPayload: Record<string, any> = {};
       if (contacts.phone) contactsPayload.phone = contacts.phone;
@@ -194,9 +205,12 @@ export async function POST(
         { allowSystemFields: true }
       );
 
+      participantUpdate.custom_attributes = merged;
+      participantUpdate.updated_at = new Date().toISOString();
+
       await adminSupabase
         .from('participants')
-        .update({ custom_attributes: merged, updated_at: new Date().toISOString() })
+        .update(participantUpdate)
         .eq('id', participantId);
     }
 
