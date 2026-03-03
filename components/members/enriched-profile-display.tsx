@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ParticipantRecord } from '@/lib/types/participant';
@@ -41,6 +41,9 @@ export function EnrichedProfileDisplay({
   const attrs = participant.custom_attributes || {};
   
   // Extract sections
+  const [introExpanded, setIntroExpanded] = useState(false);
+  const toggleIntro = useCallback(() => setIntroExpanded(v => !v), []);
+
   const aiInsights = {
     interests: attrs.interests_keywords || [],
     city: attrs.city_inferred,
@@ -135,6 +138,7 @@ export function EnrichedProfileDisplay({
     aiInsights.city ||
     aiInsights.role ||
     aiInsights.recentAsks.length > 0 ||
+    Object.keys(aiInsights.topicsDiscussed).length > 0 ||
     Object.keys(aiInsights.topicsDiscussed).length > 0 ||
     !!aiInsights.introductionRaw;
 
@@ -385,12 +389,31 @@ export function EnrichedProfileDisplay({
           </div>
         )}
         
+        {/* Introduction raw message (admin-only, collapsible) */}
+        {isAdmin && attrs.introduction_raw && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <button
+              onClick={toggleIntro}
+              className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 mb-2"
+            >
+              <span>🪪 Сообщение-визитка</span>
+              <span className="text-xs text-gray-400 ml-1">{introExpanded ? '▲ Свернуть' : '▼ Показать'}</span>
+            </button>
+            {introExpanded && (
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-gray-800 whitespace-pre-wrap">
+                {String(attrs.introduction_raw)}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Empty state */}
         {!userDefined.cityConfirmed && 
          !userDefined.goals && 
          userDefined.offers.length === 0 && 
          userDefined.asks.length === 0 &&
-         !userDefined.bioCustom && (
+         !userDefined.bioCustom &&
+         !attrs.introduction_raw && (
           <p className="text-sm text-gray-500 italic">
             Пока не заполнено. {isAdmin && 'Нажмите "Редактировать" чтобы добавить.'}
           </p>
