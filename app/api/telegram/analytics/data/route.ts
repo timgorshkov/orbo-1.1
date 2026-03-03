@@ -205,6 +205,8 @@ export async function GET(request: Request) {
             .from('participants')
             .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
             .in('id', chunk)
+            .eq('org_id', orgId)          // 🔒 only show participants that belong to this org
+            .is('merged_into', null)       // 🔒 exclude ghost/merged records
           if (data) allMembers.push(...data)
         }
         

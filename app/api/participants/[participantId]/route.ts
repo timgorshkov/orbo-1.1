@@ -194,6 +194,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
         return handleRemoveTrait(adminClient, orgId, participantId, payload, logger);
       case 'mergeDuplicates':
         return handleMergeParticipants(adminClient, user.id, orgId, participantId, payload, logger);
+      case 'unmerge':
+        return handleUnmerge(adminClient, user.id, orgId, participantId, payload, logger);
       case 'archive':
         return handleArchiveParticipant(adminClient, user.id, orgId, participantId, logger);
       case 'restore':
@@ -633,6 +635,89 @@ async function mergeIntoTarget(
     merged_into: targetCanonical,
     merge_result: mergeResult || null
   });
+}
+
+/**
+ * Разъединение (unmerge) ранее объединённого участника.
+ * Освобождает ghostId: снимает merged_into и возвращает статус 'participant'.
+ * participantId здесь = canonical (основной профиль), ghostId = прикреплённый.
+ * Данные (traits, participant_groups), перенесённые при merge, не откатываются
+ * автоматически — сброс только связи merged_into.
+ */
+async function handleUnmerge(
+  supabase: SupabaseClient,
+  actorId: string,
+  orgId: string,
+  canonicalId: string,
+  payload: any,
+  logger?: ReturnType<typeof createAPILogger>
+): Promise<NextResponse> {
+  const { ghostId } = payload || {};
+
+  if (!ghostId || typeof ghostId !== 'string') {
+    return NextResponse.json({ error: 'ghostId required' }, { status: 400 });
+  }
+
+  // Verify the ghost belongs to this org and is merged into the canonical
+  const { data: ghost, error: ghostError } = await supabase
+    .from('participants')
+    .select('id, full_name, merged_into, participant_status, org_id')
+    .eq('id', ghostId)
+    .maybeSingle();
+
+  if (ghostError || !ghost) {
+    return NextResponse.json({ error: 'Ghost participant not found' }, { status: 404 });
+  }
+
+  if (ghost.org_id !== orgId) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+  }
+
+  if (ghost.merged_into !== canonicalId) {
+    return NextResponse.json({
+      error: 'This participant is not merged into the specified canonical',
+      details: { ghostId, expected_canonical: canonicalId, actual_merged_into: ghost.merged_into }
+    }, { status: 400 });
+  }
+
+  // Release the ghost: clear merged_into, restore status
+  const { error: updateError } = await supabase
+    .from('participants')
+    .update({
+      merged_into: null,
+      participant_status: 'participant',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ghostId);
+
+  if (updateError) {
+    if (logger) {
+      logger.error({ error: updateError.message, ghost_id: ghostId, canonical_id: canonicalId }, 'Error unmerging participant');
+    }
+    return NextResponse.json({ error: 'Failed to unmerge participant' }, { status: 500 });
+  }
+
+  // Also clear the participant_duplicates record so it can re-appear as a candidate
+  await supabase
+    .from('participant_duplicates')
+    .update({ status: 'pending' })
+    .or(`participant_id.eq.${ghostId},duplicate_participant_id.eq.${ghostId}`);
+
+  await logAdminAction({
+    orgId,
+    userId: actorId,
+    action: AdminActions.MERGE_PARTICIPANTS,
+    resourceType: ResourceTypes.PARTICIPANT,
+    resourceId: canonicalId,
+    metadata: { action_type: 'unmerge', released_ghost: ghostId, ghost_name: ghost.full_name }
+  });
+
+  if (logger) {
+    logger.info({ canonical_id: canonicalId, ghost_id: ghostId }, 'Participant unmerged (detached)');
+  }
+
+  const detail = await getParticipantDetail(orgId, canonicalId);
+  return NextResponse.json({ success: true, detail, released_ghost: ghostId });
 }
 
 /**
