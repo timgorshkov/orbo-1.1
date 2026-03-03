@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { Search, LayoutGrid, Table as TableIcon, Filter, Download, FileJson } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { Search, LayoutGrid, Table as TableIcon, Filter, Download, FileJson, Loader2, ChevronDown } from 'lucide-react'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
 import MembersTable from './members-table'
 import MembersFiltersSidebar, { type MembersFilters, getParticipantCategory } from './members-filters-sidebar'
 import BulkActionsBar from './bulk-actions-bar'
+
+const PAGE_SIZE = 50
 
 interface Participant {
   id: string
@@ -45,6 +47,7 @@ interface Tag {
 interface MembersViewProps {
   orgId: string
   initialParticipants: Participant[]
+  totalParticipantCount?: number
   availableTags?: Tag[]
   isAdmin: boolean
   adminMode: boolean
@@ -55,14 +58,21 @@ type ViewMode = 'cards' | 'table'
 export default function MembersView({
   orgId,
   initialParticipants,
+  totalParticipantCount,
   availableTags = [],
   isAdmin,
   adminMode,
 }: MembersViewProps) {
-  const [participants] = useState<Participant[]>(initialParticipants)
+  const [participants, setParticipants] = useState<Participant[]>(initialParticipants)
+  const [allLoaded, setAllLoaded] = useState(
+    totalParticipantCount === undefined || initialParticipants.length >= (totalParticipantCount ?? 0)
+  )
+  const [backgroundLoading, setBackgroundLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   // Default view mode: table for admins, cards for others
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'table' : 'cards')
+  // How many filtered items to render
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   
   // Filters state
   const [filters, setFilters] = useState<MembersFilters>({
@@ -83,6 +93,32 @@ export default function MembersView({
     filters.autoCategories.length +
     filters.sources.length +
     (filters.activityPeriod ? 1 : 0)
+
+  // Background-load all remaining participants if initial load was capped
+  useEffect(() => {
+    if (allLoaded) return
+    let cancelled = false
+    setBackgroundLoading(true)
+    fetch(`/api/participants/enriched?orgId=${orgId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (cancelled || !data?.participants) return
+        setParticipants(data.participants)
+        setAllLoaded(true)
+      })
+      .catch(() => {
+        if (!cancelled) setAllLoaded(true) // stop spinner even on error
+      })
+      .finally(() => {
+        if (!cancelled) setBackgroundLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [orgId, allLoaded])
+
+  // Reset visible count when search or filters change
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [searchQuery, filters])
 
   const toggleParticipantSelection = (participantId: string) => {
     setSelectedParticipants((prev) => {
@@ -402,6 +438,17 @@ export default function MembersView({
     return result
   }, [participants, searchQuery, filters])
 
+  const visibleParticipants = useMemo(
+    () => filteredParticipants.slice(0, visibleCount),
+    [filteredParticipants, visibleCount]
+  )
+
+  const hasMore = visibleCount < filteredParticipants.length
+
+  const loadMore = useCallback(() => {
+    setVisibleCount(c => c + PAGE_SIZE)
+  }, [])
+
   return (
     <>
       {/* Filters Sidebar (Admin only) */}
@@ -504,13 +551,24 @@ export default function MembersView({
         </div>
 
       {/* Счетчик */}
-      <div className="mb-4 text-sm text-gray-600">
-        {filteredParticipants.length}{' '}
-        {filteredParticipants.length === 1
-          ? 'участник'
-          : filteredParticipants.length < 5
-          ? 'участника'
-          : 'участников'}
+      <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
+        <span>
+          {filteredParticipants.length}{' '}
+          {filteredParticipants.length === 1
+            ? 'участник'
+            : filteredParticipants.length < 5
+            ? 'участника'
+            : 'участников'}
+          {hasMore && (
+            <span className="text-gray-400"> · показано {visibleParticipants.length}</span>
+          )}
+        </span>
+        {backgroundLoading && (
+          <span className="flex items-center gap-1 text-gray-400 text-xs">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            загружается полный список...
+          </span>
+        )}
       </div>
 
       {/* Контент */}
@@ -521,26 +579,54 @@ export default function MembersView({
               {searchQuery ? 'Участники не найдены' : 'Пока нет участников'}
             </p>
             <p className="mt-1 text-sm text-gray-500">
-              {searchQuery
+              {searchQuery && backgroundLoading
+                ? 'Полный список ещё загружается, попробуйте снова через секунду'
+                : searchQuery
                 ? 'Попробуйте изменить поисковый запрос'
                 : 'Участники появятся после подключения Telegram-групп'}
             </p>
           </div>
         </div>
       ) : viewMode === 'table' ? (
-        <MembersTable
-          participants={filteredParticipants}
-          selectedParticipants={selectedParticipants}
-          onToggleParticipant={toggleParticipantSelection}
-          onToggleAll={toggleAllParticipants}
-          showBulkActions={isAdmin && adminMode}
-        />
+        <>
+          <MembersTable
+            participants={visibleParticipants}
+            selectedParticipants={selectedParticipants}
+            onToggleParticipant={toggleParticipantSelection}
+            onToggleAll={toggleAllParticipants}
+            showBulkActions={isAdmin && adminMode}
+          />
+          {hasMore && (
+            <div className="mt-4 flex flex-col items-center gap-1">
+              <Button variant="outline" size="sm" onClick={loadMore} className="gap-2">
+                <ChevronDown className="h-4 w-4" />
+                Показать ещё {Math.min(PAGE_SIZE, filteredParticipants.length - visibleCount)}
+              </Button>
+              <span className="text-xs text-gray-400">
+                {visibleParticipants.length} из {filteredParticipants.length}
+              </span>
+            </div>
+          )}
+        </>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          {filteredParticipants.map((participant) => (
-            <MemberCard key={participant.id} participant={participant} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            {visibleParticipants.map((participant) => (
+              <MemberCard key={participant.id} participant={participant} />
+            ))}
+          </div>
+          {hasMore && (
+            <div className="mt-6 flex flex-col items-center gap-1">
+              <Button variant="outline" size="sm" onClick={loadMore} className="gap-2">
+                <ChevronDown className="h-4 w-4" />
+                Показать ещё {Math.min(PAGE_SIZE, filteredParticipants.length - visibleCount)}
+              </Button>
+              <span className="text-xs text-gray-400">
+                {visibleParticipants.length} из {filteredParticipants.length}
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Bulk Actions Bar */}
