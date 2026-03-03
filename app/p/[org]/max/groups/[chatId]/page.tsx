@@ -74,8 +74,10 @@ export default async function MaxGroupPage({
     )
 
     // Build a full 30-day array with zeros for days that have no data
+    // Normalize date to YYYY-MM-DD (pg may return Date object; String(Date).slice(0,10) would be "Mon Jan 26")
+    const toDateKey = (v: any) => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10)
     const activityMap = new Map<string, number>(
-      (dailyRows ?? []).map((r: any) => [String(r.date).slice(0, 10), Number(r.message_count)])
+      (dailyRows ?? []).map((r: any) => [toDateKey(r.date), Number(r.message_count)])
     )
     const dailyActivity = Array.from({ length: 30 }, (_, i) => {
       const d = new Date()
