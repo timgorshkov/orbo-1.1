@@ -305,12 +305,12 @@ export async function analyzeParticipantWithAI(
     applicationsSection = `\n\n--- ЗАЯВКИ ---\n${additionalContext.applicationSummary.map(a => `📋 ${a}`).join('\n')}`;
   }
 
-  const introJsonFields = introMessage
-    ? `,
-  "introduction_bio": "<2-3 sentence summary of who this person is, or null if not determinable>",
-  "introduction_goals": "<what they are looking for in this community, or null>",
-  "introduction_offers": ["<thing they can help with>"],
-  "introduction_asks": ["<thing they need or are looking for>"]`
+  const introJsonHint = introMessage
+    ? `
+- "introduction_bio": строка (краткое резюме кто этот человек, 2-3 предложения) или null
+- "introduction_goals": строка (чего ищет в сообществе) или null
+- "introduction_offers": массив строк (чем может помочь) или []
+- "introduction_asks": массив строк (что нужно) или []`
     : '';
 
   const userPrompt = `Участник: ${participantName}${profileSection}
@@ -341,14 +341,14 @@ ${messagesToAnalyze.map((m) => {
   return messageBlock;
 }).join('\n\n')}${introSection2}${reactedSection}${eventsSection}${applicationsSection}
 
-Return ONLY a valid JSON object:
-{
-  "interests": [],
-  "topics_discussed": {},
-  "recent_asks": [],
-  "city": null,
-  "city_confidence": null${introJsonFields}
-}`;
+Проанализируй сообщения выше и верни JSON со следующими полями:
+- "interests": массив конкретных объектов интереса (5-15 элементов)
+- "topics_discussed": объект {"тема": количество_упоминаний} (3-8 тем)
+- "recent_asks": массив существенных запросов или []
+- "city": строка или null
+- "city_confidence": число 0-1 или null${introJsonHint}
+
+Верни ТОЛЬКО валидный JSON.`;
 
   try {
     const startTime = Date.now();
@@ -367,16 +367,25 @@ Return ONLY a valid JSON object:
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3, // Low temperature for consistency
-      max_tokens: introMessage ? 1500 : 1000,
+      max_tokens: introMessage ? 2000 : 1200,
       response_format: { type: 'json_object' }
     });
     
+    const finishReason = response.choices[0]?.finish_reason;
     logger.info({
       participant_id: participantId,
       response_id: response.id,
       model: response.model,
-      usage: response.usage
+      usage: response.usage,
+      finish_reason: finishReason,
     }, '✅ [OPENAI_CALL] Received response from OpenAI');
+    
+    if (finishReason === 'length') {
+      logger.warn({
+        participant_id: participantId,
+        output_tokens: response.usage?.completion_tokens,
+      }, '⚠️ [OPENAI_CALL] Response truncated (finish_reason=length), output may be incomplete');
+    }
     
     const rawResponse = response.choices[0].message.content || '{}';
     const result = JSON.parse(rawResponse);
@@ -392,9 +401,20 @@ Return ONLY a valid JSON object:
       participant_name: participantName,
       messages_count: messages.length,
       interests_count: result.interests?.length || 0,
+      topics_count: Object.keys(result.topics_discussed || {}).length,
+      asks_count: result.recent_asks?.length || 0,
+      has_intro_bio: !!result.introduction_bio,
       total_tokens: totalTokens,
-      cost_usd: costUsd
+      cost_usd: costUsd,
+      output_tokens: outputTokens,
     }, 'AI enrichment completed');
+    
+    logger.debug({
+      participant_id: participantId,
+      raw_interests: result.interests,
+      raw_topics: result.topics_discussed,
+      raw_asks: result.recent_asks,
+    }, 'AI enrichment raw result');
     
     // ⭐ Log API call to database
     await logOpenAICall({
