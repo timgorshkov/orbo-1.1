@@ -196,6 +196,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
         return handleMergeParticipants(adminClient, user.id, orgId, participantId, payload, logger);
       case 'unmerge':
         return handleUnmerge(adminClient, user.id, orgId, participantId, payload, logger);
+      case 'repairMergeFields':
+        return handleRepairMergeFields(adminClient, user.id, orgId, participantId, logger);
       case 'archive':
         return handleArchiveParticipant(adminClient, user.id, orgId, participantId, logger);
       case 'restore':
@@ -718,6 +720,94 @@ async function handleUnmerge(
 
   const detail = await getParticipantDetail(orgId, canonicalId);
   return NextResponse.json({ success: true, detail, released_ghost: ghostId });
+}
+
+/**
+ * Repairs a previously merged canonical participant by re-copying all important
+ * fields from any attached ghost profiles.  Safe to run multiple times.
+ * Uses COALESCE so existing values on the canonical are never overwritten.
+ */
+async function handleRepairMergeFields(
+  supabase: SupabaseClient,
+  actorId: string,
+  orgId: string,
+  participantId: string,
+  logger?: ReturnType<typeof createAPILogger>
+): Promise<NextResponse> {
+  // Resolve canonical
+  const { data: rec, error: recError } = await supabase
+    .from('participants')
+    .select('id, merged_into, org_id')
+    .eq('id', participantId)
+    .maybeSingle();
+
+  if (recError || !rec) {
+    return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+  }
+  if (rec.org_id !== orgId) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+  }
+
+  const canonicalId = rec.merged_into || rec.id;
+
+  // Fetch all ghost profiles merged into canonical
+  const { data: ghosts, error: ghostsError } = await supabase
+    .from('participants')
+    .select('id, tg_user_id, username, photo_url, bio, max_user_id, max_username, tg_first_name, tg_last_name')
+    .eq('merged_into', canonicalId);
+
+  if (ghostsError) {
+    return NextResponse.json({ error: 'Failed to load merged profiles' }, { status: 500 });
+  }
+
+  if (!ghosts || ghosts.length === 0) {
+    return NextResponse.json({ success: true, message: 'No merged profiles found', repaired: false });
+  }
+
+  // Build COALESCE patches: pick first non-null value from any ghost
+  const patch: Record<string, any> = {};
+  const pick = (field: string) => {
+    for (const g of ghosts) {
+      if ((g as any)[field] != null) return (g as any)[field];
+    }
+    return null;
+  };
+
+  const { data: canonical } = await supabase
+    .from('participants')
+    .select('tg_user_id, username, photo_url, bio, max_user_id, max_username, tg_first_name, tg_last_name')
+    .eq('id', canonicalId)
+    .maybeSingle();
+
+  const fields = ['tg_user_id', 'username', 'photo_url', 'bio', 'max_user_id', 'max_username', 'tg_first_name', 'tg_last_name'];
+  for (const field of fields) {
+    if (!(canonical as any)?.[field]) {
+      const val = pick(field);
+      if (val != null) patch[field] = val;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ success: true, message: 'All fields already populated on canonical', repaired: false });
+  }
+
+  patch.updated_at = new Date().toISOString();
+  patch.updated_by = actorId;
+
+  const { error: updateError } = await supabase
+    .from('participants')
+    .update(patch)
+    .eq('id', canonicalId);
+
+  if (updateError) {
+    if (logger) logger.error({ error: updateError.message, canonical_id: canonicalId }, 'Error repairing merge fields');
+    return NextResponse.json({ error: 'Failed to repair merge fields' }, { status: 500 });
+  }
+
+  if (logger) logger.info({ canonical_id: canonicalId, patched: Object.keys(patch) }, 'Merge fields repaired');
+
+  const detail = await getParticipantDetail(orgId, canonicalId);
+  return NextResponse.json({ success: true, repaired: true, patched_fields: Object.keys(patch), detail });
 }
 
 /**

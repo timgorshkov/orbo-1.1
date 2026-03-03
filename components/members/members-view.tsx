@@ -94,9 +94,8 @@ export default function MembersView({
     filters.sources.length +
     (filters.activityPeriod ? 1 : 0)
 
-  // Background-load all remaining participants if initial load was capped
-  useEffect(() => {
-    if (allLoaded) return
+  // Shared fetch function for full enriched list
+  const fetchEnriched = useCallback(() => {
     let cancelled = false
     setBackgroundLoading(true)
     fetch(`/api/participants/enriched?orgId=${orgId}`)
@@ -107,13 +106,30 @@ export default function MembersView({
         setAllLoaded(true)
       })
       .catch(() => {
-        if (!cancelled) setAllLoaded(true) // stop spinner even on error
+        if (!cancelled) setAllLoaded(true)
       })
       .finally(() => {
         if (!cancelled) setBackgroundLoading(false)
       })
     return () => { cancelled = true }
-  }, [orgId, allLoaded])
+  }, [orgId])
+
+  // Background-load all remaining participants if initial load was capped
+  useEffect(() => {
+    if (allLoaded) return
+    return fetchEnriched()
+  }, [orgId, allLoaded, fetchEnriched])
+
+  // Re-fetch when the tab becomes visible again (catches merges done in another tab/page)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchEnriched()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchEnriched])
 
   // Reset visible count when search or filters change
   useEffect(() => {

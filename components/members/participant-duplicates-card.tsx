@@ -49,6 +49,7 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
 
   const [pending, setPending] = useState(false);
   const [unmerging, setUnmerging] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<DuplicateEntry[]>(initialDuplicates);
   const [search, setSearch] = useState('');
@@ -200,6 +201,28 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
     }
   };
 
+  const handleRepairMergeFields = async () => {
+    setRepairing(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/participants/${canonicalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, action: 'repairMergeFields' })
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Не удалось синхронизировать поля');
+      }
+      const data = await response.json();
+      if (data?.detail && onDetailUpdate) onDetailUpdate(data.detail);
+    } catch (err: any) {
+      setError(err.message || 'Не удалось синхронизировать поля');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   const currentScore = profileCompleteness(detail.participant as any);
   const selectedEntry = suggestions.find(s => s.id === selectedId);
   const selectedScore = selectedEntry ? profileCompleteness(selectedEntry as any) : null;
@@ -253,9 +276,21 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
                 </div>
               ))}
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              При откреплении прикреплённый профиль снова становится самостоятельным участником. Данные (теги, группы), перенесённые при объединении, остаются у основного профиля.
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-400">
+                При откреплении прикреплённый профиль снова становится самостоятельным участником. Данные (теги, группы), перенесённые при объединении, остаются у основного профиля.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-gray-500 hover:text-blue-600 shrink-0 ml-2"
+                disabled={repairing}
+                onClick={handleRepairMergeFields}
+                title="Скопировать незаполненные поля (tg_user_id, max_user_id, photo_url, bio и др.) из прикреплённых профилей в текущий"
+              >
+                {repairing ? 'Синхронизация...' : '↻ Синхронизировать поля'}
+              </Button>
+            </div>
           </div>
         )}
 
