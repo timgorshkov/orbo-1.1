@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
     const orgId = searchParams.get('orgId')
     const status = searchParams.get('status')
     const publicOnly = searchParams.get('public') === 'true'
-    
+    const upcomingOnly = searchParams.get('upcoming') === 'true'
+    const limitParam = searchParams.get('limit')
+    const limit = limitParam ? parseInt(limitParam, 10) : null
+
     if (!orgId) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
@@ -34,6 +37,15 @@ export async function GET(request: NextRequest) {
 
     if (publicOnly) {
       query = query.eq('is_public', true)
+    }
+
+    if (upcomingOnly) {
+      const today = new Date().toISOString().split('T')[0]
+      query = query.gte('event_date', today)
+    }
+
+    if (limit && limit > 0) {
+      query = query.limit(limit)
     }
 
     const { data: events, error } = await query

@@ -15,7 +15,7 @@ export async function GET(
     // Fetch organization basic info (public data)
     const { data: org, error: orgError } = await adminSupabase
       .from('organizations')
-      .select('id, name, public_description, telegram_group_link')
+      .select('id, name, public_description, logo_url, portal_cover_url, telegram_group_link')
       .eq('id', orgId)
       .single();
 
