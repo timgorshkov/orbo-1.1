@@ -12,6 +12,7 @@ export interface HomePageData {
     name: string
     logo_url: string | null
     public_description: string | null
+    portal_cover_url: string | null
     member_count: number
     event_count: number
     material_count: number
@@ -67,7 +68,20 @@ export interface HomePageData {
     avatar_url: string | null
     joined_at: string
   }>
-  
+
+  recentMaterials: Array<{
+    id: string
+    title: string
+    updated_at: string
+  }>
+
+  recentApps: Array<{
+    id: string
+    name: string
+    description: string | null
+    icon_url: string | null
+  }>
+
   activitySummary?: {  // только если is_inactive
     new_events_count: number
     new_members_count: number
@@ -90,7 +104,7 @@ export async function getHomePageData(
     // 1. Get organization info
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .select('id, name, logo_url, public_description, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps, portal_welcome_html')
+      .select('id, name, logo_url, public_description, portal_cover_url, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps, portal_welcome_html')
       .eq('id', orgId)
       .single()
 
@@ -376,6 +390,23 @@ export async function getHomePageData(
       }
     }
 
+    // 8. Get recent materials
+    const { data: recentMaterialsRaw } = await supabase
+      .from('material_pages')
+      .select('id, title, updated_at')
+      .eq('org_id', orgId)
+      .eq('is_published', true)
+      .order('updated_at', { ascending: false })
+      .limit(4)
+
+    // 9. Get active apps
+    const { data: recentAppsRaw } = await supabase
+      .from('apps')
+      .select('id, name, description, icon_url')
+      .eq('org_id', orgId)
+      .eq('status', 'active')
+      .limit(4)
+
     // Build final data structure
     const homePageData: HomePageData = {
       organization: {
@@ -383,6 +414,7 @@ export async function getHomePageData(
         name: org.name,
         logo_url: org.logo_url,
         public_description: org.public_description,
+        portal_cover_url: (org as any).portal_cover_url ?? null,
         member_count: memberCount || 0,
         event_count: eventCount || 0,
         material_count: materialCount || 0
@@ -409,6 +441,17 @@ export async function getHomePageData(
       upcomingEvents: processedEvents,
       myEventRegistrations: processedRegistrations,
       recentMembers: processedMembers,
+      recentMaterials: (recentMaterialsRaw || []).map(m => ({
+        id: m.id,
+        title: m.title,
+        updated_at: m.updated_at
+      })),
+      recentApps: (recentAppsRaw || []).map(a => ({
+        id: a.id,
+        name: a.name,
+        description: (a as any).description ?? null,
+        icon_url: (a as any).icon_url ?? null
+      })),
       activitySummary
     }
 

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import HeroSection from './hero-section'
 import UpcomingEventsSection from './upcoming-events-section'
 import RecentMembersSection from './recent-members-section'
+import RecentMaterialsSection from './recent-materials-section'
+import AppsSection from './apps-section'
 import WelcomeBlock from './welcome-block'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import type { HomePageData } from '@/lib/server/getHomePageData'
@@ -12,6 +14,30 @@ import type { HomePageData } from '@/lib/server/getHomePageData'
 interface Props {
   orgId: string
   role: 'owner' | 'admin' | 'member' | 'guest'
+}
+
+function HiddenBadge() {
+  return (
+    <div className="absolute top-2 right-2 z-10 px-2 py-0.5 bg-neutral-100 border border-neutral-300 rounded text-xs text-neutral-500">
+      Скрыто от участников
+    </div>
+  )
+}
+
+function MaybeHidden({
+  hidden,
+  children,
+}: {
+  hidden: boolean
+  children: React.ReactNode
+}) {
+  if (!hidden) return <>{children}</>
+  return (
+    <div className="relative opacity-70 ring-1 ring-dashed ring-neutral-300 rounded-xl">
+      <HiddenBadge />
+      {children}
+    </div>
+  )
 }
 
 export default function AuthenticatedHome({ orgId, role }: Props) {
@@ -31,7 +57,7 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
       setError(null)
 
       const response = await fetch(`/api/organizations/${orgId}/home`)
-      
+
       if (!response.ok) {
         if (response.status === 401) {
           router.push(`/p/${orgId}/auth`)
@@ -52,10 +78,10 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Загрузка...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
+          <p className="text-sm text-neutral-500">Загрузка...</p>
         </div>
       </div>
     )
@@ -63,17 +89,17 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-xl font-bold text-neutral-900 mb-2">
             Не удалось загрузить страницу
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-sm text-neutral-500 mb-4">
             {error || 'Проверьте ваше подключение'}
           </p>
           <button
             onClick={fetchHomePageData}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
           >
             Попробовать снова
           </button>
@@ -85,35 +111,52 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
   const showAdminFeatures = isAdmin && adminMode
   const ps = data.portalSettings
 
+  const showEvents = showAdminFeatures || ps.show_events
+  const showMembers = showAdminFeatures || ps.show_members
+  const showMaterials = showAdminFeatures || ps.show_materials
+  const showApps = showAdminFeatures || ps.show_apps
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
+    <div className="min-h-screen bg-white pb-16">
       <HeroSection
         orgName={data.organization.name}
         orgLogo={data.organization.logo_url}
         publicDescription={data.organization.public_description}
+        coverUrl={data.organization.portal_cover_url}
       />
 
-      <div className="py-8">
-        {/* Приветственный блок (только если заполнен) */}
+      <div className="space-y-8 mt-6">
+        {/* Приветственный блок */}
         {ps.welcome_html && <WelcomeBlock html={ps.welcome_html} />}
 
-        {/* События (управляется настройками портала) */}
-        {(showAdminFeatures || ps.show_events) && (
-          <UpcomingEventsSection
-            events={data.upcomingEvents}
-            orgId={orgId}
-          />
+        {/* События */}
+        {showEvents && (
+          <MaybeHidden hidden={showAdminFeatures && !ps.show_events}>
+            <UpcomingEventsSection events={data.upcomingEvents} orgId={orgId} />
+          </MaybeHidden>
         )}
 
-        {/* Участники (управляется настройками портала) */}
-        {(showAdminFeatures || ps.show_members) && (
-          <RecentMembersSection
-            members={data.recentMembers}
-            orgId={orgId}
-          />
+        {/* Участники */}
+        {showMembers && (
+          <MaybeHidden hidden={showAdminFeatures && !ps.show_members}>
+            <RecentMembersSection members={data.recentMembers} orgId={orgId} />
+          </MaybeHidden>
+        )}
+
+        {/* Материалы */}
+        {showMaterials && (
+          <MaybeHidden hidden={showAdminFeatures && !ps.show_materials}>
+            <RecentMaterialsSection materials={data.recentMaterials} orgId={orgId} />
+          </MaybeHidden>
+        )}
+
+        {/* Приложения */}
+        {showApps && (
+          <MaybeHidden hidden={showAdminFeatures && !ps.show_apps}>
+            <AppsSection apps={data.recentApps} orgId={orgId} />
+          </MaybeHidden>
         )}
       </div>
     </div>
   )
 }
-
