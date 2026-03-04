@@ -10,8 +10,6 @@ interface Organization {
   name: string
   slug: string
   logo_url: string | null
-  public_description: string | null
-  telegram_group_link: string | null
 }
 
 interface OrganizationSettingsFormProps {
@@ -24,8 +22,6 @@ export default function OrganizationSettingsForm({
   userRole
 }: OrganizationSettingsFormProps) {
   const [name, setName] = useState(organization.name)
-  const [publicDescription, setPublicDescription] = useState(organization.public_description || '')
-  const [telegramGroupLink, setTelegramGroupLink] = useState(organization.telegram_group_link || '')
   const [logoUrl, setLogoUrl] = useState(organization.logo_url)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -38,13 +34,11 @@ export default function OrganizationSettingsForm({
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
       setError('Только JPG и PNG файлы разрешены')
       return
     }
 
-    // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
       setError('Размер файла должен быть меньше 5MB')
       return
@@ -53,7 +47,6 @@ export default function OrganizationSettingsForm({
     setLogoFile(file)
     setError(null)
 
-    // Create preview
     const reader = new FileReader()
     reader.onloadend = () => {
       setLogoPreview(reader.result as string)
@@ -89,20 +82,14 @@ export default function OrganizationSettingsForm({
           setLogoUrl(newLogoUrl)
         }
 
-        // Update organization settings
-        const hasChanges = name.trim() !== organization.name || 
-                           publicDescription !== (organization.public_description || '') ||
-                           telegramGroupLink !== (organization.telegram_group_link || '')
-        
-        if (hasChanges) {
+        // Update organization name if changed
+        if (name.trim() !== organization.name) {
           const response = await fetch(`/api/organizations/${organization.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: name.trim(),
               logo_url: newLogoUrl,
-              public_description: publicDescription.trim() || null,
-              telegram_group_link: telegramGroupLink.trim() || null
             })
           })
 
@@ -115,8 +102,7 @@ export default function OrganizationSettingsForm({
         setSuccess(true)
         setLogoFile(null)
         setLogoPreview(null)
-        
-        // Reload page to reflect changes
+
         setTimeout(() => {
           window.location.reload()
         }, 1000)
@@ -142,7 +128,7 @@ export default function OrganizationSettingsForm({
         setLogoPreview(null)
         setLogoFile(null)
         setSuccess(true)
-        
+
         setTimeout(() => {
           window.location.reload()
         }, 1000)
@@ -177,44 +163,6 @@ export default function OrganizationSettingsForm({
             />
             <p className="text-sm text-neutral-500 mt-1">
               URL: /app/{organization.slug}
-            </p>
-          </div>
-
-          {/* Public Description */}
-          <div>
-            <label htmlFor="publicDescription" className="block text-sm font-medium text-neutral-700 mb-2">
-              Публичное описание <span className="text-neutral-500">(видно всем на странице сообщества)</span>
-            </label>
-            <textarea
-              id="publicDescription"
-              value={publicDescription}
-              onChange={(e) => setPublicDescription(e.target.value)}
-              disabled={isPending}
-              rows={3}
-              placeholder="Расскажите о вашем сообществе..."
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent max-w-2xl"
-            />
-            <p className="text-sm text-neutral-500 mt-1">
-              Это описание будет показано на публичной странице сообщества (/p/{organization.slug})
-            </p>
-          </div>
-
-          {/* Telegram Group Link */}
-          <div>
-            <label htmlFor="telegramGroupLink" className="block text-sm font-medium text-neutral-700 mb-2">
-              Ссылка на Telegram-группу <span className="text-neutral-500">(опционально)</span>
-            </label>
-            <Input
-              id="telegramGroupLink"
-              type="url"
-              value={telegramGroupLink}
-              onChange={(e) => setTelegramGroupLink(e.target.value)}
-              disabled={isPending}
-              placeholder="https://t.me/yourcommunity"
-              className="max-w-md"
-            />
-            <p className="text-sm text-neutral-500 mt-1">
-              Ссылка будет показана на публичной странице сообщества
             </p>
           </div>
 
@@ -285,12 +233,7 @@ export default function OrganizationSettingsForm({
           <div>
             <Button
               type="submit"
-              disabled={isPending || (
-                name.trim() === organization.name && 
-                !logoFile &&
-                publicDescription === (organization.public_description || '') &&
-                telegramGroupLink === (organization.telegram_group_link || '')
-              )}
+              disabled={isPending || (name.trim() === organization.name && !logoFile)}
             >
               {isPending ? 'Сохранение...' : 'Сохранить изменения'}
             </Button>
@@ -300,4 +243,3 @@ export default function OrganizationSettingsForm({
     </Card>
   )
 }
-

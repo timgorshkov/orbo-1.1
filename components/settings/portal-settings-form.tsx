@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import dynamic from 'next/dynamic'
 
 // Тот же редактор, что и в описании событий
@@ -17,6 +18,9 @@ interface PortalSettings {
   portal_show_materials: boolean
   portal_show_apps: boolean
   portal_welcome_html: string | null
+  portal_cover_url: string | null
+  public_description: string | null
+  telegram_group_link: string | null
 }
 
 interface Props {
@@ -57,6 +61,10 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
   const [settings, setSettings] = useState<PortalSettings>(initialSettings)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const [isUploadingCover, setIsUploadingCover] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement>(null)
 
   const isOwner = userRole === 'owner'
 
@@ -64,10 +72,11 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
     setIsSaving(true)
     setMessage(null)
     try {
+      const { portal_cover_url, ...patchBody } = settings
       const res = await fetch(`/api/organizations/${organizationId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(patchBody),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -82,11 +91,185 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
     }
   }
 
+  const handleCoverFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setMessage({ type: 'error', text: 'Только JPG, PNG и WebP файлы разрешены' })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Размер файла должен быть меньше 10MB' })
+      return
+    }
+
+    setCoverFile(file)
+    const reader = new FileReader()
+    reader.onloadend = () => setCoverPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const handleUploadCover = async () => {
+    if (!coverFile) return
+    setIsUploadingCover(true)
+    setMessage(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', coverFile)
+      const res = await fetch(`/api/organizations/${organizationId}/cover`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessage({ type: 'error', text: data.error || 'Не удалось загрузить обложку' })
+      } else {
+        setSettings((prev) => ({ ...prev, portal_cover_url: data.cover_url }))
+        setCoverFile(null)
+        setCoverPreview(null)
+        setMessage({ type: 'success', text: 'Обложка загружена' })
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Ошибка сети' })
+    } finally {
+      setIsUploadingCover(false)
+    }
+  }
+
+  const handleDeleteCover = async () => {
+    setIsUploadingCover(true)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}/cover`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessage({ type: 'error', text: data.error || 'Не удалось удалить обложку' })
+      } else {
+        setSettings((prev) => ({ ...prev, portal_cover_url: null }))
+        setCoverFile(null)
+        setCoverPreview(null)
+        setMessage({ type: 'success', text: 'Обложка удалена' })
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Ошибка сети' })
+    } finally {
+      setIsUploadingCover(false)
+    }
+  }
+
   const set = (key: keyof PortalSettings) => (value: boolean | string | null) =>
     setSettings((prev) => ({ ...prev, [key]: value }))
 
+  const currentCover = coverPreview || settings.portal_cover_url
+
   return (
     <div className="space-y-6">
+      {/* Публичное описание */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Описание сообщества</CardTitle>
+          <p className="text-sm text-neutral-500 mt-1">
+            Отображается на публичной странице сообщества для всех посетителей.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Публичное описание
+            </label>
+            <textarea
+              value={settings.public_description || ''}
+              onChange={(e) => set('public_description')(e.target.value || null)}
+              disabled={!isOwner}
+              rows={3}
+              placeholder="Расскажите о вашем сообществе..."
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Ссылка на Telegram-группу
+            </label>
+            <Input
+              type="url"
+              value={settings.telegram_group_link || ''}
+              onChange={(e) => set('telegram_group_link')(e.target.value || null)}
+              disabled={!isOwner}
+              placeholder="https://t.me/yourcommunity"
+              className="max-w-md"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Обложка */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Обложка портала</CardTitle>
+          <p className="text-sm text-neutral-500 mt-1">
+            Баннер на главной странице публичного портала. Рекомендуем JPG/PNG шириной от 1200px.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {currentCover && (
+            <div className="mb-3 rounded-lg overflow-hidden border border-neutral-200 max-w-lg">
+              <img src={currentCover} alt="Обложка" className="w-full object-cover max-h-48" />
+            </div>
+          )}
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleCoverFileChange}
+            className="hidden"
+          />
+          {isOwner && (
+            <div className="flex flex-wrap gap-2">
+              {!coverFile ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={isUploadingCover}
+                >
+                  {currentCover ? 'Изменить обложку' : 'Загрузить обложку'}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleUploadCover}
+                  disabled={isUploadingCover}
+                >
+                  {isUploadingCover ? 'Загрузка...' : 'Сохранить обложку'}
+                </Button>
+              )}
+              {coverFile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setCoverFile(null); setCoverPreview(null) }}
+                  disabled={isUploadingCover}
+                >
+                  Отмена
+                </Button>
+              )}
+              {settings.portal_cover_url && !coverFile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDeleteCover}
+                  disabled={isUploadingCover}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  Удалить обложку
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Видимость разделов */}
       <Card>
         <CardHeader>

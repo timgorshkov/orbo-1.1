@@ -193,6 +193,9 @@ export default async function OrganizationSettingsPage({
                 portal_show_materials: organization.portal_show_materials ?? false,
                 portal_show_apps:      organization.portal_show_apps      ?? false,
                 portal_welcome_html:   organization.portal_welcome_html   ?? null,
+                portal_cover_url:      organization.portal_cover_url      ?? null,
+                public_description:    organization.public_description    ?? null,
+                telegram_group_link:   organization.telegram_group_link   ?? null,
               }}
               userRole={membership.role as 'owner' | 'admin'}
             />

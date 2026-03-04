@@ -108,7 +108,9 @@ export async function PATCH(
       'portal_show_apps',
     ] as const
     const hasPortalFields = portalBoolFields.some((f) => body[f] !== undefined) ||
-      body.portal_welcome_html !== undefined
+      body.portal_welcome_html !== undefined ||
+      body.public_description !== undefined ||
+      body.telegram_group_link !== undefined
 
     if (hasPortalFields) {
       if (membership.role !== 'owner') {
@@ -124,6 +126,12 @@ export async function PATCH(
       }
       if (body.portal_welcome_html !== undefined) {
         updateData.portal_welcome_html = body.portal_welcome_html || null
+      }
+      if (body.public_description !== undefined) {
+        updateData.public_description = body.public_description?.trim() || null
+      }
+      if (body.telegram_group_link !== undefined) {
+        updateData.telegram_group_link = body.telegram_group_link?.trim() || null
       }
     }
 
