@@ -7,7 +7,8 @@
       "Bash(ssh selectel-orbo:*)",
       "Bash(grep:*)",
       "Bash(head:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
