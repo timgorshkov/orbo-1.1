@@ -224,7 +224,7 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
     async (event: DragEndEvent) => {
       setActiveId(null);
       const { active, over } = event;
-      if (!active || !over) {
+      if (readOnly || !active || !over) {
         restoreSnapshot();
         return;
       }
@@ -338,6 +338,7 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
           pendingId={pendingId}
           openMenu={setMenuState}
           activeId={activeId}
+          readOnly={readOnly}
         />
       </div>
       {menuState && (
@@ -370,6 +371,7 @@ type TreeListProps = {
   pendingId: string | null;
   openMenu: (state: TreeMenuState | null) => void;
   activeId: string | null;
+  readOnly?: boolean;
 };
 
 function TreeList(props: TreeListProps) {
@@ -415,6 +417,7 @@ function TreeItem({ node, parentId, depth, expanded, ...rest }: TreeItemProps) {
             pendingId={rest.pendingId}
             openMenu={rest.openMenu}
             activeId={rest.activeId}
+            readOnly={rest.readOnly}
           />
         </div>
       )}
@@ -428,7 +431,7 @@ type TreeRowProps = TreeListProps & {
   depth: number;
 };
 
-function TreeRow({ node, parentId, depth, expanded, toggle, onCreate, onStartRename, onSubmitRename, onDelete, selectedId, onSelect, editingId, pendingId, openMenu, activeId }: TreeRowProps) {
+function TreeRow({ node, parentId, depth, expanded, toggle, onCreate, onStartRename, onSubmitRename, onDelete, selectedId, onSelect, editingId, pendingId, openMenu, activeId, readOnly = false }: TreeRowProps) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: node.id, data: { type: 'item', nodeId: node.id, parentId, depth } });
   const { setNodeRef: setInsideRef, isOver: isOverInside } = useDroppable({ id: `inside-${node.id}`, data: { type: 'inside', nodeId: node.id, depth: depth + 1 } });
 
@@ -442,19 +445,20 @@ function TreeRow({ node, parentId, depth, expanded, toggle, onCreate, onStartRen
       <div
         ref={setDragRef}
         className={clsx(
-          'group flex items-center justify-between rounded px-2 select-none cursor-grab transition',
+          'group flex items-center justify-between rounded px-2 select-none transition',
+          readOnly ? 'cursor-default' : 'cursor-grab',
           isDragging && 'opacity-60',
           isSelected && 'bg-neutral-100',
-          isOverInside && 'ring-2 ring-blue-400 bg-blue-50/30',
+          isOverInside && !readOnly && 'ring-2 ring-blue-400 bg-blue-50/30',
           disabled && 'opacity-60 pointer-events-none'
         )}
-        style={{ 
+        style={{
           transform: transform ? CSS.Translate.toString(transform) : undefined,
           paddingTop: '1px',
           paddingBottom: '1px'
         }}
         {...attributes}
-        {...listeners}
+        {...(readOnly ? {} : listeners)}
       >
         <div className="flex items-center gap-1 overflow-hidden">
           {hasChildren ? (
@@ -493,23 +497,25 @@ function TreeRow({ node, parentId, depth, expanded, toggle, onCreate, onStartRen
             </button>
           )}
         </div>
-        <button
-          className={clsx(
-            'h-6 w-6 rounded text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
-            'opacity-0 transition group-hover:opacity-100 focus:opacity-100'
-          )}
-          onPointerDown={event => {
-            event.stopPropagation();
-          }}
-          onClick={event => {
-            event.stopPropagation();
-            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-            openMenu({ nodeId: node.id, anchor: { x: rect.right + 8, y: rect.top + window.scrollY } });
-          }}
-          aria-label="Действия"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
+        {!readOnly && (
+          <button
+            className={clsx(
+              'h-6 w-6 rounded text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
+              'opacity-0 transition group-hover:opacity-100 focus:opacity-100'
+            )}
+            onPointerDown={event => {
+              event.stopPropagation();
+            }}
+            onClick={event => {
+              event.stopPropagation();
+              const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+              openMenu({ nodeId: node.id, anchor: { x: rect.right + 8, y: rect.top + window.scrollY } });
+            }}
+            aria-label="Действия"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        )}
       </div>
       {/* Drop zone "inside" - только центральная часть элемента */}
       {activeId !== node.id && (
