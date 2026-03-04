@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     const isAdmin = access.role === 'owner' || access.role === 'admin'
     const adminSupabase = createAdminServer()
 
+    const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824])
     let participants: any[] = []
 
     try {
@@ -47,7 +48,9 @@ export async function GET(req: NextRequest) {
 
       if (error) throw error
 
-      participants = (data || []).map((p: any) => {
+      participants = (data || [])
+      .filter((p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id)))
+      .map((p: any) => {
         const lastMsg = p.last_message_at ? new Date(p.last_message_at).getTime() : 0
         const lastAct = p.last_activity_at ? new Date(p.last_activity_at).getTime() : 0
         const latestActivity =
@@ -83,16 +86,18 @@ export async function GET(req: NextRequest) {
         .order('last_activity_at', { ascending: false, nullsFirst: true })
 
       if (error) throw error
-      participants = (data || []).map((p: any) => ({
-        ...p,
-        tags: [],
-        is_admin: false,
-        is_org_owner: false,
-        is_owner: false,
-        real_join_date: p.created_at,
-        real_last_activity: p.last_activity_at,
-        activity_score: 0,
-      }))
+      participants = (data || [])
+        .filter((p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id)))
+        .map((p: any) => ({
+          ...p,
+          tags: [],
+          is_admin: false,
+          is_org_owner: false,
+          is_owner: false,
+          real_join_date: p.created_at,
+          real_last_activity: p.last_activity_at,
+          activity_score: 0,
+        }))
     }
 
     logger.debug({ org_id: orgId, count: participants.length }, 'Enriched participants fetched')

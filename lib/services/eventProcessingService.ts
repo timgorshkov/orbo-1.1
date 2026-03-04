@@ -762,8 +762,8 @@ export class EventProcessingService {
     const messageThreadId = typeof (message as any)?.message_thread_id === 'number' ? (message as any).message_thread_id : null;
     const threadTitle = this.extractThreadTitle(message);
 
-    // Skip anonymous and bot users
-    if (userId === 1087968824 || message.from.username === 'GroupAnonymousBot' || message.from.is_bot) {
+    // Skip system Telegram accounts and bots
+    if ([777000, 136817688, 1087968824].includes(userId) || message.from.username === 'GroupAnonymousBot' || message.from.is_bot) {
       return;
     }
 

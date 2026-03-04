@@ -33,6 +33,9 @@ export default async function MembersPage({ params, searchParams }: {
   const role = membership.role
   const isAdmin = role === 'owner' || role === 'admin'
 
+  // System Telegram IDs that must never appear in the participants list
+  const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824])
+
   // Initial render sends at most INITIAL_LOAD_LIMIT rows to the client.
   // For large orgs we use a fast direct-table query (no joins, no RPC).
   // The client will background-load the fully-enriched list via /api/participants/enriched.
@@ -73,7 +76,9 @@ export default async function MembersPage({ params, searchParams }: {
 
       if (error) logger.error({ error: error.message, org_id: orgId }, 'Error fetching participants (fast path)')
 
-      const rawList = fastParticipants || []
+      const rawList = (fastParticipants || []).filter(
+        (p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id))
+      )
 
       // Minimal enrichment: membership roles for admin/owner badges
       const { data: memberships } = await adminSupabase
@@ -118,7 +123,9 @@ export default async function MembersPage({ params, searchParams }: {
         throw new Error('RPC not available')
       }
 
-      participants = (enrichedParticipants || []).map((p: any) => {
+      participants = (enrichedParticipants || [])
+      .filter((p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id)))
+      .map((p: any) => {
         const lastMsg = p.last_message_at ? new Date(p.last_message_at).getTime() : 0
         const lastAct = p.last_activity_at ? new Date(p.last_activity_at).getTime() : 0
         const latestActivity = lastMsg > lastAct ? p.last_message_at : (p.last_activity_at || p.last_message_at)
@@ -166,7 +173,9 @@ export default async function MembersPage({ params, searchParams }: {
       logger.error({ error: error.message, org_id: orgId }, 'Error fetching participants')
     }
 
-    participants = legacyParticipants || []
+    participants = (legacyParticipants || []).filter(
+      (p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id))
+    )
 
     if (participants.length > 0) {
       const { data: memberships } = await adminSupabase
