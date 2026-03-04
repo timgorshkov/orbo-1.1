@@ -6,7 +6,8 @@
       "WebSearch",
       "Bash(ssh selectel-orbo:*)",
       "Bash(grep:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(ssh:*)"
     ]
   }
 }

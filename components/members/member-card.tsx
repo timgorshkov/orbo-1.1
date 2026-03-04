@@ -79,7 +79,7 @@ export default function MemberCard({ participant }: MemberCardProps) {
       {/* Аватарка — крупнее, значок статуса в правом нижнем углу */}
       <div className="relative w-24 h-24 mb-2 flex-shrink-0">
         <div className="w-full h-full rounded-full bg-neutral-200 overflow-hidden">
-          {participant.photo_url ? (
+          {participant.photo_url && participant.photo_url !== 'none' ? (
             <img
               src={participant.photo_url}
               alt={displayName}
