@@ -74,14 +74,22 @@ export default function MobileBottomNav({
     setIsMenuOpen(false)
   }, [pathname])
 
-  // Управляем классом на body для helpdesk виджета
+  // ⚠️  ВАЖНО: НЕ УДАЛЯТЬ — управляет видимостью виджета HelpDeskEddy на мобильных!
+  //
+  // Класс `mobile-menu-open` на <body> используется в helpdesk-widget.tsx для того,
+  // чтобы показывать кнопку виджета только когда открыто это выдвижное меню.
+  // По умолчанию на мобильных виджет скрыт, так как его кнопка перекрывает
+  // кнопку «Меню» в нижнем нав-баре (она крайняя справа).
+  //
+  // Связанный код: components/support/helpdesk-widget.tsx
+  //   — useEffect с CSS @media (max-width: 1023px) и селектором body.mobile-menu-open
   useEffect(() => {
     if (isMenuOpen) {
       document.body.classList.add('mobile-menu-open')
     } else {
       document.body.classList.remove('mobile-menu-open')
     }
-    
+
     return () => {
       document.body.classList.remove('mobile-menu-open')
     }

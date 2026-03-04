@@ -35,28 +35,38 @@ export function HelpDeskWidget({ allowedRoles, userRole, showOnMobileWhenMenuOpe
   }
 
   useEffect(() => {
-    // Add CSS to hide widget button on mobile by default
+    // ⚠️  ВАЖНО: НЕ УДАЛЯТЬ И НЕ МЕНЯТЬ БРЕЙКПОИНТ БЕЗ ПРОВЕРКИ МОБИЛЬНОГО МЕНЮ!
+    //
+    // Виджет helpdeskeddy перекрывает кнопку «Меню» в мобильном нижнем меню.
+    // Решение: скрываем виджет на мобильных по умолчанию; показываем только когда
+    // открыто выдвижное меню (MobileBottomNav добавляет класс `mobile-menu-open` на <body>).
+    //
+    // Брейкпоинт 1023px = `lg` в Tailwind (MobileBottomNav скрыт при ≥1024px),
+    // поэтому не меняй его, не проверив компонент MobileBottomNav.
+    //
+    // Связанный код: components/navigation/mobile-bottom-nav.tsx
+    //   — useEffect с document.body.classList.add/remove('mobile-menu-open')
     const style = document.createElement('style')
     style.id = 'helpdesk-mobile-hide'
     style.textContent = `
-      /* Hide HelpDesk button on mobile screens to avoid overlapping with bottom nav */
-      @media (max-width: 768px) {
+      /* Скрываем виджет HelpDesk на мобильных, чтобы не перекрывал кнопку «Меню» */
+      @media (max-width: 1023px) {
         #hde-contact-widget-button,
         .hde-contact-widget-button {
           display: none !important;
         }
-        
-        /* Show when mobile menu is open (has class on body) */
+
+        /* Показываем виджет только когда открыто выдвижное мобильное меню */
         body.mobile-menu-open #hde-contact-widget-button,
         body.mobile-menu-open .hde-contact-widget-button {
           display: block !important;
-          /* Adjust position to not overlap with menu button */
+          /* Поднимаем выше нижнего бара навигации */
           bottom: 80px !important;
         }
       }
     `
     document.head.appendChild(style)
-    
+
     return () => {
       document.getElementById('helpdesk-mobile-hide')?.remove()
     }
