@@ -5,10 +5,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { 
-  LayoutDashboard, 
-  FileText, 
-  Calendar, 
-  Users, 
+  LayoutDashboard,
+  FileText,
+  Calendar,
+  Users,
   Menu,
   X,
   Settings,
@@ -20,7 +20,8 @@ import {
   Bell,
   MessageCircle,
   Radio,
-  Megaphone
+  Megaphone,
+  HeadphonesIcon
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -74,26 +75,6 @@ export default function MobileBottomNav({
     setIsMenuOpen(false)
   }, [pathname])
 
-  // ⚠️  ВАЖНО: НЕ УДАЛЯТЬ — управляет видимостью виджета HelpDeskEddy на мобильных!
-  //
-  // Класс `mobile-menu-open` на <body> используется в helpdesk-widget.tsx для того,
-  // чтобы показывать кнопку виджета только когда открыто это выдвижное меню.
-  // По умолчанию на мобильных виджет скрыт, так как его кнопка перекрывает
-  // кнопку «Меню» в нижнем нав-баре (она крайняя справа).
-  //
-  // Связанный код: components/support/helpdesk-widget.tsx
-  //   — useEffect с CSS @media (max-width: 1023px) и селектором body.mobile-menu-open
-  useEffect(() => {
-    if (isMenuOpen) {
-      document.body.classList.add('mobile-menu-open')
-    } else {
-      document.body.classList.remove('mobile-menu-open')
-    }
-
-    return () => {
-      document.body.classList.remove('mobile-menu-open')
-    }
-  }, [isMenuOpen])
 
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
@@ -338,6 +319,15 @@ export default function MobileBottomNav({
 
                 {/* Профиль и смена пространства */}
                 <div className="mt-2 pt-2 border-t border-gray-200">
+                  <a
+                    href="https://telegram.me/orbo_support_bot"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    <HeadphonesIcon className="h-5 w-5 flex-shrink-0" />
+                    <span>Поддержка</span>
+                  </a>
                   <Link
                     href={`/p/${orgId}/profile`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm hover:bg-gray-100"

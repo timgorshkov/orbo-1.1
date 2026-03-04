@@ -13,20 +13,20 @@ interface HelpDeskWidgetProps {
    * Текущая роль пользователя (для app)
    */
   userRole?: string
-  /**
-   * Показывать на мобильных только когда открыто меню
-   */
-  showOnMobileWhenMenuOpen?: boolean
 }
 
 /**
  * HelpDeskEddy виджет онлайн-поддержки
- * 
+ *
  * Использование:
  * - На сайте orbo.ru: <HelpDeskWidget /> (без ограничений)
  * - В приложении: <HelpDeskWidget allowedRoles={['owner', 'admin']} userRole={role} />
+ *
+ * На мобильных устройствах виджет намеренно скрыт (≤1023px) —
+ * поддержка на мобильных доступна через пункт «Поддержка» в выдвижном меню
+ * (components/navigation/mobile-bottom-nav.tsx), который открывает @orbo_support_bot.
  */
-export function HelpDeskWidget({ allowedRoles, userRole, showOnMobileWhenMenuOpen }: HelpDeskWidgetProps) {
+export function HelpDeskWidget({ allowedRoles, userRole }: HelpDeskWidgetProps) {
   // Если указаны allowedRoles, проверяем роль пользователя
   if (allowedRoles && userRole) {
     if (!allowedRoles.includes(userRole as any)) {
@@ -35,33 +35,16 @@ export function HelpDeskWidget({ allowedRoles, userRole, showOnMobileWhenMenuOpe
   }
 
   useEffect(() => {
-    // ⚠️  ВАЖНО: НЕ УДАЛЯТЬ И НЕ МЕНЯТЬ БРЕЙКПОИНТ БЕЗ ПРОВЕРКИ МОБИЛЬНОГО МЕНЮ!
-    //
-    // Виджет helpdeskeddy перекрывает кнопку «Меню» в мобильном нижнем меню.
-    // Решение: скрываем виджет на мобильных по умолчанию; показываем только когда
-    // открыто выдвижное меню (MobileBottomNav добавляет класс `mobile-menu-open` на <body>).
-    //
-    // Брейкпоинт 1023px = `lg` в Tailwind (MobileBottomNav скрыт при ≥1024px),
-    // поэтому не меняй его, не проверив компонент MobileBottomNav.
-    //
-    // Связанный код: components/navigation/mobile-bottom-nav.tsx
-    //   — useEffect с document.body.classList.add/remove('mobile-menu-open')
+    // Скрываем виджет на мобильных — там используется пункт «Поддержка» в меню.
+    // Брейкпоинт 1023px = Tailwind `lg` (MobileBottomNav скрыт при ≥1024px).
+    // Не удалять: без этого CSS виджет перекрывает кнопку «Меню» на мобильных.
     const style = document.createElement('style')
     style.id = 'helpdesk-mobile-hide'
     style.textContent = `
-      /* Скрываем виджет HelpDesk на мобильных, чтобы не перекрывал кнопку «Меню» */
       @media (max-width: 1023px) {
         #hde-contact-widget-button,
         .hde-contact-widget-button {
           display: none !important;
-        }
-
-        /* Показываем виджет только когда открыто выдвижное мобильное меню */
-        body.mobile-menu-open #hde-contact-widget-button,
-        body.mobile-menu-open .hde-contact-widget-button {
-          display: block !important;
-          /* Поднимаем выше нижнего бара навигации */
-          bottom: 80px !important;
         }
       }
     `
