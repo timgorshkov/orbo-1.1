@@ -114,6 +114,7 @@ export default async function OrganizationSettingsPage({
               organizationId={orgId}
               initialTeam={teamWithGroups}
               userRole={membership.role as 'owner' | 'admin'}
+              allowTelegramAdminRole={organization.allow_telegram_admin_role ?? true}
             />
           </div>
         )

@@ -40,16 +40,20 @@ interface OrganizationTeamProps {
   organizationId: string
   initialTeam: TeamMember[]
   userRole: 'owner' | 'admin'
+  allowTelegramAdminRole?: boolean
 }
 
 export default function OrganizationTeam({
   organizationId,
   initialTeam,
-  userRole
+  userRole,
+  allowTelegramAdminRole: initialAllowTelegramAdminRole = true,
 }: OrganizationTeamProps) {
   const [team, setTeam] = useState<TeamMember[]>(initialTeam)
   const [isPending, startTransition] = useTransition()
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [allowTelegramAdminRole, setAllowTelegramAdminRole] = useState(initialAllowTelegramAdminRole)
+  const [isSavingSetting, setIsSavingSetting] = useState(false)
 
   // Обновляем team когда изменяется initialTeam
   useEffect(() => {
@@ -147,6 +151,39 @@ export default function OrganizationTeam({
     }
   }
 
+  const handleToggleAdminRole = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.checked
+    setAllowTelegramAdminRole(newValue)
+    setIsSavingSetting(true)
+    setSyncMessage(null)
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow_telegram_admin_role: newValue }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setSyncMessage(data.error || 'Не удалось сохранить настройку')
+        setAllowTelegramAdminRole(!newValue) // revert
+        return
+      }
+      if (!newValue) {
+        // Setting turned OFF — immediately sync to strip admin rights
+        await fetch(`/api/organizations/${organizationId}/team`, { method: 'POST' })
+        await fetchTeam()
+        setSyncMessage('Настройка сохранена. Права Telegram-администраторов сняты.')
+      } else {
+        setSyncMessage('Настройка сохранена. Права будут применены при следующей синхронизации.')
+      }
+    } catch {
+      setSyncMessage('Ошибка при сохранении настройки')
+      setAllowTelegramAdminRole(!newValue) // revert
+    } finally {
+      setIsSavingSetting(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -171,6 +208,39 @@ export default function OrganizationTeam({
         {syncMessage && (
           <div className="p-3 bg-blue-50 text-blue-600 rounded-lg text-sm">
             {syncMessage}
+          </div>
+        )}
+
+        {/* ---- Access control setting (owner-only) ---- */}
+        {userRole === 'owner' && (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={allowTelegramAdminRole}
+                onChange={handleToggleAdminRole}
+                disabled={isSavingSetting}
+                className="mt-0.5 h-4 w-4 rounded border-neutral-300 accent-blue-600 disabled:cursor-not-allowed"
+              />
+              <div>
+                <div className="font-medium text-neutral-900">
+                  Telegram-администраторы получают права администратора пространства
+                </div>
+                <div className="mt-1 text-sm text-neutral-600">
+                  Если включено, администраторы подключённых Telegram-групп автоматически
+                  получают роль <strong>Администратора</strong> в этом пространстве и видят
+                  его в своём списке организаций. Если отключено — они теряют
+                  административный доступ при ближайшей синхронизации и работают как
+                  обычные участники.
+                </div>
+                {!allowTelegramAdminRole && (
+                  <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+                    ⚠️ Права Telegram-администраторов сняты. Ручно добавленные
+                    администраторы (по email) продолжают работать в штатном режиме.
+                  </div>
+                )}
+              </div>
+            </label>
           </div>
         )}
 
@@ -465,11 +535,14 @@ export default function OrganizationTeam({
           <p className="font-medium mb-2">Как работают права:</p>
           <ul className="space-y-1 list-disc list-inside">
             <li>Владелец имеет полный доступ ко всем функциям организации</li>
-            <li>Администраторы автоматически добавляются из админов Telegram-групп</li>
+            <li>
+              Администраторы автоматически добавляются из администраторов Telegram-групп
+              {' '}— <em>если включена соответствующая настройка выше</em>
+            </li>
             <li>Администраторы с подтверждённым email могут создавать события и материалы</li>
             <li>Администраторы без email работают в режиме чтения</li>
-            <li>При потере статуса админа во всех группах, права автоматически удаляются</li>
-            <li>Владелец может вручную добавить администраторов по email</li>
+            <li>При потере статуса админа во всех группах, права автоматически снимаются</li>
+            <li>Владелец может вручную добавить администраторов по email (не зависит от настройки выше)</li>
           </ul>
         </div>
       </CardContent>
