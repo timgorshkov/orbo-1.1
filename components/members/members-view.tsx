@@ -344,9 +344,6 @@ export default function MembersView({
     }
   }
   
-  // Show admin features only if user is admin AND in admin mode
-  const showAdminFeatures = isAdmin && adminMode
-
   // Background batch photo sync: fire once on mount for participants missing avatars
   const batchSyncFired = useRef(false)
   useEffect(() => {
