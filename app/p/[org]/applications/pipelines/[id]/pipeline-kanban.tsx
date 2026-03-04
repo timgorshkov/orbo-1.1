@@ -182,7 +182,8 @@ export default function PipelineKanban({
   }
 
   const getPhotoUrl = (app: Application) => {
-    return app.participant?.photo_url || app.tg_user_data?.photo_url
+    const url = app.participant?.photo_url || app.tg_user_data?.photo_url
+    return url && url !== 'none' ? url : null
   }
 
   return (

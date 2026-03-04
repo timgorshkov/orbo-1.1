@@ -89,7 +89,8 @@ export default function ApplicationDetail({
     || `User ${application.tg_user_id}`
 
   const username = participant?.username || userData.username
-  const photoUrl = participant?.photo_url || userData.photo_url
+  const photoUrlRaw = participant?.photo_url || userData.photo_url
+  const photoUrl = photoUrlRaw && photoUrlRaw !== 'none' ? photoUrlRaw : null
 
   // Debug logging on mount
   useEffect(() => {
