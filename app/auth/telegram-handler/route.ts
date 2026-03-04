@@ -183,11 +183,28 @@ export async function GET(request: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30 days
     })
     
-    logger.info({ 
+    logger.info({
       user_id: user.id,
       code_id: authCodes.id
     }, 'Session created for user');
-    
+
+    // 6.5 Отправляем постоянную ссылку на пространство в Telegram
+    if (authCodes.org_id && authCodes.telegram_user_id) {
+      try {
+        const { createTelegramService } = await import('@/lib/services/telegramService')
+        const telegramService = createTelegramService('main')
+        const orgUrl = `${baseUrl}/p/${authCodes.org_id}`
+        const permanentMsg =
+          `🎉 Добро пожаловать!\n\n` +
+          `Сохраните постоянную ссылку на пространство:\n${orgUrl}\n\n` +
+          `По ней вы всегда сможете войти без кода.`
+        await telegramService.sendMessage(authCodes.telegram_user_id, permanentMsg)
+        logger.info({ org_id: authCodes.org_id, telegram_user_id: authCodes.telegram_user_id }, 'Permanent org link sent')
+      } catch (sendErr) {
+        logger.warn({ error: sendErr instanceof Error ? sendErr.message : String(sendErr) }, 'Failed to send permanent link (non-critical)')
+      }
+    }
+
     // 7. Определяем куда редиректить
     // ВАЖНО: НЕ заменяем /p/ на /app/ - участники должны идти на публичную страницу
     // Публичная страница /p/ сама проверит авторизацию и покажет нужный контент

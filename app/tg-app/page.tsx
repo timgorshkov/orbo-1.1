@@ -102,6 +102,16 @@ export default function TelegramAppHome() {
       }
     }
     
+    // Join org deep link: org-{orgId}
+    if (startParam.startsWith('org-')) {
+      const orgId = startParam.substring(4);
+      if (orgId && orgId.length > 0) {
+        setStatus('redirecting');
+        router.replace(`/tg-app/join/${orgId}`);
+        return;
+      }
+    }
+
     // Login deep link
     if (startParam === 'login') {
       setStatus('redirecting');
