@@ -64,10 +64,11 @@ export default function MembersView({
   adminMode,
 }: MembersViewProps) {
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants)
-  const [allLoaded, setAllLoaded] = useState(
-    totalParticipantCount === undefined || initialParticipants.length >= (totalParticipantCount ?? 0)
-  )
-  const [backgroundLoading, setBackgroundLoading] = useState(false)
+  // true when enriched list is fully loaded (no background fetch needed)
+  const isInitiallyAllLoaded = totalParticipantCount === undefined || initialParticipants.length >= (totalParticipantCount ?? 0)
+  const [allLoaded, setAllLoaded] = useState(isInitiallyAllLoaded)
+  // Start as true for large orgs so we show skeleton instead of unsorted fast-path data
+  const [backgroundLoading, setBackgroundLoading] = useState(!isInitiallyAllLoaded)
   const [searchQuery, setSearchQuery] = useState('')
   // Таблица — только для admin в admin-режиме; участники и owner в "режиме участника" видят карточки
   const showAdminFeatures = isAdmin && adminMode
@@ -595,8 +596,26 @@ export default function MembersView({
         )}
       </div>
 
-      {/* Контент */}
-      {filteredParticipants.length === 0 ? (
+      {/* Скелетон при фоновой загрузке (только если нет поиска/фильтров — пользователь ещё не взаимодействовал) */}
+      {backgroundLoading && !searchQuery && activeFiltersCount === 0 ? (
+        viewMode === 'table' ? (
+          <div className="space-y-2 animate-pulse">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 animate-pulse">
+            {Array.from({ length: 24 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2 p-2">
+                <div className="w-24 h-24 rounded-full bg-gray-200" />
+                <div className="w-16 h-3 bg-gray-200 rounded" />
+                <div className="w-12 h-2 bg-gray-100 rounded" />
+              </div>
+            ))}
+          </div>
+        )
+      ) : /* Контент */ filteredParticipants.length === 0 ? (
         <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
           <div className="text-center">
             <p className="text-lg font-medium text-gray-900">
