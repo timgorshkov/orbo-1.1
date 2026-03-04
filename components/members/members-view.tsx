@@ -69,8 +69,18 @@ export default function MembersView({
   )
   const [backgroundLoading, setBackgroundLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  // Default view mode: table for admins, cards for others
-  const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'table' : 'cards')
+  // Таблица — только для admin в admin-режиме; участники и owner в "режиме участника" видят карточки
+  const showAdminFeatures = isAdmin && adminMode
+  const [viewMode, setViewMode] = useState<ViewMode>(showAdminFeatures ? 'table' : 'cards')
+
+  // При переключении режима обновляем viewMode
+  useEffect(() => {
+    if (showAdminFeatures) {
+      setViewMode('table')
+    } else {
+      setViewMode('cards')
+    }
+  }, [showAdminFeatures])
   // How many filtered items to render
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   
@@ -484,8 +494,8 @@ export default function MembersView({
       <div className="w-full">
         {/* Поиск и переключатель видов */}
         <div className="mb-6 flex items-center gap-3">
-          {/* Кнопка фильтров (Admin only) */}
-          {isAdmin && (
+          {/* Кнопка фильтров — только в admin-режиме */}
+          {showAdminFeatures && (
             <Button
               variant="outline"
               size="sm"
@@ -526,7 +536,8 @@ export default function MembersView({
               <span className="hidden sm:inline">Карточки</span>
             </Button>
             
-            {isAdmin && (
+            {/* Таблица и экспорт — только в admin-режиме */}
+            {showAdminFeatures && (
               <>
                 <Button
                   variant={viewMode === 'table' ? 'default' : 'outline'}
