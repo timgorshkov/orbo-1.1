@@ -5,12 +5,17 @@ interface App {
   id: string
   name: string
   description: string | null
-  icon_url: string | null
+  icon: string | null
 }
 
 interface Props {
   apps: App[]
   orgId: string
+}
+
+// icon field is either an emoji or a URL
+function isUrl(value: string) {
+  return value.startsWith('http://') || value.startsWith('https://')
 }
 
 export default function AppsSection({ apps, orgId }: Props) {
@@ -32,12 +37,16 @@ export default function AppsSection({ apps, orgId }: Props) {
             href={`/p/${orgId}/apps/${app.id}`}
             className="flex items-start gap-3 bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-md transition-shadow"
           >
-            {app.icon_url ? (
+            {app.icon && isUrl(app.icon) ? (
               <img
-                src={app.icon_url}
+                src={app.icon}
                 alt={app.name}
                 className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
               />
+            ) : app.icon ? (
+              <div className="w-10 h-10 rounded-lg bg-neutral-100 flex items-center justify-center flex-shrink-0 text-2xl">
+                {app.icon}
+              </div>
             ) : (
               <div className="w-10 h-10 rounded-lg bg-neutral-100 flex items-center justify-center flex-shrink-0">
                 <AppWindow className="w-5 h-5 text-neutral-400" />

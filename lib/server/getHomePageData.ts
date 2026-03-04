@@ -79,7 +79,7 @@ export interface HomePageData {
     id: string
     name: string
     description: string | null
-    icon_url: string | null
+    icon: string | null
   }>
 
   activitySummary?: {  // только если is_inactive
@@ -408,7 +408,7 @@ export async function getHomePageData(
     // 9. Get active apps
     const { data: recentAppsRaw } = await supabase
       .from('apps')
-      .select('id, name, description, icon_url')
+      .select('id, name, description, icon')
       .eq('org_id', orgId)
       .eq('status', 'active')
       .limit(4)
@@ -456,7 +456,7 @@ export async function getHomePageData(
         id: a.id,
         name: a.name,
         description: (a as any).description ?? null,
-        icon_url: (a as any).icon_url ?? null
+        icon: (a as any).icon ?? null
       })),
       activitySummary
     }
