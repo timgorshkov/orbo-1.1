@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { Metadata } from 'next'
-import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import AuthenticatedHome from '@/components/home/authenticated-home'
 import PublicCommunityHub from '@/components/home/public-community-hub'
@@ -9,24 +9,32 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * Generate OG metadata for organization page
  * Shows organization logo or nothing (no Orbo default)
  */
-export async function generateMetadata({ 
-  params 
-}: { 
+export async function generateMetadata({
+  params
+}: {
   params: Promise<{ org: string }>
 }): Promise<Metadata> {
   const { org: orgId } = await params
-  const adminSupabase = createAdminServer()
-  
+
   // Default metadata
   let title = 'Сообщество'
   let description = 'Присоединяйтесь к нашему сообществу'
   let ogImage: string | null = null
   let orgName: string | null = null
-  
+
+  // Skip DB query for invalid UUIDs (e.g. /p/none from misconfigured links)
+  if (!UUID_RE.test(orgId)) {
+    return { title: { absolute: title }, description }
+  }
+
+  const adminSupabase = createAdminServer()
+
   try {
     // Fetch organization info
     const { data: org, error } = await adminSupabase
@@ -148,8 +156,10 @@ export async function generateMetadata({
 
 export default async function CommunityHubPage({ params }: { params: Promise<{ org: string }> }) {
   const { org: orgId } = await params
-  const supabase = await createClientServer()
-  const adminSupabase = createAdminServer()
+
+  if (!UUID_RE.test(orgId)) {
+    return <div className="min-h-screen flex items-center justify-center text-neutral-500">Not found</div>
+  }
 
   // Check authentication via unified auth (supports both Supabase and NextAuth)
   const user = await getUnifiedUser()
