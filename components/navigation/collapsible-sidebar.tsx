@@ -54,6 +54,12 @@ interface CollapsibleSidebarProps {
     tgUserId: string | null
     participantId: string | null
   }
+  portalSettings?: {
+    show_events: boolean
+    show_members: boolean
+    show_materials: boolean
+    show_apps: boolean
+  }
 }
 
 export default function CollapsibleSidebar({
@@ -65,6 +71,7 @@ export default function CollapsibleSidebar({
   telegramChannels = [],
   maxGroups = [],
   userProfile,
+  portalSettings = { show_events: true, show_members: true, show_materials: false, show_apps: false },
 }: CollapsibleSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -160,19 +167,19 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Материалы - временно скрыты из основного меню
-  // if (role !== 'guest') {
-  //   navItems.push({
-  //     key: 'materials',
-  //     label: 'Материалы',
-  //     icon: FileText,
-  //     href: `/p/${orgId}/materials`,
-  //     active: pathname?.startsWith(`/p/${orgId}/materials`),
-  //   })
-  // }
+  // Материалы (управляется настройками портала; для админов в режиме админа — всегда видны)
+  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_materials)) {
+    navItems.push({
+      key: 'materials',
+      label: 'Материалы',
+      icon: FileText,
+      href: `/p/${orgId}/materials`,
+      active: pathname?.startsWith(`/p/${orgId}/materials`),
+    })
+  }
 
-  // События (для всех, кроме guest)
-  if (role !== 'guest') {
+  // События (управляется настройками портала; для админов в режиме админа — всегда видны)
+  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_events)) {
     navItems.push({
       key: 'events',
       label: 'События',
@@ -204,8 +211,8 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Участники (для всех, кроме guest)
-  if (role !== 'guest') {
+  // Участники (управляется настройками портала; для админов в режиме админа — всегда видны)
+  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_members)) {
     navItems.push({
       key: 'members',
       label: 'Участники',
@@ -281,14 +288,16 @@ export default function CollapsibleSidebar({
                 onClick={() => setShowMenuDropdown(false)}
               />
               <div className="absolute bottom-14 left-16 z-20 w-64 rounded-lg border border-gray-200 bg-white shadow-lg py-2">
-                <Link
-                  href={`/p/${orgId}/apps`}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  onClick={() => setShowMenuDropdown(false)}
-                >
-                  <AppWindow className="h-4 w-4" />
-                  <span>Приложения</span>
-                </Link>
+                {role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_apps) && (
+                  <Link
+                    href={`/p/${orgId}/apps`}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => setShowMenuDropdown(false)}
+                  >
+                    <AppWindow className="h-4 w-4" />
+                    <span>Приложения</span>
+                  </Link>
+                )}
 
                 {/* Группы мессенджеров (только для админов) */}
                 {isAdmin && adminMode && (
@@ -517,18 +526,20 @@ export default function CollapsibleSidebar({
           )
         })}
 
-        {/* Приложения (для всех авторизованных) */}
-        <Link
-          href={`/p/${orgId}/apps`}
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            pathname?.startsWith(`/p/${orgId}/apps`)
-              ? 'bg-blue-50 text-blue-600'
-              : 'text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <AppWindow className="h-5 w-5 flex-shrink-0" />
-          <span>Приложения</span>
-        </Link>
+        {/* Приложения (управляется настройками портала; для админов в режиме админа — всегда видны) */}
+        {role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_apps) && (
+          <Link
+            href={`/p/${orgId}/apps`}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              pathname?.startsWith(`/p/${orgId}/apps`)
+                ? 'bg-blue-50 text-blue-600'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <AppWindow className="h-5 w-5 flex-shrink-0" />
+            <span>Приложения</span>
+          </Link>
+        )}
 
         {/* Группы мессенджеров (только для админов в режиме админа) */}
         {isAdmin && adminMode && (

@@ -16,6 +16,14 @@ export interface HomePageData {
     event_count: number
     material_count: number
   }
+
+  portalSettings: {
+    show_events: boolean
+    show_members: boolean
+    show_materials: boolean
+    show_apps: boolean
+    welcome_html: string | null
+  }
   
   currentParticipant: {
     id: string
@@ -82,7 +90,7 @@ export async function getHomePageData(
     // 1. Get organization info
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .select('id, name, logo_url, public_description')
+      .select('id, name, logo_url, public_description, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps, portal_welcome_html')
       .eq('id', orgId)
       .single()
 
@@ -378,6 +386,13 @@ export async function getHomePageData(
         member_count: memberCount || 0,
         event_count: eventCount || 0,
         material_count: materialCount || 0
+      },
+      portalSettings: {
+        show_events:    org.portal_show_events    ?? true,
+        show_members:   org.portal_show_members   ?? true,
+        show_materials: org.portal_show_materials ?? false,
+        show_apps:      org.portal_show_apps      ?? false,
+        welcome_html:   org.portal_welcome_html   ?? null,
       },
       currentParticipant: {
         id: participant.id,

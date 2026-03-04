@@ -8,6 +8,7 @@ import OrganizationTeam from '@/components/settings/organization-team'
 // InvitesManager moved to /p/[org]/members page
 // Digest settings are now in the Notifications tab (notification-rules-content.tsx)
 import dynamic from 'next/dynamic'
+import PortalSettingsForm from '@/components/settings/portal-settings-form'
 import { createServiceLogger } from '@/lib/logger'
 
 // Dynamic import for tags page (it's a client component)
@@ -170,6 +171,31 @@ export default async function OrganizationSettingsPage({
               </p>
             </div>
             <BillingContent />
+          </div>
+        )
+        break
+      }
+
+      case 'portal': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Портал пространства</h2>
+              <p className="text-gray-600 mt-1">
+                Настройте, какие разделы видят участники в меню и на главной странице
+              </p>
+            </div>
+            <PortalSettingsForm
+              organizationId={orgId}
+              initialSettings={{
+                portal_show_events:    organization.portal_show_events    ?? true,
+                portal_show_members:   organization.portal_show_members   ?? true,
+                portal_show_materials: organization.portal_show_materials ?? false,
+                portal_show_apps:      organization.portal_show_apps      ?? false,
+                portal_welcome_html:   organization.portal_welcome_html   ?? null,
+              }}
+              userRole={membership.role as 'owner' | 'admin'}
+            />
           </div>
         )
         break

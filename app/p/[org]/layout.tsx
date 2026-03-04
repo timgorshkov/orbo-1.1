@@ -28,10 +28,10 @@ export default async function PublicOrgLayout({
   const session = await getUnifiedSession();
   const adminSupabase = createAdminServer()
 
-  // Получаем организацию
+  // Получаем организацию вместе с настройками портала
   const { data: org } = await adminSupabase
     .from('organizations')
-    .select('id, name, logo_url')
+    .select('id, name, logo_url, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps')
     .eq('id', orgId)
     .single()
 
@@ -167,6 +167,12 @@ export default async function PublicOrgLayout({
             telegramChannels={telegramChannels}
             maxGroups={maxGroups}
             userProfile={userProfile}
+            portalSettings={{
+              show_events:    org.portal_show_events    ?? true,
+              show_members:   org.portal_show_members   ?? true,
+              show_materials: org.portal_show_materials ?? false,
+              show_apps:      org.portal_show_apps      ?? false,
+            }}
           />
         </div>
 
@@ -187,6 +193,12 @@ export default async function PublicOrgLayout({
               telegramChannels={telegramChannels}
               maxGroups={maxGroups}
               userProfile={userProfile}
+              portalSettings={{
+                show_events:    org.portal_show_events    ?? true,
+                show_members:   org.portal_show_members   ?? true,
+                show_materials: org.portal_show_materials ?? false,
+                show_apps:      org.portal_show_apps      ?? false,
+              }}
             />
           </div>
         </div>

@@ -168,8 +168,6 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ o
     redirect(`/p/${orgId}/auth`)
   }
 
-  const isAdmin = access.role === 'owner' || access.role === 'admin'
-
   // Show authenticated version
-  return <AuthenticatedHome orgId={orgId} isAdmin={isAdmin} />
+  return <AuthenticatedHome orgId={orgId} role={access.role as 'owner' | 'admin' | 'member' | 'guest'} />
 }

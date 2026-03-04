@@ -5,14 +5,17 @@ import { useRouter } from 'next/navigation'
 import HeroSection from './hero-section'
 import UpcomingEventsSection from './upcoming-events-section'
 import RecentMembersSection from './recent-members-section'
+import WelcomeBlock from './welcome-block'
+import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import type { HomePageData } from '@/lib/server/getHomePageData'
 
 interface Props {
   orgId: string
-  isAdmin: boolean
+  role: 'owner' | 'admin' | 'member' | 'guest'
 }
 
-export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
+export default function AuthenticatedHome({ orgId, role }: Props) {
+  const { adminMode, isAdmin } = useAdminMode(role)
   const router = useRouter()
   const [data, setData] = useState<HomePageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -79,6 +82,9 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
     )
   }
 
+  const showAdminFeatures = isAdmin && adminMode
+  const ps = data.portalSettings
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
       <HeroSection
@@ -88,15 +94,24 @@ export default function AuthenticatedHome({ orgId, isAdmin }: Props) {
       />
 
       <div className="py-8">
-        <UpcomingEventsSection
-          events={data.upcomingEvents}
-          orgId={orgId}
-        />
+        {/* Приветственный блок (только если заполнен) */}
+        {ps.welcome_html && <WelcomeBlock html={ps.welcome_html} />}
 
-        <RecentMembersSection
-          members={data.recentMembers}
-          orgId={orgId}
-        />
+        {/* События (управляется настройками портала) */}
+        {(showAdminFeatures || ps.show_events) && (
+          <UpcomingEventsSection
+            events={data.upcomingEvents}
+            orgId={orgId}
+          />
+        )}
+
+        {/* Участники (управляется настройками портала) */}
+        {(showAdminFeatures || ps.show_members) && (
+          <RecentMembersSection
+            members={data.recentMembers}
+            orgId={orgId}
+          />
+        )}
       </div>
     </div>
   )

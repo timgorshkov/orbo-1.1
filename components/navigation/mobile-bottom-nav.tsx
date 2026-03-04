@@ -53,6 +53,12 @@ interface MobileBottomNavProps {
     tgUserId: string | null
     participantId: string | null
   }
+  portalSettings?: {
+    show_events: boolean
+    show_members: boolean
+    show_materials: boolean
+    show_apps: boolean
+  }
 }
 
 export default function MobileBottomNav({
@@ -64,6 +70,7 @@ export default function MobileBottomNav({
   telegramChannels = [],
   maxGroups = [],
   userProfile,
+  portalSettings = { show_events: true, show_members: true, show_materials: false, show_apps: false },
 }: MobileBottomNavProps) {
   const pathname = usePathname()
   const { adminMode, toggleAdminMode, isAdmin } = useAdminMode(role)
@@ -110,7 +117,7 @@ export default function MobileBottomNav({
     })
   }
 
-  if (permissions.canViewEvents) {
+  if (permissions.canViewEvents && ((isAdmin && adminMode) || portalSettings.show_events)) {
     mainNavItems.push({
       key: 'events',
       label: 'События',
@@ -120,7 +127,7 @@ export default function MobileBottomNav({
     })
   }
 
-  if (permissions.canViewMembers) {
+  if (permissions.canViewMembers && ((isAdmin && adminMode) || portalSettings.show_members)) {
     mainNavItems.push({
       key: 'members',
       label: 'Участники',
@@ -218,8 +225,23 @@ export default function MobileBottomNav({
                   </Link>
                 )}
 
-                {/* Приложения (для всех авторизованных) */}
-                {role !== 'guest' && (
+                {/* Материалы (управляется настройками портала) */}
+                {role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_materials) && (
+                  <Link
+                    href={`/p/${orgId}/materials`}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/materials`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <FileText className="h-5 w-5 flex-shrink-0" />
+                    <span>Материалы</span>
+                  </Link>
+                )}
+
+                {/* Приложения (управляется настройками портала) */}
+                {role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_apps) && (
                   <Link
                     href={`/p/${orgId}/apps`}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${

@@ -100,6 +100,33 @@ export async function PATCH(
       updateData.allow_telegram_admin_role = Boolean(body.allow_telegram_admin_role)
     }
 
+    // Portal settings — only owner
+    const portalBoolFields = [
+      'portal_show_events',
+      'portal_show_members',
+      'portal_show_materials',
+      'portal_show_apps',
+    ] as const
+    const hasPortalFields = portalBoolFields.some((f) => body[f] !== undefined) ||
+      body.portal_welcome_html !== undefined
+
+    if (hasPortalFields) {
+      if (membership.role !== 'owner') {
+        return NextResponse.json(
+          { error: 'Только владелец может изменять настройки портала' },
+          { status: 403 }
+        )
+      }
+      for (const field of portalBoolFields) {
+        if (body[field] !== undefined) {
+          updateData[field] = Boolean(body[field])
+        }
+      }
+      if (body.portal_welcome_html !== undefined) {
+        updateData.portal_welcome_html = body.portal_welcome_html || null
+      }
+    }
+
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'Нет полей для обновления' }, { status: 400 })
     }
