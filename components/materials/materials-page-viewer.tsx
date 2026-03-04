@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { MaterialTreeNode } from '@/lib/server/materials/service';
 import { MaterialsTree } from './materials-tree';
 import { MaterialsEditorPlaceholder } from './materials-editor-placeholder';
@@ -18,6 +19,7 @@ export type MaterialsPageViewerProps = {
   orgName?: string;
   orgLogoUrl?: string | null;
   readOnly?: boolean;
+  initialPageId?: string | null;
 };
 
 type PageState = {
@@ -32,10 +34,15 @@ export function MaterialsPageViewer({
   initialTree,
   orgName,
   orgLogoUrl,
-  readOnly = false
+  readOnly = false,
+  initialPageId,
 }: MaterialsPageViewerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [tree, setTree] = useState<MaterialTreeNode[]>(initialTree);
-  const [selectedId, setSelectedId] = useState<string | null>(() => firstPageId(initialTree));
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => initialPageId || firstPageId(initialTree)
+  );
   const [page, setPage] = useState<PageState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -147,6 +154,13 @@ export function MaterialsPageViewer({
       setPage(null);
     }
   }, [selectedId, loadPage]);
+
+  // Sync selected page to URL so links are shareable
+  useEffect(() => {
+    if (!selectedId) return;
+    const url = `${pathname}?page=${selectedId}`;
+    router.replace(url, { scroll: false });
+  }, [selectedId, pathname, router]);
 
   useEffect(() => {
     if (!searchValue.trim()) {

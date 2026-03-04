@@ -38,7 +38,7 @@ export default function RecentMaterialsSection({ materials, orgId }: Props) {
         {materials.map((material) => (
           <Link
             key={material.id}
-            href={`/p/${orgId}/materials/${material.id}`}
+            href={`/p/${orgId}/materials?page=${material.id}`}
             className="flex items-center gap-3 py-2.5 border-b border-neutral-100 last:border-0 hover:bg-neutral-50 -mx-4 px-4 transition-colors"
           >
             <FileText className="w-4 h-4 text-neutral-400 flex-shrink-0" />

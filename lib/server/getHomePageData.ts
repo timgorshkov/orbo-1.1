@@ -303,6 +303,12 @@ export async function getHomePageData(
       .order('created_at', { ascending: false })
       .limit(20)
 
+    // Normalize photo_url: treat "none"/"null" strings as actual null
+    const normalizePhotoUrl = (url: string | null | undefined): string | null => {
+      if (!url || url === 'none' || url === 'null') return null
+      return url
+    }
+
     // Filter in application code for better control
     const recentMembers = (recentMembersRaw || []).filter(member => {
       // Exclude bots by source
@@ -327,13 +333,13 @@ export async function getHomePageData(
       if (member.participant_status === 'excluded') return false
       
       return true
-    }).slice(0, 5)
+    }).slice(0, 9)
 
     const processedMembers = recentMembers.map(member => ({
       id: member.id,
       full_name: member.full_name || 'Участник',
       username: member.username,
-      avatar_url: member.photo_url,
+      avatar_url: normalizePhotoUrl(member.photo_url),
       joined_at: member.created_at
     }))
 
@@ -430,7 +436,7 @@ export async function getHomePageData(
         id: participant.id,
         full_name: participant.full_name || 'Участник',
         username: participant.username,
-        avatar_url: participant.photo_url,
+        avatar_url: normalizePhotoUrl(participant.photo_url),
         joined_at: participant.joined_at || participant.created_at,
         days_in_community: daysInCommunity,
         events_attended: eventsAttended || 0,
