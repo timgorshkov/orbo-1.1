@@ -113,33 +113,37 @@ export default function EventParticipantsList({ eventId, orgId, showParticipants
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+      <div className="flex flex-wrap gap-4">
         {participants.map(participant => {
+          const photoUrl = participant.photo_url && participant.photo_url !== 'none' && participant.photo_url !== 'null'
+            ? participant.photo_url
+            : null
+
           const CardContent = (
-            <div className="flex flex-col items-center text-center p-2 hover:bg-neutral-50 transition-colors rounded">
+            <div className="flex flex-col items-center text-center hover:opacity-80 transition-opacity w-20">
               {/* Photo */}
-              <div className="w-12 h-12 rounded-full bg-neutral-200 overflow-hidden mb-2 flex-shrink-0">
-                {participant.photo_url ? (
+              <div className="w-14 h-14 rounded-full bg-neutral-200 overflow-hidden mb-1.5 flex-shrink-0">
+                {photoUrl ? (
                   <img
-                    src={participant.photo_url}
+                    src={photoUrl}
                     alt={participant.full_name}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-neutral-500 text-lg font-semibold">
+                  <div className="w-full h-full flex items-center justify-center bg-blue-100 text-blue-600 font-semibold">
                     {participant.full_name.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
 
               {/* Name */}
-              <div className="font-medium text-xs text-neutral-900 mb-0.5 line-clamp-2 leading-tight">
+              <div className="text-xs text-neutral-900 line-clamp-2 leading-tight w-full">
                 {participant.full_name}
               </div>
 
               {/* Bio */}
               {participant.bio && (
-                <div className="text-xs text-neutral-600 line-clamp-1 leading-tight">
+                <div className="text-xs text-neutral-500 line-clamp-1 leading-tight mt-0.5">
                   {participant.bio}
                 </div>
               )}

@@ -519,9 +519,9 @@ export default function ProfilePage() {
   // 1. User's email (this is the logged-in user's identity)
   // 2. Telegram name from verified account
   // 3. Participant data (might belong to a different user if Telegram was shared)
-  const displayName = profile.user.email ||
-                      profile.telegram?.telegram_first_name ||
-                      profile.participant?.full_name || 
+  const displayName = profile.participant?.full_name ||
+                      [profile.telegram?.telegram_first_name, profile.telegram?.telegram_last_name].filter(Boolean).join(' ') ||
+                      profile.user.email ||
                       (profile.participant?.username ? `@${profile.participant.username}` : null) ||
                       'Пользователь'
 
@@ -544,7 +544,7 @@ export default function ProfilePage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Профиль</h1>
           <p className="text-gray-600 mt-2">
-            Управление вашим профилем в организации {profile.organization?.name}
+            в организации {profile.organization?.name}
           </p>
         </div>
         <Button
@@ -1062,47 +1062,7 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* Custom attributes (excluding system/AI fields) */}
-                {profile.participant?.custom_attributes && (() => {
-                  // System fields that shouldn't be displayed (AI-generated or technical)
-                  const hiddenFields = [
-                    // AI-extracted fields
-                    'interests_keywords', 'recent_asks', 'city_inferred', 'city_confidence',
-                    'topics_discussed', 'behavioral_role', 'role_confidence', 'reaction_patterns',
-                    'communication_style',
-                    // User-defined fields (shown in "Goals & Offers" section separately)
-                    'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
-                    // Technical/meta fields (should only be in logs)
-                    'last_enriched_at', 'enrichment_source', 'enrichment_version', 
-                    'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
-                    'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
-                    // Event behavior (shown in separate section)
-                    'event_attendance',
-                    // Import metadata (hidden)
-                    'whatsapp_imported', 'import_date'
-                  ];
-                  
-                  const userAttributes = Object.entries(profile.participant.custom_attributes)
-                    .filter(([key]) => !hiddenFields.includes(key));
-                  
-                  if (userAttributes.length === 0) return null;
-                  
-                  return (
-                    <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Дополнительные атрибуты</h3>
-                      <div className="space-y-2">
-                        {userAttributes.map(([key, value]) => (
-                          <div key={key} className="flex items-start gap-2 text-sm">
-                            <span className="text-gray-600 capitalize">{key}:</span>
-                            <span className="font-medium text-gray-900 flex-1">
-                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Custom attributes: hidden from participant view (system/org fields) */}
 
                 {/* Admin groups */}
                 {profile.membership.admin_groups && profile.membership.admin_groups.length > 0 && (
@@ -1312,8 +1272,8 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* MAX Section */}
-        <Card className="mb-6">
+        {/* MAX Section — only for owners/admins */}
+        {profile.membership.role !== 'member' && <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-indigo-600" />
@@ -1408,7 +1368,7 @@ export default function ProfilePage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
     </div>
   )

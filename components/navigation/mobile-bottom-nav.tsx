@@ -341,15 +341,17 @@ export default function MobileBottomNav({
 
                 {/* Профиль и смена пространства */}
                 <div className="mt-2 pt-2 border-t border-gray-200">
-                  <a
-                    href="https://telegram.me/orbo_support_bot"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <HeadphonesIcon className="h-5 w-5 flex-shrink-0" />
-                    <span>Поддержка</span>
-                  </a>
+                  {role === 'owner' && (
+                    <a
+                      href="https://telegram.me/orbo_support_bot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <HeadphonesIcon className="h-5 w-5 flex-shrink-0" />
+                      <span>Поддержка</span>
+                    </a>
+                  )}
                   <Link
                     href={`/p/${orgId}/profile`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm hover:bg-gray-100"

@@ -391,7 +391,7 @@ export default async function OrganizationsPage() {
               {memberOrgs.map((org) => (
                 <Link
                   key={org.org_id}
-                  href={`/app/${org.org_id}`}
+                  href={`/p/${org.org_id}`}
                   className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 hover:shadow-sm"
                 >
                   {org.logo_url ? (

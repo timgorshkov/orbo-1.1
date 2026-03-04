@@ -209,6 +209,7 @@ export function MaterialsPageViewer({
             onTreeChange={setTree}
             onSearchOpen={() => setIsSearchOpen(true)}
             onPageRenamed={handlePageRenamed}
+            readOnly={readOnly}
           />
         </div>
       </aside>

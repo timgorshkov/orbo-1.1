@@ -39,9 +39,10 @@ type MaterialsTreeProps = {
   onTreeChange?: (tree: MaterialTreeNode[]) => void;
   onSearchOpen?: () => void;
   onPageRenamed?: (pageId: string, newTitle: string) => void;
+  readOnly?: boolean;
 };
 
-export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange, onSearchOpen, onPageRenamed }: MaterialsTreeProps) {
+export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTreeChange, onSearchOpen, onPageRenamed, readOnly = false }: MaterialsTreeProps) {
   const [tree, setTree] = useState<MaterialTreeNode[]>(initialTree);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialTree.map(node => node.id)));
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -307,16 +308,18 @@ export function MaterialsTree({ orgId, initialTree, selectedId, onSelect, onTree
             >
               <Search className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              className="h-7 px-2 gap-1"
-              onClick={() => handleCreate(null)}
-              disabled={pendingId === 'root'}
-              aria-label="Добавить корневую страницу"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="text-xs">Добавить</span>
-            </Button>
+            {!readOnly && (
+              <Button
+                variant="outline"
+                className="h-7 px-2 gap-1"
+                onClick={() => handleCreate(null)}
+                disabled={pendingId === 'root'}
+                aria-label="Добавить корневую страницу"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="text-xs">Добавить</span>
+              </Button>
+            )}
           </div>
         </div>
         <TreeList
