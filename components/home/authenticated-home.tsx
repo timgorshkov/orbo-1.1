@@ -46,6 +46,7 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
   const [data, setData] = useState<HomePageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [noParticipant, setNoParticipant] = useState(false)
 
   useEffect(() => {
     fetchHomePageData()
@@ -67,6 +68,10 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
       }
 
       const homeData = await response.json()
+      if (homeData.no_participant) {
+        setNoParticipant(true)
+        return
+      }
       setData(homeData)
     } catch (err: any) {
       console.error('[AuthenticatedHome] Error:', err)
@@ -82,6 +87,25 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
         <div className="text-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
           <p className="text-sm text-neutral-500">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (noParticipant) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mx-auto mb-4 text-2xl">
+            👤
+          </div>
+          <h1 className="text-lg font-semibold text-neutral-900 mb-2">
+            Нет профиля участника
+          </h1>
+          <p className="text-sm text-neutral-500">
+            Ваш аккаунт не связан с записью участника в этом сообществе.
+            Главная страница предназначена для участников, вступивших через Telegram.
+          </p>
         </div>
       </div>
     )

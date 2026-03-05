@@ -17,6 +17,7 @@ import { enrichParticipant, estimateEnrichmentCost } from '@/lib/services/partic
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 import { getOrgBillingStatus } from '@/lib/services/billingService';
 
 export async function GET(
@@ -42,18 +43,12 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-    
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+
+    const access = await getEffectiveOrgRole(user.id, orgId);
+    if (!access || (access.role !== 'owner' && access.role !== 'admin')) {
       return NextResponse.json({ error: 'Forbidden: owner/admin only' }, { status: 403 });
     }
-    
+
     // Estimate cost
     const estimate = await estimateEnrichmentCost(participantId, orgId, daysBack);
     
@@ -102,18 +97,12 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-    
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+
+    const access = await getEffectiveOrgRole(user.id, orgId);
+    if (!access || (access.role !== 'owner' && access.role !== 'admin')) {
       return NextResponse.json({ error: 'Forbidden: owner/admin only' }, { status: 403 });
     }
-    
+
     // Check if OPENAI_API_KEY is configured
     if (useAI && !process.env.OPENAI_API_KEY) {
       return NextResponse.json(
@@ -133,7 +122,7 @@ export async function POST(
         .eq('id', orgId)
         .single();
 
-      const total = orgData?.ai_credits_total ?? 5;
+      const total = orgData?.ai_credits_total ?? 20;
       const used = orgData?.ai_credits_used ?? 0;
       if (total - used <= 0) {
         return NextResponse.json({
