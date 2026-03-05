@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       SELECT
         p.id,
         p.full_name,
-        p.tg_username,
+        p.username                                  AS tg_username,
         p.bio,
         p.photo_url,
         p.custom_attributes->>'goals_self'          AS goals_self,
@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
         p.custom_attributes->>'behavioral_role'     AS behavioral_role,
         ts_rank(
           to_tsvector('simple',
-            COALESCE(p.full_name,    '') || ' ' ||
-            COALESCE(p.tg_username,  '') || ' ' ||
-            COALESCE(p.bio,          '') || ' ' ||
+            COALESCE(p.full_name,   '') || ' ' ||
+            COALESCE(p.username,    '') || ' ' ||
+            COALESCE(p.bio,         '') || ' ' ||
             COALESCE(p.custom_attributes::text, '')
           ),
           plainto_tsquery('simple', $2)
@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
         AND p.merged_into IS NULL
         AND (p.participant_status IS NULL OR p.participant_status != 'archived')
         AND to_tsvector('simple',
-              COALESCE(p.full_name,    '') || ' ' ||
-              COALESCE(p.tg_username,  '') || ' ' ||
-              COALESCE(p.bio,          '') || ' ' ||
+              COALESCE(p.full_name,   '') || ' ' ||
+              COALESCE(p.username,    '') || ' ' ||
+              COALESCE(p.bio,         '') || ' ' ||
               COALESCE(p.custom_attributes::text, '')
             ) @@ plainto_tsquery('simple', $2)
       ORDER BY rank DESC
