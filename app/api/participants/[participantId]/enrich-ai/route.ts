@@ -178,6 +178,13 @@ export async function POST(
       }
     });
     
+    // Fetch fresh participant data to return to client for immediate UI update
+    const { data: freshParticipant } = await adminSupabase
+      .from('participants')
+      .select('*')
+      .eq('id', participantId)
+      .maybeSingle();
+
     // Return result with summary
     return NextResponse.json({
       success: true,
@@ -186,7 +193,8 @@ export async function POST(
       reactionsAnalyzed: result.reactions_analyzed,
       costUsd: result.cost_usd,
       durationMs: result.duration_ms,
-      
+      participant: freshParticipant,
+
       // Summary for UI
       summary: {
         interests: result.ai_analysis?.interests_keywords.length || 0,

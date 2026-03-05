@@ -7,7 +7,7 @@ interface AIEnrichmentButtonProps {
   participantId: string;
   orgId: string;
   participantName: string;
-  onEnrichmentComplete?: () => void;
+  onEnrichmentComplete?: (updatedParticipant?: Record<string, any>) => void | Promise<void>;
 }
 
 export function AIEnrichmentButton({
@@ -67,9 +67,9 @@ export function AIEnrichmentButton({
       }
 
       if (onEnrichmentComplete) {
-        onEnrichmentComplete();
+        await onEnrichmentComplete(data.participant);
       }
-      
+
       router.refresh();
     } catch (err) {
       console.error('Enrichment error:', err);

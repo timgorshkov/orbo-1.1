@@ -752,25 +752,20 @@ export default function ParticipantProfileCard({
                 participant={detail.participant}
                 isAdmin={isAdmin}
                 orgId={orgId}
-                onEnrichmentComplete={async () => {
-                  // Refresh detail to show new enrichment data
-                  try {
-                    const response = await fetch(`/api/participants/${participant.id}?orgId=${orgId}`);
-                    if (response.ok) {
-                      const refreshedDetail = await response.json();
-                      if (refreshedDetail && onDetailUpdate) {
-                        onDetailUpdate(refreshedDetail);
-                        setFields(prev => ({
-                          ...prev,
-                          custom_attributes: refreshedDetail.participant?.custom_attributes || {}
-                        }));
-                      }
+                onEnrichmentComplete={async (updatedParticipant?: Record<string, any>) => {
+                  if (updatedParticipant && onDetailUpdate) {
+                    // Use the participant data returned directly from the enrichment API
+                    const nextDetail = {
+                      ...detail,
+                      participant: { ...detail.participant, ...updatedParticipant }
                     }
-                  } catch (error) {
-                    console.error('Failed to refresh participant data after enrichment:', error);
-                    if (onDetailUpdate) {
-                      onDetailUpdate();
-                    }
+                    onDetailUpdate(nextDetail)
+                    setFields(prev => ({
+                      ...prev,
+                      custom_attributes: updatedParticipant.custom_attributes || prev.custom_attributes
+                    }))
+                  } else if (onDetailUpdate) {
+                    onDetailUpdate()
                   }
                 }}
               />

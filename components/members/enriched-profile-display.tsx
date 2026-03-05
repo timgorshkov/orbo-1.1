@@ -12,7 +12,7 @@ interface EnrichedProfileDisplayProps {
   isAdmin: boolean;
   orgId?: string;
   onEdit?: () => void;
-  onEnrichmentComplete?: () => void;
+  onEnrichmentComplete?: (updatedParticipant?: Record<string, any>) => void | Promise<void>;
 }
 
 /**

@@ -173,11 +173,36 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ o
   const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
   const access = await getEffectiveOrgRole(user.id, orgId)
 
-  // If no membership, redirect to auth page
-  if (!access) {
-    redirect(`/p/${orgId}/auth`)
+  if (access) {
+    // Owner / admin / member via memberships table
+    return <AuthenticatedHome orgId={orgId} role={access.role as 'owner' | 'admin' | 'member' | 'guest'} />
   }
 
-  // Show authenticated version
-  return <AuthenticatedHome orgId={orgId} role={access.role as 'owner' | 'admin' | 'member' | 'guest'} />
+  // Check if user is a participant linked via Telegram auth (user_telegram_accounts)
+  const adminSupabase = createAdminServer()
+  const { data: telegramAccount } = await adminSupabase
+    .from('user_telegram_accounts')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .eq('org_id', orgId)
+    .maybeSingle()
+
+  if (telegramAccount) {
+    return <AuthenticatedHome orgId={orgId} role="member" />
+  }
+
+  // Also check participants table (user_id may be set for non-Telegram users too)
+  const { data: participant } = await adminSupabase
+    .from('participants')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (participant) {
+    return <AuthenticatedHome orgId={orgId} role="member" />
+  }
+
+  // No access at all — redirect to auth
+  redirect(`/p/${orgId}/auth`)
 }
