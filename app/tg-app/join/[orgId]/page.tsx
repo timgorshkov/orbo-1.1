@@ -1,12 +1,12 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Script from 'next/script';
 
 type Status = 'loading' | 'authorizing' | 'success' | 'not_member' | 'error';
 
-export default function JoinOrgPage({ params }: { params: Promise<{ orgId: string }> }) {
-  const { orgId } = use(params);
+export default function JoinOrgPage({ params }: { params: { orgId: string } }) {
+  const { orgId } = params;
 
   const [status, setStatus] = useState<Status>('loading');
   const [orgName, setOrgName] = useState('');
