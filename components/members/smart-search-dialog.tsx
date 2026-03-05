@@ -144,7 +144,7 @@ export function SmartSearchDialog({ orgId }: Props) {
   }
 
   function openParticipant(id: string) {
-    window.open(`/app/${orgId}/participants/${id}`, '_blank')
+    window.open(`/app/${orgId}/members/${id}`, '_blank')
   }
 
   const hasResults = status === 'done' && results.length > 0

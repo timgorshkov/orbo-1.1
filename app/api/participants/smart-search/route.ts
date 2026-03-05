@@ -133,7 +133,11 @@ async function aiSearch(
     ? buildProfileText({ ...searcher, id: 'searcher', photo_url: null })
     : null
 
-  // 2. Fetch all active participants (limit 300, most recently active first)
+  // 2a. FTS pre-search — guaranteed inclusion of text-matched profiles
+  const { results: ftsMatches } = await ftsSearch(db, orgId, query)
+
+  // 2b. Fetch non-empty active participants (limit 300, most recently active first)
+  //     "Empty" = no bio, goals_self, bio_custom, offers, asks in profile
   const { data: allRows, error: fetchErr } = await db.raw(
     `SELECT
        p.id, p.full_name, p.username, p.bio, p.photo_url, p.custom_attributes,
@@ -145,6 +149,13 @@ async function aiSearch(
      WHERE p.org_id = $1
        AND p.merged_into IS NULL
        AND (p.participant_status IS NULL OR p.participant_status != 'excluded')
+       AND (
+         (p.bio IS NOT NULL AND p.bio <> '')
+         OR (p.custom_attributes->>'goals_self' IS NOT NULL AND p.custom_attributes->>'goals_self' <> '')
+         OR (p.custom_attributes->>'bio_custom' IS NOT NULL AND p.custom_attributes->>'bio_custom' <> '')
+         OR (p.custom_attributes->>'offers'     IS NOT NULL AND p.custom_attributes->>'offers'     <> '')
+         OR (p.custom_attributes->>'asks'       IS NOT NULL AND p.custom_attributes->>'asks'       <> '')
+       )
      ORDER BY p.last_activity_at DESC NULLS LAST
      LIMIT 300`,
     [orgId]
@@ -152,7 +163,14 @@ async function aiSearch(
 
   if (fetchErr) return { results: [], explanations: {}, error: fetchErr.message }
 
-  const participants = (allRows as ParticipantRow[]) ?? []
+  // 2c. Merge: FTS matches first (guaranteed), then fill remaining slots from activity-sorted list
+  const base = (allRows as ParticipantRow[]) ?? []
+  const baseIds = new Set(base.map((p) => p.id))
+
+  // FTS matches not already in base (they might be "empty" but still text-relevant)
+  const ftsOnly = ftsMatches.filter((p) => !baseIds.has(p.id))
+  const participants = [...ftsOnly, ...base]
+
   if (participants.length === 0) return { results: [], explanations: {} }
 
   // 3. Build compact profile list
