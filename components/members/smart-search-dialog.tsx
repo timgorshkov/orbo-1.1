@@ -19,6 +19,8 @@ type SearchResult = {
 
 type SearchMode = 'ai' | 'fts'
 
+type Credits = { total: number; used: number; remaining: number }
+
 type Props = {
   orgId: string
 }
@@ -82,6 +84,8 @@ export function SmartSearchDialog({ orgId }: Props) {
   const [explanations, setExplanations] = useState<Record<string, string>>({})
   const [mode, setMode] = useState<SearchMode>('fts')
   const [fallback, setFallback] = useState(false)
+  const [credits, setCredits] = useState<Credits | null>(null)
+  const [creditsExhausted, setCreditsExhausted] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -95,6 +99,8 @@ export function SmartSearchDialog({ orgId }: Props) {
       setStatus('idle')
       setErrorMsg('')
       setFallback(false)
+      setCredits(null)
+      setCreditsExhausted(false)
     }
   }, [open])
 
@@ -129,6 +135,8 @@ export function SmartSearchDialog({ orgId }: Props) {
       setExplanations(data.explanations ?? {})
       setMode(data.mode ?? 'fts')
       setFallback(!!data.fallback)
+      setCredits(data.credits ?? null)
+      setCreditsExhausted(!!data.credits_exhausted)
       setStatus('done')
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Ошибка поиска')
@@ -306,12 +314,27 @@ export function SmartSearchDialog({ orgId }: Props) {
                           ? 'участника'
                           : 'участников'}
                         {fallback && ' · FTS (AI временно недоступен)'}
+                        {credits && credits.total !== -1 && (
+                          <span className="ml-2">
+                            · AI-кредиты: {Math.max(0, credits.remaining)} / {credits.total}
+                          </span>
+                        )}
                       </p>
                       <ModeBadge mode={mode} fallback={fallback} />
                     </div>
 
-                    {/* Upgrade hint for FTS mode */}
-                    {mode === 'fts' && !fallback && (
+                    {/* Credits exhausted hint */}
+                    {creditsExhausted && (
+                      <div className="px-5 py-2.5 border-t border-neutral-100 bg-amber-50">
+                        <p className="text-xs text-amber-700">
+                          <Zap className="w-3 h-3 inline mr-1" />
+                          AI-кредиты исчерпаны. Показан текстовый поиск. Тариф Pro даёт безлимитный AI-поиск.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Upgrade hint for FTS mode (no credits situation) */}
+                    {mode === 'fts' && !fallback && !creditsExhausted && (
                       <div className="px-5 py-2.5 border-t border-neutral-100 bg-gradient-to-r from-violet-50 to-white">
                         <p className="text-xs text-violet-600">
                           <Zap className="w-3 h-3 inline mr-1" />

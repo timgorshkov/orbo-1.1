@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Org not found' }, { status: 404 })
     }
 
-    const creditsTotal = org.ai_credits_total ?? 5
+    const creditsTotal = org.ai_credits_total ?? 20
     const creditsUsed = org.ai_credits_used ?? 0
 
     const billingStatus = await getOrgBillingStatus(orgId)
@@ -261,7 +261,7 @@ export async function GET(request: NextRequest) {
     const billingStatus = await getOrgBillingStatus(orgId)
     const isUnlimited = billingStatus.plan.limits.ai_requests_per_month === -1
 
-    const total = org?.ai_credits_total ?? 5
+    const total = org?.ai_credits_total ?? 20
     const used = org?.ai_credits_used ?? 0
 
     // Check if there are groups with active participants

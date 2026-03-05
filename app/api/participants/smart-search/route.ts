@@ -10,10 +10,15 @@ import openai from '@/lib/services/openaiClient'
  * POST /api/participants/smart-search
  * Body: { orgId: string, query: string }
  *
- * FREE / базовый: PostgreSQL full-text search по всем текстовым полям профиля.
- * PRO: семантический AI-поиск через gpt-4o-mini — находит по смыслу, даже без совпадения слов.
+ * FREE: AI-поиск за счёт кредитов (20 шт. по умолчанию). При исчерпании — FTS.
+ * PRO: AI-поиск без ограничений.
  * Учитывает профиль того, кто ищет (для уточнения контекста).
+ * Все AI-вызовы логируются в openai_api_logs.
  */
+
+// gpt-4o-mini pricing (per token)
+const GPT4O_MINI_INPUT_COST = 0.15 / 1_000_000
+const GPT4O_MINI_OUTPUT_COST = 0.60 / 1_000_000
 
 type ParticipantRow = {
   id: string
@@ -111,6 +116,37 @@ async function ftsSearch(
   return { results: (data as ParticipantRow[]) ?? [] }
 }
 
+// ── AI logging helper ─────────────────────────────────────────────────────────
+
+async function logAiCall(
+  db: ReturnType<typeof createAdminServer>,
+  params: {
+    orgId: string
+    userId: string
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    query: string
+  }
+): Promise<void> {
+  const costUsd =
+    params.promptTokens * GPT4O_MINI_INPUT_COST +
+    params.completionTokens * GPT4O_MINI_OUTPUT_COST
+
+  await db.from('openai_api_logs').insert({
+    org_id: params.orgId,
+    created_by: params.userId,
+    request_type: 'smart_search',
+    model: 'gpt-4o-mini',
+    prompt_tokens: params.promptTokens,
+    completion_tokens: params.completionTokens,
+    total_tokens: params.totalTokens,
+    cost_usd: costUsd,
+    cost_rub: costUsd * 95,
+    metadata: { query: params.query },
+  })
+}
+
 // ── AI path ───────────────────────────────────────────────────────────────────
 
 async function aiSearch(
@@ -118,6 +154,7 @@ async function aiSearch(
   orgId: string,
   query: string,
   searcherUserId: string,
+  isUnlimited: boolean,
   logger: ReturnType<typeof createAPILogger>
 ): Promise<{ results: ParticipantRow[]; explanations: Record<string, string>; error?: string }> {
   // 1. Fetch searcher's participant profile for context
@@ -215,16 +252,41 @@ async function aiSearch(
     const parsed = JSON.parse(raw)
     aiResults = Array.isArray(parsed.results) ? parsed.results : []
 
+    const usage = completion.usage
     logger.info(
       {
         org_id: orgId,
         query,
         participants_sent: participants.length,
         results_returned: aiResults.length,
-        tokens: completion.usage?.total_tokens,
+        tokens: usage?.total_tokens,
       },
       'AI smart search completed'
     )
+
+    // 5. Log to openai_api_logs + increment credit counter
+    if (usage) {
+      // Fire-and-forget — don't block response on logging
+      logAiCall(db, {
+        orgId,
+        userId: searcherUserId,
+        promptTokens: usage.prompt_tokens,
+        completionTokens: usage.completion_tokens,
+        totalTokens: usage.total_tokens,
+        query,
+      }).catch((e) =>
+        logger.error({ error: String(e) }, 'Failed to log AI smart search call')
+      )
+    }
+
+    if (!isUnlimited) {
+      db.raw(
+        `UPDATE organizations SET ai_credits_used = ai_credits_used + 1 WHERE id = $1`,
+        [orgId]
+      ).then(({ error: e }) => {
+        if (e) logger.error({ error: (e as Error).message }, 'Failed to increment ai_credits_used')
+      })
+    }
   } catch (aiErr) {
     logger.error(
       { error: aiErr instanceof Error ? aiErr.message : String(aiErr) },
@@ -233,7 +295,7 @@ async function aiSearch(
     return { results: [], explanations: {}, error: 'AI request failed' }
   }
 
-  // 5. Map AI result IDs back to full participant rows
+  // 6. Map AI result IDs back to full participant rows
   const idSet = new Set(aiResults.map((r) => r.id))
   const explanations: Record<string, string> = {}
   aiResults.forEach((r) => {
@@ -272,36 +334,58 @@ export async function POST(request: NextRequest) {
 
     const db = createAdminServer()
 
-    // Check PRO plan
     const billing = await getOrgBillingStatus(orgId)
-    const isPro = billing.plan.limits.ai_requests_per_month === -1
+    const isUnlimited = billing.plan.limits.ai_requests_per_month === -1
 
-    if (isPro) {
-      const { results, explanations, error } = await aiSearch(db, orgId, cleanQuery, user.id, logger)
+    // Determine if AI search is available
+    let canUseAI = isUnlimited
+    let creditsTotal = 20
+    let creditsUsed = 0
+
+    if (!isUnlimited) {
+      const { data: orgData } = await db
+        .from('organizations')
+        .select('ai_credits_total, ai_credits_used')
+        .eq('id', orgId)
+        .single()
+      creditsTotal = orgData?.ai_credits_total ?? 20
+      creditsUsed = orgData?.ai_credits_used ?? 0
+      canUseAI = creditsUsed < creditsTotal
+    }
+
+    if (canUseAI) {
+      const { results, explanations, error } = await aiSearch(
+        db, orgId, cleanQuery, user.id, isUnlimited, logger
+      )
 
       if (error) {
         // Graceful fallback to FTS on AI failure
         logger.warn({ error }, 'AI search failed, falling back to FTS')
         const fts = await ftsSearch(db, orgId, cleanQuery)
-        return NextResponse.json({
-          results: fts.results,
-          mode: 'fts',
-          fallback: true,
-        })
+        return NextResponse.json({ results: fts.results, mode: 'fts', fallback: true })
       }
 
-      return NextResponse.json({ results, explanations, mode: 'ai' })
+      const credits = isUnlimited
+        ? { total: -1, used: 0, remaining: -1 }
+        : { total: creditsTotal, used: creditsUsed + 1, remaining: creditsTotal - creditsUsed - 1 }
+
+      return NextResponse.json({ results, explanations, mode: 'ai', credits })
     }
 
-    // FTS for non-PRO
+    // FTS fallback — credits exhausted
     const { results, error } = await ftsSearch(db, orgId, cleanQuery)
     if (error) {
       logger.error({ error, query: cleanQuery }, 'FTS search failed')
       return NextResponse.json({ error: 'Search failed' }, { status: 500 })
     }
 
-    logger.info({ org_id: orgId, query: cleanQuery, results: results.length }, 'FTS search')
-    return NextResponse.json({ results, mode: 'fts' })
+    logger.info({ org_id: orgId, query: cleanQuery, results: results.length, credits_exhausted: true }, 'FTS search (no AI credits)')
+    return NextResponse.json({
+      results,
+      mode: 'fts',
+      credits: { total: creditsTotal, used: creditsUsed, remaining: 0 },
+      credits_exhausted: true,
+    })
   } catch (err) {
     logger.error(
       { error: err instanceof Error ? err.message : String(err) },
