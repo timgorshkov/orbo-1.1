@@ -11,7 +11,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx eslint:*)",
       "Bash(sort:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(scp:*)"
     ]
   }
 }

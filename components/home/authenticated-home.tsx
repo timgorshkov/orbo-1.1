@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import HeroSection from './hero-section'
 import UpcomingEventsSection from './upcoming-events-section'
 import RecentMembersSection from './recent-members-section'
@@ -46,6 +47,7 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
   const [data, setData] = useState<HomePageData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isForbidden, setIsForbidden] = useState(false)
 
   useEffect(() => {
     fetchHomePageData()
@@ -55,12 +57,17 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
     try {
       setIsLoading(true)
       setError(null)
+      setIsForbidden(false)
 
       const response = await fetch(`/api/organizations/${orgId}/home`)
 
       if (!response.ok) {
         if (response.status === 401) {
           router.push(`/p/${orgId}/auth`)
+          return
+        }
+        if (response.status === 403) {
+          setIsForbidden(true)
           return
         }
         throw new Error('Failed to load home page')
@@ -82,6 +89,35 @@ export default function AuthenticatedHome({ orgId, role }: Props) {
         <div className="text-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
           <p className="text-sm text-neutral-500">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isForbidden) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white p-4">
+        <div className="text-center max-w-sm">
+          <h1 className="text-xl font-bold text-neutral-900 mb-2">
+            Нет доступа
+          </h1>
+          <p className="text-sm text-neutral-500 mb-6">
+            Вы не являетесь участником данной организации
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/orgs"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+            >
+              Список организаций
+            </Link>
+            <Link
+              href="/api/auth/signout"
+              className="px-4 py-2 bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-700 rounded-lg transition-colors text-sm"
+            >
+              Выйти
+            </Link>
+          </div>
         </div>
       </div>
     )

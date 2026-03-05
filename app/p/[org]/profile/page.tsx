@@ -168,6 +168,10 @@ export default function ProfilePage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401) {
+          router.replace(`/p/${org}/auth`)
+          return
+        }
         throw new Error(data.error || 'Failed to fetch profile')
       }
 

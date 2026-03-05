@@ -42,11 +42,26 @@ function isUrl(value: string) {
   return value.startsWith('http://') || value.startsWith('https://');
 }
 
-function formatEventDate(eventDate: string, startTime: string) {
+function formatEventDate(eventDate: string | null | undefined, startTime: string | null | undefined) {
+  if (!eventDate) return '';
   const date = new Date(`${eventDate}T00:00:00`);
+  if (isNaN(date.getTime())) return eventDate;
   const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-  const time = startTime.substring(0, 5);
-  return `${dateStr}, ${time}`;
+  const time = startTime ? startTime.substring(0, 5) : '';
+  return time ? `${dateStr}, ${time}` : dateStr;
+}
+
+function stripMarkdown(text: string) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .trim();
 }
 
 export default function PublicCommunityHub({ orgId }: Props) {
@@ -200,7 +215,7 @@ export default function PublicCommunityHub({ orgId }: Props) {
                     </h3>
                     {event.description && (
                       <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2">
-                        {event.description}
+                        {stripMarkdown(event.description)}
                       </p>
                     )}
                   </div>
