@@ -142,7 +142,15 @@ export default async function SuperadminUsersPage() {
   const groupsWithBotSet = new Set((groups || []).map(g => g.tg_chat_id))
   
   // Step 7: Format all users
-  const formattedUsers = allUsers.map(user => {
+  // Filter out pure participants (telegram temp accounts with no org memberships)
+  // These are community members who authenticated via 6-digit code but never started org registration
+  const registeredUsers = allUsers.filter(user => {
+    const isTempEmail = user.email?.endsWith('@orbo.temp')
+    const hasMembership = (memberships || []).some(m => m.user_id === user.id)
+    return !(isTempEmail && !hasMembership)
+  })
+
+  const formattedUsers = registeredUsers.map(user => {
     const mData = membershipMap.get(user.id)
     const tgAccount = tgAccountMap.get(user.id)
     const tgFromProvider = tgAccountFromProvider.get(user.id)
@@ -211,13 +219,17 @@ export default async function SuperadminUsersPage() {
   
   const withOrgs = formattedUsers.filter(u => u.status === 'active').length
   const withoutOrgs = formattedUsers.filter(u => u.status !== 'active').length
-  
+  const hiddenParticipants = allUsers.length - registeredUsers.length
+
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Пользователи</h2>
         <p className="text-gray-600 mt-1">
           Всего {formattedUsers.length} (с орг.: {withOrgs}, без орг.: {withoutOrgs})
+          {hiddenParticipants > 0 && (
+            <span className="text-gray-400 ml-2">· скрыто участников-порталов: {hiddenParticipants}</span>
+          )}
         </p>
       </div>
       
