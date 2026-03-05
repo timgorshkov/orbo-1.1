@@ -10,7 +10,8 @@
       "Bash(ssh:*)",
       "Bash(npx tsc:*)",
       "Bash(npx eslint:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(gh run:*)"
     ]
   }
 }
