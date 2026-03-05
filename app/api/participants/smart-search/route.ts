@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       WHERE
         p.org_id = $1
         AND p.merged_into IS NULL
-        AND (p.participant_status IS NULL OR p.participant_status != 'archived')
+        AND (p.participant_status IS NULL OR p.participant_status != 'excluded')
         AND to_tsvector('simple',
               COALESCE(p.full_name,   '') || ' ' ||
               COALESCE(p.username,    '') || ' ' ||
