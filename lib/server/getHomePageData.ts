@@ -26,7 +26,7 @@ export interface HomePageData {
     welcome_html: string | null
   }
   
-  currentParticipant: {
+  currentParticipant?: {
     id: string
     full_name: string
     username: string | null
@@ -87,6 +87,102 @@ export interface HomePageData {
     new_members_count: number
     new_materials_count: number
     since: string
+  }
+}
+
+// ── Helper: org-level data without participant ────────────────────────────────
+
+async function getOrgOnlyHomePageData(
+  supabase: ReturnType<typeof createAdminServer>,
+  org: any,
+  orgId: string,
+  logger: ReturnType<typeof createServiceLogger>
+): Promise<HomePageData> {
+  const now = new Date()
+
+  const [
+    { count: memberCount },
+    { count: eventCount },
+    { count: materialCount },
+    { data: upcomingEvents },
+    { data: recentMembersRaw },
+    { data: recentMaterialsRaw },
+    { data: recentAppsRaw },
+  ] = await Promise.all([
+    supabase.from('participants').select('*', { count: 'exact', head: true }).eq('org_id', orgId).is('merged_into', null),
+    supabase.from('events').select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('status', 'published'),
+    supabase.from('material_pages').select('*', { count: 'exact', head: true }).eq('org_id', orgId).eq('is_published', true),
+    supabase.from('events').select('id, title, description, cover_image_url, event_date, start_time, event_type, location_info, capacity').eq('org_id', orgId).eq('status', 'published').gte('event_date', now.toISOString().split('T')[0]).order('event_date', { ascending: true }).limit(3),
+    supabase.from('participants').select('id, full_name, username, photo_url, created_at, source, tg_user_id, status, participant_status').eq('org_id', orgId).is('merged_into', null).order('created_at', { ascending: false }).limit(20),
+    supabase.from('material_pages').select('id, title, updated_at').eq('org_id', orgId).eq('is_published', true).order('updated_at', { ascending: false }).limit(4),
+    supabase.from('apps').select('id, name, description, icon').eq('org_id', orgId).eq('status', 'active').limit(4),
+  ])
+
+  const normalizePhotoUrl = (url: string | null | undefined): string | null =>
+    !url || url === 'none' || url === 'null' ? null : url
+
+  const recentMembers = (recentMembersRaw || []).filter(m =>
+    m.source !== 'bot' &&
+    !m.source?.includes('bot') &&
+    m.source !== 'channel_discussion_import' &&
+    !(m.tg_user_id && [777000, 136817688, 1087968824].includes(m.tg_user_id)) &&
+    !(m.username?.toLowerCase().includes('bot')) &&
+    m.status !== 'archived' &&
+    m.participant_status !== 'excluded'
+  ).slice(0, 9)
+
+  // Fetch registration counts for upcoming events
+  const eventIds = (upcomingEvents || []).map((e: any) => e.id)
+  let registrationsMap = new Map<string, any[]>()
+  if (eventIds.length > 0) {
+    const { data: regs } = await supabase.from('event_registrations').select('event_id, id, participant_id').in('event_id', eventIds).eq('status', 'registered')
+    regs?.forEach((r: any) => {
+      if (!registrationsMap.has(r.event_id)) registrationsMap.set(r.event_id, [])
+      registrationsMap.get(r.event_id)!.push(r)
+    })
+  }
+
+  return {
+    organization: {
+      id: org.id,
+      name: org.name,
+      logo_url: org.logo_url,
+      public_description: org.public_description,
+      portal_cover_url: (org as any).portal_cover_url ?? null,
+      member_count: memberCount || 0,
+      event_count: eventCount || 0,
+      material_count: materialCount || 0,
+    },
+    portalSettings: {
+      show_events:    org.portal_show_events    ?? true,
+      show_members:   org.portal_show_members   ?? true,
+      show_materials: org.portal_show_materials ?? false,
+      show_apps:      org.portal_show_apps      ?? false,
+      welcome_html:   org.portal_welcome_html   ?? null,
+    },
+    currentParticipant: undefined,
+    upcomingEvents: (upcomingEvents || []).map((e: any) => ({
+      id: e.id,
+      title: e.title,
+      description: e.description,
+      cover_image_url: e.cover_image_url,
+      event_date: e.event_date,
+      start_time: e.start_time,
+      event_type: e.event_type,
+      location_info: e.location_info,
+      registered_count: (registrationsMap.get(e.id) || []).length,
+      is_user_registered: false,
+    })),
+    myEventRegistrations: [],
+    recentMembers: recentMembers.map((m: any) => ({
+      id: m.id,
+      full_name: m.full_name || 'Участник',
+      username: m.username,
+      avatar_url: normalizePhotoUrl(m.photo_url),
+      joined_at: m.created_at,
+    })),
+    recentMaterials: (recentMaterialsRaw || []).map((m: any) => ({ id: m.id, title: m.title, updated_at: m.updated_at })),
+    recentApps: (recentAppsRaw || []).map((a: any) => ({ id: a.id, name: a.name, description: a.description ?? null, icon: a.icon ?? null })),
   }
 }
 
@@ -154,15 +250,13 @@ export async function getHomePageData(
     }
 
     if (!participant) {
-      // This is normal for admins who joined via OAuth without Telegram
-      // Or for users who haven't linked their Telegram account yet
-      logger.info({ 
+      // Admin/superadmin with no participant record — return org-level data without personal stats
+      logger.info({
         org_id: orgId,
         user_id: userId,
         has_telegram_account: !!userTelegramAccount,
-        telegram_user_id: userTelegramAccount?.telegram_user_id
-      }, 'No participant record for user - likely an OAuth admin or unlinked account');
-      return null
+      }, 'No participant record for user - returning org-level home data');
+      return getOrgOnlyHomePageData(supabase, org, orgId, logger)
     }
 
     // Calculate participant stats

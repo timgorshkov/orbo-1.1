@@ -47,8 +47,10 @@ export async function GET(
     const homePageData = await getHomePageData(orgId, user.id)
 
     if (!homePageData) {
-      // User has valid access but no participant record (e.g. superadmin viewing demo, OAuth admin)
-      return NextResponse.json({ no_participant: true }, { status: 200 })
+      return NextResponse.json(
+        { error: 'Failed to load home page data' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json(homePageData)
