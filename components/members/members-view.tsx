@@ -7,6 +7,7 @@ import MemberCard from './member-card'
 import MembersTable from './members-table'
 import MembersFiltersSidebar, { type MembersFilters, getParticipantCategory } from './members-filters-sidebar'
 import BulkActionsBar from './bulk-actions-bar'
+import { SmartSearchDialog } from './smart-search-dialog'
 
 const PAGE_SIZE = 50
 
@@ -521,6 +522,9 @@ export default function MembersView({
               className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
+
+          {/* Умный поиск */}
+          <SmartSearchDialog orgId={orgId} />
 
           {/* Переключатель видов + Export (Admin) */}
           <div className="flex items-center gap-2">
