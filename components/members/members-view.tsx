@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { Search, LayoutGrid, Table as TableIcon, Filter, Download, FileJson, Loader2, ChevronDown } from 'lucide-react'
+import { Search, LayoutGrid, Table as TableIcon, Filter, FileJson, Loader2, ChevronDown, FileSpreadsheet } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
 import MembersTable from './members-table'
@@ -268,77 +269,57 @@ export default function MembersView({
     document.body.removeChild(link)
   }
 
-  const handleExportAll = (format: 'csv' | 'json') => {
-    const exportData = filteredParticipants.map((p) => ({
-      id: p.id,
-      full_name: p.full_name || '',
-      tg_username: p.tg_username || p.username || '',
-      tg_user_id: p.tg_user_id || '',
-      email: p.email || '',
-      phone: '',
-      bio: p.bio || '',
-      role: p.is_org_owner ? 'owner' : p.is_admin ? 'admin' : 'member',
-      tags: p.tags?.map((t) => t.name).join(', ') || '',
-      created_at: p.created_at || '',
-      real_join_date: p.real_join_date || '',
-      last_activity_at: p.last_activity_at || '',
-      real_last_activity: p.real_last_activity || '',
-      activity_score: p.activity_score || 0,
-      custom_attributes: p.custom_attributes || {},
-    }))
+  const buildExportRows = () => filteredParticipants.map((p) => {
+    const attrs = p.custom_attributes || {}
+    return {
+      'ID': p.id,
+      'Имя': p.full_name || '',
+      'Telegram Username': p.tg_username || p.username || '',
+      'Telegram ID': p.tg_user_id || '',
+      'Email': p.email || '',
+      'Описание (Telegram bio)': p.bio || '',
+      'Роль': p.is_org_owner ? 'owner' : p.is_admin ? 'admin' : 'member',
+      'Теги': p.tags?.map((t) => t.name).join(', ') || '',
+      'Дата создания': p.created_at || '',
+      'Дата присоединения': p.real_join_date || '',
+      'Последняя активность': p.real_last_activity || p.last_activity_at || '',
+      'Оценка активности': p.activity_score || 0,
+      // User-filled profile fields
+      'О себе': attrs.bio_custom || '',
+      'Город (подтверждён)': attrs.city_confirmed || '',
+      'Цели в сообществе': attrs.goals_self || '',
+      'Чем могу помочь': Array.isArray(attrs.offers) ? attrs.offers.join('; ') : '',
+      'Что мне нужно': Array.isArray(attrs.asks) ? attrs.asks.join('; ') : '',
+      // AI-analyzed fields
+      'AI: Интересы': Array.isArray(attrs.interests_keywords) ? attrs.interests_keywords.join('; ') : '',
+      'AI: Город': attrs.city_inferred || '',
+      'AI: Роль в сообществе': attrs.behavioral_role || '',
+      'AI: Актуальные запросы': Array.isArray(attrs.recent_asks) ? attrs.recent_asks.join('; ') : '',
+    }
+  })
 
-    if (format === 'csv') {
-      const headers = [
-        'ID',
-        'Имя',
-        'Telegram Username',
-        'Telegram ID',
-        'Email',
-        'Телефон',
-        'Описание',
-        'Роль',
-        'Теги',
-        'Дата создания (запись)',
-        'Реальная дата присоединения',
-        'Последняя активность (метаданные)',
-        'Реальная последняя активность',
-        'Оценка активности',
-      ]
-      const rows = exportData.map((p) => [
-        p.id,
-        p.full_name,
-        p.tg_username,
-        p.tg_user_id,
-        p.email,
-        p.phone,
-        p.bio,
-        p.role,
-        p.tags,
-        p.created_at,
-        p.real_join_date,
-        p.last_activity_at,
-        p.real_last_activity,
-        p.activity_score,
-      ])
+  const handleExportAll = (format: 'xlsx' | 'json') => {
+    const date = new Date().toISOString().split('T')[0]
 
-      const csvContent =
-        'data:text/csv;charset=utf-8,\uFEFF' + // BOM for Excel UTF-8
-        [headers.join(','), ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n')
-
-      const encodedUri = encodeURI(csvContent)
-      const link = document.createElement('a')
-      link.setAttribute('href', encodedUri)
-      link.setAttribute('download', `participants_full_${new Date().toISOString().split('T')[0]}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+    if (format === 'xlsx') {
+      const rows = buildExportRows()
+      const ws = XLSX.utils.json_to_sheet(rows)
+      // Auto-width for columns
+      const colWidths = Object.keys(rows[0] || {}).map((key) => ({
+        wch: Math.max(key.length, ...rows.map((r) => String((r as any)[key] || '').length).slice(0, 100)) + 2,
+      }))
+      ws['!cols'] = colWidths
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Участники')
+      XLSX.writeFile(wb, `participants_${date}.xlsx`)
     } else if (format === 'json') {
-      const jsonContent = JSON.stringify(exportData, null, 2)
+      const rows = buildExportRows()
+      const jsonContent = JSON.stringify(rows, null, 2)
       const blob = new Blob([jsonContent], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.setAttribute('href', url)
-      link.setAttribute('download', `participants_full_${new Date().toISOString().split('T')[0]}.json`)
+      link.setAttribute('download', `participants_${date}.json`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -556,12 +537,12 @@ export default function MembersView({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExportAll('csv')}
+                    onClick={() => handleExportAll('xlsx')}
                     className="gap-2"
-                    title="Экспорт всех участников в CSV"
+                    title="Экспорт всех участников в Excel"
                   >
-                    <Download className="h-4 w-4" />
-                    <span className="hidden lg:inline">CSV</span>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span className="hidden lg:inline">Excel</span>
                   </Button>
                   <Button
                     variant="outline"

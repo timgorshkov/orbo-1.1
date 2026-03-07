@@ -12,7 +12,8 @@
       "Bash(npx eslint:*)",
       "Bash(sort:*)",
       "Bash(gh run:*)",
-      "Bash(scp:*)"
+      "Bash(scp:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
