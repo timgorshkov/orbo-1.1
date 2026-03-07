@@ -552,7 +552,7 @@ export default function MembersView({
                 </Button>
 
                 {/* Export Buttons */}
-                <div className="hidden md:flex items-center gap-2 ml-2 pl-2 border-l border-gray-300">
+                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-300">
                   <Button
                     variant="outline"
                     size="sm"
@@ -567,7 +567,7 @@ export default function MembersView({
                     variant="outline"
                     size="sm"
                     onClick={() => handleExportAll('json')}
-                    className="gap-2"
+                    className="hidden md:flex gap-2"
                     title="Экспорт всех участников в JSON (бэкап)"
                   >
                     <FileJson className="h-4 w-4" />
