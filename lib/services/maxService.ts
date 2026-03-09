@@ -125,6 +125,15 @@ export class MaxService {
     return this.callApi(`chats/${chatId}`);
   }
 
+  /** GET /chats - list all chats where bot is a member */
+  async getChats(params: { marker?: number; count?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.marker) query.set('marker', String(params.marker));
+    if (params.count) query.set('count', String(params.count));
+    const qs = query.toString();
+    return this.callApi(`chats${qs ? '?' + qs : ''}`);
+  }
+
   /** GET /chats/{chatId}/members - get chat members */
   async getChatMembers(chatId: number, params: { marker?: number; count?: number } = {}) {
     const query = new URLSearchParams();
@@ -132,6 +141,11 @@ export class MaxService {
     if (params.count) query.set('count', String(params.count));
     const qs = query.toString();
     return this.callApi(`chats/${chatId}/members${qs ? '?' + qs : ''}`);
+  }
+
+  /** GET /chats/{chatId}/members/{userId} - check if specific user is a member */
+  async getChatMember(chatId: number, userId: number) {
+    return this.callApi(`chats/${chatId}/members/${userId}`);
   }
 
   /** POST /subscriptions - set webhook */

@@ -63,7 +63,7 @@ Write-Host "Project root: $ProjectRoot"
 # Step 1: Check SSH connection
 # ============================================
 Write-Host ""
-Write-ColorOutput Yellow "[1/4] Checking SSH connection..."
+Write-ColorOutput Yellow "[1/5] Checking SSH connection..."
 
 try {
     $sshTest = ssh $Server "echo 'SSH OK'" 2>&1
@@ -87,7 +87,7 @@ try {
 # Step 2: Sync files to server
 # ============================================
 Write-Host ""
-Write-ColorOutput Yellow "[2/4] Syncing files to server..."
+Write-ColorOutput Yellow "[2/5] Syncing files to server..."
 
 # Use rsync through Git Bash if available
 $GitBashPath = "C:\Program Files\Git\bin\bash.exe"
@@ -145,7 +145,7 @@ Write-ColorOutput Green "Files synced successfully"
 # Step 3: Build on server
 # ============================================
 Write-Host ""
-Write-ColorOutput Yellow "[3/4] Building application on server..."
+Write-ColorOutput Yellow "[3/5] Building application on server..."
 
 $buildScript = @"
 cd ~/orbo
@@ -166,7 +166,7 @@ Write-ColorOutput Green "Build completed successfully"
 # Step 4: Restart containers
 # ============================================
 Write-Host ""
-Write-ColorOutput Yellow "[4/4] Restarting containers..."
+Write-ColorOutput Yellow "[4/5] Restarting containers..."
 
 $restartScript = @"
 cd ~/orbo
@@ -177,6 +177,23 @@ docker compose ps
 ssh $Server $restartScript
 
 Write-ColorOutput Green "Containers restarted successfully"
+
+# ============================================
+# Step 5: Cleanup build cache
+# ============================================
+Write-Host ""
+Write-ColorOutput Yellow "[5/5] Cleaning up Docker build cache..."
+
+$cleanupScript = @"
+echo 'Pruning Docker build cache older than 48h...'
+docker builder prune --filter 'until=48h' -f
+echo 'Cleanup complete!'
+df -h / | tail -1
+"@
+
+ssh $Server $cleanupScript
+
+Write-ColorOutput Green "Build cache cleaned"
 
 # ============================================
 # Summary
