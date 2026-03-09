@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import '@/components/website/website.css';
 import { HelpDeskWidget } from '@/components/support/helpdesk-widget';
 
+export const dynamic = 'force-static';
+
 export const metadata: Metadata = {
   // metadataBase overrides the root layout's my.orbo.ru — critical for correct canonical URLs
   metadataBase: new URL('https://orbo.ru'),

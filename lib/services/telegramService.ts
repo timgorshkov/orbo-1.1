@@ -451,7 +451,9 @@ async getChatMember(chatId: number, userId: number) {
           (responseData.error_code === 400 && responseData.description?.includes('member not found')) ||
           (responseData.error_code === 400 && responseData.description?.includes('PARTICIPANT_ID_INVALID')) ||
           (responseData.error_code === 403 && responseData.description?.includes('bot was blocked')) ||
-          (responseData.error_code === 403 && responseData.description?.includes('user is deactivated'));
+          (responseData.error_code === 403 && responseData.description?.includes('user is deactivated')) ||
+          (responseData.error_code === 403 && responseData.description?.includes('bot was kicked')) ||
+          (responseData.error_code === 403 && responseData.description?.includes('bot is not a member'));
 
         if (isExpectedError) {
           logger.debug({

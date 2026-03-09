@@ -3,6 +3,8 @@ import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-
 import { Header, Footer, Orb, BrowserFrame } from '@/components/website';
 import Link from 'next/link';
 
+export const dynamic = 'force-static';
+
 export const metadata: Metadata = {
   title: 'CRM участников и событий для Telegram',
   description: 'Создайте MiniApp для регистрации на мероприятие за пару кликов. Нативный опыт в Telegram повышает конверсию, автоматические напоминания — доходимость. Бесплатно для сообществ до 500 участников.',

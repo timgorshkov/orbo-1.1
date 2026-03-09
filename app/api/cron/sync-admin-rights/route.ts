@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Получаем организации и группы параллельно
     const [orgsResult, groupsResult] = await Promise.all([
       adminSupabase.from('organizations').select('id, name').in('id', orgIds),
-      adminSupabase.from('telegram_groups').select('tg_chat_id, title').in('tg_chat_id', chatIds)
+      adminSupabase.from('telegram_groups').select('tg_chat_id, title, bot_status').in('tg_chat_id', chatIds)
     ]);
 
     const orgsMap = new Map(orgsResult.data?.map(o => [o.id, o]) || []);
@@ -81,14 +81,15 @@ export async function GET(request: NextRequest) {
     for (const org of orgs || []) {
       logger.debug({ org_id: org.id, org_name: org.name }, 'Processing org');
       
-      // Получаем все группы организации
+      // Получаем все активные группы организации (пропускаем неактивные и требующие миграции)
       const { data: groups, error: groupsError } = await adminSupabase
         .from('org_telegram_groups')
         .select(`
           tg_chat_id,
           telegram_groups (
             tg_chat_id,
-            title
+            title,
+            bot_status
           )
         `)
         .eq('org_id', org.id);
@@ -102,7 +103,15 @@ export async function GET(request: NextRequest) {
 
       for (const groupBinding of groups || []) {
         const chatId = groupBinding.tg_chat_id;
-        const groupTitle = (groupBinding.telegram_groups as any)?.title || chatId;
+        const groupData = groupBinding.telegram_groups as any;
+        const groupTitle = groupData?.title || chatId;
+        const botStatus = groupData?.bot_status;
+
+        // Пропускаем группы, где бот неактивен или требуется миграция
+        if (botStatus === 'inactive' || botStatus === 'migration_needed') {
+          logger.debug({ chat_id: chatId, bot_status: botStatus }, 'Skipping group with non-active bot status');
+          continue;
+        }
 
         try {
           logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
@@ -367,6 +376,8 @@ export async function GET(request: NextRequest) {
       let revokedCount = 0;
       for (const groupBinding of groups || []) {
         const chatId = groupBinding.tg_chat_id;
+        const groupBotStatus = (groupBinding.telegram_groups as any)?.bot_status;
+        if (groupBotStatus === 'inactive' || groupBotStatus === 'migration_needed') continue;
         try {
           const hasAccess = await verifyOrgGroupAccess(org.id, chatId);
 
