@@ -8,8 +8,9 @@ import {
 import { Header, Footer, BrowserFrame, PhoneFrame, EventsFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
-  title: 'События и регистрации',
-  description: 'Организуйте мероприятия профессионально: от анонса до сбора оплат. Регистрация и оплата прямо в Telegram.',
+  title: 'События и регистрации в Telegram',
+  description: 'MiniApp для регистрации и оплаты прямо в Telegram. Автоматические напоминания повышают доходимость. Создайте событие за пару кликов.',
+  alternates: { canonical: '/events' },
 };
 
 export default function EventsPage() {

@@ -8,8 +8,9 @@ import {
 import { Header, Footer, BrowserFrame, CRMFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
-  title: 'Карточки участников',
-  description: 'Карточки участников с историей активности и событий. AI-анализ интересов. Импорт из Telegram и WhatsApp.',
+  title: 'CRM участников Telegram-сообщества',
+  description: 'Карточки участников с историей активности, посещённых событий и сообщений. AI-анализ профилей. Импорт из Telegram и WhatsApp.',
+  alternates: { canonical: '/crm' },
 };
 
 export default function CRMPage() {

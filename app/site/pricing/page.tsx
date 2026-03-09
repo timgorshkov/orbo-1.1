@@ -1,6 +1,13 @@
+import type { Metadata } from 'next'
 import { Header, Footer } from '@/components/website'
 import { Check, X, Sparkles, Users, Building2, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
+
+export const metadata: Metadata = {
+  title: 'Тарифы',
+  description: 'Бесплатно для сообществ до 500 участников. Подключите Telegram-группы, создавайте события и MiniApp — без оплаты.',
+  alternates: { canonical: '/pricing' },
+}
 
 const PLANS = [
   {

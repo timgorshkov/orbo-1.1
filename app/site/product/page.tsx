@@ -7,8 +7,9 @@ import {
 import { Header, Footer, BrowserFrame, ProductFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
-  title: 'Продукт',
-  description: 'Orbo — платформа для управления Telegram-сообществами. Аналитика, события, уведомления, CRM участников.',
+  title: 'Продукт — возможности Orbo',
+  description: 'Orbo для Telegram-сообществ: карточки участников, MiniApp для событий, уведомления, анонсы, заявки. Всё управление — в одном месте.',
+  alternates: { canonical: '/product' },
 };
 
 export default function ProductPage() {

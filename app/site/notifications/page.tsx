@@ -8,8 +8,9 @@ import {
 import { Header, Footer, BrowserFrame, PhoneFrame, NotificationsFloatingCards } from '@/components/website';
 
 export const metadata: Metadata = {
-  title: 'Группы и уведомления',
-  description: 'AI-мониторинг рабочих групп: негатив, неотвеченные вопросы, SLA. Не пропускайте важное.',
+  title: 'Уведомления и мониторинг групп',
+  description: 'AI-мониторинг Telegram-групп: негатив, неотвеченные вопросы, SLA. Не пропускайте важные сообщения участников.',
+  alternates: { canonical: '/notifications' },
 };
 
 export default function NotificationsPage() {
