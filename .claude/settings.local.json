@@ -13,7 +13,8 @@
       "Bash(sort:*)",
       "Bash(gh run:*)",
       "Bash(scp:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "WebFetch(domain:platform-api.max.ru)"
     ]
   }
 }

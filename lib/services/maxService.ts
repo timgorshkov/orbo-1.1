@@ -148,6 +148,11 @@ export class MaxService {
     return this.callApi(`chats/${chatId}/members/${userId}`);
   }
 
+  /** GET /chats/{chatId}/members/admins - get list of chat administrators */
+  async getChatAdmins(chatId: number) {
+    return this.callApi(`chats/${chatId}/members/admins`);
+  }
+
   /** POST /subscriptions - set webhook */
   async setWebhook(url: string, updateTypes?: string[], secret?: string) {
     const body: any = { url };

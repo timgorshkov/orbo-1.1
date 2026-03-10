@@ -28,7 +28,9 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminServer();
 
-    // Get user's verified MAX account for this org (needed for membership filter)
+    // Get user's verified MAX account for THIS org specifically.
+    // A user can have different MAX accounts per org (or none at all).
+    // Without a verified account we cannot determine group membership, so return nothing.
     const { data: maxAccount } = await admin
       .from('user_max_accounts')
       .select('max_user_id')
@@ -37,7 +39,13 @@ export async function GET(request: NextRequest) {
       .eq('is_verified', true)
       .maybeSingle();
 
-    // Bug 1 fix: auto-discover groups from MAX API that bot is already in but aren't in DB yet
+    if (!maxAccount?.max_user_id) {
+      // No verified MAX account for this org → nothing to show
+      return NextResponse.json({ groups: [] });
+    }
+
+    // Auto-discover groups from MAX API that bot is already in but aren't in DB yet.
+    // Only makes sense to do this when user has a verified account (= they can actually see results).
     try {
       const maxService = createMaxService('main');
       const chatsResult = await maxService.getChats({ count: 100 });
@@ -46,7 +54,6 @@ export async function GET(request: NextRequest) {
         for (const chat of chatsResult.data.chats) {
           if (!chat.chat_id || chat.type === 'dialog') continue;
 
-          // Insert only if not already tracked (ignoreDuplicates = ON CONFLICT DO NOTHING)
           await admin
             .from('max_groups')
             .upsert({
@@ -91,8 +98,9 @@ export async function GET(request: NextRequest) {
 
     let filteredGroups = groups || [];
 
-    // Bug 2 fix: filter out groups where the user is no longer a member
-    if (maxAccount?.max_user_id && filteredGroups.length > 0) {
+    // Mandatory membership filter: only show groups where this user is actually a member.
+    // We already know maxAccount.max_user_id exists (checked above).
+    if (filteredGroups.length > 0) {
       try {
         const maxService = createMaxService('main');
         const membershipResults = await Promise.all(
@@ -102,8 +110,8 @@ export async function GET(request: NextRequest) {
               // 200 = user is a member; 4xx = not a member or group not found
               return result.ok ? group : null;
             } catch {
-              // On unexpected error, include the group (fail-open) to avoid false exclusions
-              return group;
+              // On unexpected API error, exclude the group (fail-safe: don't leak other orgs' groups)
+              return null;
             }
           })
         );
@@ -114,7 +122,9 @@ export async function GET(request: NextRequest) {
           max_user_id: maxAccount.max_user_id,
         }, 'Filtered available MAX groups by user membership');
       } catch (membershipErr: any) {
-        logger.warn({ error: membershipErr.message }, 'Failed to filter groups by membership, returning all');
+        logger.warn({ error: membershipErr.message }, 'Failed to filter groups by membership, returning empty for safety');
+        // Fail-safe: return empty rather than leaking potentially wrong groups
+        filteredGroups = [];
       }
     }
 
