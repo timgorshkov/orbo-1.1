@@ -366,8 +366,22 @@ export default function CollapsibleSidebar({
                             ))}
                           </>
                         ) : (
-                          <div className="px-4 py-1.5 text-sm text-gray-500 italic">
-                            Нет подключенных групп
+                          <div className="px-4 py-1.5">
+                            <div className="text-sm text-gray-500 italic mb-1">Нет подключенных групп</div>
+                            <Link
+                              href={`/p/${orgId}/telegram`}
+                              className="block text-xs text-blue-500 hover:text-blue-700 hover:underline py-0.5"
+                              onClick={() => setShowMenuDropdown(false)}
+                            >
+                              + Добавить Telegram-группу
+                            </Link>
+                            <Link
+                              href={`/p/${orgId}/telegram/max`}
+                              className="block text-xs text-indigo-500 hover:text-indigo-700 hover:underline py-0.5"
+                              onClick={() => setShowMenuDropdown(false)}
+                            >
+                              + Добавить MAX-группу
+                            </Link>
                           </div>
                         )}
                       </div>
@@ -618,8 +632,20 @@ export default function CollapsibleSidebar({
                 ))}
               </>
             ) : (
-              <div className="px-3 py-1.5 text-sm text-gray-500 italic">
-                Нет подключенных групп
+              <div className="px-3 py-1.5">
+                <div className="text-sm text-gray-500 italic mb-1.5">Нет подключенных групп</div>
+                <Link
+                  href={`/p/${orgId}/telegram`}
+                  className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 hover:underline py-0.5"
+                >
+                  <span>+ Добавить Telegram-группу</span>
+                </Link>
+                <Link
+                  href={`/p/${orgId}/telegram/max`}
+                  className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 hover:underline py-0.5"
+                >
+                  <span>+ Добавить MAX-группу</span>
+                </Link>
               </div>
             )}
           </div>

@@ -29,20 +29,28 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
       action: null
     },
     {
-      id: 'events',
-      label: 'Создайте первое событие',
-      description: 'Встреча, вебинар или любая активность — за пару минут',
-      completed: status.hasEvents,
-      link: `/p/${orgId}/events/new`,
-      action: 'Создать событие'
-    },
-    {
       id: 'telegram',
       label: 'Привяжите Telegram-аккаунт',
       description: 'Для отправки уведомлений и анонсов участникам',
       completed: status.hasTelegramAccount,
       link: `/p/${orgId}/telegram/account`,
       action: 'Привязать'
+    },
+    {
+      id: 'groups',
+      label: 'Подключите Telegram-группу',
+      description: 'Бот будет отслеживать активность и помогать с модерацией',
+      completed: status.hasGroups,
+      link: `/p/${orgId}/telegram`,
+      action: 'Подключить'
+    },
+    {
+      id: 'events',
+      label: 'Создайте первое событие',
+      description: 'Встреча, вебинар или любая активность — за пару минут',
+      completed: status.hasEvents,
+      link: `/p/${orgId}/events/new`,
+      action: 'Создать событие'
     },
     {
       id: 'assist_bot',
@@ -60,14 +68,6 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
       completed: status.hasSharedEvent,
       link: status.hasEvents ? `/p/${orgId}/events` : null,
       action: status.hasEvents ? 'К событиям' : null
-    },
-    {
-      id: 'groups',
-      label: 'Подключите Telegram-группу',
-      description: 'Бот будет отслеживать активность и помогать с модерацией',
-      completed: status.hasGroups,
-      link: `/p/${orgId}/telegram`,
-      action: 'Подключить'
     }
   ]
 
