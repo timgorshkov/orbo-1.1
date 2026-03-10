@@ -16,7 +16,8 @@
       "Bash(npm install:*)",
       "WebFetch(domain:platform-api.max.ru)",
       "Bash(cd \"C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\" && find app/app/\\\\[org\\\\]/telegram -type f | head -30)",
-      "Bash(find \"C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\" -path \"*/telegram/max*\" -o -path \"*/p/*/telegram*\" 2>/dev/null | grep -v node_modules | grep -v \".next\" | head -30)"
+      "Bash(find \"C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\" -path \"*/telegram/max*\" -o -path \"*/p/*/telegram*\" 2>/dev/null | grep -v node_modules | grep -v \".next\" | head -30)",
+      "Bash(find \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/components\" -name \"*payment*\" -o -name \"*billing*\" 2>/dev/null | head -10)"
     ]
   }
 }

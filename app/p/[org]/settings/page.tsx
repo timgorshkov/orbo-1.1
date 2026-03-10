@@ -1,3 +1,4 @@
+import React from 'react'
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { notFound } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
@@ -25,6 +26,12 @@ const NotificationRulesContent = dynamic(() => import('@/components/settings/not
 
 // Dynamic import for billing page (it's a client component)
 const BillingContent = dynamic(() => import('@/components/settings/billing-content'), {
+  ssr: false,
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
+// Dynamic import for payments settings page (it's a client component)
+const PaymentsSettingsContent = dynamic(() => import('@/components/settings/payments-settings-content'), {
   ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
@@ -67,7 +74,7 @@ export default async function OrganizationSettingsPage({
     }
 
     // Fetch data based on active tab (lazy loading approach)
-    let tabContent = null
+    let tabContent: React.ReactNode = null
 
     switch (activeTab) {
       case 'team': {
@@ -198,6 +205,24 @@ export default async function OrganizationSettingsPage({
                 telegram_group_link:   organization.telegram_group_link   ?? null,
               }}
               userRole={membership.role as 'owner' | 'admin'}
+            />
+          </div>
+        )
+        break
+      }
+
+      case 'payments': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Приём платежей</h2>
+              <p className="text-gray-600 mt-1">
+                Настройте платёжную ссылку и подключите приём оплат картами
+              </p>
+            </div>
+            <PaymentsSettingsContent
+              orgId={orgId}
+              initialDefaultPaymentLink={organization.default_payment_link ?? null}
             />
           </div>
         )

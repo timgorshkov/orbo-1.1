@@ -135,6 +135,11 @@ export async function PATCH(
       }
     }
 
+    // Payment settings — owner or admin
+    if (body.default_payment_link !== undefined) {
+      updateData.default_payment_link = body.default_payment_link?.trim() || null
+    }
+
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'Нет полей для обновления' }, { status: 400 })
     }

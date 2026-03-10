@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import TelegramRichEditor from '@/components/ui/telegram-rich-editor'
 import CoverImageUpload from './cover-image-upload'
+import { ExternalLink, X } from 'lucide-react'
+
+const PRODAMUS_REF_URL = 'https://connect.prodamus.ru/?ref=ORBOPARTNERS&c=Rw6'
+const PRODAMUS_DISMISSED_KEY = 'prodamus_banner_dismissed'
 
 // Field status for registration form configuration
 type FieldStatus = 'disabled' | 'optional' | 'required'
@@ -59,9 +63,10 @@ type Props = {
   orgId: string
   mode: 'create' | 'edit'
   initialEvent?: Event
+  defaultPaymentLink?: string | null
 }
 
-export default function EventForm({ orgId, mode, initialEvent }: Props) {
+export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLink }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   
@@ -146,8 +151,24 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
     initialEvent?.payment_instructions || ''
   )
   const [paymentLink, setPaymentLink] = useState(
-    initialEvent?.payment_link || ''
+    initialEvent?.payment_link || (mode === 'create' ? (defaultPaymentLink || '') : '')
   )
+  // Prodamus promo banner — shown when creating a paid event and no payment link is set yet
+  const [prodamusDismissed, setProdamusDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return !!localStorage.getItem(PRODAMUS_DISMISSED_KEY)
+  })
+
+  const dismissProdamusBanner = (focusField?: boolean) => {
+    localStorage.setItem(PRODAMUS_DISMISSED_KEY, '1')
+    setProdamusDismissed(true)
+    if (focusField) {
+      setTimeout(() => {
+        document.getElementById('paymentLinkInput')?.focus()
+      }, 50)
+    }
+  }
+
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
   )
@@ -593,18 +614,60 @@ export default function EventForm({ orgId, mode, initialEvent }: Props) {
                     </p>
                   </div>
 
+                  {/* Prodamus promo banner — shown while no payment link is set */}
+                  {!prodamusDismissed && !paymentLink && (
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="text-sm font-medium text-indigo-900">
+                          💳 Как принимать оплату по картам?
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => dismissProdamusBanner()}
+                          className="text-indigo-400 hover:text-indigo-600 shrink-0 mt-0.5"
+                          aria-label="Закрыть"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-sm text-indigo-800 mb-3">
+                        Prodamus подходит для <strong>ИП, ООО и самозанятых</strong>.
+                        Комиссия 2,9–3,8% — заполните короткую анкету и узнайте персональные условия.
+                      </p>
+                      <div className="flex gap-2 flex-wrap">
+                        <a
+                          href={PRODAMUS_REF_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                        >
+                          Заполнить анкету
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => dismissProdamusBanner(true)}
+                          className="inline-flex items-center rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50"
+                        >
+                          У меня уже есть ссылка
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-sm font-medium block mb-2">
                       Платёжная ссылка
                     </label>
                     <Input
+                      id="paymentLinkInput"
                       type="url"
                       value={paymentLink}
                       onChange={(e) => setPaymentLink(e.target.value)}
-                      placeholder="https://pay.example.com/..."
+                      placeholder="https://prodamus.ru/pay/... или другая ссылка"
                     />
                     <p className="text-xs text-neutral-500 mt-1">
-                      Ссылка на страницу оплаты в банке или платёжной системе. Участники смогут перейти по ней для оплаты.
+                      Ссылка на страницу оплаты. Участники смогут перейти по ней для оплаты.
                     </p>
                   </div>
 
