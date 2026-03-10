@@ -13,6 +13,13 @@ const logger = createServiceLogger('WeeekService');
 
 // API Configuration
 const WEEEK_API_URL = 'https://api.weeek.net/public/v1';
+const FETCH_TIMEOUT_MS = 8000;
+
+// Module-level cache for the first stage status ID — shared across all WeeekService instances.
+// This avoids redundant API calls since funnel statuses rarely change.
+let cachedStatusId: string | null = null;
+let cachedStatusFetchedAt: number | null = null;
+const STATUS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 // Helper to format date in Moscow timezone
 const formatMoscowDate = () => new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
@@ -67,7 +74,6 @@ interface WeeekApiResponse<T> {
 }
 
 class WeeekService {
-  private defaultStatusId: string | null = null;
   private configWarningLogged = false;
 
   /**
@@ -124,6 +130,7 @@ class WeeekService {
           'Authorization': `Bearer ${this.apiToken}`,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       };
 
       if (body && method !== 'GET') {
@@ -183,39 +190,59 @@ class WeeekService {
       return { success: true, data };
 
     } catch (error) {
-      logger.error({ 
-        error: error instanceof Error ? error.message : String(error),
-        endpoint 
-      }, 'Weeek API exception');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isNetworkError = errorMessage.includes('fetch failed') ||
+        errorMessage.includes('ECONNREFUSED') ||
+        errorMessage.includes('ENOTFOUND') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('TimeoutError') ||
+        (error instanceof Error && error.name === 'AbortError');
+
+      if (isNetworkError) {
+        logger.warn({ error: errorMessage, endpoint }, 'Weeek API unreachable (network/timeout)');
+      } else {
+        logger.error({ error: errorMessage, endpoint }, 'Weeek API exception');
+      }
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: errorMessage
       };
     }
   }
 
   /**
-   * Get funnel statuses to find the first stage ID
+   * Get funnel statuses to find the first stage ID.
+   * Uses a module-level cache (10 min TTL) to avoid redundant API calls
+   * since a new WeeekService instance is created on every invocation.
    */
   async getFirstStageId(): Promise<string | null> {
-    if (this.defaultStatusId) {
-      return this.defaultStatusId;
+    const now = Date.now();
+    if (cachedStatusId && cachedStatusFetchedAt && (now - cachedStatusFetchedAt) < STATUS_CACHE_TTL_MS) {
+      return cachedStatusId;
     }
 
-    const result = await this.request<{ statuses: Array<{ id: string; order: number }> }>(
-      'GET',
-      `/crm/funnels/${this.funnelId}/statuses`
-    );
+    // Retry once on network failure
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const result = await this.request<{ statuses: Array<{ id: string; order: number }> }>(
+        'GET',
+        `/crm/funnels/${this.funnelId}/statuses`
+      );
 
-    if (result.success && result.data?.statuses?.length) {
-      // Sort by order and get the first one
-      const sorted = result.data.statuses.sort((a, b) => a.order - b.order);
-      this.defaultStatusId = sorted[0].id;
-      logger.debug({ statusId: this.defaultStatusId }, 'Found first stage ID');
-      return this.defaultStatusId;
+      if (result.success && result.data?.statuses?.length) {
+        const sorted = result.data.statuses.sort((a, b) => a.order - b.order);
+        cachedStatusId = sorted[0].id;
+        cachedStatusFetchedAt = Date.now();
+        logger.debug({ statusId: cachedStatusId }, 'Found first stage ID');
+        return cachedStatusId;
+      }
+
+      if (attempt < 2) {
+        logger.debug({ funnelId: this.funnelId, attempt }, 'Retrying getFirstStageId after failure');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
-    logger.error({ funnelId: this.funnelId }, 'Failed to get funnel statuses');
+    logger.warn({ funnelId: this.funnelId }, 'Failed to get funnel statuses after retry');
     return null;
   }
 
@@ -320,7 +347,7 @@ class WeeekService {
   async createDeal(params: CreateDealParams): Promise<string | null> {
     const statusId = await this.getFirstStageId();
     if (!statusId) {
-      logger.error({}, 'Cannot create deal - no status ID');
+      logger.warn({}, 'Cannot create deal - no status ID (Weeek API unreachable?)');
       return null;
     }
 
@@ -495,7 +522,15 @@ export async function onUserRegistration(
     });
 
     if (!dealId) {
-      logger.error({ userId, email, contactId }, 'Failed to create Weeek deal');
+      // Save contact even if deal creation failed — avoids duplicate contacts on retry
+      await supabase
+        .from('crm_sync_log')
+        .upsert({
+          user_id: userId,
+          weeek_contact_id: contactId,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      logger.warn({ userId, email, contactId }, 'Failed to create Weeek deal (contact saved for retry)');
       return;
     }
 
@@ -823,7 +858,7 @@ export async function ensureCrmRecord(
     // Check if we already have a CRM record for this user
     const { data: existingSync } = await supabase
       .from('crm_sync_log')
-      .select('weeek_deal_id')
+      .select('weeek_deal_id, weeek_contact_id')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -843,12 +878,17 @@ export async function ensureCrmRecord(
       lastName = parts.slice(1).join(' ') || undefined;
     }
 
-    // Create contact
-    const contactId = await weeek.createContact({
-      email,
-      firstName,
-      lastName,
-    });
+    // Reuse existing contact if deal creation previously failed
+    let contactId = existingSync?.weeek_contact_id || null;
+
+    if (!contactId) {
+      // Create contact
+      contactId = await weeek.createContact({
+        email,
+        firstName,
+        lastName,
+      });
+    }
 
     if (!contactId) {
       logger.error({ userId, email }, 'Failed to create Weeek contact');
@@ -864,7 +904,15 @@ export async function ensureCrmRecord(
     });
 
     if (!dealId) {
-      logger.error({ userId, email, contactId }, 'Failed to create Weeek deal');
+      // Save contact even if deal failed — avoids duplicate contacts on retry
+      await supabase
+        .from('crm_sync_log')
+        .upsert({
+          user_id: userId,
+          weeek_contact_id: contactId,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      logger.warn({ userId, email, contactId }, 'Failed to create Weeek deal (contact saved for retry)');
       return;
     }
 
