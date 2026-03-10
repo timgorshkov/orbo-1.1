@@ -520,12 +520,16 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
             </Card>
 
             {/* Available groups */}
-            {availableGroups.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Доступные группы (ещё не привязаны)</CardTitle>
-                </CardHeader>
-                <CardContent>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Доступные группы (ещё не привязаны)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {availableGroups.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Групп для подключения не найдено. Добавьте бота{botUsername ? ` @${botUsername}` : ''} в группу MAX, затем обновите страницу.
+                  </p>
+                ) : (
                   <div className="space-y-2">
                     {availableGroups.map(group => (
                       <div key={group.max_chat_id}
@@ -551,9 +555,9 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardContent>
+            </Card>
 
             {/* Instructions */}
             <Card className="border-dashed">

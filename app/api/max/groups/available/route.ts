@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
               bot_status: 'connected',
               member_count: chat.participants_count ?? null,
               updated_at: new Date().toISOString(),
-            }, { onConflict: 'max_chat_id', ignoreDuplicates: true });
+            }, { onConflict: 'max_chat_id' });
         }
         logger.debug({ count: chatsResult.data.chats.length }, 'Auto-discovered MAX chats from API');
       }
@@ -98,8 +98,8 @@ export async function GET(request: NextRequest) {
 
     let filteredGroups = groups || [];
 
-    // Mandatory membership filter: only show groups where this user is actually a member.
-    // We already know maxAccount.max_user_id exists (checked above).
+    // Optional membership filter: only exclude groups where user is CONFIRMED non-member (404).
+    // On any API error (permissions, timeout, unsupported endpoint) — keep the group visible.
     if (filteredGroups.length > 0) {
       try {
         const maxService = createMaxService('main');
@@ -107,11 +107,13 @@ export async function GET(request: NextRequest) {
           filteredGroups.map(async (group) => {
             try {
               const result = await maxService.getChatMember(group.max_chat_id, maxAccount.max_user_id);
-              // 200 = user is a member; 4xx = not a member or group not found
-              return result.ok ? group : null;
+              // Only exclude if the API explicitly says "not found" (404 = not a member).
+              // Any other error (403, 5xx, network) → keep the group (fail-open).
+              if (!result.ok && result.status === 404) return null;
+              return group;
             } catch {
-              // On unexpected API error, exclude the group (fail-safe: don't leak other orgs' groups)
-              return null;
+              // On unexpected API error, include the group (fail-open)
+              return group;
             }
           })
         );
@@ -122,9 +124,8 @@ export async function GET(request: NextRequest) {
           max_user_id: maxAccount.max_user_id,
         }, 'Filtered available MAX groups by user membership');
       } catch (membershipErr: any) {
-        logger.warn({ error: membershipErr.message }, 'Failed to filter groups by membership, returning empty for safety');
-        // Fail-safe: return empty rather than leaking potentially wrong groups
-        filteredGroups = [];
+        logger.warn({ error: membershipErr.message }, 'Failed to filter groups by membership, showing all available');
+        // Fail-open: show groups unfiltered rather than hiding everything
       }
     }
 
