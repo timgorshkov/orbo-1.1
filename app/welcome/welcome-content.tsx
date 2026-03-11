@@ -160,7 +160,10 @@ export function WelcomeContent({
       });
       const data = await res.json();
       if (res.ok && data.org_id) {
-        ymGoal('organization_created', { auto: true }, { once: true });
+        // Welcome flow auto-creates org only when hasOrganizations === false,
+        // so this is always the first org — fire both goals.
+        ymGoal('org_created', { auto: true }, { once: true });
+        ymGoal('first_org_created', { auto: true }, { once: true });
         router.push(`/app/${data.org_id}`);
         return;
       }
