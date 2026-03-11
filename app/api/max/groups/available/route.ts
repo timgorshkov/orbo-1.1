@@ -6,11 +6,11 @@ import { createMaxService } from '@/lib/services/maxService';
 
 /**
  * GET /api/max/groups/available?orgId=...
- * Returns MAX groups where the bot is connected, the current user is a member,
- * and the group is NOT yet linked to this org.
+ * Returns MAX groups where the bot is connected and the group is NOT yet linked to this org.
  *
- * Bug 1 fix: auto-discovers groups from MAX API (GET /chats) that aren't in DB yet
- * Bug 2 fix: filters groups by whether the requesting user is still a member
+ * Auto-discovers groups from MAX API (GET /chats) that aren't in DB yet.
+ * Note: MAX API does not support GET /chats/{chatId}/members/{userId},
+ * so user membership filtering is not possible. All bot-connected groups are shown.
  */
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/max/groups/available' });
@@ -45,14 +45,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Auto-discover groups from MAX API that bot is already in but aren't in DB yet.
-    // Only makes sense to do this when user has a verified account (= they can actually see results).
+    // Also marks groups the bot has left as inactive (keeps DB in sync with reality).
+    // Only runs when user has a verified account (= they can actually see results).
     try {
       const maxService = createMaxService('main');
       const chatsResult = await maxService.getChats({ count: 100 });
 
       if (chatsResult.ok && Array.isArray(chatsResult.data?.chats)) {
+        const liveChatIds: number[] = [];
+
         for (const chat of chatsResult.data.chats) {
           if (!chat.chat_id || chat.type === 'dialog') continue;
+          liveChatIds.push(chat.chat_id);
 
           await admin
             .from('max_groups')
@@ -64,6 +68,16 @@ export async function GET(request: NextRequest) {
               updated_at: new Date().toISOString(),
             }, { onConflict: 'max_chat_id' });
         }
+
+        // Mark groups no longer in the bot's chat list as inactive
+        if (liveChatIds.length > 0) {
+          await admin
+            .from('max_groups')
+            .update({ bot_status: 'inactive', updated_at: new Date().toISOString() })
+            .eq('bot_status', 'connected')
+            .not('max_chat_id', 'in', `(${liveChatIds.join(',')})`);
+        }
+
         logger.debug({ count: chatsResult.data.chats.length }, 'Auto-discovered MAX chats from API');
       }
     } catch (discoverErr: any) {
@@ -96,41 +110,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    let filteredGroups = groups || [];
+    const groupList = groups || [];
 
-    // Optional membership filter: only exclude groups where user is CONFIRMED non-member (404).
-    // On any API error (permissions, timeout, unsupported endpoint) — keep the group visible.
-    if (filteredGroups.length > 0) {
+    // Check bot admin status for each group in parallel.
+    // bot_is_admin=true  → bot can read admin list (and user admin check works)
+    // bot_is_admin=false → bot is a regular member; we show a hint to promote it
+    // bot_is_admin=null  → API error, unknown
+    let groupsWithAdminStatus: Array<(typeof groupList)[0] & { bot_is_admin: boolean | null }>;
+    if (groupList.length > 0) {
       try {
         const maxService = createMaxService('main');
-        const membershipResults = await Promise.all(
-          filteredGroups.map(async (group) => {
+        groupsWithAdminStatus = await Promise.all(
+          groupList.map(async (group) => {
             try {
-              const result = await maxService.getChatMember(group.max_chat_id, maxAccount.max_user_id);
-              // Only exclude if API explicitly confirms user is not a member.
-              // 404 with method.not.found means the endpoint doesn't exist in this MAX API version
-              // — treat as fail-open so groups remain visible.
-              if (!result.ok && result.status === 404 && result.error?.code !== 'method.not.found') return null;
-              return group;
+              const result = await maxService.getChatAdmins(group.max_chat_id);
+              return { ...group, bot_is_admin: result.ok ? true : (result.status === 403 ? false : null) };
             } catch {
-              // On unexpected API error, include the group (fail-open)
-              return group;
+              return { ...group, bot_is_admin: null };
             }
           })
         );
-        filteredGroups = membershipResults.filter(Boolean) as typeof filteredGroups;
-        logger.debug({
-          total: (groups || []).length,
-          after_filter: filteredGroups.length,
-          max_user_id: maxAccount.max_user_id,
-        }, 'Filtered available MAX groups by user membership');
-      } catch (membershipErr: any) {
-        logger.warn({ error: membershipErr.message }, 'Failed to filter groups by membership, showing all available');
-        // Fail-open: show groups unfiltered rather than hiding everything
+      } catch {
+        groupsWithAdminStatus = groupList.map(g => ({ ...g, bot_is_admin: null }));
       }
+    } else {
+      groupsWithAdminStatus = [];
     }
 
-    return NextResponse.json({ groups: filteredGroups });
+    return NextResponse.json({ groups: groupsWithAdminStatus });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error in available MAX groups');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

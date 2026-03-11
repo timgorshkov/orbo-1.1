@@ -92,39 +92,50 @@ export async function POST(request: NextRequest) {
       }, '[MAX-ADMIN-CHECK] Raw response from GET /chats/{chatId}/members/admins');
 
       if (!adminsResult.ok) {
-        logger.warn({
-          max_chat_id,
-          max_user_id: maxAccount.max_user_id,
-          status: adminsResult.status,
-          error: adminsResult.error,
-        }, '[MAX-ADMIN-CHECK] Could not fetch admins list — blocking link attempt');
-        return NextResponse.json({
-          error: 'Не удалось проверить права администратора в группе MAX. Попробуйте позже.',
-        }, { status: 503 });
+        if (adminsResult.status === 403) {
+          // Bot is a regular member (not admin) of this group — MAX API denies the admins list.
+          // We cannot verify the user's admin status, so fail-open: allow the link.
+          // The user already has a verified MAX account and is an Orbo org admin.
+          logger.warn({
+            max_chat_id,
+            max_user_id: maxAccount.max_user_id,
+            status: adminsResult.status,
+            error: adminsResult.error,
+          }, '[MAX-ADMIN-CHECK] Bot is not a group admin — skipping admin check (fail-open)');
+        } else {
+          logger.warn({
+            max_chat_id,
+            max_user_id: maxAccount.max_user_id,
+            status: adminsResult.status,
+            error: adminsResult.error,
+          }, '[MAX-ADMIN-CHECK] Could not fetch admins list — blocking link attempt');
+          return NextResponse.json({
+            error: 'Не удалось проверить права администратора в группе MAX. Попробуйте позже.',
+          }, { status: 503 });
+        }
       }
 
-      // The API returns an object with an `admins` array.
-      // Each admin entry is expected to contain a user_id field.
-      // We log all parsed user_ids so mismatches are easy to spot in logs.
-      const admins: any[] = adminsResult.data?.admins ?? [];
-      const adminUserIds: number[] = admins.map((a: any) => {
-        // Log each admin entry in full during testing to verify exact field names
-        logger.debug({ admin_entry: a }, '[MAX-ADMIN-CHECK] Admin entry from API');
-        return Number(a.user_id ?? a.userId ?? a.id);
-      }).filter((id: number) => !isNaN(id) && id > 0);
+      // Only check the admin list if we actually got one (bot is admin of the group)
+      if (adminsResult.ok) {
+        const admins: any[] = adminsResult.data?.admins ?? [];
+        const adminUserIds: number[] = admins.map((a: any) => {
+          logger.debug({ admin_entry: a }, '[MAX-ADMIN-CHECK] Admin entry from API');
+          return Number(a.user_id ?? a.userId ?? a.id);
+        }).filter((id: number) => !isNaN(id) && id > 0);
 
-      logger.info({
-        max_chat_id,
-        max_user_id: maxAccount.max_user_id,
-        admin_user_ids: adminUserIds,
-        is_admin: adminUserIds.includes(maxAccount.max_user_id),
-        raw_admins_count: admins.length,
-      }, '[MAX-ADMIN-CHECK] Parsed admin list');
+        logger.info({
+          max_chat_id,
+          max_user_id: maxAccount.max_user_id,
+          admin_user_ids: adminUserIds,
+          is_admin: adminUserIds.includes(maxAccount.max_user_id),
+          raw_admins_count: admins.length,
+        }, '[MAX-ADMIN-CHECK] Parsed admin list');
 
-      if (!adminUserIds.includes(maxAccount.max_user_id)) {
-        return NextResponse.json({
-          error: 'Вы не являетесь администратором этой группы в MAX. Привязать группу могут только администраторы.',
-        }, { status: 403 });
+        if (!adminUserIds.includes(maxAccount.max_user_id)) {
+          return NextResponse.json({
+            error: 'Вы не являетесь администратором этой группы в MAX. Привязать группу могут только администраторы.',
+          }, { status: 403 });
+        }
       }
     } catch (adminCheckErr: any) {
       logger.error({

@@ -663,7 +663,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
       const userId = joinRequest.from?.id;
       const inviteLink = joinRequest.invite_link;
       
-      logger.info({
+      logger.debug({
         chat_id: requestChatId,
         user_id: userId,
         username: joinRequest.from?.username,
@@ -709,7 +709,7 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               .maybeSingle();
             
             if (existingApp) {
-              logger.info({
+              logger.debug({
                 chat_id: requestChatId,
                 user_id: userId,
                 existing_application_id: existingApp.id,
