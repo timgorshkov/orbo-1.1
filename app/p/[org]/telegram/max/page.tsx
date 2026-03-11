@@ -12,11 +12,12 @@ export default async function MaxPage({ params }: { params: Promise<{ org: strin
     orgId = org;
     await requireOrgAccess(orgId);
 
-    // Notifications bot is used for verification codes and system DMs — show it in instructions
-    const botUsername =
-      process.env.MAX_NOTIFICATIONS_BOT_USERNAME ||
-      process.env.MAX_MAIN_BOT_USERNAME ||
-      null;
+    // Notifications bot sends verification codes to users in DMs
+    const notificationsBotUsername =
+      process.env.MAX_NOTIFICATIONS_BOT_USERNAME || null;
+    // Main bot must be added to groups — it's what the groups API uses
+    const mainBotUsername =
+      process.env.MAX_MAIN_BOT_USERNAME || null;
 
     return (
       <div className="p-6">
@@ -25,7 +26,7 @@ export default async function MaxPage({ params }: { params: Promise<{ org: strin
         </div>
 
         <TabsLayout orgId={orgId}>
-          <MaxSettingsClient orgId={orgId} botUsername={botUsername} />
+          <MaxSettingsClient orgId={orgId} botUsername={notificationsBotUsername} mainBotUsername={mainBotUsername} />
         </TabsLayout>
       </div>
     )

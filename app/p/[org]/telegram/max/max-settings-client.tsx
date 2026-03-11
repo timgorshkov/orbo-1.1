@@ -35,12 +35,15 @@ interface MaxGroup {
 
 interface MaxSettingsClientProps {
   orgId: string
+  /** Notifications bot — sends verification codes in DMs */
   botUsername: string | null
+  /** Main bot — must be added to groups for them to appear as available */
+  mainBotUsername: string | null
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
-export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsClientProps) {
+export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername }: MaxSettingsClientProps) {
   // Account state
   const [account, setAccount] = useState<MaxAccount | null>(null)
   const [loadingAccount, setLoadingAccount] = useState(true)
@@ -478,7 +481,7 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
               <CardContent>
                 {linkedGroups.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    Нет привязанных MAX групп. Добавьте бота в группу MAX, затем привяжите её ниже.
+                    Нет привязанных MAX групп. Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ''} в группу MAX, затем привяжите её ниже.
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -527,7 +530,7 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
               <CardContent>
                 {availableGroups.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    Групп для подключения не найдено. Добавьте бота{botUsername ? ` @${botUsername}` : ''} в группу MAX, затем обновите страницу.
+                    Групп для подключения не найдено. Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ''} в группу MAX, затем обновите страницу.
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -568,7 +571,7 @@ export default function MaxSettingsClient({ orgId, botUsername }: MaxSettingsCli
                 </div>
                 <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600 pl-1">
                   <li>Откройте MAX и перейдите в нужную группу</li>
-                  <li>Добавьте бота{botUsername ? ` @${botUsername}` : ''} в группу как участника</li>
+                  <li>Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ''} в группу как участника</li>
                   <li>Группа появится в списке "Доступные группы" выше</li>
                   <li>Нажмите "Привязать" для подключения к организации</li>
                   <li>Нажмите "Синхр." для импорта участников</li>

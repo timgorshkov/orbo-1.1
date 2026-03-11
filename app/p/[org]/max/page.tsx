@@ -85,6 +85,7 @@ export default async function MaxGroupsPage({ params }: { params: Promise<{ org:
           orgId={orgId}
           linkedGroups={groups}
           availableGroups={availableGroups || []}
+          mainBotUsername={process.env.MAX_MAIN_BOT_USERNAME || null}
         />
       </div>
     );

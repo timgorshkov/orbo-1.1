@@ -22,9 +22,10 @@ interface MaxGroupsClientProps {
   orgId: string;
   linkedGroups: MaxGroup[];
   availableGroups: MaxGroup[];
+  mainBotUsername: string | null;
 }
 
-export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }: MaxGroupsClientProps) {
+export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups, mainBotUsername }: MaxGroupsClientProps) {
   const [linked, setLinked] = useState<MaxGroup[]>(linkedGroups);
   const [available, setAvailable] = useState<MaxGroup[]>(availableGroups);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
         <CardContent>
           {linked.length === 0 ? (
             <p className="text-gray-500 text-sm">
-              Нет привязанных MAX групп. Добавьте бота в группу MAX, затем привяжите её здесь.
+              Нет привязанных MAX групп. Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ''} в группу MAX, затем привяжите её здесь.
             </p>
           ) : (
             <div className="space-y-3">
@@ -164,7 +165,7 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
           </CardHeader>
           <CardContent>
             <p className="text-gray-500 text-sm mb-3">
-              Группы, в которых бот добавлен, но не привязан к организации.
+              Группы, в которых бот{mainBotUsername ? ` @${mainBotUsername}` : ''} добавлен, но не привязан к организации.
             </p>
             <div className="space-y-3">
               {available.map(group => (
@@ -207,7 +208,7 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups }
         <CardContent>
           <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
             <li>Откройте MAX и перейдите в нужную группу</li>
-            <li>Добавьте бота организации в группу как участника</li>
+            <li>Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ' Orbo'} в группу как участника</li>
             <li>Бот автоматически появится в списке доступных групп выше</li>
             <li>Нажмите "Привязать" для подключения группы к организации</li>
             <li>Нажмите "Синхронизировать" для импорта участников</li>
