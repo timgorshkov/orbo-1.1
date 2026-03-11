@@ -66,10 +66,18 @@ export class MaxService {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        logger.error({
-          method, httpMethod, status: response.status,
-          error: data, elapsed_ms: elapsed, bot_type: this.botType,
-        }, `MAX API error: ${method}`);
+        // method.not.found = endpoint not supported by this MAX API version — log as warn, not error
+        if (data?.code === 'method.not.found') {
+          logger.warn({
+            method, httpMethod, status: response.status,
+            error: data, elapsed_ms: elapsed, bot_type: this.botType,
+          }, `MAX API unsupported endpoint: ${method}`);
+        } else {
+          logger.error({
+            method, httpMethod, status: response.status,
+            error: data, elapsed_ms: elapsed, bot_type: this.botType,
+          }, `MAX API error: ${method}`);
+        }
         return { ok: false, error: data, status: response.status };
       }
 

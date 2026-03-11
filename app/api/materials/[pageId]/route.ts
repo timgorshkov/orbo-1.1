@@ -45,13 +45,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { pageId
 
   try {
     const { user, role } = await requireOrgAccess(orgId, ['owner', 'admin']);
-    const page = await MaterialService.updatePage(params.pageId, {
-      title: body.title,
-      slug: body.slug,
-      content_md: body.contentMd,
-      visibility: body.visibility,
-      updated_by: user.id ?? null
-    });
+    const patch: Parameters<typeof MaterialService.updatePage>[1] = {
+      updated_by: user.id ?? null,
+    };
+    if (body.title !== undefined) patch.title = body.title;
+    if (body.slug !== undefined) patch.slug = body.slug;
+    if (body.contentMd !== undefined) patch.content_md = body.contentMd;
+    if (body.visibility !== undefined) patch.visibility = body.visibility;
+    const page = await MaterialService.updatePage(params.pageId, patch);
     return NextResponse.json({ page });
   } catch (error: any) {
     logger.error({ 

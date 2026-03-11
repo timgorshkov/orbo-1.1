@@ -107,9 +107,10 @@ export async function GET(request: NextRequest) {
           filteredGroups.map(async (group) => {
             try {
               const result = await maxService.getChatMember(group.max_chat_id, maxAccount.max_user_id);
-              // Only exclude if the API explicitly says "not found" (404 = not a member).
-              // Any other error (403, 5xx, network) → keep the group (fail-open).
-              if (!result.ok && result.status === 404) return null;
+              // Only exclude if API explicitly confirms user is not a member.
+              // 404 with method.not.found means the endpoint doesn't exist in this MAX API version
+              // — treat as fail-open so groups remain visible.
+              if (!result.ok && result.status === 404 && result.error?.code !== 'method.not.found') return null;
               return group;
             } catch {
               // On unexpected API error, include the group (fail-open)
