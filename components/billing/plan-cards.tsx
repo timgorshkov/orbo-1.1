@@ -15,15 +15,16 @@ interface PlanCardsProps {
   plans: PlanCardData[]
   currentPlanCode?: string
   paymentUrl: string
+  clubPaymentUrl?: string
   compact?: boolean
 }
 
 const FEATURES: Record<string, string[]> = {
   free: [
-    'До 1 000 участников',
+    'До 500 участников',
     'Telegram-группы',
     'CRM участников',
-    'Аналитика активности',
+    'Готовые боты',
     'События и регистрация',
     'Анонсы в группы',
   ],
@@ -37,11 +38,17 @@ const FEATURES: Record<string, string[]> = {
   ],
   enterprise: [
     'Всё из Профессионального',
+    'Собственные боты',
+    'Кастомные мини-приложения',
     'Приоритетная поддержка',
     'API-доступ',
-    'Индивидуальные лимиты',
-    'SLA и интеграции',
     'Выделенный менеджер',
+  ],
+  promo: [
+    'Безлимитные участники',
+    'Все функции Клубного',
+    'Собственные боты',
+    'Кастомные мини-приложения',
   ],
 }
 
@@ -51,7 +58,7 @@ const PLAN_ICONS: Record<string, typeof Users> = {
   enterprise: Building2,
 }
 
-export default function PlanCards({ plans, currentPlanCode, paymentUrl, compact }: PlanCardsProps) {
+export default function PlanCards({ plans, currentPlanCode, paymentUrl, clubPaymentUrl, compact }: PlanCardsProps) {
   return (
     <div className={cn('grid gap-6', compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3')}>
       {plans.map((plan) => {
@@ -153,12 +160,29 @@ export default function PlanCards({ plans, currentPlanCode, paymentUrl, compact 
             )}
 
             {plan.code === 'enterprise' && (
-              <a
-                href="mailto:tg@orbo.ru"
-                className="block py-2.5 text-center text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
-              >
-                Связаться с нами
-              </a>
+              clubPaymentUrl ? (
+                isCurrent ? (
+                  <div className="py-2.5 text-center text-sm font-medium text-purple-600 border border-purple-300 rounded-xl bg-purple-50">
+                    Активен
+                  </div>
+                ) : (
+                  <a
+                    href={clubPaymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block py-2.5 text-center text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition shadow"
+                  >
+                    Оплатить
+                  </a>
+                )
+              ) : (
+                <a
+                  href="mailto:tg@orbo.ru"
+                  className="block py-2.5 text-center text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                >
+                  Связаться с нами
+                </a>
+              )
             )}
           </div>
         )

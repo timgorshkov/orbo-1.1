@@ -5,7 +5,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Тарифы',
-  description: 'Бесплатно для сообществ до 500 участников. Подключите Telegram-группы, создавайте события и MiniApp — без оплаты.',
+  description: 'Бесплатно для сообществ до 500 участников. Подключите Telegram-группы, создавайте события и MiniApp — без оплаты. Клубный тариф с 7 500 ₽/мес для расширенных возможностей.',
   alternates: { canonical: '/pricing' },
 }
 
@@ -22,10 +22,10 @@ const PLANS = [
     cta: 'Начать бесплатно',
     ctaHref: 'https://my.orbo.ru/signup',
     features: [
-      { name: 'До 1 000 участников', included: true },
+      { name: 'До 500 участников', included: true },
       { name: 'Telegram-группы', included: true },
       { name: 'CRM участников', included: true },
-      { name: 'Аналитика активности', included: true },
+      { name: 'Готовые боты', included: true },
       { name: 'События и регистрация', included: true },
       { name: 'Анонсы в группы', included: true },
       { name: 'AI-анализ участников', included: false },
@@ -47,36 +47,36 @@ const PLANS = [
     features: [
       { name: 'Безлимитные участники', included: true },
       { name: 'Всё из Бесплатного', included: true },
+      { name: 'Готовые боты', included: true },
       { name: 'AI-анализ участников', included: true },
       { name: 'Обнаружение негатива', included: true },
       { name: 'Обнаружение вопросов', included: true },
       { name: 'Пользовательские правила', included: true },
       { name: 'Приоритетная поддержка', included: false },
-      { name: 'API-доступ', included: false },
-      { name: 'SLA и интеграции', included: false },
+      { name: 'Собственные боты', included: false },
     ],
   },
   {
     code: 'enterprise',
-    name: 'Корпоративный',
-    description: 'Индивидуальные условия для крупных организаций',
-    price: null,
-    priceLabel: 'По запросу',
-    priceSuffix: '',
+    name: 'Клубный',
+    description: 'Для клубов с расширенными возможностями',
+    price: 7500,
+    priceLabel: '7 500 ₽',
+    priceSuffix: '/ месяц',
     icon: Building2,
     highlighted: false,
-    cta: 'Связаться с нами',
-    ctaHref: 'mailto:tg@orbo.ru',
+    cta: 'Оплатить',
+    ctaHref: 'https://payform.ru/4taVjLm/',
     features: [
       { name: 'Всё из Профессионального', included: true },
+      { name: 'Собственные боты', included: true },
+      { name: 'Кастомные мини-приложения', included: true },
       { name: 'Приоритетная поддержка', included: true },
       { name: 'API-доступ', included: true },
-      { name: 'Индивидуальные лимиты', included: true },
-      { name: 'SLA и интеграции', included: true },
       { name: 'Выделенный менеджер', included: true },
-      { name: 'Кастомные отчёты', included: true },
       { name: 'Обучение команды', included: true },
-      { name: 'On-premise установка', included: true },
+      { name: 'SLA и интеграции', included: true },
+      { name: 'Индивидуальные лимиты', included: true },
     ],
   },
 ]
@@ -189,8 +189,8 @@ export default function PricingPage() {
           <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">Частые вопросы</h2>
           <div className="space-y-6">
             <div>
-              <h3 className="font-semibold text-gray-900 mb-2">Что будет, если участников станет больше 1000?</h3>
-              <p className="text-gray-600 text-sm">В течение 48 часов вы сможете продолжить работу. После этого потребуется перейти на тариф Профессиональный для продолжения.</p>
+              <h3 className="font-semibold text-gray-900 mb-2">Что будет, если участников станет больше 500?</h3>
+              <p className="text-gray-600 text-sm">Вам будет предложен бесплатный 14-дневный пробный период тарифа Профессиональный. После этого потребуется выбрать платный тариф для продолжения.</p>
             </div>
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Как происходит оплата?</h3>
@@ -201,8 +201,8 @@ export default function PricingPage() {
               <p className="text-gray-600 text-sm">AI-анализ поведения участников, автоматическое обнаружение негатива и неотвеченных вопросов в группах, пользовательские правила уведомлений с ИИ.</p>
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 mb-2">По вопросам корпоративного тарифа?</h3>
-              <p className="text-gray-600 text-sm">Напишите нам на <a href="mailto:tg@orbo.ru" className="text-purple-600 hover:underline">tg@orbo.ru</a> — обсудим индивидуальные условия.</p>
+              <h3 className="font-semibold text-gray-900 mb-2">Чем Клубный тариф отличается от Профессионального?</h3>
+              <p className="text-gray-600 text-sm">Клубный тариф включает возможность создавать собственных Telegram-ботов и кастомные мини-приложения, а также приоритетную поддержку и выделенного менеджера.</p>
             </div>
           </div>
         </section>

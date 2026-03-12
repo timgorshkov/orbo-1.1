@@ -211,13 +211,11 @@ export default function BillingContent() {
       <div>
         <h2 className="text-xl font-semibold mb-4">Доступные тарифы</h2>
         <PlanCards
-          plans={plans}
+          plans={plans.filter(p => p.code !== 'promo')}
           currentPlanCode={data.plan.code}
           paymentUrl={data.paymentUrl}
+          clubPaymentUrl="https://payform.ru/4taVjLm/"
         />
-        <p className="text-sm text-gray-500 mt-4 text-center">
-          По вопросам корпоративного плана: <a href="mailto:tg@orbo.ru" className="text-purple-600 hover:underline">tg@orbo.ru</a>
-        </p>
       </div>
 
       {/* Invoice history */}

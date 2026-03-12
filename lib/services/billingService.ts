@@ -4,6 +4,7 @@ import { createServiceLogger } from '@/lib/logger'
 const logger = createServiceLogger('BillingService')
 
 const PAYMENT_URL = 'https://payform.ru/tkaK5Rn/'
+export const CLUB_PAYMENT_URL = 'https://payform.ru/4taVjLm/'
 const PRO_MONTHLY_PRICE = 1500
 const TRIAL_DAYS = 14
 const TRIAL_WARNING_DAYS = 3 // show payment nudge in last 3 days of trial
@@ -13,6 +14,7 @@ export interface BillingPlan {
   name: string
   description: string | null
   price_monthly: number | null
+  is_hidden?: boolean
   limits: {
     participants: number
     ai_requests_per_month: number
@@ -77,12 +79,18 @@ export async function getPlans(): Promise<BillingPlan[]> {
 
   plansCache = data.map(mapPlan)
   plansCacheTime = Date.now()
-  return plansCache
+  return plansCache!
+}
+
+/** Returns all plans excluding hidden ones (for public display). */
+export async function getPublicPlans(): Promise<BillingPlan[]> {
+  const plans = await getPlans()
+  return plans.filter(p => !(p as any).is_hidden)
 }
 
 export async function getPlanByCode(code: string): Promise<BillingPlan> {
   const plans = await getPlans()
-  return plans.find(p => p.code === code) || getDefaultPlans()[0]
+  return plans.find(p => p.code === code) || getDefaultPlans().find(p => p.code === code) || getDefaultPlans()[0]
 }
 
 // ----- Subscription -----
@@ -179,7 +187,7 @@ export async function getOrgBillingStatus(orgId: string): Promise<BillingStatus>
   const freePlan = plans.find(p => p.code === 'free') || getDefaultPlans()[0]
   const freeLimit = freePlan.limits.participants
 
-  // Auto-trial: free plan org with 1000+ participants → start Pro trial
+  // Auto-trial: free plan org with 500+ participants → start Pro trial
   if (
     subscription.plan_code === 'free' &&
     subscription.status === 'active' &&
@@ -357,6 +365,28 @@ export async function addPayment(
   return { success: true, periodStart: periodStart.toISOString(), periodEnd: newExpiresAt.toISOString() }
 }
 
+export async function activatePromo(orgId: string, activatedBy: string): Promise<boolean> {
+  const supabase = createAdminServer()
+  const { error } = await supabase
+    .from('org_subscriptions')
+    .update({
+      plan_code: 'promo',
+      status: 'active',
+      started_at: new Date().toISOString(),
+      expires_at: null,
+      over_limit_since: null,
+      notes: `Promo plan activated by superadmin ${activatedBy}`,
+    })
+    .eq('org_id', orgId)
+
+  if (error) {
+    logger.error({ org_id: orgId, error: error.message }, 'Failed to activate promo plan')
+    return false
+  }
+  logger.info({ org_id: orgId, activated_by: activatedBy }, 'Promo plan activated')
+  return true
+}
+
 /** @deprecated Use addPayment instead. Kept for backward compat. */
 export async function activatePro(orgId: string, months: number, confirmedBy: string, paymentMethod?: string): Promise<boolean> {
   const result = await addPayment(orgId, PRO_MONTHLY_PRICE * months, confirmedBy, paymentMethod)
@@ -386,16 +416,18 @@ function mapPlan(row: any): BillingPlan {
     name: row.name,
     description: row.description,
     price_monthly: row.price_monthly,
-    limits: row.limits || { participants: 1000, ai_requests_per_month: 0, custom_notification_rules: false },
+    is_hidden: row.is_hidden ?? false,
+    limits: row.limits || { participants: 500, ai_requests_per_month: 0, custom_notification_rules: false },
     features: row.features || {},
   }
 }
 
 function getDefaultPlans(): BillingPlan[] {
   return [
-    { code: 'free', name: 'Бесплатный', description: 'Для небольших сообществ', price_monthly: 0, limits: { participants: 1000, ai_requests_per_month: 0, custom_notification_rules: false }, features: {} },
+    { code: 'free', name: 'Бесплатный', description: 'Для небольших сообществ', price_monthly: 0, limits: { participants: 500, ai_requests_per_month: 0, custom_notification_rules: false }, features: {} },
     { code: 'pro', name: 'Профессиональный', description: 'Без ограничений', price_monthly: 1500, limits: { participants: -1, ai_requests_per_month: -1, custom_notification_rules: true }, features: {} },
-    { code: 'enterprise', name: 'Корпоративный', description: 'Индивидуальные условия', price_monthly: null, limits: { participants: -1, ai_requests_per_month: -1, custom_notification_rules: true }, features: {} },
+    { code: 'enterprise', name: 'Клубный', description: 'Для клубов с расширенными возможностями', price_monthly: 7500, limits: { participants: -1, ai_requests_per_month: -1, custom_notification_rules: true }, features: {} },
+    { code: 'promo', name: 'Промо', description: 'Специальные условия', price_monthly: 0, limits: { participants: -1, ai_requests_per_month: -1, custom_notification_rules: true }, features: {} },
   ]
 }
 
@@ -630,8 +662,8 @@ function getBillingExpiryEmailTemplate(params: {
     ${groupsHtml}
     <p style="font-size: 14px; color: #4b5563; margin-bottom: 24px;">
       ${expired
-        ? 'Без активной подписки ограничивается доступ к AI-функциям и работа с числом участников свыше 1000.'
-        : 'После окончания подписки ограничится доступ к AI-функциям и работе с числом участников свыше 1000.'}
+        ? 'Без активной подписки ограничивается доступ к AI-функциям и работа с числом участников свыше 500.'
+        : 'После окончания подписки ограничится доступ к AI-функциям и работе с числом участников свыше 500.'}
     </p>
     <div style="text-align: center; margin: 32px 0;">
       <a href="${paymentUrl}" style="display: inline-block; background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">

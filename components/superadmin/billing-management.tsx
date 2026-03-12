@@ -112,6 +112,23 @@ export default function BillingManagement() {
     setActionLoading(false)
   }
 
+  const handleActivatePromo = async (orgId: string) => {
+    if (!confirm('Установить тариф Промо (Клубный бесплатно)?')) return
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/superadmin/billing/${orgId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate_promo' }),
+      })
+      if (res.ok) {
+        alert('Тариф Промо активирован')
+        await fetchData()
+      }
+    } catch {}
+    setActionLoading(false)
+  }
+
   const orgInvoices = (orgId: string) => invoices.filter(i => i.org_id === orgId)
 
   if (loading) {
@@ -205,10 +222,10 @@ export default function BillingManagement() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      sub.plan_code === 'pro' ? 'bg-purple-100 text-purple-700' : sub.plan_code === 'enterprise' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                      sub.plan_code === 'pro' ? 'bg-purple-100 text-purple-700' : sub.plan_code === 'enterprise' ? 'bg-indigo-100 text-indigo-700' : sub.plan_code === 'promo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                     }`}>
-                      {sub.plan_code === 'pro' && <Crown className="h-3 w-3" />}
-                      {sub.plan_code === 'pro' ? 'Pro' : sub.plan_code === 'enterprise' ? 'Enterprise' : 'Free'}
+                      {(sub.plan_code === 'pro' || sub.plan_code === 'enterprise' || sub.plan_code === 'promo') && <Crown className="h-3 w-3" />}
+                      {sub.plan_code === 'pro' ? 'Pro' : sub.plan_code === 'enterprise' ? 'Клубный' : sub.plan_code === 'promo' ? 'Промо' : 'Free'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -262,7 +279,16 @@ export default function BillingManagement() {
                           >
                             {sub.plan_code === 'pro' ? 'Добавить оплату' : 'Активировать Pro'}
                           </button>
-                          {sub.plan_code === 'pro' && (
+                          {sub.plan_code !== 'promo' && (
+                            <button
+                              onClick={() => handleActivatePromo(sub.org_id)}
+                              disabled={actionLoading}
+                              className="px-2.5 py-1 bg-green-50 text-green-700 text-xs rounded-lg font-medium hover:bg-green-100 disabled:opacity-50"
+                            >
+                              Промо
+                            </button>
+                          )}
+                          {(sub.plan_code === 'pro' || sub.plan_code === 'promo') && (
                             <button
                               onClick={() => handleCancel(sub.org_id)}
                               disabled={actionLoading}
