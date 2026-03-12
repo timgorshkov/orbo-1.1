@@ -332,8 +332,7 @@ function PaymentSection({
       </a>
 
       <p className="text-xs text-gray-500 mt-3">
-        После оплаты подписка активируется автоматически или подтверждается администратором.
-        По вопросам оплаты: <a href="mailto:tg@orbo.ru" className="text-purple-600 hover:underline">tg@orbo.ru</a>
+        После оплаты подтвердите в чат поддержки или на почту <a href="mailto:support@orbo.ru" className="text-purple-600 hover:underline">support@orbo.ru</a>
       </p>
     </div>
   )
