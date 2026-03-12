@@ -322,25 +322,23 @@ export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername 
                       Подтверждён: {new Date(account.verified_at).toLocaleString('ru')}
                     </p>
                   )}
-                  {account.is_verified && (
-                    <div className="mt-3 pt-3 border-t flex gap-4">
-                      <button
-                        onClick={() => { setShowChangeForm(!showChangeForm); setShowUnlinkConfirm(false) }}
-                        className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                      >
-                        {showChangeForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        Сменить аккаунт
-                      </button>
-                      <span className="text-gray-200">|</span>
-                      <button
-                        onClick={() => { setShowUnlinkConfirm(!showUnlinkConfirm); setShowChangeForm(false) }}
-                        className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
-                      >
-                        <Unlink className="w-3 h-3" />
-                        Отвязать аккаунт
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-3 pt-3 border-t flex gap-4">
+                    <button
+                      onClick={() => { setShowChangeForm(!showChangeForm); setShowUnlinkConfirm(false) }}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      {showChangeForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      {account.is_verified ? 'Сменить аккаунт' : 'Изменить номер'}
+                    </button>
+                    <span className="text-gray-200">|</span>
+                    <button
+                      onClick={() => { setShowUnlinkConfirm(!showUnlinkConfirm); setShowChangeForm(false) }}
+                      className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                    >
+                      <Unlink className="w-3 h-3" />
+                      Отвязать аккаунт
+                    </button>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -396,9 +394,14 @@ export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername 
                       className="max-w-xs"
                     />
                   </div>
-                  <Button size="sm" onClick={handleVerifyCode} disabled={verifying}>
-                    {verifying ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Проверка...</> : 'Подтвердить код'}
-                  </Button>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" onClick={handleVerifyCode} disabled={verifying}>
+                      {verifying ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Проверка...</> : 'Подтвердить код'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleSaveId} disabled={saving}>
+                      {saving ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Отправка...</> : 'Запросить код повторно'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
