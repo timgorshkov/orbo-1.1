@@ -117,7 +117,8 @@ export async function POST(request: NextRequest) {
 
       // Only check the admin list if we actually got one (bot is admin of the group)
       if (adminsResult.ok) {
-        const admins: any[] = adminsResult.data?.admins ?? [];
+        // MAX API returns admins under the "members" key (not "admins")
+        const admins: any[] = adminsResult.data?.members ?? adminsResult.data?.admins ?? [];
         const adminUserIds: number[] = admins.map((a: any) => {
           logger.debug({ admin_entry: a }, '[MAX-ADMIN-CHECK] Admin entry from API');
           return Number(a.user_id ?? a.userId ?? a.id);
