@@ -112,11 +112,15 @@ export async function GET(request: NextRequest) {
 
     const groupList = groups || [];
 
-    // Check bot admin status for each group in parallel.
-    // bot_is_admin=true  → bot can read admin list (and user admin check works)
-    // bot_is_admin=false → bot is a regular member; we show a hint to promote it
-    // bot_is_admin=null  → API error, unknown
-    let groupsWithAdminStatus: Array<(typeof groupList)[0] & { bot_is_admin: boolean | null }>;
+    // Check bot admin status and user admin status for each group in parallel.
+    // bot_is_admin=true   → bot can read admin list
+    // bot_is_admin=false  → bot is a regular member; show a hint to promote it
+    // bot_is_admin=null   → API error, unknown
+    // user_is_admin=true  → current user is in the group's admin list
+    // user_is_admin=false → current user is not an admin of this group
+    // user_is_admin=null  → could not determine (bot not admin, API error)
+    const currentUserId = Number(maxAccount.max_user_id);
+    let groupsWithAdminStatus: Array<(typeof groupList)[0] & { bot_is_admin: boolean | null; user_is_admin: boolean | null }>;
     if (groupList.length > 0) {
       try {
         const maxService = createMaxService('main');
@@ -124,14 +128,19 @@ export async function GET(request: NextRequest) {
           groupList.map(async (group) => {
             try {
               const result = await maxService.getChatAdmins(group.max_chat_id);
-              return { ...group, bot_is_admin: result.ok ? true : (result.status === 403 ? false : null) };
+              if (!result.ok) {
+                return { ...group, bot_is_admin: result.status === 403 ? false : null, user_is_admin: null };
+              }
+              const members: any[] = result.data?.members ?? result.data?.admins ?? [];
+              const adminIds = members.map((a: any) => Number(a.user_id ?? a.userId ?? a.id)).filter((id: number) => !isNaN(id) && id > 0);
+              return { ...group, bot_is_admin: true, user_is_admin: adminIds.includes(currentUserId) };
             } catch {
-              return { ...group, bot_is_admin: null };
+              return { ...group, bot_is_admin: null, user_is_admin: null };
             }
           })
         );
       } catch {
-        groupsWithAdminStatus = groupList.map(g => ({ ...g, bot_is_admin: null }));
+        groupsWithAdminStatus = groupList.map(g => ({ ...g, bot_is_admin: null, user_is_admin: null }));
       }
     } else {
       groupsWithAdminStatus = [];

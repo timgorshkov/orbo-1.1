@@ -32,6 +32,7 @@ interface MaxGroup {
   last_sync_at?: string | null
   link_status?: string
   bot_is_admin?: boolean | null
+  user_is_admin?: boolean | null
 }
 
 interface MaxSettingsClientProps {
@@ -547,18 +548,30 @@ export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername 
                               <p className="text-xs text-gray-400 mt-0.5">{group.member_count} участников</p>
                             )}
                           </div>
-                          <Button
-                            size="sm"
-                            disabled={linking === String(group.max_chat_id)}
-                            onClick={() => handleLinkGroup(group)}
-                            className="ml-3 flex-shrink-0"
-                          >
-                            {linking === String(group.max_chat_id) ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <><Plus className="w-4 h-4 mr-1" />Привязать</>
-                            )}
-                          </Button>
+                          {group.user_is_admin === false ? (
+                            <Button
+                              size="sm"
+                              disabled
+                              variant="outline"
+                              className="ml-3 flex-shrink-0 text-gray-400 cursor-not-allowed"
+                              title="Вы не являетесь администратором этой группы в MAX"
+                            >
+                              Нет прав админа
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled={linking === String(group.max_chat_id)}
+                              onClick={() => handleLinkGroup(group)}
+                              className="ml-3 flex-shrink-0"
+                            >
+                              {linking === String(group.max_chat_id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <><Plus className="w-4 h-4 mr-1" />Привязать</>
+                              )}
+                            </Button>
+                          )}
                         </div>
                         {group.bot_is_admin === false && (
                           <div className="flex items-start gap-1.5 px-2.5 py-1.5 bg-amber-50 border-t border-amber-100 text-xs text-amber-700">
