@@ -28,13 +28,14 @@ export function Header({ transparent = true }: HeaderProps) {
     <header className={headerClass}>
       <div className="website-header__container">
         <Link href="/" className="website-header__logo">
-          <Image 
-            src="/orbo-logo-2-no-bg.png" 
-            alt="Orbo" 
-            width={120} 
+          <Image
+            src="/orbo-logo-2-no-bg.png"
+            alt="Orbo"
+            width={120}
             height={40}
             className="website-header__logo-img"
             priority
+            unoptimized
           />
         </Link>
 
