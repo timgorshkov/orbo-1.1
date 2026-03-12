@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClientLogger } from '@/lib/logger'
+import { ymGoal } from '@/components/analytics/YandexMetrika'
 import { ArrowRight, RefreshCw, Shield, Unlink, ChevronDown, ChevronUp } from 'lucide-react'
 
 type TelegramAccount = {
@@ -141,6 +142,7 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
       setVerificationCode('')
 
       if (data.telegramAccount?.is_verified) {
+        ymGoal('telegram_account_connected')
         syncGroups()
       }
     } catch (e: any) {

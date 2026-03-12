@@ -88,12 +88,13 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
   const needsEmailVerification = isTelegramRegistration && userEmail.endsWith('@telegram.user')
 
   return (
-    <WelcomeContent 
+    <WelcomeContent
       qualificationCompleted={qualificationCompleted}
       initialResponses={qualification?.responses || {}}
       hasOrganizations={activeOrgCount > 0}
       isNewUser={isNewUser}
       needsEmailVerification={needsEmailVerification}
+      isTelegramRegistration={isTelegramRegistration}
     />
   )
 }

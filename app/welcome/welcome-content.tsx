@@ -115,14 +115,16 @@ interface WelcomeContentProps {
   hasOrganizations?: boolean;
   isNewUser?: boolean;
   needsEmailVerification?: boolean;
+  isTelegramRegistration?: boolean;
 }
 
-export function WelcomeContent({ 
+export function WelcomeContent({
   qualificationCompleted: initialCompleted,
   initialResponses,
   hasOrganizations = false,
   isNewUser = false,
   needsEmailVerification = false,
+  isTelegramRegistration = false,
 }: WelcomeContentProps) {
   const router = useRouter();
   const [emailVerified, setEmailVerified] = useState(!needsEmailVerification);
@@ -137,11 +139,15 @@ export function WelcomeContent({
     goalsSent.current = true;
     
     ymGoal('welcome_page_view', undefined, { once: true });
-    
+
     if (isNewUser) {
       ymGoal('registration_complete', undefined, { once: true });
     }
-    
+
+    if (isNewUser && isTelegramRegistration) {
+      ymGoal('telegram_account_connected', undefined, { once: true });
+    }
+
     ymGoal('auth_success', undefined, { once: true });
   }, []);
 
