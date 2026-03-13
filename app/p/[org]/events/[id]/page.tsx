@@ -7,6 +7,7 @@ import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallb
 import { createServiceLogger } from '@/lib/logger'
 import { RequestTiming } from '@/lib/utils/timing'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { checkMembershipGate } from '@/lib/server/membershipGate'
 
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
@@ -306,6 +307,21 @@ export default async function EventDetailPage({
     hasOrgAccess = !!accessCheck
   }
   
+  // Check membership gate for non-public events
+  if (hasOrgAccess && !event.is_public) {
+    const accessCheck = await getEffectiveOrgRole(user.id, orgId)
+    const role = accessCheck?.role
+    const membershipGate = await checkMembershipGate({
+      orgId,
+      userId: user.id,
+      resourceType: 'events',
+      role: role || undefined,
+    })
+    if (!membershipGate.allowed) {
+      hasOrgAccess = false
+    }
+  }
+
   // If user doesn't have access to private event, show auth form
   if (!hasOrgAccess) {
     // Fetch org name for display

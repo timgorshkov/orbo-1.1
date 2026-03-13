@@ -31,7 +31,7 @@ export default async function PublicOrgLayout({
   // Получаем организацию вместе с настройками портала
   const { data: org } = await adminSupabase
     .from('organizations')
-    .select('id, name, logo_url, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps')
+    .select('id, name, logo_url, plan, portal_show_events, portal_show_members, portal_show_materials, portal_show_apps')
     .eq('id', orgId)
     .single()
 
@@ -173,6 +173,7 @@ export default async function PublicOrgLayout({
               show_materials: org.portal_show_materials ?? false,
               show_apps:      org.portal_show_apps      ?? false,
             }}
+            orgPlan={org.plan || 'free'}
           />
         </div>
 

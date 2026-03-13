@@ -9,6 +9,7 @@ import MembersTable from './members-table'
 import MembersFiltersSidebar, { type MembersFilters, getParticipantCategory } from './members-filters-sidebar'
 import BulkActionsBar from './bulk-actions-bar'
 import { SmartSearchDialog } from './smart-search-dialog'
+import { MembershipBadge, type MembershipStatusType } from '@/components/memberships/membership-badge'
 
 const PAGE_SIZE = 50
 
@@ -143,6 +144,15 @@ export default function MembersView({
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [fetchEnriched])
+
+  // Membership status map (participant_id -> status)
+  const [membershipMap, setMembershipMap] = useState<Record<string, string>>({})
+  useEffect(() => {
+    fetch(`/api/participant-memberships?orgId=${orgId}&map=true`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.membershipMap) setMembershipMap(data.membershipMap) })
+      .catch(() => {})
+  }, [orgId])
 
   // Reset visible count when search or filters change
   useEffect(() => {
@@ -623,6 +633,7 @@ export default function MembersView({
             onToggleParticipant={toggleParticipantSelection}
             onToggleAll={toggleAllParticipants}
             showBulkActions={isAdmin && adminMode}
+            membershipMap={membershipMap}
           />
           {hasMore && (
             <div className="mt-4 flex flex-col items-center gap-1">

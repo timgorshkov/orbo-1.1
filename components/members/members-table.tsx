@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table'
 import { AdminBadge } from '@/components/admin-badge'
 import { ParticipantAvatar } from './participant-avatar'
+import { MembershipBadge, type MembershipStatusType } from '@/components/memberships/membership-badge'
 
 interface Participant {
   id: string
@@ -45,6 +46,7 @@ interface MembersTableProps {
   onToggleParticipant?: (id: string) => void
   onToggleAll?: () => void
   showBulkActions?: boolean
+  membershipMap?: Record<string, string>
 }
 
 export default function MembersTable({
@@ -53,6 +55,7 @@ export default function MembersTable({
   onToggleParticipant,
   onToggleAll,
   showBulkActions = false,
+  membershipMap = {},
 }: MembersTableProps) {
   const params = useParams()
   const router = useRouter()
@@ -122,6 +125,7 @@ export default function MembersTable({
             <TableHead>Telegram</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Роль</TableHead>
+            <TableHead>Членство</TableHead>
             <TableHead>Теги</TableHead>
             <TableHead className="text-right">Последняя активность</TableHead>
           </TableRow>
@@ -210,6 +214,11 @@ export default function MembersTable({
                   size="sm"
                   showLabel={false}
                 />
+              </TableCell>
+
+              {/* Членство */}
+              <TableCell>
+                <MembershipBadge status={membershipMap[participant.id] as MembershipStatusType} compact />
               </TableCell>
 
               {/* Теги */}

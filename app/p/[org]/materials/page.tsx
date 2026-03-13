@@ -2,6 +2,9 @@ import { fetchMaterialsTree } from '@/app/app/[org]/materials/data';
 import { MaterialsPageViewer } from '@/components/materials/materials-page-viewer';
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { checkMembershipGate } from '@/lib/server/membershipGate';
+import { Crown, Lock } from 'lucide-react';
+import Link from 'next/link';
 
 export default async function PublicMaterialsPage({
   params,
@@ -14,12 +17,32 @@ export default async function PublicMaterialsPage({
   const { page: initialPageId } = await searchParams
   const { tree, orgId: resolvedOrgId, orgName, orgLogoUrl } = await fetchMaterialsTree(orgId);
 
-  // Определяем роль пользователя для режима только чтения (unified auth)
   const user = await getUnifiedUser()
-
   const role = user ? await getUserRoleInOrg(user.id, resolvedOrgId) : 'guest'
 
-  // ✅ Members и guests видят материалы в режиме чтения
+  if (user && role !== 'owner' && role !== 'admin') {
+    const gate = await checkMembershipGate({
+      orgId: resolvedOrgId,
+      userId: user.id,
+      resourceType: 'materials',
+      role: role || undefined,
+    })
+    if (!gate.allowed) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh] px-4">
+          <div className="text-center max-w-md">
+            <Lock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Доступ к материалам ограничен</h2>
+            <p className="text-gray-500 mb-4">{gate.reason}</p>
+            <Link href={`/p/${resolvedOrgId}/membership`} className="text-blue-600 hover:underline text-sm">
+              Подробнее о членстве
+            </Link>
+          </div>
+        </div>
+      )
+    }
+  }
+
   const readOnly = role === 'member' || role === 'guest'
 
   return (

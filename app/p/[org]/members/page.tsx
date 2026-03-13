@@ -4,6 +4,8 @@ import { Suspense } from 'react'
 import MembersTabs from '@/components/members/members-tabs'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { checkMembershipGate } from '@/lib/server/membershipGate'
+import Link from 'next/link'
 
 export default async function MembersPage({ params, searchParams }: { 
   params: Promise<{ org: string }>
@@ -32,6 +34,29 @@ export default async function MembersPage({ params, searchParams }: {
 
   const role = membership.role
   const isAdmin = role === 'owner' || role === 'admin'
+
+  // Check membership gate for member directory
+  if (!isAdmin) {
+    const gate = await checkMembershipGate({
+      orgId,
+      userId: user.id,
+      resourceType: 'member_directory',
+      role,
+    })
+    if (!gate.allowed) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh] px-4">
+          <div className="text-center max-w-md">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Доступ к каталогу участников ограничен</h2>
+            <p className="text-gray-500 mb-4">{gate.reason}</p>
+            <Link href={`/p/${orgId}/membership`} className="text-blue-600 hover:underline text-sm">
+              Подробнее о членстве
+            </Link>
+          </div>
+        </div>
+      )
+    }
+  }
 
   // System Telegram IDs that must never appear in the participants list
   const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824])

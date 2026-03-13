@@ -22,7 +22,9 @@ import {
   Eye,
   MessageCircle,
   Bell,
-  Radio
+  Radio,
+  Crown,
+  Lock,
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -60,6 +62,7 @@ interface CollapsibleSidebarProps {
     show_materials: boolean
     show_apps: boolean
   }
+  orgPlan?: string
 }
 
 export default function CollapsibleSidebar({
@@ -72,6 +75,7 @@ export default function CollapsibleSidebar({
   maxGroups = [],
   userProfile,
   portalSettings = { show_events: true, show_members: true, show_materials: false, show_apps: false },
+  orgPlan,
 }: CollapsibleSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -208,6 +212,18 @@ export default function CollapsibleSidebar({
       icon: Users,
       href: `/p/${orgId}/members`,
       active: pathname?.startsWith(`/p/${orgId}/members`),
+    })
+  }
+
+  // Членство (только для админов на тарифе Клубный/Промо, или как upsell)
+  if (isAdmin && adminMode) {
+    const hasMembershipFeature = orgPlan === 'enterprise' || orgPlan === 'promo'
+    navItems.push({
+      key: 'membership',
+      label: 'Членство',
+      icon: hasMembershipFeature ? Crown : Lock,
+      href: `/p/${orgId}/membership`,
+      active: pathname?.startsWith(`/p/${orgId}/membership`),
     })
   }
 

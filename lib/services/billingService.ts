@@ -54,7 +54,7 @@ export interface BillingStatus {
   daysOverLimit: number
 }
 
-export type BillingFeature = 'ai_analysis' | 'custom_rules'
+export type BillingFeature = 'ai_analysis' | 'custom_rules' | 'paid_membership'
 
 // ----- Plan cache (static data, rarely changes) -----
 
@@ -264,6 +264,13 @@ export async function checkFeatureAccess(
         return { allowed: false, reason: 'AI-функции доступны на тарифе Профессиональный', paymentUrl: status.paymentUrl }
       }
       return { allowed: true, paymentUrl: status.paymentUrl }
+    case 'paid_membership': {
+      const planCode = status.plan.code
+      if (planCode === 'enterprise' || planCode === 'promo') {
+        return { allowed: true, paymentUrl: status.paymentUrl }
+      }
+      return { allowed: false, reason: 'Платное членство доступно на тарифе Клубный', paymentUrl: CLUB_PAYMENT_URL }
+    }
     default:
       return { allowed: true, paymentUrl: status.paymentUrl }
   }

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import PhotoUploadModal from './photo-upload-modal'
 import { EnrichedProfileDisplay } from './enriched-profile-display'
 import ParticipantTagsManager from './participant-tags-manager'
+import { MembershipBadge, type MembershipStatusType } from '@/components/memberships/membership-badge'
 
 interface ParticipantProfileCardProps {
   orgId: string
@@ -985,6 +986,9 @@ export default function ParticipantProfileCard({
             </div>
           )}
 
+          {/* Membership Status */}
+          {isAdmin && <MembershipSection participantId={participant.id} orgId={orgId} />}
+
           {/* Participant Tags (Admin Only) */}
           <div className="pt-4 border-t border-gray-200">
             <ParticipantTagsManager
@@ -1149,5 +1153,51 @@ function EngagementBadge({ participant, events }: { participant: any; events?: a
       {label}
     </Badge>
   );
+}
+
+function MembershipSection({ participantId, orgId }: { participantId: string; orgId: string }) {
+  const [membership, setMembership] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/participant-memberships?orgId=${orgId}&participantId=${participantId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setMembership(data?.membership || null))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [orgId, participantId])
+
+  if (loading) return null
+
+  return (
+    <div className="pt-4 border-t border-gray-200">
+      <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+        Членство
+      </h3>
+      {membership ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <MembershipBadge status={membership.status as MembershipStatusType} />
+            {membership.plan && <span className="text-sm text-gray-600">{membership.plan.name}</span>}
+          </div>
+          {membership.started_at && (
+            <div className="text-xs text-gray-500">
+              С {new Date(membership.started_at).toLocaleDateString('ru-RU')}
+              {membership.expires_at && ` по ${new Date(membership.expires_at).toLocaleDateString('ru-RU')}`}
+            </div>
+          )}
+          {membership.basis && (
+            <div className="text-xs text-gray-400">
+              Основание: {
+                { payment: 'Оплата', manual: 'Вручную', invitation: 'Приглашение', moderation: 'Модерация', import: 'Импорт', promotion: 'Промо' }[membership.basis as string] || membership.basis
+              }
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-400">Нет активного членства</p>
+      )}
+    </div>
+  )
 }
 

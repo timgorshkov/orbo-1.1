@@ -88,6 +88,13 @@ curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check
 EOF
 chmod +x ~/orbo/cron-check-billing.sh
 
+# Create cron script for check-memberships (hourly - expire memberships + sync access)
+cat > ~/orbo/cron-check-memberships.sh << EOF
+#!/bin/bash
+curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-memberships" >> /var/log/orbo-cron.log 2>&1
+EOF
+chmod +x ~/orbo/cron-check-memberships.sh
+
 # Create cron script for check-webhook (every 30 minutes)
 # Checks and auto-restores Telegram + MAX bot webhooks if they go missing
 # Uses single-quoted 'EOF' so variables are NOT expanded at write time — they
@@ -112,7 +119,7 @@ chmod +x ~/orbo/cron-check-webhook.sh
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" | grep -v "cron-check-memberships" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -128,6 +135,7 @@ cat >> "$CRONTAB_FILE" << CRON
 */15 * * * * ~/orbo/cron-send-onboarding.sh
 0 9 * * * ~/orbo/cron-check-billing.sh
 */30 * * * * ~/orbo/cron-check-webhook.sh
+0 * * * * ~/orbo/cron-check-memberships.sh
 # Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
 0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1
 CRON
