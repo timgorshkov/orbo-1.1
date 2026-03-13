@@ -167,17 +167,6 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Материалы (управляется настройками портала; для админов в режиме админа — всегда видны)
-  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_materials)) {
-    navItems.push({
-      key: 'materials',
-      label: 'Материалы',
-      icon: FileText,
-      href: `/p/${orgId}/materials`,
-      active: pathname?.startsWith(`/p/${orgId}/materials`),
-    })
-  }
-
   // События (управляется настройками портала; для админов в режиме админа — всегда видны)
   if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_events)) {
     navItems.push({
@@ -219,6 +208,17 @@ export default function CollapsibleSidebar({
       icon: Users,
       href: `/p/${orgId}/members`,
       active: pathname?.startsWith(`/p/${orgId}/members`),
+    })
+  }
+
+  // Материалы (управляется настройками портала; для админов в режиме админа — всегда видны)
+  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_materials)) {
+    navItems.push({
+      key: 'materials',
+      label: 'Материалы',
+      icon: FileText,
+      href: `/p/${orgId}/materials`,
+      active: pathname?.startsWith(`/p/${orgId}/materials`),
     })
   }
 
