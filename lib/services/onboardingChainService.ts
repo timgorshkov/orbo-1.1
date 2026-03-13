@@ -431,13 +431,24 @@ async function buildUserContext(userId: string): Promise<UserContext> {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
 
+// Domains used only for sending (no real inboxes) — skip outbound onboarding emails
+const SENDER_ONLY_DOMAINS = ['orbo.ru'];
+
 async function sendEmailStep(ctx: UserContext, stepKey: string): Promise<void> {
   if (!ctx.email) throw new Error('No email for user ' + ctx.userId)
+
+  // Skip emails to internal/sender-only domains — they have no real mailboxes
+  if (SENDER_ONLY_DOMAINS.some(d => ctx.email!.toLowerCase().endsWith('@' + d))) {
+    logger.debug({ user_id: ctx.userId, email: ctx.email, step: stepKey }, 'Skipping onboarding email to internal domain')
+    return
+  }
+
   const { subject, html } = getEmailContent(ctx, stepKey)
   logger.info({ user_id: ctx.userId, email: ctx.email, step: stepKey, subject }, 'Sending onboarding email')
   const result = await sendEmail({ to: ctx.email, subject, html, tags: ['onboarding', stepKey] })
   if (!result.success) {
-    logger.error({ user_id: ctx.userId, email: ctx.email, step: stepKey, error: result.error }, 'Email send failed')
+    // Caller classifies permanent vs transient and logs accordingly — avoid double error logging
+    logger.warn({ user_id: ctx.userId, email: ctx.email, step: stepKey, error: result.error }, 'Email send failed')
     throw new Error(result.error || 'Email send failed')
   }
   logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding email sent OK')

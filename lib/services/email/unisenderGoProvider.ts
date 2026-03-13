@@ -76,15 +76,28 @@ export class UnisenderGoEmailProvider implements EmailProvider {
           messageId: result.job_id 
         };
       } else {
-        logger.error({ 
-          to: params.to, 
-          error: result.message || 'Unknown error',
-          code: result.code 
-        }, 'Unisender Go send failed');
+        const errorMsg = result.message || 'Send failed';
+        // Code 204 = "No valid recipients" — recipient is suppressed/invalid, not a service error
+        const isRecipientRejection = result.code === 204 ||
+          (typeof errorMsg === 'string' && errorMsg.toLowerCase().includes('no valid recipients'));
+
+        if (isRecipientRejection) {
+          logger.warn({ 
+            to: params.to, 
+            error: errorMsg,
+            code: result.code 
+          }, 'Unisender Go send failed');
+        } else {
+          logger.error({ 
+            to: params.to, 
+            error: errorMsg,
+            code: result.code 
+          }, 'Unisender Go send failed');
+        }
         
         return { 
           success: false, 
-          error: result.message || 'Send failed' 
+          error: errorMsg
         };
       }
     } catch (error) {

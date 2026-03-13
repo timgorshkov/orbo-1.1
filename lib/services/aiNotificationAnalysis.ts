@@ -27,6 +27,7 @@ interface Message {
   author_name: string;
   author_id: string;
   created_at: string;
+  tg_message_id?: number;
   has_reply?: boolean;
 }
 
@@ -46,6 +47,7 @@ export interface UnansweredQuestionsResult {
     author_id: string;
     timestamp: string;
     answered: boolean;
+    tg_message_id?: number;
   }>;
   tokens_used: number;
   cost_usd: number;
@@ -358,10 +360,12 @@ export async function analyzeUnansweredQuestions(
 
 ВАЖНО — критерии ответа (не только технический reply!):
 Ответ НЕ обязан быть техническим reply на сообщение.
-Если в СЛЕДУЮЩИХ 3-5 сообщениях в диалоге кто-то другой:
+Просматривай ВСЕ последующие сообщения до конца окна анализа.
+Если в последующих сообщениях диалога кто-то другой:
   - Содержательно отвечает на тему вопроса
   - Предлагает полезную информацию, ссылку, рекомендацию
   - Явно обращается к автору вопроса
+  - Сам автор пишет "спасибо", "понял", "разобрался" (подтверждение получения ответа)
 — считай вопрос ОТВЕЧЕННЫМ, даже без технического reply.
 
 Примеры:
@@ -441,6 +445,7 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
           author_id: msg.author_id,
           timestamp: msg.created_at,
           answered: false,
+          tg_message_id: msg.tg_message_id,
         };
       })
       .filter(Boolean);

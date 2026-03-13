@@ -14,6 +14,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
 import { sendSystemNotification } from './telegramNotificationService';
 import { analyzeNegativeContent, analyzeUnansweredQuestions } from './aiNotificationAnalysis';
+import { getOrgBillingStatus } from './billingService';
 import crypto from 'crypto';
 
 const logger = createServiceLogger('NotificationRules');
@@ -1027,6 +1028,7 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
               question_time: question.timestamp,
               hours_without_answer: hoursAgo,
               time_ago: `${hoursAgo} ч. назад`,
+              last_message_id: question.tg_message_id, // For direct Telegram link
               thread_id: topicId, // Topic thread ID for link
             };
             
@@ -1244,11 +1246,30 @@ export async function processAllNotificationRules(): Promise<{
     count: rules.length,
     enabled_rules: rules.map(r => ({ id: r.id, name: r.name, type: r.rule_type, org_id: r.org_id }))
   }, 'Processing enabled notification rules');
-  
+
+  // Pre-check billing for orgs that have AI-requiring rules (one call per unique org)
+  const AI_RULE_TYPES = new Set(['negative_discussion', 'unanswered_question', 'churning_participant', 'inactive_newcomer', 'critical_event']);
+  const orgIdsNeedingAI: string[] = Array.from(new Set<string>(rules.filter(r => AI_RULE_TYPES.has(r.rule_type)).map(r => String(r.org_id))));
+  const orgAiEnabled = new Map<string, boolean>();
+  await Promise.all(
+    orgIdsNeedingAI.map(async (orgId: string) => {
+      try {
+        const billing = await getOrgBillingStatus(orgId);
+        orgAiEnabled.set(orgId, billing.aiEnabled || billing.isTrial);
+      } catch {
+        orgAiEnabled.set(orgId, false);
+      }
+    })
+  );
+
   let triggeredCount = 0;
   let totalAiCost = 0;
-  
+
   for (const rule of rules) {
+    if (AI_RULE_TYPES.has(rule.rule_type) && !orgAiEnabled.get(rule.org_id)) {
+      logger.debug({ rule_id: rule.id, rule_name: rule.name, org_id: rule.org_id }, 'Skipping AI rule: org does not have AI feature enabled');
+      continue;
+    }
     try {
       const result = await processRule(rule as NotificationRule);
       
