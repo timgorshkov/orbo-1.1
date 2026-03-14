@@ -407,6 +407,78 @@ export default function TelegramBackupPage() {
         </div>
       </section>
 
+      {/* ====== SEO TEXT ====== */}
+      <section className="website-section website-section--alt">
+        <div className="website-container">
+          <div className="section-header section-header--center">
+            <span className="section-header__eyebrow">Подробнее</span>
+            <h2 className="section-header__title">Как сохранить базу Telegram-сообщества</h2>
+          </div>
+
+          <div className="migration-faq">
+            <div className="migration-faq__item">
+              <h3>Что именно сохраняет Orbo из Telegram-группы?</h3>
+              <p>
+                Бот фиксирует каждого участника, который проявляет активность в&nbsp;группе:
+                пишет сообщения, ставит реакции, участвует в&nbsp;событиях. Для каждого
+                создаётся карточка с&nbsp;именем, username, аватаркой и&nbsp;историей
+                активности. Если участник регистрировался на&nbsp;событие — в&nbsp;карточке
+                сохранится email и&nbsp;телефон. Это не&nbsp;бэкап переписки,
+                а&nbsp;структурированная CRM-база вашего сообщества.
+              </p>
+            </div>
+
+            <div className="migration-faq__item">
+              <h3>Как подготовить сообщество к&nbsp;блокировке Telegram?</h3>
+              <p>
+                Три действия, которые нужно сделать до&nbsp;блокировки:
+                (1)&nbsp;подключить бота Orbo к&nbsp;Telegram-группе, чтобы он&nbsp;начал
+                собирать базу участников; (2)&nbsp;создать группу-дубль в&nbsp;Max и&nbsp;разослать
+                ссылку-приглашение; (3)&nbsp;перевести регистрации на&nbsp;события
+                через Orbo — веб-форма работает без привязки к&nbsp;мессенджеру.
+                После этого даже при полной блокировке у&nbsp;вас остаются контакты
+                и&nbsp;рабочий канал коммуникации.
+              </p>
+            </div>
+
+            <div className="migration-faq__item">
+              <h3>Переезд из Telegram в Max: что нужно знать</h3>
+              <p>
+                Max (бывший VK&nbsp;Teams) — российский мессенджер от VK, который не&nbsp;подпадает
+                под риски блокировки. В&nbsp;Max есть группы, каналы и&nbsp;боты — функционал
+                достаточен для ведения сообщества. Orbo поддерживает Max: вы&nbsp;можете
+                подключить Max-группу к&nbsp;той&nbsp;же организации, и&nbsp;участники
+                из&nbsp;обоих мессенджеров окажутся в&nbsp;единой базе. Не&nbsp;нужно
+                выбирать один мессенджер — Orbo работает с&nbsp;обоими параллельно.
+              </p>
+            </div>
+
+            <div className="migration-faq__item">
+              <h3>Что делать, если Telegram уже заблокирован?</h3>
+              <p>
+                Если вы&nbsp;подключили Orbo до&nbsp;блокировки — база участников сохранена.
+                Зайдите в Orbo через браузер (my.orbo.ru), экспортируйте контакты и&nbsp;пригласите
+                людей в&nbsp;Max-группу. Если бот не&nbsp;был подключен — попробуйте
+                импорт через архив. Orbo умеет обрабатывать экспортированную переписку
+                из&nbsp;Telegram: загрузите JSON-архив, и&nbsp;система извлечёт имена,
+                username&rsquo;ы и&nbsp;статистику сообщений.
+              </p>
+            </div>
+
+            <div className="migration-faq__item">
+              <h3>Где хранятся данные участников?</h3>
+              <p>
+                Все данные хранятся на&nbsp;серверах Selectel в&nbsp;России. Это&nbsp;соответствует
+                требованиям 152-ФЗ о&nbsp;хранении персональных данных на&nbsp;территории РФ.
+                Orbo не&nbsp;использует зарубежные облака для хранения базы участников.
+                Доступ к&nbsp;данным есть только у&nbsp;владельца организации
+                и&nbsp;назначенных им&nbsp;администраторов.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ====== CTA ====== */}
       <section className="cta-section">
         <div className="website-container">
