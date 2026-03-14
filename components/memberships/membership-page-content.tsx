@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Crown, Plus, Users, Edit2, Trash2, Lock, ExternalLink } from 'lucide-react'
+import { Crown, Plus, Users, Edit2, Trash2, Lock } from 'lucide-react'
 import { MembershipBadge } from './membership-badge'
 import { MembershipPlanEditor } from './membership-plan-editor'
 import { GrantMembershipDialog } from './grant-membership-dialog'
@@ -46,12 +46,19 @@ interface OrgGroup {
   platform: string
 }
 
+interface LimitInfo {
+  canAdd: boolean
+  currentCount: number
+  freeLimit: number
+  isClubPlan: boolean
+}
+
 interface MembershipPageContentProps {
   orgId: string
-  hasFeature: boolean
   groups: OrgGroup[]
   channels: Array<{ id: string; title: string; tg_chat_id: string }>
   maxGroups: Array<{ max_chat_id: string; title: string }>
+  limitInfo: LimitInfo
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -65,12 +72,13 @@ const BASIS_LABELS: Record<string, string> = {
 }
 
 export function MembershipPageContent({
-  orgId, hasFeature, groups, channels, maxGroups,
+  orgId, groups, channels, maxGroups, limitInfo,
 }: MembershipPageContentProps) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [memberships, setMemberships] = useState<Membership[]>([])
   const [totalMemberships, setTotalMemberships] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [softLimitError, setSoftLimitError] = useState<string | null>(null)
 
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
   const [showNewPlan, setShowNewPlan] = useState(false)
@@ -97,7 +105,7 @@ export function MembershipPageContent({
     }
   }, [orgId])
 
-  useEffect(() => { if (hasFeature) loadData() }, [hasFeature, loadData])
+  useEffect(() => { loadData() }, [loadData])
 
   const handleDeletePlan = async (planId: string) => {
     if (!confirm('Удалить этот план? Планы с активными участниками нельзя удалить.')) return
@@ -117,33 +125,6 @@ export function MembershipPageContent({
       body: JSON.stringify({ id: membershipId, orgId, action: 'revoke' }),
     })
     if (res.ok) loadData()
-  }
-
-  if (!hasFeature) {
-    return (
-      <div className="container mx-auto py-8 px-4 max-w-2xl">
-        <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-white">
-          <CardContent className="py-12 text-center space-y-4">
-            <Lock className="h-12 w-12 text-purple-400 mx-auto" />
-            <h2 className="text-xl font-semibold text-gray-900">Платное членство</h2>
-            <p className="text-gray-600 max-w-md mx-auto">
-              Создавайте планы членства, управляйте доступом к закрытым группам, каналам, материалам и событиям.
-              Принимайте оплату и отслеживайте участников.
-            </p>
-            <p className="text-sm text-gray-500">Доступно на тарифе Клубный</p>
-            <a
-              href={CLUB_PAYMENT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition"
-            >
-              Перейти на Клубный
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   if (showNewPlan || editingPlan) {
@@ -181,6 +162,39 @@ export function MembershipPageContent({
           </Button>
         </div>
       </div>
+
+      {/* Soft limit banner for non-Club plans */}
+      {!limitInfo.isClubPlan && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <Crown className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <p className="font-medium">Функционал платного членства относится к тарифу Клубный</p>
+            <p className="mt-1 text-amber-700">
+              Вы можете попробовать его бесплатно с ограничением до {limitInfo.freeLimit} платных участников.
+              Для добавления третьего и последующих участников потребуется{' '}
+              <a href={CLUB_PAYMENT_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline hover:text-amber-900">
+                переход на тариф Клубный
+              </a>.
+              {!limitInfo.canAdd && (
+                <span className="font-medium"> Лимит исчерпан ({limitInfo.currentCount}/{limitInfo.freeLimit}).</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Soft limit error toast */}
+      {softLimitError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-red-800">
+            <Lock className="h-4 w-4 flex-shrink-0" />
+            <span>{softLimitError}</span>
+          </div>
+          <button onClick={() => setSoftLimitError(null)} className="text-red-400 hover:text-red-600 text-sm font-medium ml-4">
+            Закрыть
+          </button>
+        </div>
+      )}
 
       {/* Analytics */}
       <MembershipAnalytics orgId={orgId} />

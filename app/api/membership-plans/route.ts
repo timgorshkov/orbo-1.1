@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { checkFeatureAccess } from '@/lib/services/billingService'
 import {
   getOrgPlans,
   createPlan,
@@ -28,11 +27,6 @@ async function checkOrgAdmin(orgId: string) {
 
   if (!membership || !['owner', 'admin'].includes(membership.role)) {
     return { error: 'Forbidden', status: 403, user: null }
-  }
-
-  const access = await checkFeatureAccess(orgId, 'paid_membership')
-  if (!access.allowed) {
-    return { error: access.reason || 'Требуется тариф Клубный', status: 403, user: null }
   }
 
   return { error: null, status: 200, user }

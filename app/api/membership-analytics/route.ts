@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { checkFeatureAccess } from '@/lib/services/billingService'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,11 +26,6 @@ export async function GET(req: NextRequest) {
 
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const access = await checkFeatureAccess(orgId, 'paid_membership')
-    if (!access.allowed) {
-      return NextResponse.json({ error: 'Feature not available' }, { status: 403 })
     }
 
     // Active members by status

@@ -24,7 +24,6 @@ import {
   Bell,
   Radio,
   Crown,
-  Lock,
 } from 'lucide-react'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
 
@@ -215,13 +214,12 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Членство (только для админов на тарифе Клубный/Промо, или как upsell)
+  // Членство (для всех админов)
   if (isAdmin && adminMode) {
-    const hasMembershipFeature = orgPlan === 'enterprise' || orgPlan === 'promo'
     navItems.push({
       key: 'membership',
       label: 'Членство',
-      icon: hasMembershipFeature ? Crown : Lock,
+      icon: Crown,
       href: `/p/${orgId}/membership`,
       active: pathname?.startsWith(`/p/${orgId}/membership`),
     })

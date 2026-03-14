@@ -265,14 +265,54 @@ export async function checkFeatureAccess(
       }
       return { allowed: true, paymentUrl: status.paymentUrl }
     case 'paid_membership': {
-      const planCode = status.plan.code
-      if (planCode === 'enterprise' || planCode === 'promo') {
-        return { allowed: true, paymentUrl: status.paymentUrl }
-      }
-      return { allowed: false, reason: 'Платное членство доступно на тарифе Клубный', paymentUrl: CLUB_PAYMENT_URL }
+      return { allowed: true, paymentUrl: status.paymentUrl }
     }
     default:
       return { allowed: true, paymentUrl: status.paymentUrl }
+  }
+}
+
+// ----- Membership soft limit -----
+
+const MEMBERSHIP_FREE_LIMIT = 2
+
+export interface MembershipLimitInfo {
+  canAdd: boolean
+  currentCount: number
+  freeLimit: number
+  isClubPlan: boolean
+  reason?: string
+}
+
+export async function checkMembershipLimit(orgId: string): Promise<MembershipLimitInfo> {
+  const status = await getOrgBillingStatus(orgId)
+  const planCode = status.plan.code
+  const isClubPlan = planCode === 'enterprise' || planCode === 'promo'
+
+  if (isClubPlan) {
+    return { canAdd: true, currentCount: 0, freeLimit: MEMBERSHIP_FREE_LIMIT, isClubPlan }
+  }
+
+  const supabase = createAdminServer()
+  const { count, error } = await supabase
+    .from('participant_memberships')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+    .in('status', ['active', 'trial'])
+
+  if (error) {
+    logger.error({ org_id: orgId, error: error.message }, 'Failed to count active memberships')
+  }
+
+  const currentCount = count || 0
+  const canAdd = currentCount < MEMBERSHIP_FREE_LIMIT
+
+  return {
+    canAdd,
+    currentCount,
+    freeLimit: MEMBERSHIP_FREE_LIMIT,
+    isClubPlan,
+    reason: canAdd ? undefined : `На текущем тарифе доступно до ${MEMBERSHIP_FREE_LIMIT} платных участников. Для добавления третьего и последующих перейдите на тариф Клубный.`,
   }
 }
 

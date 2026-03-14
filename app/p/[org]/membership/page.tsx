@@ -1,6 +1,6 @@
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { checkFeatureAccess } from '@/lib/services/billingService'
+import { checkMembershipLimit } from '@/lib/services/billingService'
 import { MembershipPageContent } from '@/components/memberships/membership-page-content'
 import { notFound } from 'next/navigation'
 
@@ -9,15 +9,13 @@ export const dynamic = 'force-dynamic'
 export default async function MembershipPage({ params }: { params: { org: string } }) {
   const orgId = params.org
 
-  let user
   try {
-    const result = await requireOrgAccess(orgId, ['owner', 'admin'])
-    user = result.user
+    await requireOrgAccess(orgId, ['owner', 'admin'])
   } catch {
     notFound()
   }
 
-  const access = await checkFeatureAccess(orgId, 'paid_membership')
+  const limitInfo = await checkMembershipLimit(orgId)
 
   const supabase = createAdminServer()
 
@@ -57,10 +55,15 @@ export default async function MembershipPage({ params }: { params: { org: string
   return (
     <MembershipPageContent
       orgId={orgId}
-      hasFeature={access.allowed}
       groups={groups}
       channels={channels}
       maxGroups={maxGroups}
+      limitInfo={{
+        canAdd: limitInfo.canAdd,
+        currentCount: limitInfo.currentCount,
+        freeLimit: limitInfo.freeLimit,
+        isClubPlan: limitInfo.isClubPlan,
+      }}
     />
   )
 }
