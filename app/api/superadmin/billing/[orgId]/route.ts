@@ -58,7 +58,7 @@ export async function POST(
 
     const { orgId } = await params
     const body = await request.json()
-    const { action, months, paymentMethod, amount } = body
+    const { action, months, paymentMethod, amount, planCode } = body
 
     switch (action) {
       case 'activate_pro': {
@@ -68,7 +68,7 @@ export async function POST(
       }
       case 'add_payment': {
         if (!amount || amount <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 })
-        const result = await addPayment(orgId, amount, user.id, paymentMethod || 'manual')
+        const result = await addPayment(orgId, amount, user.id, paymentMethod || 'manual', planCode || 'pro')
         if (!result.success) return NextResponse.json({ error: 'Payment failed' }, { status: 500 })
         return NextResponse.json({ success: true, ...result })
       }

@@ -296,19 +296,22 @@ export async function getOrgInvoices(orgId: string) {
 // ----- Superadmin operations -----
 
 /**
- * Add a payment to an org subscription. If already on Pro, extends the existing period.
- * Duration is calculated from amount: amount / PRO_MONTHLY_PRICE = months.
+ * Add a payment to an org subscription. If already on the same plan, extends the existing period.
+ * Duration is calculated from amount / plan.price_monthly * 30 days.
  */
 export async function addPayment(
   orgId: string,
   amount: number,
   confirmedBy: string,
-  paymentMethod?: string
+  paymentMethod?: string,
+  planCode: string = 'pro'
 ): Promise<{ success: boolean; periodStart: string; periodEnd: string } | { success: false }> {
   const supabase = createAdminServer()
   const sub = await ensureSubscription(orgId)
 
-  const daysToAdd = Math.round((amount / PRO_MONTHLY_PRICE) * 30)
+  const plan = await getPlanByCode(planCode)
+  const planMonthlyPrice = plan.price_monthly || PRO_MONTHLY_PRICE
+  const daysToAdd = Math.round((amount / planMonthlyPrice) * 30)
   if (daysToAdd < 1) {
     logger.warn({ org_id: orgId, amount }, 'Payment amount too small')
     return { success: false }
@@ -319,7 +322,7 @@ export async function addPayment(
   let newExpiresAt: Date
 
   if (
-    sub.plan_code === 'pro' &&
+    sub.plan_code === planCode &&
     (sub.status === 'active' || sub.status === 'trial') &&
     sub.expires_at &&
     new Date(sub.expires_at) > now
@@ -336,9 +339,9 @@ export async function addPayment(
   const { error: subError } = await supabase
     .from('org_subscriptions')
     .update({
-      plan_code: 'pro',
+      plan_code: planCode,
       status: 'active',
-      started_at: sub.plan_code !== 'pro' || sub.status !== 'active' ? now.toISOString() : sub.started_at,
+      started_at: sub.plan_code !== planCode || sub.status !== 'active' ? now.toISOString() : sub.started_at,
       expires_at: newExpiresAt.toISOString(),
       over_limit_since: null,
     })
