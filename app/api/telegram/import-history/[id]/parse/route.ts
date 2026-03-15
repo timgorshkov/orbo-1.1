@@ -109,15 +109,14 @@ export async function POST(
         .maybeSingle();
 
       if (data) {
-        // Проверяем что группа привязана к организации
-        const { data: orgLink } = await supabaseAdmin
+        // Получаем ВСЕ организации, привязанные к группе (их может быть несколько)
+        const { data: orgLinks } = await supabaseAdmin
           .from('org_telegram_groups')
           .select('org_id')
-          .eq('tg_chat_id', data.tg_chat_id)
-          .maybeSingle();
-        
-        if (orgLink) {
-          group = { ...data, org_telegram_groups: [orgLink] };
+          .eq('tg_chat_id', data.tg_chat_id);
+
+        if (orgLinks && orgLinks.length > 0) {
+          group = { ...data, org_telegram_groups: orgLinks };
           break;
         }
       }
