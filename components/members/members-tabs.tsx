@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '../ui/button'
-import { Archive, RotateCcw, User, Loader2 } from 'lucide-react'
+import { Archive, RotateCcw, User, Loader2, Crown } from 'lucide-react'
 import MembersView from './members-view'
 import InvitesManager from '../settings/invites-manager'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
+
+const MembershipPageContent = lazy(() =>
+  import('@/components/memberships/membership-page-content').then(m => ({ default: m.MembershipPageContent }))
+)
 
 interface Participant {
   id: string
@@ -28,6 +32,7 @@ interface MembersTabsProps {
   availableTags?: any[]
   role: 'owner' | 'admin' | 'member' | 'guest'
   activeTab: string
+  orgPlan?: string
 }
 
 export default function MembersTabs({
@@ -38,10 +43,13 @@ export default function MembersTabs({
   availableTags = [],
   role,
   activeTab: initialTab,
+  orgPlan,
 }: MembersTabsProps) {
   const router = useRouter()
   const { adminMode, isAdmin } = useAdminMode(role)
   const [activeTab, setActiveTab] = useState(initialTab)
+  const isClubPlan = orgPlan === 'enterprise' || orgPlan === 'promo'
+  const showMembershipTab = isAdmin && adminMode && !isClubPlan
   
   // Archive tab state
   const [archivedParticipants, setArchivedParticipants] = useState<Participant[]>([])
@@ -131,6 +139,23 @@ export default function MembersTabs({
                 )}
               </button>
 
+              {showMembershipTab && (
+                <button
+                  onClick={() => handleTabChange('membership')}
+                  className={`pb-3 text-sm font-medium transition-colors relative focus-visible:outline-none flex items-center gap-1.5 ${
+                    activeTab === 'membership'
+                      ? 'text-gray-900'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Crown className="h-4 w-4" />
+                  Членство
+                  {activeTab === 'membership' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
+                  )}
+                </button>
+              )}
+
               <button
                 onClick={() => handleTabChange('archive')}
                 className={`pb-3 text-sm font-medium transition-colors relative focus-visible:outline-none flex items-center gap-1.5 ${
@@ -164,6 +189,12 @@ export default function MembersTabs({
 
       {activeTab === 'invites' && showAdminFeatures && (
         <InvitesManager orgId={orgId} initialInvites={initialInvites} />
+      )}
+
+      {activeTab === 'membership' && showMembershipTab && (
+        <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-gray-400" /></div>}>
+          <MembershipPageContent orgId={orgId} embedded />
+        </Suspense>
       )}
 
       {activeTab === 'archive' && showAdminFeatures && (

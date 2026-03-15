@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Crown, Plus, Users, Edit2, Trash2, Lock } from 'lucide-react'
+import { Crown, Plus, Users, Edit2, Trash2 } from 'lucide-react'
 import { MembershipBadge } from './membership-badge'
 import { MembershipPlanEditor } from './membership-plan-editor'
 import { GrantMembershipDialog } from './grant-membership-dialog'
@@ -55,10 +55,11 @@ interface LimitInfo {
 
 interface MembershipPageContentProps {
   orgId: string
-  groups: OrgGroup[]
-  channels: Array<{ id: string; title: string; tg_chat_id: string }>
-  maxGroups: Array<{ max_chat_id: string; title: string }>
-  limitInfo: LimitInfo
+  groups?: OrgGroup[]
+  channels?: Array<{ id: string; title: string; tg_chat_id: string }>
+  maxGroups?: Array<{ max_chat_id: string; title: string }>
+  limitInfo?: LimitInfo
+  embedded?: boolean
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -72,13 +73,21 @@ const BASIS_LABELS: Record<string, string> = {
 }
 
 export function MembershipPageContent({
-  orgId, groups, channels, maxGroups, limitInfo,
+  orgId,
+  groups: initialGroups,
+  channels: initialChannels,
+  maxGroups: initialMaxGroups,
+  limitInfo: initialLimitInfo,
+  embedded = false,
 }: MembershipPageContentProps) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [memberships, setMemberships] = useState<Membership[]>([])
   const [totalMemberships, setTotalMemberships] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [softLimitError, setSoftLimitError] = useState<string | null>(null)
+  const [groups, setGroups] = useState<OrgGroup[]>(initialGroups || [])
+  const [channels, setChannels] = useState<Array<{ id: string; title: string; tg_chat_id: string }>>(initialChannels || [])
+  const [maxGroups, setMaxGroups] = useState<Array<{ max_chat_id: string; title: string }>>(initialMaxGroups || [])
+  const [limitInfo, setLimitInfo] = useState<LimitInfo>(initialLimitInfo || { canAdd: true, currentCount: 0, freeLimit: 2, isClubPlan: false })
 
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
   const [showNewPlan, setShowNewPlan] = useState(false)
@@ -107,6 +116,23 @@ export function MembershipPageContent({
 
   useEffect(() => { loadData() }, [loadData])
 
+  useEffect(() => {
+    if (initialLimitInfo && initialGroups) return
+    async function fetchContext() {
+      try {
+        const res = await fetch(`/api/membership-limit?orgId=${orgId}&resources=true`)
+        if (res.ok) {
+          const data = await res.json()
+          setLimitInfo({ canAdd: data.canAdd, currentCount: data.currentCount, freeLimit: data.freeLimit, isClubPlan: data.isClubPlan })
+          if (data.groups) setGroups(data.groups)
+          if (data.channels) setChannels(data.channels)
+          if (data.maxGroups) setMaxGroups(data.maxGroups)
+        }
+      } catch {}
+    }
+    fetchContext()
+  }, [orgId, initialLimitInfo, initialGroups])
+
   const handleDeletePlan = async (planId: string) => {
     if (!confirm('Удалить этот план? Планы с активными участниками нельзя удалить.')) return
     const res = await fetch(`/api/membership-plans?id=${planId}&orgId=${orgId}`, { method: 'DELETE' })
@@ -127,9 +153,11 @@ export function MembershipPageContent({
     if (res.ok) loadData()
   }
 
+  const wrapperClass = embedded ? '' : 'container mx-auto py-8 px-4'
+
   if (showNewPlan || editingPlan) {
     return (
-      <div className="container mx-auto py-8 px-4">
+      <div className={wrapperClass}>
         <MembershipPlanEditor
           orgId={orgId}
           plan={editingPlan as any}
@@ -144,7 +172,7 @@ export function MembershipPageContent({
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className={wrapperClass}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -180,19 +208,6 @@ export function MembershipPageContent({
               )}
             </p>
           </div>
-        </div>
-      )}
-
-      {/* Soft limit error toast */}
-      {softLimitError && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-red-800">
-            <Lock className="h-4 w-4 flex-shrink-0" />
-            <span>{softLimitError}</span>
-          </div>
-          <button onClick={() => setSoftLimitError(null)} className="text-red-400 hover:text-red-600 text-sm font-medium ml-4">
-            Закрыть
-          </button>
         </div>
       )}
 

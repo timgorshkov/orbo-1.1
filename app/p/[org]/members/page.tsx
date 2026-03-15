@@ -58,6 +58,14 @@ export default async function MembersPage({ params, searchParams }: {
     }
   }
 
+  // Fetch org plan for membership tab visibility
+  const { data: orgData } = await adminSupabase
+    .from('organizations')
+    .select('plan')
+    .eq('id', orgId)
+    .single()
+  const orgPlan = orgData?.plan || 'free'
+
   // System Telegram IDs that must never appear in the participants list
   const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824])
 
@@ -282,6 +290,7 @@ export default async function MembersPage({ params, searchParams }: {
             availableTags={tagStats}
             role={role as 'owner' | 'admin' | 'member' | 'guest'}
             activeTab={tab}
+            orgPlan={orgPlan}
           />
         </Suspense>
       </div>

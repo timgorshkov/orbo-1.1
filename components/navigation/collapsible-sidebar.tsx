@@ -210,12 +210,13 @@ export default function CollapsibleSidebar({
       label: 'Участники',
       icon: Users,
       href: `/p/${orgId}/members`,
-      active: pathname?.startsWith(`/p/${orgId}/members`),
+      active: pathname?.startsWith(`/p/${orgId}/members`) && !pathname?.startsWith(`/p/${orgId}/membership`),
     })
   }
 
-  // Членство (для всех админов)
-  if (isAdmin && adminMode) {
+  // Членство — только на Клубном/Промо тарифе отдельным пунктом, на младших — вкладка в Участниках
+  const isClubPlan = orgPlan === 'enterprise' || orgPlan === 'promo'
+  if (isAdmin && adminMode && isClubPlan) {
     navItems.push({
       key: 'membership',
       label: 'Членство',
@@ -225,8 +226,8 @@ export default function CollapsibleSidebar({
     })
   }
 
-  // Материалы (управляется настройками портала; для админов в режиме админа — всегда видны)
-  if (role !== 'guest' && ((isAdmin && adminMode) || portalSettings.show_materials)) {
+  // Материалы (управляется настройками портала, в т.ч. для админов)
+  if (role !== 'guest' && portalSettings.show_materials) {
     navItems.push({
       key: 'materials',
       label: 'Материалы',
