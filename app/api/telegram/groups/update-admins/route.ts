@@ -119,7 +119,7 @@ export async function POST(request: Request) {
         const adminsResponse = await telegramService.getChatAdministrators(Number(group.tg_chat_id));
         
         if (!adminsResponse.ok) {
-          logger.error({ tg_chat_id: group.tg_chat_id, error: adminsResponse.description }, 'Failed to get administrators');
+          logger.warn({ tg_chat_id: group.tg_chat_id, error: adminsResponse.description }, 'Failed to get administrators');
           results.push({
             group_id: group.id,
             status: 'error',
