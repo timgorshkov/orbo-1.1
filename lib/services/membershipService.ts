@@ -522,21 +522,28 @@ export async function getParticipantMembership(
 ): Promise<(ParticipantMembership & { plan?: MembershipPlan }) | null> {
   const supabase = createAdminServer()
 
-  const { data, error } = await supabase
-    .from('participant_memberships')
-    .select('*, plan:membership_plans(*)')
-    .eq('org_id', orgId)
-    .eq('participant_id', participantId)
-    .in('status', ['active', 'trial', 'pending', 'suspended'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data, error } = await supabase.raw(
+    `SELECT pm.*,
+       json_build_object(
+         'id', mp.id, 'name', mp.name, 'price', mp.price,
+         'billing_period', mp.billing_period, 'grace_period_days', mp.grace_period_days,
+         'custom_period_days', mp.custom_period_days, 'is_active', mp.is_active,
+         'org_id', mp.org_id, 'description', mp.description
+       ) AS plan
+     FROM participant_memberships pm
+     LEFT JOIN membership_plans mp ON mp.id = pm.plan_id
+     WHERE pm.org_id = $1 AND pm.participant_id = $2
+       AND pm.status IN ('active', 'trial', 'pending', 'suspended')
+     ORDER BY pm.created_at DESC
+     LIMIT 1`,
+    [orgId, participantId]
+  )
 
   if (error) {
     logger.error({ org_id: orgId, participant_id: participantId, error: error.message }, 'Failed to fetch participant membership')
     return null
   }
-  return data
+  return (data as any[])?.[0] ?? null
 }
 
 export async function getOrgMemberships(
@@ -545,28 +552,45 @@ export async function getOrgMemberships(
 ): Promise<{ memberships: ParticipantMembership[]; total: number }> {
   const supabase = createAdminServer()
 
-  let query = supabase
-    .from('participant_memberships')
-    .select('*, plan:membership_plans(id, name, price, billing_period), participant:participants(id, full_name, username, photo_url)', { count: 'exact' })
-    .eq('org_id', orgId)
+  const statusFilter = options?.status && options.status.length > 0
+    ? options.status
+    : null
 
-  if (options?.status && options.status.length > 0) {
-    query = query.in('status', options.status)
+  const params: any[] = [orgId]
+  let whereClause = 'WHERE pm.org_id = $1'
+  if (statusFilter) {
+    params.push(statusFilter)
+    whereClause += ` AND pm.status = ANY($${params.length})`
   }
 
-  query = query.order('created_at', { ascending: false })
+  const limitClause = options?.limit ? `LIMIT ${options.limit}` : ''
+  const offsetClause = options?.offset ? `OFFSET ${options.offset}` : ''
 
-  if (options?.limit) query = query.limit(options.limit)
-  if (options?.offset) query = query.range(options.offset, options.offset + (options?.limit || 50) - 1)
-
-  const { data, error, count } = await query
+  const [{ data, error }, { data: countData }] = await Promise.all([
+    supabase.raw(
+      `SELECT pm.*,
+         json_build_object('id', mp.id, 'name', mp.name, 'price', mp.price, 'billing_period', mp.billing_period) AS plan,
+         json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'photo_url', p.photo_url) AS participant
+       FROM participant_memberships pm
+       LEFT JOIN membership_plans mp ON mp.id = pm.plan_id
+       LEFT JOIN participants p ON p.id = pm.participant_id
+       ${whereClause}
+       ORDER BY pm.created_at DESC
+       ${limitClause} ${offsetClause}`,
+      params
+    ),
+    supabase.raw(
+      `SELECT COUNT(*) AS total FROM participant_memberships pm ${whereClause}`,
+      params
+    ),
+  ])
 
   if (error) {
     logger.error({ org_id: orgId, error: error.message }, 'Failed to fetch org memberships')
     return { memberships: [], total: 0 }
   }
 
-  return { memberships: data || [], total: count || 0 }
+  return { memberships: (data as any[]) || [], total: Number((countData as any[])?.[0]?.total) || 0 }
 }
 
 export async function getOrgMembershipMap(orgId: string): Promise<Map<string, MembershipStatus>> {
@@ -620,26 +644,31 @@ export async function isResourceGated(
 ): Promise<boolean> {
   const supabase = createAdminServer()
 
-  let query = supabase
-    .from('membership_plan_access')
-    .select('id, plan:membership_plans!inner(org_id, is_active)', { count: 'exact', head: true })
-    .eq('resource_type', resourceType)
-    .eq('plan.org_id', orgId)
-    .eq('plan.is_active', true)
-
+  const params: any[] = [resourceType, orgId]
+  let resourceClause: string
   if (resourceId) {
-    query = query.eq('resource_id', resourceId)
+    params.push(resourceId)
+    resourceClause = `AND mpa.resource_id = $${params.length}`
   } else {
-    query = query.is('resource_id', null)
+    resourceClause = 'AND mpa.resource_id IS NULL'
   }
 
-  const { count, error } = await query
+  const { data, error } = await supabase.raw(
+    `SELECT COUNT(*) AS cnt
+     FROM membership_plan_access mpa
+     JOIN membership_plans mp ON mp.id = mpa.plan_id
+     WHERE mpa.resource_type = $1
+       AND mp.org_id = $2
+       AND mp.is_active = true
+       ${resourceClause}`,
+    params
+  )
 
   if (error) {
     logger.debug({ org_id: orgId, resource_type: resourceType, error: error.message }, 'isResourceGated check failed')
     return false
   }
-  return (count || 0) > 0
+  return Number((data as any[])?.[0]?.cnt) > 0
 }
 
 export async function hasActiveAccess(
@@ -765,12 +794,16 @@ export async function expireOverdueMemberships(): Promise<number> {
   const supabase = createAdminServer()
   const now = new Date()
 
-  const { data: expirable, error } = await supabase
-    .from('participant_memberships')
-    .select('id, org_id, participant_id, plan_id, expires_at, plan:membership_plans(grace_period_days)')
-    .in('status', ['active', 'trial'])
-    .not('expires_at', 'is', null)
-    .lt('expires_at', now.toISOString())
+  const { data: expirable, error } = await supabase.raw(
+    `SELECT pm.id, pm.org_id, pm.participant_id, pm.plan_id, pm.expires_at,
+       mp.grace_period_days
+     FROM participant_memberships pm
+     LEFT JOIN membership_plans mp ON mp.id = pm.plan_id
+     WHERE pm.status IN ('active', 'trial')
+       AND pm.expires_at IS NOT NULL
+       AND pm.expires_at < $1`,
+    [now.toISOString()]
+  )
 
   if (error || !expirable) {
     logger.error({ error: error?.message }, 'Failed to query expirable memberships')
@@ -778,8 +811,8 @@ export async function expireOverdueMemberships(): Promise<number> {
   }
 
   let expired = 0
-  for (const m of expirable) {
-    const graceDays = (m.plan as any)?.grace_period_days ?? 3
+  for (const m of expirable as any[]) {
+    const graceDays = m.grace_period_days ?? 3
     const deadline = new Date(m.expires_at!)
     deadline.setDate(deadline.getDate() + graceDays)
 

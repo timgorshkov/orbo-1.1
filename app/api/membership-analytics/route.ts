@@ -40,16 +40,17 @@ export async function GET(req: NextRequest) {
     }
 
     // MRR estimate: sum of active monthly-equivalent prices
-    const { data: activeMemberships } = await supabase
-      .from('participant_memberships')
-      .select('plan:membership_plans(price, billing_period, custom_period_days)')
-      .eq('org_id', orgId)
-      .in('status', ['active', 'trial'])
+    const { data: activeMemberships } = await supabase.raw(
+      `SELECT mp.price, mp.billing_period, mp.custom_period_days
+       FROM participant_memberships pm
+       JOIN membership_plans mp ON mp.id = pm.plan_id
+       WHERE pm.org_id = $1 AND pm.status IN ('active', 'trial')`,
+      [orgId]
+    )
 
     let mrr = 0
-    for (const m of activeMemberships || []) {
-      const plan = m.plan as any
-      if (!plan?.price) continue
+    for (const plan of (activeMemberships as any[]) || []) {
+      if (!plan.price) continue
       const monthlyPrice = toMonthly(plan.price, plan.billing_period, plan.custom_period_days)
       mrr += monthlyPrice
     }
