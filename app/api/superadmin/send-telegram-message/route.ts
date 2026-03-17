@@ -25,9 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const telegramService = createTelegramService(botType as any)
-    const result = await telegramService.sendMessage(Number(telegramUserId), message.trim(), {
-      parse_mode: 'Markdown'
-    })
+    const result = await telegramService.sendMessage(Number(telegramUserId), message.trim(), {})
 
     if (!result.ok) {
       logger.warn({
