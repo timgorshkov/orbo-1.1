@@ -5,6 +5,14 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 
+const BOT_MESSAGE_TEMPLATE = `Привет! 👋
+
+Я из команды Orbo. Вижу, что вы недавно зарегистрировались — отлично!
+
+Хотел лично написать, чтобы помочь с запуском. Если есть вопросы по настройке или хотите провести демо — отвечайте сюда или напишите мне напрямую: @orbo_support
+
+С уважением, команда Orbo`
+
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Владелец',
   admin: 'Админ',
@@ -101,7 +109,7 @@ function formatLastLogin(dateStr: string | null): string {
   }
 }
 
-function TelegramLink({ user }: { user: User }) {
+function TelegramLink({ user, onSendMessage }: { user: User; onSendMessage?: (user: User) => void }) {
   if (user.telegram_username) {
     return (
       <a
@@ -115,12 +123,12 @@ function TelegramLink({ user }: { user: User }) {
       </a>
     )
   }
-  
+
   if (user.telegram_user_id) {
     const displayName = user.telegram_display_name || user.full_name
     const hasName = displayName && displayName !== 'Не указано'
     return (
-      <span className="inline-flex items-center gap-1.5" title={`Telegram ID: ${user.telegram_user_id} (username не задан)`}>
+      <span className="inline-flex items-center gap-1.5 flex-wrap" title={`Telegram ID: ${user.telegram_user_id} (username не задан)`}>
         {user.telegram_verified && '✅ '}
         {hasName && <span className={user.is_test ? '' : 'text-gray-900'}>{displayName}</span>}
         <button
@@ -133,11 +141,104 @@ function TelegramLink({ user }: { user: User }) {
         >
           ID:{user.telegram_user_id}
         </button>
+        {onSendMessage && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSendMessage(user) }}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer"
+            title="Написать от имени бота"
+          >
+            ✉️ бот
+          </button>
+        )}
       </span>
     )
   }
-  
+
   return <span className="text-gray-400">—</span>
+}
+
+function SendBotMessageModal({
+  user,
+  onClose
+}: {
+  user: User
+  onClose: () => void
+}) {
+  const [message, setMessage] = useState(BOT_MESSAGE_TEMPLATE)
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const handleSend = async () => {
+    setSending(true)
+    setResult(null)
+    try {
+      const res = await fetch('/api/superadmin/send-telegram-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramUserId: user.telegram_user_id,
+          message,
+          botType: 'notifications'
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setResult({ ok: true, text: 'Сообщение отправлено!' })
+      } else {
+        setResult({ ok: false, text: data.error || 'Ошибка отправки' })
+      }
+    } catch {
+      setResult({ ok: false, text: 'Сетевая ошибка' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b">
+          <h3 className="font-semibold text-gray-900">Написать от имени бота</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {user.full_name} · ID: {user.telegram_user_id}
+            {user.telegram_verified
+              ? ' · Telegram верифицирован'
+              : ' · Telegram не верифицирован (бот должен быть запущен)'}
+          </p>
+        </div>
+        <div className="p-5 space-y-3">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={10}
+            className="w-full border rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-300"
+            placeholder="Текст сообщения (поддерживается Markdown)"
+          />
+          <p className="text-xs text-gray-400">Поддерживается Markdown: *жирный*, _курсив_, `код`</p>
+          {result && (
+            <div className={`text-sm px-3 py-2 rounded-lg ${result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {result.text}
+            </div>
+          )}
+        </div>
+        <div className="p-5 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            Закрыть
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !message.trim() || result?.ok === true}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {sending ? 'Отправка...' : 'Отправить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function UsersTable({ users }: { users: User[] }) {
@@ -145,6 +246,7 @@ export default function UsersTable({ users }: { users: User[] }) {
   const [tab, setTab] = useState<FilterTab>('all')
   const [isPending, startTransition] = useTransition()
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null)
+  const [sendMessageUser, setSendMessageUser] = useState<User | null>(null)
   const router = useRouter()
   
   const filtered = users.filter(u => {
@@ -245,7 +347,10 @@ export default function UsersTable({ users }: { users: User[] }) {
                     }
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <TelegramLink user={user} />
+                    <TelegramLink
+                      user={user}
+                      onSendMessage={user.telegram_user_id && !user.telegram_username ? setSendMessageUser : undefined}
+                    />
                   </td>
                   <td className="px-4 py-3 text-sm text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_LABELS[user.status].className}`}>
@@ -332,6 +437,13 @@ export default function UsersTable({ users }: { users: User[] }) {
           <span className="ml-2">(тестовых: {users.filter(u => u.is_test).length})</span>
         )}
       </p>
+
+      {sendMessageUser && (
+        <SendBotMessageModal
+          user={sendMessageUser}
+          onClose={() => setSendMessageUser(null)}
+        />
+      )}
     </div>
   )
 }

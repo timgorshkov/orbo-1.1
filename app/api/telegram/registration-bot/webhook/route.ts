@@ -3,6 +3,46 @@ import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('RegistrationBotWebhook')
 
+async function forwardToHelpDesk(data: {
+  telegramUserId: number
+  telegramUsername: string | null
+  firstName: string
+  text: string
+  botName: string
+}): Promise<boolean> {
+  const hdDomain = process.env.HELPDESKEDDY_DOMAIN
+  const hdApiKey = process.env.HELPDESKEDDY_API_KEY
+  const hdLogin = process.env.HELPDESKEDDY_LOGIN
+
+  if (hdDomain && hdApiKey && hdLogin) {
+    try {
+      const credentials = Buffer.from(`${hdLogin}:${hdApiKey}`).toString('base64')
+      const sender = data.telegramUsername ? `@${data.telegramUsername}` : data.firstName
+      const fakeEmail = `telegram_${data.telegramUserId}@telegram.orbo`
+
+      const res = await fetch(`https://${hdDomain}.helpdeskeddy.com/api/v2/tickets`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subject: `[${data.botName}] Сообщение от ${sender}`,
+          message: data.text,
+          requester: {
+            name: data.telegramUsername ? `@${data.telegramUsername} (${data.firstName})` : data.firstName,
+            email: fakeEmail
+          }
+        })
+      })
+      if (res.ok) return true
+    } catch (_) { /* fall through */ }
+  }
+
+  const { forwardBotMessage } = await import('@/lib/services/email')
+  return (await forwardBotMessage(data)).success
+}
+
 /**
  * Webhook handler for @orbo_start_bot (registration bot).
  * Handles /start command with optional deep link ref parameter.
@@ -24,6 +64,10 @@ export async function POST(request: NextRequest) {
       logger.warn({}, 'TELEGRAM_REGISTRATION_BOT_TOKEN not configured')
       return NextResponse.json({ ok: true })
     }
+
+    const userId = message.from?.id
+    const firstName = message.from?.first_name || 'пользователь'
+    const tgUsername = message.from?.username || null
 
     // Handle /start [param]
     if (text.startsWith('/start')) {
@@ -89,6 +133,29 @@ export async function POST(request: NextRequest) {
           tg_user_id: message.from?.id,
         }, 'Registration bot /start handled')
       }
+    } else if (userId) {
+      // Non-command message → auto-reply + forward to support
+      const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `Ваше сообщение получено! Для создания пространства нажмите /start.\n\nЕсли нужна помощь — напишите: @${supportContact}`,
+          }),
+        })
+      } catch (_) { /* ignore */ }
+
+      forwardToHelpDesk({
+        telegramUserId: userId,
+        telegramUsername: tgUsername,
+        firstName,
+        text,
+        botName: '@orbo_start_bot'
+      }).catch(() => {})
+
+      logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot non-command message forwarded to support')
     }
 
     return NextResponse.json({ ok: true })

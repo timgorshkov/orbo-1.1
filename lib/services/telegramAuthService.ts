@@ -352,16 +352,33 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
           })
         
         if (upsertError) {
-          logger.warn({ 
+          logger.warn({
             user_id: userId,
             org_id: targetOrgId,
             error: upsertError.message
           }, 'Error upserting telegram account');
         } else {
           logger.info({ user_id: userId, org_id: targetOrgId }, 'Telegram account linked');
+
+          // Notify sales team (non-blocking)
+          Promise.all([
+            adminSupabase.from('users').select('name, email').eq('id', userId).single(),
+            adminSupabase.from('organizations').select('name').eq('id', targetOrgId).single()
+          ]).then(async ([{ data: userData }, { data: orgData }]) => {
+            const { sendSalesNotificationTelegramLinked } = await import('@/lib/services/email');
+            await sendSalesNotificationTelegramLinked({
+              userName: userData?.name || `${firstName || ''} ${lastName || ''}`.trim(),
+              userEmail: userData?.email?.endsWith('@orbo.temp') ? null : (userData?.email || null),
+              telegramUsername: telegramUsername || null,
+              telegramUserId: telegramUserId,
+              orgName: orgData?.name || targetOrgId,
+              orgId: targetOrgId,
+              userId
+            });
+          }).catch(() => {});
         }
       } catch (err) {
-        logger.error({ 
+        logger.error({
           user_id: userId,
           org_id: targetOrgId,
           error: err instanceof Error ? err.message : String(err)

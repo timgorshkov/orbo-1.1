@@ -286,7 +286,24 @@ export async function PUT(request: Request) {
       onTelegramLinked(user.id, telegramAccount.telegram_username).catch(() => {});
     }).catch(() => {});
 
-    return NextResponse.json({ 
+    // Notify sales team about new Telegram linkage (non-blocking)
+    Promise.all([
+      supabase.from('users').select('name, email').eq('id', user.id).single(),
+      supabase.from('organizations').select('name').eq('id', orgId).single()
+    ]).then(async ([{ data: userData }, { data: orgData }]) => {
+      const { sendSalesNotificationTelegramLinked } = await import('@/lib/services/email');
+      await sendSalesNotificationTelegramLinked({
+        userName: userData?.name || '',
+        userEmail: userData?.email || null,
+        telegramUsername: telegramAccount.telegram_username || null,
+        telegramUserId: telegramAccount.telegram_user_id,
+        orgName: orgData?.name || orgId,
+        orgId,
+        userId: user.id
+      });
+    }).catch(() => {});
+
+    return NextResponse.json({
       telegramAccount: verifiedAccount,
       message: 'Telegram account verified successfully!'
     });

@@ -4,6 +4,48 @@ import { createTelegramService } from '@/lib/services/telegramService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { createAPILogger } from '@/lib/logger'
 
+async function forwardToHelpDesk(data: {
+  telegramUserId: number
+  telegramUsername: string | null
+  firstName: string
+  text: string
+  botName: string
+}): Promise<boolean> {
+  const hdDomain = process.env.HELPDESKEDDY_DOMAIN
+  const hdApiKey = process.env.HELPDESKEDDY_API_KEY
+  const hdLogin = process.env.HELPDESKEDDY_LOGIN
+
+  // Try HelpDeskEddy API first
+  if (hdDomain && hdApiKey && hdLogin) {
+    try {
+      const credentials = Buffer.from(`${hdLogin}:${hdApiKey}`).toString('base64')
+      const sender = data.telegramUsername ? `@${data.telegramUsername}` : data.firstName
+      const fakeEmail = `telegram_${data.telegramUserId}@telegram.orbo`
+
+      const res = await fetch(`https://${hdDomain}.helpdeskeddy.com/api/v2/tickets`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subject: `[${data.botName}] Сообщение от ${sender}`,
+          message: data.text,
+          requester: {
+            name: data.telegramUsername ? `@${data.telegramUsername} (${data.firstName})` : data.firstName,
+            email: fakeEmail
+          }
+        })
+      })
+      if (res.ok) return true
+    } catch (_) { /* fall through to email */ }
+  }
+
+  // Fallback: forward via email
+  const { forwardBotMessage } = await import('@/lib/services/email')
+  return (await forwardBotMessage(data)).success
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -58,11 +100,11 @@ export async function POST(req: NextRequest) {
       const text = message.text || ''
       const firstName = message.from.first_name || 'пользователь'
       
-      // Обрабатываем команды
+      // Обрабатываем команды или пересылаем в поддержку
       if (text.startsWith('/')) {
         const command = text.split(' ')[0].toLowerCase()
         const telegramService = createTelegramService('notifications')
-        
+
         switch (command) {
           case '/start':
             // Отправляем приветственное сообщение с User ID
@@ -179,9 +221,38 @@ _Если вам нужна помощь, используйте команду 
             }
             break
         }
+      } else if (text) {
+        // Non-command message → forward to support + auto-reply
+        const telegramService = createTelegramService('notifications')
+
+        // Auto-reply to user
+        const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
+        try {
+          await telegramService.sendMessage(userId,
+            `Ваше сообщение получено и передано в службу поддержки Orbo. Мы свяжемся с вами в рабочее время (пн–пт, 10:00–19:00 МСК).\n\nЕсли вопрос срочный — напишите напрямую: @${supportContact}`,
+            {}
+          )
+        } catch (_) { /* ignore */ }
+
+        // Forward to support (HelpDeskEddy API or email)
+        try {
+          const forwarded = await forwardToHelpDesk({
+            telegramUserId: userId,
+            telegramUsername: message.from.username || null,
+            firstName,
+            text,
+            botName: '@orbo_assistant_bot'
+          })
+          logger.info({ user_id: userId, forwarded }, 'Support message forwarded')
+        } catch (err) {
+          logger.error({
+            user_id: userId,
+            error: err instanceof Error ? err.message : String(err)
+          }, 'Failed to forward support message')
+        }
       }
     }
-    
+
     return NextResponse.json({ ok: true })
   } catch (error) {
     logger.error({ 

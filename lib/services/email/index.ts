@@ -112,6 +112,102 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 }
 
 // ============================================
+// Уведомления для внутренней команды
+// ============================================
+
+/**
+ * Уведомить продажи о привязке Telegram к организации
+ */
+export async function sendSalesNotificationTelegramLinked(data: {
+  userName: string
+  userEmail: string | null
+  telegramUsername: string | null
+  telegramUserId: string | number
+  orgName: string
+  orgId: string
+  userId: string
+}): Promise<SendEmailResult> {
+  const salesEmail = process.env.SALES_NOTIFICATION_EMAIL || 'sales@orbo.ru'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
+
+  const tgLink = data.telegramUsername
+    ? `<a href="https://t.me/${data.telegramUsername}" style="color:#667eea;">@${data.telegramUsername}</a>`
+    : `<span style="color:#6b7280;">ID: ${data.telegramUserId} (без username)</span>`
+
+  const displayName = data.userName || `User ${String(data.userId).slice(0, 8)}`
+  const subject = `🔗 Telegram привязан — ${displayName} (${data.orgName})`
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
+  <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px 30px;border-radius:10px 10px 0 0;">
+    <h2 style="color:white;margin:0;font-size:18px;">Новый пользователь привязал Telegram</h2>
+  </div>
+  <div style="background:#fff;padding:30px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;">
+    <table style="width:100%;border-collapse:collapse;">
+      <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 8px;font-weight:600;color:#6b7280;width:130px;">Имя</td><td style="padding:10px 8px;">${displayName}</td></tr>
+      <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 8px;font-weight:600;color:#6b7280;">Email</td><td style="padding:10px 8px;">${data.userEmail || '—'}</td></tr>
+      <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 8px;font-weight:600;color:#6b7280;">Telegram</td><td style="padding:10px 8px;">${tgLink}</td></tr>
+      <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:10px 8px;font-weight:600;color:#6b7280;">Организация</td><td style="padding:10px 8px;">${data.orgName}</td></tr>
+      <tr><td style="padding:10px 8px;font-weight:600;color:#6b7280;">Время</td><td style="padding:10px 8px;">${new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК</td></tr>
+    </table>
+    <div style="margin-top:24px;">
+      <a href="${appUrl}/superadmin/users" style="display:inline-block;background:#667eea;color:white;padding:10px 22px;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Открыть в суперадмин</a>
+    </div>
+  </div>
+</body>
+</html>`
+
+  return sendEmail({ to: salesEmail, subject, html })
+}
+
+/**
+ * Переслать сообщение боту в службу поддержки
+ */
+export async function forwardBotMessage(data: {
+  telegramUserId: number
+  telegramUsername: string | null
+  firstName: string
+  text: string
+  botName: string
+}): Promise<SendEmailResult> {
+  const supportEmail = process.env.SUPPORT_EMAIL || process.env.SALES_NOTIFICATION_EMAIL || 'sales@orbo.ru'
+  const sender = data.telegramUsername ? `@${data.telegramUsername}` : data.firstName
+  const subject = `[Orbo Bot] Сообщение от ${sender} → ${data.botName}`
+
+  const usernameRow = data.telegramUsername
+    ? `<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:8px;font-weight:600;color:#6b7280;">Username</td><td style="padding:8px;"><a href="https://t.me/${data.telegramUsername}" style="color:#667eea;">@${data.telegramUsername}</a></td></tr>`
+    : ''
+  const replyHint = data.telegramUsername
+    ? `Ответить: <a href="https://t.me/${data.telegramUsername}" style="color:#667eea;">@${data.telegramUsername}</a>`
+    : `Telegram ID для ответа через бота: <code>${data.telegramUserId}</code>`
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
+  <div style="background:#1e293b;padding:20px 30px;border-radius:10px 10px 0 0;">
+    <h2 style="color:white;margin:0;font-size:18px;">Сообщение боту ${data.botName}</h2>
+  </div>
+  <div style="background:#fff;padding:30px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:8px;font-weight:600;color:#6b7280;width:120px;">Имя</td><td style="padding:8px;">${data.firstName}</td></tr>
+      ${usernameRow}
+      <tr><td style="padding:8px;font-weight:600;color:#6b7280;">Telegram ID</td><td style="padding:8px;">${data.telegramUserId}</td></tr>
+    </table>
+    <div style="background:#f9fafb;border-left:4px solid #667eea;padding:16px;border-radius:4px;">
+      <p style="margin:0;white-space:pre-wrap;">${data.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+    </div>
+    <p style="margin-top:20px;font-size:13px;color:#9ca3af;">${replyHint}</p>
+  </div>
+</body>
+</html>`
+
+  return sendEmail({ to: supportEmail, subject, html })
+}
+
+// ============================================
 // Хелперы для типичных писем
 // ============================================
 
