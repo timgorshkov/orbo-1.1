@@ -29,8 +29,7 @@ async function forwardToHelpDesk(data: {
         body: JSON.stringify({
           title: `[${data.botName}] Сообщение от ${sender}`,
           description: data.text,
-          contact_name: data.telegramUsername ? `@${data.telegramUsername} (${data.firstName})` : data.firstName,
-          contact_email: fakeEmail
+          user_email: fakeEmail
         })
       })
       if (res.ok) return true
