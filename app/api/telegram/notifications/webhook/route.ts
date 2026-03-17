@@ -33,7 +33,7 @@ async function forwardToHelpDesk(data: {
         },
         body: JSON.stringify({
           title: `[${data.botName}] Сообщение от ${sender}`,
-          description: data.text,
+          description: `${data.text}\n\n---\n⚠️ Это автоматический тикет из Telegram. Ответ через HelpDeskEddy пользователю НЕ дойдёт.\nДля ответа: ${data.telegramUsername ? `https://t.me/${data.telegramUsername}` : `суперадминка → пользователь TG ID ${data.telegramUserId} → кнопка «✉️ бот»`}`,
           user_email: fakeEmail
         })
       })
