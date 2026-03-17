@@ -4,6 +4,8 @@ import { createTelegramService } from '@/lib/services/telegramService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { createAPILogger } from '@/lib/logger'
 
+const hdLogger = { info: (...a: any[]) => console.log(...a), warn: (...a: any[]) => console.warn(...a), error: (...a: any[]) => console.error(...a) }
+
 async function forwardToHelpDesk(data: {
   telegramUserId: number
   telegramUsername: string | null
@@ -21,8 +23,9 @@ async function forwardToHelpDesk(data: {
       const credentials = Buffer.from(`${hdLogin}:${hdApiKey}`).toString('base64')
       const sender = data.telegramUsername ? `@${data.telegramUsername}` : data.firstName
       const fakeEmail = `telegram_${data.telegramUserId}@telegram.orbo`
+      const url = `https://${hdDomain}.helpdeskeddy.com/api/v2/tickets`
 
-      const res = await fetch(`https://${hdDomain}.helpdeskeddy.com/api/v2/tickets`, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${credentials}`,
@@ -37,8 +40,19 @@ async function forwardToHelpDesk(data: {
           }
         })
       })
-      if (res.ok) return true
-    } catch (_) { /* fall through to email */ }
+
+      if (res.ok) {
+        hdLogger.info(JSON.stringify({ service: 'HelpDeskEddy', status: res.status, msg: 'Ticket created' }))
+        return true
+      }
+
+      const responseText = await res.text()
+      hdLogger.warn(JSON.stringify({ service: 'HelpDeskEddy', status: res.status, body: responseText, msg: 'HelpDeskEddy API error, falling back to email' }))
+    } catch (err) {
+      hdLogger.error(JSON.stringify({ service: 'HelpDeskEddy', error: err instanceof Error ? err.message : String(err), msg: 'HelpDeskEddy request failed, falling back to email' }))
+    }
+  } else {
+    hdLogger.warn(JSON.stringify({ service: 'HelpDeskEddy', has_domain: !!hdDomain, has_login: !!hdLogin, has_key: !!hdApiKey, msg: 'HelpDeskEddy not configured, using email fallback' }))
   }
 
   // Fallback: forward via email
