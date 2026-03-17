@@ -93,6 +93,8 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
           phone: detail.participant.phone,
           username: detail.participant.username,
           tg_user_id: detail.participant.tg_user_id,
+          max_user_id: (detail.participant as any).max_user_id,
+          max_username: (detail.participant as any).max_username,
           full_name: detail.participant.full_name,
           first_name: detail.participant.first_name,
           last_name: detail.participant.last_name
@@ -110,6 +112,8 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
         email: match.email,
         phone: match.phone,
         tg_user_id: match.tg_user_id,
+        max_user_id: match.max_user_id,
+        max_username: match.max_username,
         created_at: undefined,
         match_score: typeof match.match_score === 'number' ? match.match_score : undefined,
         reasons: Array.isArray(match.reasons) ? match.reasons : undefined
@@ -340,8 +344,10 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
                         <div className="text-xs text-neutral-500 space-x-2 mt-1">
                           {duplicate.email && <span>Email: {duplicate.email}</span>}
                           {duplicate.phone && <span>Телефон: {duplicate.phone}</span>}
-                          {(duplicate as any).username && <span>Username: @{(duplicate as any).username}</span>}
-                          {duplicate.tg_user_id && <span>ID: {duplicate.tg_user_id}</span>}
+                          {(duplicate as any).username && <span>TG: @{(duplicate as any).username}</span>}
+                          {duplicate.tg_user_id && <span>TG ID: {duplicate.tg_user_id}</span>}
+                          {(duplicate as any).max_username && <span>MAX: @{(duplicate as any).max_username}</span>}
+                          {!(duplicate as any).max_username && (duplicate as any).max_user_id && <span>MAX ID: {(duplicate as any).max_user_id}</span>}
                         </div>
                         <div className="text-xs text-neutral-400 mt-1 flex items-center gap-2">
                           <span>Полнота: {dupScore}%</span>

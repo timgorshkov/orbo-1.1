@@ -589,9 +589,10 @@ export default function ParticipantProfileCard({
                     >
                       @{participant.max_username}
                     </a>
-                  ) : participant.max_user_id ? (
-                    <span className="text-xs text-gray-400">ID: {participant.max_user_id}</span>
                   ) : null}
+                  {participant.max_user_id && (
+                    <span className="text-xs text-gray-400">ID: {participant.max_user_id}</span>
+                  )}
                 </div>
               </div>
             )}

@@ -20,7 +20,9 @@
       "Bash(find \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/components\" -name \"*payment*\" -o -name \"*billing*\" 2>/dev/null | head -10)",
       "Bash(curl -s -X POST https://my.orbo.ru/api/superadmin/bulk-enrich-participants \\\\\n  -H \"Authorization: Bearer c82fe1163aacd37f\" \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\"orgId\": \"79841ac4-6a6f-4b51-8557-d787dcc92fce\"}' 2>&1)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 10 https://go2.unisender.ru 2>&1)",
-      "WebFetch(domain:helpdeskeddy.ru)"
+      "WebFetch(domain:helpdeskeddy.ru)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -name *.tsx -path *participant*)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -name *.tsx -path *member*)"
     ]
   }
 }

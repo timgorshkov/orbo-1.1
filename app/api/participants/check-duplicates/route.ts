@@ -49,6 +49,8 @@ export async function POST(request: Request) {
       phone: payload?.phone,
       username: payload?.username,
       tg_user_id: payload?.tg_user_id,
+      max_user_id: payload?.max_user_id,
+      max_username: payload?.max_username,
       full_name: payload?.full_name,
       first_name: payload?.first_name,
       last_name: payload?.last_name

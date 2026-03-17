@@ -11,6 +11,8 @@ export type MatchIntent = {
   phone?: string | null;
   username?: string | null;
   tg_user_id?: number | null;
+  max_user_id?: number | null;
+  max_username?: string | null;
   full_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -26,6 +28,8 @@ export type MatchCandidate = {
   phone: string | null;
   username: string | null;
   tg_user_id: number | null;
+  max_user_id?: number | null;
+  max_username?: string | null;
   source?: string | null;
   status?: string | null;
   merged_into?: string | null;
@@ -72,14 +76,18 @@ export class ParticipantMatcher {
     const phone = normalizePhone(intent.phone);
     const username = intent.username?.trim()?.replace(/^@/, '') || null;
     const tgUserId = intent.tg_user_id ?? null;
+    const maxUserId = intent.max_user_id ?? null;
+    const maxUsername = intent.max_username?.trim()?.replace(/^@/, '') || null;
     const fullName = buildFullName(intent.first_name, intent.last_name, intent.full_name);
-    
-    logger.debug({ 
+
+    logger.debug({
       org_id: intent.orgId,
       email,
       phone,
       username,
       tg_user_id: tgUserId,
+      max_user_id: maxUserId,
+      max_username: maxUsername,
       full_name: fullName
     }, 'Finding matches');
 
@@ -104,6 +112,8 @@ export class ParticipantMatcher {
         phone: participant.phone,
         username: participant.username,
         tg_user_id: participant.tg_user_id,
+        max_user_id: participant.max_user_id,
+        max_username: participant.max_username,
         source: participant.source,
         status: participant.status,
         merged_into: participant.merged_into,
@@ -113,16 +123,18 @@ export class ParticipantMatcher {
     };
 
     // Exact contact matches
-    if (email || phone || username || tgUserId) {
+    if (email || phone || username || tgUserId || maxUserId || maxUsername) {
       const filters: string[] = [];
       if (email) filters.push(`email.eq.${email}`);
       if (phone) filters.push(`phone.eq.${phone}`);
       if (username) filters.push(`username.eq.${username}`);
       if (tgUserId) filters.push(`tg_user_id.eq.${tgUserId}`);
+      if (maxUserId) filters.push(`max_user_id.eq.${maxUserId}`);
+      if (maxUsername) filters.push(`max_username.eq.${maxUsername}`);
 
       const query = supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into, participant_status')
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, max_user_id, max_username, source, status, merged_into, participant_status')
         .eq('org_id', intent.orgId)
         .is('merged_into', null) // Исключаем уже объединенных участников
         .neq('participant_status', 'excluded'); // Исключаем архивированных участников
@@ -136,8 +148,10 @@ export class ParticipantMatcher {
       (exactMatches || []).forEach(row => {
         if (email && row.email === email) addReason(row, 'Точный e-mail', 60);
         if (phone && row.phone === phone) addReason(row, 'Точный телефон', 65);
-        if (username && row.username === username) addReason(row, 'Совпадает username', 55);
+        if (username && row.username === username) addReason(row, 'Совпадает Telegram username', 55);
         if (tgUserId && row.tg_user_id === tgUserId) addReason(row, 'Совпадает Telegram ID', 70);
+        if (maxUserId && row.max_user_id === maxUserId) addReason(row, 'Совпадает MAX ID', 70);
+        if (maxUsername && row.max_username === maxUsername) addReason(row, 'Совпадает MAX username', 55);
       });
     }
 
@@ -153,7 +167,7 @@ export class ParticipantMatcher {
 
       const { data: fuzzyMatches } = (await supabase
         .from('participants')
-        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, source, status, merged_into, participant_status')
+        .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, max_user_id, max_username, source, status, merged_into, participant_status')
         .eq('org_id', intent.orgId)
         .is('merged_into', null) // Исключаем уже объединенных участников
         .neq('participant_status', 'excluded') // Исключаем архивированных участников
