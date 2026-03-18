@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/server/supabaseServer'
+import { createClientServer, createAdminServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService'
 import { createAPILogger } from '@/lib/logger'
@@ -33,7 +33,7 @@ async function forwardToHelpDesk(data: {
         },
         body: JSON.stringify({
           title: `[${data.botName}] Сообщение от ${sender}`,
-          description: `${data.text}\n\n---\n⚠️ Это автоматический тикет из Telegram. Ответ через HelpDeskEddy пользователю НЕ дойдёт.\nДля ответа: ${data.telegramUsername ? `https://t.me/${data.telegramUsername}` : `суперадминка → пользователь TG ID ${data.telegramUserId} → кнопка «✉️ бот»`}`,
+          description: `${data.text}\n\n\n---\n\n⚠️ Это автоматический тикет из Telegram. Ответ через HelpDeskEddy пользователю НЕ дойдёт.\nДля ответа: ${data.telegramUsername ? `https://t.me/${data.telegramUsername}` : `суперадминка → пользователь TG ID ${data.telegramUserId} → кнопка «✉️ бот»`}`,
           user_email: fakeEmail
         })
       })
@@ -55,6 +55,34 @@ async function forwardToHelpDesk(data: {
   // Fallback: forward via email
   const { forwardBotMessage } = await import('@/lib/services/email')
   return (await forwardBotMessage(data)).success
+}
+
+/**
+ * Проверяет, известен ли Telegram-пользователь системе Orbo:
+ * есть ли он как участник (participants.tg_user_id) или как привязанный аккаунт.
+ * Используется для фильтрации спам-сообщений от случайных пользователей.
+ */
+async function isKnownOrbUser(telegramUserId: number): Promise<boolean> {
+  const db = createAdminServer()
+
+  const { data: account } = await db
+    .from('user_telegram_accounts')
+    .select('id')
+    .eq('telegram_user_id', telegramUserId)
+    .limit(1)
+    .maybeSingle()
+
+  if (account) return true
+
+  const { data: participant } = await db
+    .from('participants')
+    .select('id')
+    .eq('tg_user_id', telegramUserId)
+    .is('merged_into', null)
+    .limit(1)
+    .maybeSingle()
+
+  return !!participant
 }
 
 export const dynamic = 'force-dynamic';
@@ -233,33 +261,39 @@ _Если вам нужна помощь, используйте команду 
             break
         }
       } else if (text) {
-        // Non-command message → forward to support + auto-reply
-        const telegramService = createTelegramService('notifications')
+        // Non-command message → forward to support only if user is known in Orbo
+        const knownUser = await isKnownOrbUser(userId)
 
-        // Auto-reply to user
-        const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
-        try {
-          await telegramService.sendMessage(userId,
-            `Ваше сообщение получено и передано в службу поддержки Orbo. Мы свяжемся с вами в рабочее время (пн–пт, 10:00–19:00 МСК).\n\nЕсли вопрос срочный — напишите напрямую: @${supportContact}`,
-            {}
-          )
-        } catch (_) { /* ignore */ }
+        if (!knownUser) {
+          logger.info({ user_id: userId }, 'Ignoring message from unknown Telegram user (not in Orbo)')
+        } else {
+          const telegramService = createTelegramService('notifications')
 
-        // Forward to support (HelpDeskEddy API or email)
-        try {
-          const forwarded = await forwardToHelpDesk({
-            telegramUserId: userId,
-            telegramUsername: message.from.username || null,
-            firstName,
-            text,
-            botName: '@orbo_assistant_bot'
-          })
-          logger.info({ user_id: userId, forwarded }, 'Support message forwarded')
-        } catch (err) {
-          logger.error({
-            user_id: userId,
-            error: err instanceof Error ? err.message : String(err)
-          }, 'Failed to forward support message')
+          // Auto-reply to user
+          const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
+          try {
+            await telegramService.sendMessage(userId,
+              `Ваше сообщение получено и передано в службу поддержки Orbo. Мы свяжемся с вами в рабочее время (пн–пт, 10:00–19:00 МСК).\n\nЕсли вопрос срочный — напишите напрямую: @${supportContact}`,
+              {}
+            )
+          } catch (_) { /* ignore */ }
+
+          // Forward to support (HelpDeskEddy API or email)
+          try {
+            const forwarded = await forwardToHelpDesk({
+              telegramUserId: userId,
+              telegramUsername: message.from.username || null,
+              firstName,
+              text,
+              botName: '@orbo_assistant_bot'
+            })
+            logger.info({ user_id: userId, forwarded }, 'Support message forwarded')
+          } catch (err) {
+            logger.error({
+              user_id: userId,
+              error: err instanceof Error ? err.message : String(err)
+            }, 'Failed to forward support message')
+          }
         }
       }
     }

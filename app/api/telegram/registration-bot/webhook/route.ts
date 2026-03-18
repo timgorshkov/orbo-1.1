@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('RegistrationBotWebhook')
@@ -28,7 +29,7 @@ async function forwardToHelpDesk(data: {
         },
         body: JSON.stringify({
           title: `[${data.botName}] Сообщение от ${sender}`,
-          description: `${data.text}\n\n---\n⚠️ Это автоматический тикет из Telegram. Ответ через HelpDeskEddy пользователю НЕ дойдёт.\nДля ответа: ${data.telegramUsername ? `https://t.me/${data.telegramUsername}` : `суперадминка → пользователь TG ID ${data.telegramUserId} → кнопка «✉️ бот»`}`,
+          description: `${data.text}\n\n\n---\n\n⚠️ Это автоматический тикет из Telegram. Ответ через HelpDeskEddy пользователю НЕ дойдёт.\nДля ответа: ${data.telegramUsername ? `https://t.me/${data.telegramUsername}` : `суперадминка → пользователь TG ID ${data.telegramUserId} → кнопка «✉️ бот»`}`,
           user_email: fakeEmail
         })
       })
@@ -38,6 +39,34 @@ async function forwardToHelpDesk(data: {
 
   const { forwardBotMessage } = await import('@/lib/services/email')
   return (await forwardBotMessage(data)).success
+}
+
+/**
+ * Проверяет, известен ли Telegram-пользователь системе Orbo:
+ * есть ли он как участник (participants.tg_user_id) или как привязанный аккаунт.
+ * Используется для фильтрации спам-сообщений от случайных пользователей.
+ */
+async function isKnownOrbUser(telegramUserId: number): Promise<boolean> {
+  const db = createAdminServer()
+
+  const { data: account } = await db
+    .from('user_telegram_accounts')
+    .select('id')
+    .eq('telegram_user_id', telegramUserId)
+    .limit(1)
+    .maybeSingle()
+
+  if (account) return true
+
+  const { data: participant } = await db
+    .from('participants')
+    .select('id')
+    .eq('tg_user_id', telegramUserId)
+    .is('merged_into', null)
+    .limit(1)
+    .maybeSingle()
+
+  return !!participant
 }
 
 /**
@@ -131,28 +160,34 @@ export async function POST(request: NextRequest) {
         }, 'Registration bot /start handled')
       }
     } else if (userId) {
-      // Non-command message → auto-reply + forward to support
-      const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
-      try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `Ваше сообщение получено! Для создания пространства нажмите /start.\n\nЕсли нужна помощь — напишите: @${supportContact}`,
-          }),
-        })
-      } catch (_) { /* ignore */ }
+      // Non-command message → forward to support only if user is known in Orbo
+      const knownUser = await isKnownOrbUser(userId)
 
-      forwardToHelpDesk({
-        telegramUserId: userId,
-        telegramUsername: tgUsername,
-        firstName,
-        text,
-        botName: '@orbo_start_bot'
-      }).catch(() => {})
+      if (!knownUser) {
+        logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot: ignoring message from unknown Telegram user (not in Orbo)')
+      } else {
+        const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `Ваше сообщение получено! Для создания пространства нажмите /start.\n\nЕсли нужна помощь — напишите: @${supportContact}`,
+            }),
+          })
+        } catch (_) { /* ignore */ }
 
-      logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot non-command message forwarded to support')
+        forwardToHelpDesk({
+          telegramUserId: userId,
+          telegramUsername: tgUsername,
+          firstName,
+          text,
+          botName: '@orbo_start_bot'
+        }).catch(() => {})
+
+        logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot non-command message forwarded to support')
+      }
     }
 
     return NextResponse.json({ ok: true })
