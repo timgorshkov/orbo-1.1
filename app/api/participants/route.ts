@@ -42,21 +42,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: not a member of this organization' }, { status: 403 });
     }
     
-    logger.info({ orgId, userId: user.id }, 'Fetching participants');
-    const { data: participants, error } = await adminSupabase
+    const search = url.searchParams.get('search')?.trim() || '';
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
+
+    logger.info({ orgId, userId: user.id, search, limit }, 'Fetching participants');
+
+    let query = adminSupabase
       .from('participants')
       .select('id, full_name, username, photo_url')
       .eq('org_id', orgId)
-      .is('merged_into', null)
-      .order('full_name', { ascending: true });
-    
+      .is('merged_into', null);
+
+    if (search.length >= 2) {
+      query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%`);
+    }
+
+    const { data: participants, error } = await query
+      .order('full_name', { ascending: true })
+      .limit(limit);
+
     if (error) {
       logger.error({ error }, 'Failed to fetch participants');
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    
-    logger.info({ count: participants?.length || 0 }, 'Participants fetched');
-    
+
+    logger.info({ count: participants?.length || 0, search }, 'Participants fetched');
+
     return NextResponse.json({ participants: participants || [] });
   } catch (error) {
     logger.error({ error }, 'Unexpected error fetching participants');
