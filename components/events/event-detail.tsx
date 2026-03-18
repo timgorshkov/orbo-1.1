@@ -479,6 +479,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 orgId={orgId}
                 isPublic={event.is_public}
                 maxEventLink={maxEventLink}
+                eventDate={event.event_date}
+                eventStartTime={event.start_time}
               />
             )}
             <Button
