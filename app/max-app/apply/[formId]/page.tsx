@@ -373,43 +373,42 @@ export default function MaxApplyPage() {
     return (
       <div className="min-h-screen" style={{ backgroundColor: bgColor, color: textColor }}>
         {landing.cover_image_url && (
-          <div className="w-full h-48 overflow-hidden">
+          <div className="w-full h-32 overflow-hidden">
             <img src={landing.cover_image_url} alt={landing.title || 'Cover'} className="w-full h-full object-cover" />
           </div>
         )}
 
-        <div className="p-6">
+        <div className="p-4">
           {landing.show_org_logo && formData.org_logo && (
-            <div className="flex justify-center mb-4">
-              <img src={formData.org_logo} alt={formData.org_name} className="w-16 h-16 rounded-xl object-cover" />
+            <div className="w-12 h-12 rounded-lg overflow-hidden mb-3">
+              <img src={formData.org_logo} alt={formData.org_name} className="w-full h-full object-cover" />
             </div>
           )}
 
-          <h1 className="text-2xl font-bold text-center mb-2">{landing.title || formData.org_name}</h1>
+          <h1 className="text-lg font-bold">{landing.title || formData.org_name}</h1>
 
-          {landing.subtitle && <p className="text-center opacity-80 mb-4">{landing.subtitle}</p>}
+          {landing.subtitle && <p className="text-sm opacity-80 mt-1">{landing.subtitle}</p>}
 
           {landing.show_member_count && formData.member_count && (
-            <div className="flex items-center justify-center gap-2 text-sm opacity-70 mb-6">
+            <div className="flex items-center gap-2 text-sm opacity-70 mt-2">
               <Users className="w-4 h-4" />
               <span>{formData.member_count.toLocaleString()} участников</span>
             </div>
           )}
 
+          {/* Description — before benefits */}
+          {landing.description && (
+            <p className="text-sm opacity-70 mt-2 whitespace-pre-line">{landing.description}</p>
+          )}
+
           {landing.benefits && landing.benefits.length > 0 && (
-            <div className="space-y-3 mb-6">
+            <div className="mt-4 space-y-2">
               {landing.benefits.map((benefit, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: `${accentColor}15` }}>
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: accentColor }} />
+                <div key={idx} className="flex items-center gap-2 text-sm p-2 rounded-lg" style={{ backgroundColor: `${accentColor}15` }}>
+                  <span style={{ color: accentColor }}>✓</span>
                   <span>{benefit.text}</span>
                 </div>
               ))}
-            </div>
-          )}
-
-          {landing.description && (
-            <div className="mb-6 opacity-90">
-              <p className="whitespace-pre-wrap text-sm">{landing.description}</p>
             </div>
           )}
 
@@ -421,7 +420,7 @@ export default function MaxApplyPage() {
                 submitApplication();
               }
             }}
-            className="w-full py-4 rounded-2xl font-semibold text-white text-lg"
+            className="w-full mt-4 py-2 rounded-lg font-medium text-white"
             style={{ backgroundColor: accentColor }}
           >
             {landing.cta_button_text || 'Подать заявку'}
