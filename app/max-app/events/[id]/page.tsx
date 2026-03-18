@@ -359,7 +359,8 @@ export default function MaxEventPage() {
             )}
           </div>
 
-          {qrToken && event?.enable_qr_checkin !== false && (
+          {qrToken && event?.enable_qr_checkin !== false &&
+            (!(event?.requires_payment || event?.is_paid) || paymentStatus === 'paid') && (
             <div className="mt-6 bg-gray-50 p-6 rounded-xl text-center">
               <h3 className="text-sm font-medium text-gray-700 mb-3">Ваш электронный билет</h3>
               <div className="bg-white p-3 rounded-xl inline-block shadow-sm">

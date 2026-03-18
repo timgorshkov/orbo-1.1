@@ -60,6 +60,16 @@ export async function GET(
       return NextResponse.json({ registration: null }, { status: 200 })
     }
 
+    // Backfill missing qr_token (can happen if trigger was bypassed, e.g. direct SQL inserts)
+    if (!registration.qr_token) {
+      const newToken = crypto.randomUUID()
+      await adminSupabase
+        .from('event_registrations')
+        .update({ qr_token: newToken })
+        .eq('id', registration.id)
+      registration.qr_token = newToken
+    }
+
     // Calculate payment deadline if applicable
     let payment_deadline = null
     if (registration.payment_status === 'pending' || registration.payment_status === 'overdue') {

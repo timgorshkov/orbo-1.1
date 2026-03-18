@@ -626,7 +626,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           {/* QR Ticket - admin tab */}
-                          {userRegistration?.qr_token && event.enable_qr_checkin !== false && (
+                          {userRegistration?.qr_token && event.enable_qr_checkin !== false &&
+                            (!(event.requires_payment || event.is_paid) || userRegistration.payment_status === 'paid') && (
                             <div className="mt-3 mb-3">
                               <QRCode
                                 value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}
@@ -1162,7 +1163,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                             Мы напомним вам о событии
                           </div>
                           {/* QR Ticket - public view */}
-                          {userRegistration?.qr_token && event.enable_qr_checkin !== false && (
+                          {userRegistration?.qr_token && event.enable_qr_checkin !== false &&
+                            (!(event.requires_payment || event.is_paid) || userRegistration.payment_status === 'paid') && (
                             <div className="mt-3 mb-3">
                               <QRCode
                                 value={`${typeof window !== 'undefined' ? window.location.origin : ''}/checkin?token=${userRegistration.qr_token}`}

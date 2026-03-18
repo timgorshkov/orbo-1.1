@@ -110,11 +110,23 @@ export async function GET(
 
         isRegistered = !!registration;
         paymentStatus = registration?.payment_status || null;
+
+        // Backfill missing qr_token (can happen if trigger was bypassed)
+        let qrToken = registration?.qr_token || null;
+        if (registration && !qrToken) {
+          const newToken = crypto.randomUUID();
+          await adminSupabase
+            .from('event_registrations')
+            .update({ qr_token: newToken })
+            .eq('id', registration.id);
+          qrToken = newToken;
+        }
+
         userRegistration = registration ? {
           id: registration.id,
           status: registration.status,
           payment_status: registration.payment_status,
-          qr_token: registration.qr_token,
+          qr_token: qrToken,
         } : null;
       }
     }
