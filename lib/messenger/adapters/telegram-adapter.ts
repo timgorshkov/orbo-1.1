@@ -182,8 +182,12 @@ export class TelegramAdapter extends BaseMessengerAdapter {
   }
 
   async getChatAdministrators(chatId: string): Promise<ApiResult<MessengerChatMember[]>> {
-    const response = await this.callApi<TelegramChatMember[]>('getChatAdministrators', { 
-      chat_id: this.parseChatId(chatId) 
+    const numericId = this.parseChatId(chatId);
+    if (typeof numericId === 'number' && numericId > 0) {
+      return this.error('Private chat has no administrators', 400);
+    }
+    const response = await this.callApi<TelegramChatMember[]>('getChatAdministrators', {
+      chat_id: numericId
     });
     
     if (!response.ok || !response.result) {

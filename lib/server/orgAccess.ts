@@ -13,6 +13,8 @@ import { createServiceLogger } from '@/lib/logger';
 
 const logger = createServiceLogger('OrgAccess');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface EffectiveOrgRole {
   role: string;
   isSuperadmin: boolean;
@@ -30,6 +32,11 @@ export async function getEffectiveOrgRole(
   userId: string,
   orgId: string
 ): Promise<EffectiveOrgRole | null> {
+  if (!UUID_RE.test(orgId)) {
+    logger.warn({ user_id: userId, org_id: orgId }, 'getEffectiveOrgRole called with invalid orgId, returning null');
+    return null;
+  }
+
   const adminSupabase = createAdminServer();
 
   // 1. Check real membership
