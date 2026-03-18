@@ -115,6 +115,7 @@ export default async function PipelinePage({
     }
     
     const hasForm = forms && forms.length > 0
+    const singleFormId = forms && forms.length === 1 ? forms[0].id : null
 
     return (
       <div className="h-full flex flex-col">
@@ -126,6 +127,7 @@ export default async function PipelinePage({
           pipelineType={pipeline.pipeline_type}
           telegramGroupName={telegramGroupName}
           hasForm={!!hasForm}
+          formId={singleFormId}
         />
         
         {/* Kanban Board */}

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, LayoutGrid, AlertTriangle, Plus } from 'lucide-react'
+import { ArrowLeft, Settings, LayoutGrid, AlertTriangle, Plus, Share2, Copy, Check, ExternalLink, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface PipelineHeaderProps {
@@ -12,6 +12,8 @@ interface PipelineHeaderProps {
   pipelineType: string
   telegramGroupName?: string | null
   hasForm: boolean
+  /** Передаётся только если у воронки ровно одна форма */
+  formId?: string | null
 }
 
 export default function PipelineHeader({
@@ -20,9 +22,41 @@ export default function PipelineHeader({
   pipelineName,
   pipelineType,
   telegramGroupName,
-  hasForm
+  hasForm,
+  formId,
 }: PipelineHeaderProps) {
   const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'orbo_community_bot'
+  const telegramLink = formId ? `https://t.me/${botUsername}?startapp=apply-${formId}` : null
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setShareOpen(false)
+      }
+    }
+    if (shareOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [shareOpen])
+
+  const copyLink = async () => {
+    if (!telegramLink) return
+    try {
+      await navigator.clipboard.writeText(telegramLink)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
 
   return (
     <div className="flex-shrink-0 border-b bg-white">
@@ -56,8 +90,69 @@ export default function PipelineHeader({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Share button — only when exactly one form exists */}
+            {formId && telegramLink && (
+              <div className="relative">
+                <button
+                  ref={triggerRef}
+                  onClick={() => setShareOpen(!shareOpen)}
+                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Поделиться
+                </button>
+                {shareOpen && (
+                  <div
+                    ref={popoverRef}
+                    className="absolute right-0 top-full mt-2 w-72 bg-white rounded-lg border border-gray-200 shadow-lg z-50"
+                  >
+                    <div className="p-2">
+                      <p className="px-2 py-1.5 text-xs text-gray-500">
+                        Поделиться ссылкой на форму
+                      </p>
+                      <div className="h-px bg-gray-100 my-1" />
+
+                      {/* Copy link */}
+                      <button
+                        onClick={copyLink}
+                        className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
+                      >
+                        <div className="flex-shrink-0 w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
+                          <MessageCircle className="h-4 w-4 text-sky-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">Telegram MiniApp</p>
+                          <p className="text-xs text-gray-500 truncate">{telegramLink}</p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {copied ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      <div className="h-px bg-gray-100 my-1" />
+
+                      {/* Open in Telegram */}
+                      <a
+                        href={telegramLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
+                      >
+                        <ExternalLink className="h-4 w-4 text-gray-400" />
+                        <span className="text-sm">Открыть в Telegram</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Manage Forms */}
-            <Link href={hasForm 
+            <Link href={hasForm
               ? `/p/${orgId}/applications/pipelines/${pipelineId}/forms`
               : `/p/${orgId}/applications/pipelines/${pipelineId}/forms/new`
             }>
