@@ -88,8 +88,8 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 10000)
     
-    const dashboardRes = await fetch(dashboardUrl, { 
-      cache: 'no-store',
+    const dashboardRes = await fetch(dashboardUrl, {
+      next: { revalidate: 30 },
       headers: {
         'Cookie': cookieHeader
       },

@@ -36,9 +36,18 @@ export default function SignUp() {
     }
   }, [status, session, router, logger]);
 
-  // Если уже авторизован — форму не показываем (редирект в useEffect)
-  // Не рендерим отдельный loading-экран: он вызывает CLS 0.98 из-за смены layout
-  if (status === 'authenticated') return null;
+  // Если уже авторизован или статус ещё загружается — показываем заглушку той же высоты
+  // чтобы не было CLS при смене layout (return null давал CLS ~1.0)
+  if (status === 'authenticated' || status === 'loading') {
+    return (
+      <div className="min-h-screen grid lg:grid-cols-2">
+        <div className="hidden lg:flex flex-col justify-center items-center bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600" />
+        <div className="flex items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      </div>
+    )
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

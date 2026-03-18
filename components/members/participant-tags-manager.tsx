@@ -38,8 +38,12 @@ export default function ParticipantTagsManager({
   const [processingTagId, setProcessingTagId] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!isAdmin) {
+      setLoading(false)
+      return
+    }
     fetchData()
-  }, [participantId])
+  }, [participantId, isAdmin])
 
   const fetchData = async () => {
     try {
