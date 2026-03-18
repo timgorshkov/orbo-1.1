@@ -462,7 +462,53 @@ export default function TelegramEventPage() {
             )}
           </div>
           
-          {/* QR Code Ticket */}
+          {/* Payment section — shown BEFORE QR so it's the first thing visible on mobile */}
+          {event?.requires_payment && (
+            <div className="mt-6">
+              {isPaid ? (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-green-700 font-medium">
+                    <CheckCircle2 className="w-5 h-5" />
+                    Оплата подтверждена
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-amber-700 font-medium mb-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Ожидает оплаты
+                  </div>
+                  {event.default_price && (
+                    <p className="text-lg font-semibold text-gray-900 mb-3">
+                      К оплате: {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
+                    </p>
+                  )}
+                  {event.payment_instructions && (
+                    <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">
+                      {event.payment_instructions}
+                    </p>
+                  )}
+                  {event.payment_link && (
+                    <>
+                      <a
+                        href={event.payment_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-3 bg-amber-500 text-white rounded-xl font-semibold"
+                      >
+                        💳 Перейти к оплате
+                      </a>
+                      <p className="text-xs text-gray-500 text-center mt-3">
+                        Если вы уже оплатили, дождитесь учёта оплаты организатором
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* QR Code Ticket — shown after payment section */}
           {qrToken && event?.enable_qr_checkin !== false &&
             (!(event?.requires_payment || event?.is_paid) || paymentStatus === 'paid') && (
             <div className="mt-6 bg-gray-50 p-6 rounded-xl text-center">
@@ -481,7 +527,7 @@ export default function TelegramEventPage() {
               </p>
             </div>
           )}
-          
+
           {/* Add to Calendar buttons */}
           {event && (
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -534,56 +580,6 @@ export default function TelegramEventPage() {
             </div>
           )}
           
-          {/* Payment section for paid events */}
-          {event?.requires_payment && (
-            <div className="mt-6">
-              {isPaid ? (
-                // Payment confirmed
-                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                  <div className="flex items-center gap-2 text-green-700 font-medium">
-                    <CheckCircle2 className="w-5 h-5" />
-                    Оплата подтверждена
-                  </div>
-                </div>
-              ) : (
-                // Payment pending
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                  <div className="flex items-center gap-2 text-amber-700 font-medium mb-2">
-                    <AlertCircle className="w-5 h-5" />
-                    Ожидает оплаты
-                  </div>
-                  
-                  {event.default_price && (
-                    <p className="text-lg font-semibold text-gray-900 mb-3">
-                      К оплате: {event.default_price.toLocaleString('ru-RU')} {getCurrencySymbol(event.currency || 'RUB')}
-                    </p>
-                  )}
-                  
-                  {event.payment_instructions && (
-                    <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">
-                      {event.payment_instructions}
-                    </p>
-                  )}
-                  
-                  {event.payment_link && (
-                    <>
-                      <a
-                        href={event.payment_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full py-3 bg-amber-500 text-white rounded-xl font-semibold"
-                      >
-                        💳 Перейти к оплате
-                      </a>
-                      <p className="text-xs text-gray-500 text-center mt-3">
-                        Если вы уже оплатили, дождитесь учёта оплаты организатором
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
         
         {/* Footer with links */}

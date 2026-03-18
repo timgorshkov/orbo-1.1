@@ -625,7 +625,76 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <div className="text-sm text-neutral-600 mb-3">
                             Мы напомним вам о событии
                           </div>
-                          {/* QR Ticket - admin tab */}
+                          {/* Payment Info for Registered Users — shown BEFORE QR so it's visible first */}
+                          {(event.requires_payment || event.is_paid) && (
+                            <div className="mt-3 space-y-3 min-h-[80px]">
+                              {loadingRegistration ? (
+                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
+                              ) : userRegistration ? (
+                                <>
+                                  {userRegistration.payment_status !== 'paid' ? (
+                                    /* Pending payment — prominent call-to-action */
+                                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                          userRegistration.payment_status === 'partially_paid'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : userRegistration.payment_status === 'overdue'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-orange-100 text-orange-800'
+                                        }`}>
+                                          {userRegistration.payment_status === 'partially_paid'
+                                            ? 'Частично оплачено'
+                                            : userRegistration.payment_status === 'overdue'
+                                            ? 'Просрочено'
+                                            : 'Ожидает оплаты'}
+                                        </div>
+                                      </div>
+                                      {userRegistration.price !== null && (
+                                        <div className="text-center font-semibold text-neutral-900">
+                                          К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                          {userRegistration.quantity > 1 && (
+                                            <div className="text-xs font-normal text-neutral-500 mt-0.5">
+                                              {userRegistration.quantity} {userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                            </div>
+                                          )}
+                                          {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
+                                            <div className="text-xs font-normal text-neutral-600 mt-0.5">
+                                              Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      {event.payment_instructions && (
+                                        <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-white/70 p-2 rounded">
+                                          {event.payment_instructions}
+                                        </div>
+                                      )}
+                                      {event.payment_link && (
+                                        <a
+                                          href={event.payment_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center justify-center gap-2 w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
+                                        >
+                                          💳 Перейти к оплате
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    /* Paid — compact confirmation */
+                                    <div className="flex items-center justify-center gap-2">
+                                      <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                        ✓ Оплачено
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
+                          )}
+
+                          {/* QR Ticket - admin tab (shown after payment confirmation) */}
                           {userRegistration?.qr_token && event.enable_qr_checkin !== false &&
                             (!(event.requires_payment || event.is_paid) || userRegistration.payment_status === 'paid') && (
                             <div className="mt-3 mb-3">
@@ -636,66 +705,6 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
                               />
                               <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
-                            </div>
-                          )}
-                          
-                          {/* Payment Info for Registered Users - min-height prevents CLS */}
-                          {(event.requires_payment || event.is_paid) && (
-                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3 min-h-[80px]">
-                              {loadingRegistration ? (
-                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
-                              ) : userRegistration ? (
-                                <>
-                                  {/* Payment Status */}
-                                  {userRegistration.payment_status && (
-                                    <div className="flex items-center justify-center gap-2">
-                                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                        userRegistration.payment_status === 'paid' 
-                                          ? 'bg-green-100 text-green-800'
-                                          : userRegistration.payment_status === 'partially_paid'
-                                          ? 'bg-yellow-100 text-yellow-800'
-                                          : userRegistration.payment_status === 'overdue'
-                                          ? 'bg-red-100 text-red-800'
-                                          : 'bg-orange-100 text-orange-800'
-                                      }`}>
-                                        {userRegistration.payment_status === 'paid' 
-                                          ? '✓ Оплачено'
-                                          : userRegistration.payment_status === 'partially_paid'
-                                          ? 'Частично оплачено'
-                                          : userRegistration.payment_status === 'overdue'
-                                          ? 'Просрочено'
-                                          : 'Ожидает оплаты'}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {/* Amount to Pay */}
-                                  {userRegistration.price !== null && userRegistration.payment_status !== 'paid' && (
-                                    <div className="text-center">
-                                      <div className="text-lg font-semibold text-neutral-900">
-                                        К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                      </div>
-                                      {userRegistration.quantity > 1 && (
-                                        <div className="text-xs text-neutral-500 mt-1">
-                                          {userRegistration.quantity} {userRegistration.quantity === 1 ? 'билет' : userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                        </div>
-                                      )}
-                                      {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
-                                        <div className="text-sm text-neutral-600 mt-1">
-                                          Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  
-                                  {/* Payment Instructions */}
-                                  {userRegistration.payment_status !== 'paid' && event.payment_instructions && (
-                                    <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
-                                      {event.payment_instructions}
-                                    </div>
-                                  )}
-                                </>
-                              ) : null}
                             </div>
                           )}
                         </div>
@@ -1162,7 +1171,74 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           <div className="text-sm text-neutral-600 mb-3">
                             Мы напомним вам о событии
                           </div>
-                          {/* QR Ticket - public view */}
+                          {/* Payment Info for Registered Users — shown BEFORE QR so it's visible first */}
+                          {(event.requires_payment || event.is_paid) && (
+                            <div className="mt-3 space-y-3 min-h-[80px]">
+                              {loadingRegistration ? (
+                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
+                              ) : userRegistration ? (
+                                <>
+                                  {userRegistration.payment_status !== 'paid' ? (
+                                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                          userRegistration.payment_status === 'partially_paid'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : userRegistration.payment_status === 'overdue'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-orange-100 text-orange-800'
+                                        }`}>
+                                          {userRegistration.payment_status === 'partially_paid'
+                                            ? 'Частично оплачено'
+                                            : userRegistration.payment_status === 'overdue'
+                                            ? 'Просрочено'
+                                            : 'Ожидает оплаты'}
+                                        </div>
+                                      </div>
+                                      {userRegistration.price !== null && (
+                                        <div className="text-center font-semibold text-neutral-900">
+                                          К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                          {userRegistration.quantity > 1 && (
+                                            <div className="text-xs font-normal text-neutral-500 mt-0.5">
+                                              {userRegistration.quantity} {userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                            </div>
+                                          )}
+                                          {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
+                                            <div className="text-xs font-normal text-neutral-600 mt-0.5">
+                                              Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      {event.payment_instructions && (
+                                        <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-white/70 p-2 rounded">
+                                          {event.payment_instructions}
+                                        </div>
+                                      )}
+                                      {event.payment_link && (
+                                        <a
+                                          href={event.payment_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center justify-center gap-2 w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
+                                        >
+                                          💳 Перейти к оплате
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                        ✓ Оплачено
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
+                          )}
+
+                          {/* QR Ticket - public view (shown after payment confirmation) */}
                           {userRegistration?.qr_token && event.enable_qr_checkin !== false &&
                             (!(event.requires_payment || event.is_paid) || userRegistration.payment_status === 'paid') && (
                             <div className="mt-3 mb-3">
@@ -1173,63 +1249,6 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
                               />
                               <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
-                            </div>
-                          )}
-                          
-                          {/* Payment Info for Registered Users - min-height prevents CLS */}
-                          {(event.requires_payment || event.is_paid) && (
-                            <div className="mt-4 pt-4 border-t border-neutral-200 space-y-3 min-h-[80px]">
-                              {loadingRegistration ? (
-                                <div className="text-sm text-neutral-500 animate-pulse">Загрузка информации об оплате...</div>
-                              ) : userRegistration ? (
-                                <>
-                                  {userRegistration.payment_status && (
-                                    <div className="flex items-center justify-center gap-2">
-                                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                        userRegistration.payment_status === 'paid' 
-                                          ? 'bg-green-100 text-green-800'
-                                          : userRegistration.payment_status === 'partially_paid'
-                                          ? 'bg-yellow-100 text-yellow-800'
-                                          : userRegistration.payment_status === 'overdue'
-                                          ? 'bg-red-100 text-red-800'
-                                          : 'bg-orange-100 text-orange-800'
-                                      }`}>
-                                        {userRegistration.payment_status === 'paid' 
-                                          ? '✓ Оплачено'
-                                          : userRegistration.payment_status === 'partially_paid'
-                                          ? 'Частично оплачено'
-                                          : userRegistration.payment_status === 'overdue'
-                                          ? 'Просрочено'
-                                          : 'Ожидает оплаты'}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {userRegistration.price !== null && userRegistration.payment_status !== 'paid' && (
-                                    <div className="text-center">
-                                      <div className="text-lg font-semibold text-neutral-900">
-                                        К оплате: {(userRegistration.price * userRegistration.quantity).toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                      </div>
-                                      {userRegistration.quantity > 1 && (
-                                        <div className="text-xs text-neutral-500 mt-1">
-                                          {userRegistration.quantity} {userRegistration.quantity === 1 ? 'билет' : userRegistration.quantity < 5 ? 'билета' : 'билетов'} × {userRegistration.price.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                        </div>
-                                      )}
-                                      {userRegistration.paid_amount !== null && userRegistration.paid_amount > 0 && (
-                                        <div className="text-sm text-neutral-600 mt-1">
-                                          Оплачено: {userRegistration.paid_amount.toLocaleString('ru-RU')} {event.currency || 'RUB'}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  
-                                  {userRegistration.payment_status !== 'paid' && event.payment_instructions && (
-                                    <div className="text-sm text-neutral-600 whitespace-pre-wrap text-left bg-neutral-50 p-3 rounded-lg">
-                                      {event.payment_instructions}
-                                    </div>
-                                  )}
-                                </>
-                              ) : null}
                             </div>
                           )}
                         </div>
