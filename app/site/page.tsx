@@ -1,13 +1,11 @@
 import type { Metadata } from 'next';
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
-import { Header, Footer, Orb, BrowserFrame } from '@/components/website';
+import { Header, Footer, Orb, BrowserFrame, AnnouncementBanner } from '@/components/website';
 import Link from 'next/link';
 
-export const dynamic = 'force-static';
-
 export const metadata: Metadata = {
-  title: 'CRM участников и событий для Telegram',
-  description: 'Создайте MiniApp для регистрации на мероприятие за пару кликов. Нативный опыт в Telegram повышает конверсию, автоматические напоминания — доходимость. Бесплатно для сообществ до 500 участников.',
+  title: 'CRM для групп и сообществ — Telegram и Max',
+  description: 'CRM участников для сообществ в Telegram и Max. Профили участников с AI-анализом интересов, события с MiniApp, заявки на вступление. Данные на серверах в России. Бесплатно до 500 участников.',
   alternates: {
     canonical: 'https://orbo.ru',
   },
@@ -36,6 +34,12 @@ const MaxLogo = () => (
 export default function HomePage() {
   return (
     <>
+      <AnnouncementBanner
+        id="max-continuity-2026"
+        message="Orbo работает с Telegram и Max. Инструкция по непрерывности коммуникации в группах"
+        linkText="Подробнее"
+        linkHref="/telegram-backup"
+      />
       <Header />
       
       {/* ========== HERO с ORB эффектом ========== */}
@@ -44,11 +48,11 @@ export default function HomePage() {
         
         <div className="hero-orb-section__content">
           <h1 className="hero-orb-section__title">
-            CRM участников и событий<br />для Telegram-сообществ
+            CRM для групп<br />и сообществ
           </h1>
           
           <p className="hero-orb-section__subtitle">
-            Создайте MiniApp для регистрации на мероприятие за пару кликов. Нативный опыт в Telegram повышает конверсию, а автоматические напоминания — доходимость.
+            Сохраняйте базу участников, понимайте их интересы и цели с помощью AI. Готовый MiniApp для Telegram и Max.
           </p>
           
           <div className="hero-orb-section__actions">
@@ -60,18 +64,17 @@ export default function HomePage() {
             </Link>
           </div>
           
-          {/* Поддерживаемые мессенджеры - внутри контента, выше */}
           <div className="messengers-section messengers-section--inline">
-            <span className="messengers-section__label">Поддерживаемые мессенджеры</span>
+            <span className="messengers-section__label">Telegram · Max · WhatsApp</span>
             <div className="messengers-section__logos">
               <div className="messenger-logo" title="Telegram">
                 <TelegramLogo />
               </div>
-              <div className="messenger-logo" title="WhatsApp">
-                <WhatsAppLogo />
-              </div>
               <div className="messenger-logo" title="Max">
                 <MaxLogo />
+              </div>
+              <div className="messenger-logo" title="WhatsApp">
+                <WhatsAppLogo />
               </div>
             </div>
           </div>
@@ -85,7 +88,7 @@ export default function HomePage() {
             <span className="section-header__eyebrow">Для кого</span>
             <h2 className="section-header__title">Знакомые ситуации?</h2>
             <p className="section-header__subtitle">
-              Orbo помогает тем, кто строит и развивает сообщества в Telegram
+              Orbo помогает тем, кто строит и монетизирует сообщества в мессенджерах
             </p>
           </div>
           
@@ -306,9 +309,9 @@ export default function HomePage() {
       {/* ========== CTA ========== */}
       <section className="cta-section">
         <div className="website-container">
-          <h2 className="cta-section__title">Повысьте доходимость на следующем событии</h2>
+          <h2 className="cta-section__title">Сохраните базу участников вашего сообщества</h2>
           <p className="cta-section__text">
-            Создайте регистрацию, поделитесь ссылкой и соберите контакты участников
+            Подключите группу, узнайте своих людей и проведите следующее мероприятие без хаоса
           </p>
           <div className="cta-section__actions">
             <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
