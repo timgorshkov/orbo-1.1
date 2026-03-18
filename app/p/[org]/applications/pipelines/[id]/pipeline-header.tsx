@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, LayoutGrid, AlertTriangle, Plus, Share2, Copy, Check, ExternalLink, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Settings, LayoutGrid, AlertTriangle, Plus, Share2, Copy, Check, ExternalLink, MessageCircle, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface PipelineHeaderProps {
@@ -14,6 +14,8 @@ interface PipelineHeaderProps {
   hasForm: boolean
   /** Передаётся только если у воронки ровно одна форма */
   formId?: string | null
+  /** MAX mini-app ссылка — только если у воронки одна форма и MAX подключён */
+  maxFormLink?: string | null
 }
 
 export default function PipelineHeader({
@@ -24,10 +26,12 @@ export default function PipelineHeader({
   telegramGroupName,
   hasForm,
   formId,
+  maxFormLink,
 }: PipelineHeaderProps) {
   const [bannerDismissed, setBannerDismissed] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedMax, setCopiedMax] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
@@ -49,12 +53,16 @@ export default function PipelineHeader({
     }
   }, [shareOpen])
 
-  const copyLink = async () => {
-    if (!telegramLink) return
+  const copyLink = async (text: string, type: 'tg' | 'max') => {
     try {
-      await navigator.clipboard.writeText(telegramLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(text)
+      if (type === 'tg') {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        setCopiedMax(true)
+        setTimeout(() => setCopiedMax(false), 2000)
+      }
     } catch {}
   }
 
@@ -112,9 +120,9 @@ export default function PipelineHeader({
                       </p>
                       <div className="h-px bg-gray-100 my-1" />
 
-                      {/* Copy link */}
+                      {/* Copy Telegram link */}
                       <button
-                        onClick={copyLink}
+                        onClick={() => copyLink(telegramLink!, 'tg')}
                         className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
                       >
                         <div className="flex-shrink-0 w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
@@ -125,19 +133,34 @@ export default function PipelineHeader({
                           <p className="text-xs text-gray-500 truncate">{telegramLink}</p>
                         </div>
                         <div className="flex-shrink-0">
-                          {copied ? (
-                            <Check className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <Copy className="h-4 w-4 text-gray-400" />
-                          )}
+                          {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-gray-400" />}
                         </div>
                       </button>
+
+                      {/* Copy MAX link */}
+                      {maxFormLink && (
+                        <button
+                          onClick={() => copyLink(maxFormLink!, 'max')}
+                          className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors text-left"
+                        >
+                          <div className="flex-shrink-0 w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                            <Send className="h-4 w-4 text-indigo-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">MAX MiniApp</p>
+                            <p className="text-xs text-gray-500 truncate">{maxFormLink}</p>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {copiedMax ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-gray-400" />}
+                          </div>
+                        </button>
+                      )}
 
                       <div className="h-px bg-gray-100 my-1" />
 
                       {/* Open in Telegram */}
                       <a
-                        href={telegramLink}
+                        href={telegramLink!}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
@@ -145,6 +168,19 @@ export default function PipelineHeader({
                         <ExternalLink className="h-4 w-4 text-gray-400" />
                         <span className="text-sm">Открыть в Telegram</span>
                       </a>
+
+                      {/* Open in MAX */}
+                      {maxFormLink && (
+                        <a
+                          href={maxFormLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-100 transition-colors"
+                        >
+                          <ExternalLink className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm">Открыть в MAX</span>
+                        </a>
+                      )}
                     </div>
                   </div>
                 )}

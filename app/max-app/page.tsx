@@ -80,6 +80,14 @@ export default function MaxAppHome() {
         return;
       }
     }
+    if (startParam.startsWith('apply-')) {
+      const formId = startParam.substring(6);
+      if (formId.length > 0) {
+        setStatus('redirecting');
+        router.replace(`/max-app/apply/${formId}`);
+        return;
+      }
+    }
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(startParam)) {
       setStatus('redirecting');

@@ -117,6 +117,22 @@ export default async function PipelinePage({
     const hasForm = forms && forms.length > 0
     const singleFormId = forms && forms.length === 1 ? forms[0].id : null
 
+    // Check if MAX is connected for this org and generate MAX form link
+    let maxFormLink: string | null = null
+    if (singleFormId) {
+      const { data: maxAccount } = await supabase
+        .from('user_max_accounts')
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('is_verified', true)
+        .maybeSingle()
+
+      if (maxAccount) {
+        const { generateMaxFormMiniAppLink } = await import('@/lib/max/webAppAuth')
+        maxFormLink = generateMaxFormMiniAppLink(singleFormId)
+      }
+    }
+
     return (
       <div className="h-full flex flex-col">
         {/* Header */}
@@ -128,6 +144,7 @@ export default async function PipelinePage({
           telegramGroupName={telegramGroupName}
           hasForm={!!hasForm}
           formId={singleFormId}
+          maxFormLink={maxFormLink}
         />
         
         {/* Kanban Board */}

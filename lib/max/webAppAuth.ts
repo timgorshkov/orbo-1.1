@@ -145,3 +145,13 @@ export function generateMaxEventMiniAppLink(eventId: string): string {
   const botUsername = getMaxEventBotUsername();
   return `https://max.ru/${botUsername}?startapp=e-${eventId}`;
 }
+
+export function getMaxMainBotUsername(): string {
+  return process.env.MAX_MAIN_BOT_USERNAME || '';
+}
+
+export function generateMaxFormMiniAppLink(formId: string): string | null {
+  const botUsername = getMaxMainBotUsername();
+  if (!botUsername) return null;
+  return `https://max.ru/${botUsername}?startapp=apply-${formId}`;
+}
