@@ -22,7 +22,12 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 10 https://go2.unisender.ru 2>&1)",
       "WebFetch(domain:helpdeskeddy.ru)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -name *.tsx -path *participant*)",
-      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -name *.tsx -path *member*)"
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -name *.tsx -path *member*)",
+      "Bash(curl -s -H 'Authorization: token $\\(cat ~/.github_token 2>/dev/null\\)' https://api.github.com/repos/timgorshkov/orbo-1.1/actions/runs?per_page=3)",
+      "Bash(python3 -c \"import json,sys; runs=json.load\\(sys.stdin\\).get\\(''''workflow_runs'''',[]\\); [print\\(r[''''name''''], r[''''status''''], r[''''conclusion''''], r[''''created_at'''']\\) for r in runs]\")",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -name *event* -type f)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -type f -name *funnel* -o -name *pipeline*)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1/app/p/[org]/applications' -type f -name *.tsx -o -name *.ts)"
     ]
   }
 }
