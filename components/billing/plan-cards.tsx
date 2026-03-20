@@ -22,7 +22,7 @@ interface PlanCardsProps {
 const FEATURES: Record<string, string[]> = {
   free: [
     'До 500 участников',
-    'Telegram-группы',
+    'Telegram и Max группы',
     'CRM участников',
     'Готовые боты',
     'События и регистрация',
@@ -32,26 +32,20 @@ const FEATURES: Record<string, string[]> = {
     'Безлимитные участники',
     'Всё из Бесплатного',
     'AI-анализ участников',
-    'Обнаружение негатива',
-    'Обнаружение вопросов',
+    'Обнаружение негатива и вопросов',
     'Пользовательские правила',
   ],
   enterprise: [
     'Всё из Профессионального',
-    'Собственные боты',
-    'Кастомные мини-приложения',
+    'Платные членства участников',
+    'Собственные боты и MiniApp',
     'Приоритетная поддержка',
-    'API-доступ',
-    'Выделенный менеджер',
-    'Обучение команды',
-    'SLA и интеграции',
-    'Индивидуальные лимиты',
+    'API-доступ и интеграции',
   ],
   promo: [
     'Безлимитные участники',
     'Все функции Клубного',
-    'Собственные боты',
-    'Кастомные мини-приложения',
+    'Собственные боты и MiniApp',
   ],
 }
 
@@ -105,21 +99,18 @@ export default function PlanCards({ plans, currentPlanCode, paymentUrl, clubPaym
             )}
 
             <div className="mb-6">
-              {plan.price_monthly === 0 && (
+              {plan.price_monthly === null ? (
                 <div>
-                  <span className="text-3xl font-bold text-gray-900">0 ₽</span>
-                  <span className="text-gray-500"> / навсегда</span>
+                  <span className="text-lg font-semibold text-gray-900">Индивидуально</span>
                 </div>
-              )}
-              {plan.price_monthly && plan.price_monthly > 0 && (
+              ) : plan.price_monthly > 0 ? (
                 <div>
                   <span className="text-3xl font-bold text-gray-900">{plan.price_monthly.toLocaleString('ru-RU')} ₽</span>
                   <span className="text-gray-500"> / месяц</span>
                 </div>
-              )}
-              {plan.price_monthly === null && (
+              ) : (
                 <div>
-                  <span className="text-lg font-semibold text-gray-900">Индивидуально</span>
+                  <span className="text-3xl font-bold text-gray-900">Бесплатно</span>
                 </div>
               )}
             </div>

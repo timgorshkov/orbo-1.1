@@ -15,21 +15,21 @@ const PLANS = [
     name: 'Бесплатный',
     description: 'Для небольших сообществ, начинающих с Orbo',
     price: 0,
-    priceLabel: '0 ₽',
-    priceSuffix: 'навсегда',
+    priceLabel: 'Бесплатно',
+    priceSuffix: '',
     icon: Users,
     highlighted: false,
     cta: 'Начать бесплатно',
     ctaHref: 'https://my.orbo.ru/signup',
     features: [
       { name: 'До 500 участников', included: true },
-      { name: 'Telegram-группы', included: true },
+      { name: 'Telegram и Max группы', included: true },
       { name: 'CRM участников', included: true },
       { name: 'Готовые боты', included: true },
       { name: 'События и регистрация', included: true },
       { name: 'Анонсы в группы', included: true },
-      { name: 'AI-анализ участников', included: false },
-      { name: 'Обнаружение негатива', included: false },
+      { name: '5 AI-анализов профилей', included: true },
+      { name: 'Обнаружение негатива и вопросов', included: false },
       { name: 'Пользовательские правила', included: false },
     ],
   },
@@ -47,10 +47,8 @@ const PLANS = [
     features: [
       { name: 'Безлимитные участники', included: true },
       { name: 'Всё из Бесплатного', included: true },
-      { name: 'Готовые боты', included: true },
-      { name: 'AI-анализ участников', included: true },
-      { name: 'Обнаружение негатива', included: true },
-      { name: 'Обнаружение вопросов', included: true },
+      { name: 'AI-анализ участников без лимита', included: true },
+      { name: 'Обнаружение негатива и вопросов', included: true },
       { name: 'Пользовательские правила', included: true },
       { name: 'Приоритетная поддержка', included: false },
       { name: 'Собственные боты', included: false },
@@ -59,7 +57,7 @@ const PLANS = [
   {
     code: 'enterprise',
     name: 'Клубный',
-    description: 'Для клубов с расширенными возможностями',
+    description: 'Для клубов с платным членством и собственным брендом',
     price: 7500,
     priceLabel: '7 500 ₽',
     priceSuffix: '/ месяц',
@@ -69,14 +67,10 @@ const PLANS = [
     ctaHref: 'https://payform.ru/4taVjLm/',
     features: [
       { name: 'Всё из Профессионального', included: true },
-      { name: 'Собственные боты', included: true },
-      { name: 'Кастомные мини-приложения', included: true },
+      { name: 'Платные членства участников', included: true },
+      { name: 'Собственные боты и MiniApp', included: true },
       { name: 'Приоритетная поддержка', included: true },
-      { name: 'API-доступ', included: true },
-      { name: 'Выделенный менеджер', included: true },
-      { name: 'Обучение команды', included: true },
-      { name: 'SLA и интеграции', included: true },
-      { name: 'Индивидуальные лимиты', included: true },
+      { name: 'API-доступ и интеграции', included: true },
     ],
   },
 ]
@@ -190,19 +184,19 @@ export default function PricingPage() {
           <div className="space-y-6">
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Что будет, если участников станет больше 500?</h3>
-              <p className="text-gray-600 text-sm">Вам будет предложен бесплатный 14-дневный пробный период тарифа Профессиональный. После этого потребуется выбрать платный тариф для продолжения.</p>
+              <p className="text-gray-600 text-sm">Автоматически включится бесплатный 14-дневный пробный период тарифа Профессиональный. Все функции станут доступны. После окончания пробного периода потребуется оплатить подписку.</p>
             </div>
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Как происходит оплата?</h3>
-              <p className="text-gray-600 text-sm">Оплата разовая за месяц. После оплаты тариф активируется автоматически. Можно оплатить банковской картой.</p>
+              <p className="text-gray-600 text-sm">Оплата разовая за месяц. Можно оплатить банковской картой. Тариф активируется автоматически.</p>
             </div>
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Что входит в AI-функции?</h3>
-              <p className="text-gray-600 text-sm">AI-анализ поведения участников, автоматическое обнаружение негатива и неотвеченных вопросов в группах, пользовательские правила уведомлений с ИИ.</p>
+              <p className="text-gray-600 text-sm">AI-анализ интересов, целей и роли каждого участника на основе его сообщений. Обнаружение негатива и неотвеченных вопросов в группах. Пользовательские правила уведомлений. На бесплатном тарифе доступно 5 AI-анализов профилей.</p>
             </div>
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">Чем Клубный тариф отличается от Профессионального?</h3>
-              <p className="text-gray-600 text-sm">Клубный тариф включает возможность создавать собственных Telegram-ботов и кастомные мини-приложения, а также приоритетную поддержку и выделенного менеджера.</p>
+              <p className="text-gray-600 text-sm">Клубный тариф добавляет платные членства участников, возможность создавать собственных Telegram-ботов и MiniApp под ваш бренд, а также API-доступ и приоритетную поддержку.</p>
             </div>
           </div>
         </section>
