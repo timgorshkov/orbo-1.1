@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Play, Users, Zap, Calendar, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/website';
 
-const VIDEO_URL = 'https://orbucket.s3.storage.selcloud.ru/public/demo-orbo-1.mp4';
+const VIDEO_URL = 'https://40947234-09c7-4a09-8966-33bd3fb30a20.selstorage.ru/public/demo-orbo-1.mp4';
 
 export const metadata: Metadata = {
   title: 'Демо Orbo — CRM для групп и сообществ',
