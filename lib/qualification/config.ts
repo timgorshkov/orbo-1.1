@@ -1,7 +1,7 @@
 // Qualification Form Configuration
 // This config can be easily updated to change questions without code changes
 
-export const QUALIFICATION_FORM_VERSION = 'v2';
+export const QUALIFICATION_FORM_VERSION = 'v3';
 
 export interface QualificationOption {
   value: string;
@@ -44,7 +44,8 @@ export const QUALIFICATION_STEPS: QualificationStep[] = [
           { value: 'local_hub', label: 'Локальный хаб (коворкинг, апарт, посёлок)', icon: '🏢' },
           { value: 'expert_brand', label: 'Эксперт / личный бренд', icon: '🎤' },
           { value: 'client_chats', label: 'Агентство / рабочие чаты с клиентами', icon: '💬' },
-          { value: 'other', label: 'Другое', icon: '🌐' },
+          { value: 'planning', label: 'Ещё нет сообщества, хочу создать', icon: '🚀' },
+          { value: 'other', label: 'Другое (личная группа, чат друзей)', icon: '🌐' },
         ],
       },
       {
@@ -54,12 +55,13 @@ export const QUALIFICATION_STEPS: QualificationStep[] = [
         maxSelections: 3,
         required: false,
         options: [
-          { value: 'low_attendance', label: 'Люди не доходят до событий', icon: '📉' },
-          { value: 'manual_applications', label: 'Ручная обработка заявок, спам', icon: '🤖' },
+          { value: 'telegram_blocking', label: 'Боюсь потерять контакты при блокировке TG', icon: '🔒' },
           { value: 'no_subscriber_data', label: 'Не знаю своих подписчиков', icon: '👤' },
-          { value: 'event_registration', label: 'Регистрации и сбор оплат на события', icon: '🎟️' },
+          { value: 'low_attendance', label: 'Люди не доходят до событий', icon: '📉' },
           { value: 'no_crm', label: 'Нет единого профиля участника', icon: '📇' },
-          { value: 'missing_messages', label: 'Пропускаю важные сообщения', icon: '📩' },
+          { value: 'event_registration', label: 'Регистрации и сбор оплат на события', icon: '🎟️' },
+          { value: 'manual_applications', label: 'Ручная обработка заявок, спам', icon: '🤖' },
+          { value: 'missing_messages', label: 'Важные сообщения теряются в чате', icon: '📩' },
           { value: 'scattered_tools', label: 'Разрозненные инструменты', icon: '🔧' },
         ],
       },
@@ -135,6 +137,7 @@ export const RESPONSE_LABELS: Record<string, Record<string, string>> = {
     local_hub: 'Локальный хаб',
     expert_brand: 'Эксперт / личный бренд',
     client_chats: 'Агентство / клиентские чаты',
+    planning: 'Планирует создать',
     hobby: 'Клуб по интересам',
     internal: 'Внутренние коммуникации',
     other: 'Другое',
@@ -162,6 +165,7 @@ export const RESPONSE_LABELS: Record<string, Record<string, string>> = {
     scattered_tools: 'Разрозненные инструменты',
     inactive_tracking: 'Отслеживание неактивных',
     access_management: 'Управление доступом',
+    telegram_blocking: 'Страх блокировки TG',
     fear_of_blocking: 'Страх блокировок',
   },
 };

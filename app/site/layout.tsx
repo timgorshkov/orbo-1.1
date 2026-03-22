@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import '@/components/website/website.css';
 import { HelpDeskWidget } from '@/components/support/helpdesk-widget';
+import { RegistrationMetaCapture } from '@/components/analytics/registration-meta-capture';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://orbo.ru'),
@@ -36,7 +37,7 @@ export default function WebsiteLayout({
   return (
     <div className="website-root">
       {children}
-      {/* Analytics (Yandex.Metrika, VK Pixel) are loaded via root app/layout.tsx */}
+      <RegistrationMetaCapture />
       <HelpDeskWidget />
     </div>
   );

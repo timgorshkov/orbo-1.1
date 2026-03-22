@@ -34,11 +34,13 @@ const COMMUNITY_TYPE_LABELS: Record<string, string> = {
   brand_community: 'Бренд',
   local_hub: 'Локальный хаб',
   expert_brand: 'Эксперт',
+  planning: 'Планирует',
   internal: 'Внутреннее',
   other: 'Другое'
 }
 
 const PAIN_POINTS_LABELS: Record<string, string> = {
+  telegram_blocking: 'Страх блокировки TG',
   missing_messages: 'Пропуск сообщений',
   scattered_tools: 'Разрозненные инструменты',
   fear_of_blocks: 'Страх блокировок',
@@ -82,6 +84,12 @@ type User = {
   qualification_groups_count: string | null
   qualification_pain_points: string[]
   status: 'active' | 'no_org' | 'incomplete_onboarding'
+  reg_utm_source: string | null
+  reg_utm_campaign: string | null
+  reg_landing_page: string | null
+  reg_from_page: string | null
+  reg_device_type: string | null
+  reg_referrer: string | null
 }
 
 function formatLastLogin(dateStr: string | null): string {
@@ -326,6 +334,7 @@ export default function UsersTable({ users }: { users: User[] }) {
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Орг. (влад/адм)</th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Групп</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Квалификация</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Источник</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Активность</th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Тест</th>
               </tr>
@@ -400,6 +409,39 @@ export default function UsersTable({ users }: { users: User[] }) {
                             title={`Боли:\n${user.qualification_pain_points.map(p => PAIN_POINTS_LABELS[p] || p).join('\n')}`}
                           >
                             {user.qualification_pain_points.length} боли
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {user.reg_utm_source || user.reg_landing_page ? (
+                      <div
+                        className="flex flex-wrap gap-1 items-center cursor-help"
+                        title={[
+                          user.reg_utm_source && `utm_source: ${user.reg_utm_source}`,
+                          user.reg_utm_campaign && `utm_campaign: ${user.reg_utm_campaign}`,
+                          user.reg_landing_page && `Лендинг: ${user.reg_landing_page}`,
+                          user.reg_from_page && `Страница CTA: ${user.reg_from_page}`,
+                          user.reg_device_type && `Устройство: ${user.reg_device_type}`,
+                          user.reg_referrer && `Referrer: ${user.reg_referrer}`,
+                        ].filter(Boolean).join('\n')}
+                      >
+                        {user.reg_utm_source && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-indigo-100 text-indigo-700'}`}>
+                            {user.reg_utm_source}
+                          </span>
+                        )}
+                        {user.reg_device_type && (
+                          <span className={`px-1 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
+                            {user.reg_device_type === 'mobile' ? '📱' : user.reg_device_type === 'tablet' ? '📱' : '💻'}
+                          </span>
+                        )}
+                        {user.reg_landing_page && !user.reg_utm_source && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
+                            {user.reg_landing_page}
                           </span>
                         )}
                       </div>

@@ -31,7 +31,7 @@ export default function CRMPage() {
             Карточки участников с историей посещений, активностью и контактами. Не теряйте людей после первого касания.
           </p>
           <div className="hero-floating__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+            <Link href="https://my.orbo.ru/signup?from=crm" className="btn-pill btn-pill--primary">
               Начать бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
@@ -327,7 +327,7 @@ export default function CRMPage() {
             Подключите группы — карточки участников появятся автоматически
           </p>
           <div className="cta-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
+            <Link href="https://my.orbo.ru/signup?from=crm" className="btn-pill btn-pill--white">
               Начать бесплатно
               <ArrowRight size={16} />
             </Link>

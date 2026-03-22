@@ -20,7 +20,7 @@ const PLANS = [
     icon: Users,
     highlighted: false,
     cta: 'Начать бесплатно',
-    ctaHref: 'https://my.orbo.ru/signup',
+    ctaHref: 'https://my.orbo.ru/signup?from=pricing',
     features: [
       { name: 'До 500 участников', included: true },
       { name: 'Telegram и Max группы', included: true },

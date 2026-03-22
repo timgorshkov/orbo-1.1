@@ -32,7 +32,8 @@ export default async function SuperadminUsersPage() {
     { data: accountsData },
     { data: sessionsData },
     { data: telegramAccounts },
-    { data: qualificationData }
+    { data: qualificationData },
+    { data: registrationMetaData }
   ] = await Promise.all([
     supabase
       .from('memberships')
@@ -54,6 +55,10 @@ export default async function SuperadminUsersPage() {
     supabase
       .from('user_qualification_responses')
       .select('user_id, responses, completed_at')
+      .in('user_id', userIds),
+    supabase
+      .from('user_registration_meta')
+      .select('user_id, utm_source, utm_medium, utm_campaign, landing_page, from_page, device_type, referrer_url')
       .in('user_id', userIds)
   ])
   
@@ -109,6 +114,11 @@ export default async function SuperadminUsersPage() {
   const qualificationMap = new Map<string, { responses: any, completed_at: string | null }>()
   qualificationData?.forEach(q => {
     qualificationMap.set(q.user_id, { responses: q.responses, completed_at: q.completed_at })
+  })
+  
+  const regMetaMap = new Map<string, { utm_source?: string, utm_medium?: string, utm_campaign?: string, landing_page?: string, from_page?: string, device_type?: string, referrer_url?: string }>()
+  registrationMetaData?.forEach(m => {
+    regMetaMap.set(m.user_id, m)
   })
   
   const tgAccountMap = new Map<string, { telegram_user_id: string, telegram_username: string | null, telegram_first_name: string | null, telegram_last_name: string | null, is_verified: boolean }>()
@@ -175,6 +185,8 @@ export default async function SuperadminUsersPage() {
     const qualification = qualificationMap.get(user.id)
     const painPoints = qualification?.responses?.pain_points || []
     
+    const regMeta = regMetaMap.get(user.id)
+    
     const hasOrgs = mData && mData.total_orgs > 0
     const hasQualification = !!qualification?.completed_at
     let status: 'active' | 'no_org' | 'incomplete_onboarding'
@@ -209,6 +221,12 @@ export default async function SuperadminUsersPage() {
       qualification_groups_count: qualification?.responses?.groups_count || null,
       qualification_pain_points: Array.isArray(painPoints) ? painPoints : [],
       status,
+      reg_utm_source: regMeta?.utm_source || null,
+      reg_utm_campaign: regMeta?.utm_campaign || null,
+      reg_landing_page: regMeta?.landing_page || null,
+      reg_from_page: regMeta?.from_page || null,
+      reg_device_type: regMeta?.device_type || null,
+      reg_referrer: regMeta?.referrer_url || null,
     }
   }).sort((a, b) => {
     if (a.is_test !== b.is_test) return a.is_test ? 1 : -1

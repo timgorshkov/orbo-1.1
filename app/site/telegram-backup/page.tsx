@@ -49,7 +49,7 @@ export default function TelegramBackupPage() {
           </p>
 
           <div className="migration-hero__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--lg">
+            <Link href="https://my.orbo.ru/signup?from=telegram-backup" className="btn-pill btn-pill--primary btn-pill--lg">
               Сохранить базу бесплатно
             </Link>
             <a href="#max-steps" className="btn-pill btn-pill--outline btn-pill--lg">
@@ -181,7 +181,7 @@ export default function TelegramBackupPage() {
                 <h3 className="migration-step__title">Зарегистрируйтесь в Orbo</h3>
                 <div className="migration-step__instructions">
                   <ol>
-                    <li>Перейдите на <a href="https://my.orbo.ru/signup">my.orbo.ru</a></li>
+                    <li>Перейдите на <a href="https://my.orbo.ru/signup?from=telegram-backup">my.orbo.ru</a></li>
                     <li>Создайте организацию (пространство) для вашего сообщества</li>
                   </ol>
                   <p className="migration-step__tip">
@@ -487,7 +487,7 @@ export default function TelegramBackupPage() {
             Сохраните базу участников. Подготовьте запасной канал. Действуйте до блокировки.
           </p>
           <div className="cta-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white btn-pill--lg">
+            <Link href="https://my.orbo.ru/signup?from=telegram-backup" className="btn-pill btn-pill--white btn-pill--lg">
               Подключить Orbo бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost-dark" target="_blank" rel="noopener noreferrer">

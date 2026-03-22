@@ -31,7 +31,7 @@ export default function EventsPage() {
             MiniApp для регистрации и оплаты прямо в Telegram — выше конверсия. Напоминания в личку — выше доходимость.
           </p>
           <div className="hero-floating__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary">
+            <Link href="https://my.orbo.ru/signup?from=events" className="btn-pill btn-pill--primary">
               Начать бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
@@ -394,7 +394,7 @@ export default function EventsPage() {
             Регистрация и оплата в Telegram, напоминания в личку, карточки участников — за пару кликов
           </p>
           <div className="cta-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
+            <Link href="https://my.orbo.ru/signup?from=events" className="btn-pill btn-pill--white">
               Начать бесплатно
               <ArrowRight size={16} />
             </Link>

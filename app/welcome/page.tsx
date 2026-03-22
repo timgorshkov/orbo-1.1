@@ -20,15 +20,13 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
   const adminSupabase = createAdminServer()
 
   // ⚡ ОПТИМИЗАЦИЯ: Выполняем запросы параллельно
-  const [qualificationResult, membershipsResult, userResult] = await Promise.all([
-    // Проверяем, заполнена ли квалификация
+  const [qualificationResult, membershipsResult, userResult, telegramAccountResult] = await Promise.all([
     adminSupabase
       .from('user_qualification_responses')
       .select('completed_at, responses')
       .eq('user_id', user.id)
       .single(),
     
-    // Проверяем количество АКТИВНЫХ организаций пользователя (не archived)
     (async () => {
       const { data: memberships } = await adminSupabase
         .from('memberships')
@@ -47,17 +45,25 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
       return { data: activeOrgs?.map(o => ({ org_id: o.id })) || [] };
     })(),
     
-    // Получаем данные пользователя для проверки времени создания
     adminSupabase
       .from('users')
-      .select('created_at')
+      .select('created_at, tg_user_id')
       .eq('id', user.id)
-      .single()
+      .single(),
+
+    adminSupabase
+      .from('user_telegram_accounts')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1)
   ]);
 
   const { data: qualification } = qualificationResult;
   const { data: memberships } = membershipsResult;
   const { data: userData } = userResult;
+  const { data: telegramAccounts } = telegramAccountResult;
+  
+  const hasTelegramAccount = !!(userData?.tg_user_id || (telegramAccounts && telegramAccounts.length > 0));
 
   const qualificationCompleted = !!qualification?.completed_at
   // Считаем только активные организации
@@ -95,6 +101,7 @@ export default async function WelcomePage({ searchParams }: WelcomePageProps) {
       isNewUser={isNewUser}
       needsEmailVerification={needsEmailVerification}
       isTelegramRegistration={isTelegramRegistration}
+      hasTelegramAccount={hasTelegramAccount}
     />
   )
 }

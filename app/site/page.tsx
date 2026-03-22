@@ -56,7 +56,7 @@ export default function HomePage() {
           </p>
           
           <div className="hero-orb-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--sm">
+            <Link href="https://my.orbo.ru/signup?from=main" className="btn-pill btn-pill--primary btn-pill--sm">
               Попробуйте бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost btn-pill--sm" target="_blank" rel="noopener noreferrer">
@@ -314,7 +314,7 @@ export default function HomePage() {
             Подключите группу, узнайте своих людей и проведите следующее мероприятие без хаоса
           </p>
           <div className="cta-section__actions">
-            <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--white">
+            <Link href="https://my.orbo.ru/signup?from=main" className="btn-pill btn-pill--white">
               Попробуйте бесплатно
             </Link>
             <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost-dark" target="_blank" rel="noopener noreferrer">

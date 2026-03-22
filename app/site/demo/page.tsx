@@ -103,7 +103,7 @@ export default function DemoPage() {
             <h2>Попробуйте сами</h2>
             <p>Бесплатно для сообществ до 500 участников. Подключите группу за&nbsp;2&nbsp;минуты.</p>
             <div className="demo-cta__actions">
-              <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--lg">
+              <Link href="https://my.orbo.ru/signup?from=demo" className="btn-pill btn-pill--primary btn-pill--lg">
                 Попробуйте бесплатно
               </Link>
               <Link
