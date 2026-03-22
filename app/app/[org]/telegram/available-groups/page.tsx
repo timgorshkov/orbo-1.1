@@ -337,8 +337,11 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
                         ⚠️ Требуются права администратора
                       </p>
                       <p className="text-xs text-amber-700">
-                        Выдайте боту <strong>@orbo_community_bot</strong> права администратора в этой группе, 
+                        Выдайте боту <strong>@orbo_community_bot</strong> права администратора в этой группе,
                         затем отправьте любое сообщение и обновите страницу.
+                      </p>
+                      <p className="text-xs text-amber-600 mt-1">
+                        Достаточно выдать только три права: <strong>удаление сообщений</strong>, <strong>блокировка пользователей</strong> и <strong>пригласительные ссылки</strong>.
                       </p>
                     </div>
                   )}
