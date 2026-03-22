@@ -18,6 +18,12 @@ export type MatchIntent = {
   last_name?: string | null;
 };
 
+export type SearchIntent = {
+  orgId: string;
+  searchTerm: string;
+  excludeId?: string;
+};
+
 export type MatchCandidate = {
   id: string;
   org_id: string;
@@ -155,7 +161,7 @@ export class ParticipantMatcher {
       });
     }
 
-    // Fuzzy name matches (simple ilike for now)
+    // Fuzzy name matches + cross-messenger heuristic
     if (fullName && fullName.length >= 3) {
       const nameTerms = fullName
         .toLowerCase()
@@ -169,13 +175,24 @@ export class ParticipantMatcher {
         .from('participants')
         .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, max_user_id, max_username, source, status, merged_into, participant_status')
         .eq('org_id', intent.orgId)
-        .is('merged_into', null) // Исключаем уже объединенных участников
-        .neq('participant_status', 'excluded') // Исключаем архивированных участников
+        .is('merged_into', null)
+        .neq('participant_status', 'excluded')
         .or(nameFilters.join(','))) as PostgrestSingleResponse<any[]>;
 
       logger.debug({ count: fuzzyMatches?.length || 0 }, 'Fuzzy matches found');
+
+      // Detect cross-messenger candidates: TG-only participant → MAX-only, and vice versa
+      const isCurrentTgOnly = !!tgUserId && !maxUserId;
+      const isCurrentMaxOnly = !!maxUserId && !tgUserId;
+
       (fuzzyMatches || []).forEach(row => {
         addReason(row, 'Похожее имя', 20);
+        // Extra signal: both participants are from different messengers with no overlapping IDs
+        if (isCurrentTgOnly && row.max_user_id && !row.tg_user_id) {
+          addReason(row, 'Профиль только из MAX (возможный дубликат из другого мессенджера)', 25);
+        } else if (isCurrentMaxOnly && row.tg_user_id && !row.max_user_id) {
+          addReason(row, 'Профиль только из Telegram (возможный дубликат из другого мессенджера)', 25);
+        }
       });
     }
 
@@ -185,9 +202,56 @@ export class ParticipantMatcher {
       reasons: reasonsById.get(candidate.id) ?? []
     }))
       .sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
-    
+
     logger.debug({ count: results.length }, 'Total matches returned');
     return results;
+  }
+
+  async findBySearchTerm(intent: SearchIntent): Promise<MatchCandidate[]> {
+    const supabase = this.getSupabase();
+    const term = intent.searchTerm.trim();
+    if (!term || term.length < 2) return [];
+
+    const safeTerm = term.replace(/[%_]/g, '');
+    const filters = [
+      `full_name.ilike.%${safeTerm}%`,
+      `username.ilike.%${safeTerm}%`,
+      `max_username.ilike.%${safeTerm}%`,
+      `email.ilike.%${safeTerm}%`,
+      `phone.ilike.%${safeTerm}%`,
+    ].join(',');
+
+    const { data } = (await supabase
+      .from('participants')
+      .select('id, org_id, full_name, first_name, last_name, email, phone, username, tg_user_id, max_user_id, max_username, source, status, merged_into, participant_status')
+      .eq('org_id', intent.orgId)
+      .is('merged_into', null)
+      .neq('participant_status', 'excluded')
+      .or(filters)
+      .limit(30)) as PostgrestSingleResponse<any[]>;
+
+    logger.debug({ count: data?.length || 0, term }, 'Search term matches found');
+
+    return (data || [])
+      .filter(row => row.id !== intent.excludeId)
+      .map(row => ({
+        id: row.id,
+        org_id: row.org_id,
+        full_name: row.full_name,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        email: row.email,
+        phone: row.phone,
+        username: row.username,
+        tg_user_id: row.tg_user_id,
+        max_user_id: row.max_user_id,
+        max_username: row.max_username,
+        source: row.source,
+        status: row.status,
+        merged_into: row.merged_into,
+        match_score: 30,
+        reasons: ['Найден по поисковому запросу']
+      }));
   }
 }
 

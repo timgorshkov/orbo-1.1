@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,29 +55,14 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
   const [search, setSearch] = useState('');
   const [checking, setChecking] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<DuplicateEntry[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   // Already-merged (attached) profiles live in detail.duplicates
   const attachedProfiles: ParticipantDetailResult['duplicates'] = detail.duplicates || [];
 
-  const filteredSuggestions = useMemo(() => {
-    if (!search.trim()) return suggestions;
-    const term = search.trim().toLowerCase();
-    const normalizeName = (name: string | undefined | null): string => {
-      if (!name) return '';
-      return name.replace(/^WhatsApp\s+/i, '').toLowerCase();
-    };
-    return suggestions.filter(dup => {
-      const normalizedFullName = normalizeName(dup.full_name);
-      const normalizedTerm = term.replace(/^whatsapp\s+/i, '');
-      return (
-        normalizedFullName.includes(normalizedTerm) ||
-        dup.full_name?.toLowerCase().includes(term) ||
-        (dup as any).username?.toLowerCase().includes(term) ||
-        dup.email?.toLowerCase().includes(term) ||
-        dup.phone?.toLowerCase().includes(term)
-      );
-    });
-  }, [suggestions, search]);
+  const searchMode = search.trim().length >= 2;
+  const displayedSuggestions = searchMode ? searchResults : suggestions;
 
   const handleFreshCheck = useCallback(async () => {
     setChecking(true);
@@ -130,6 +115,44 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
   useEffect(() => {
     handleFreshCheck();
   }, [handleFreshCheck]);
+
+  // Debounced search: when user types ≥2 chars, query the API for matching participants
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch('/api/participants/check-duplicates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, currentParticipantId, searchTerm: term })
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const mapped: DuplicateEntry[] = (data?.matches || []).map((match: any) => ({
+          id: match.id,
+          full_name: match.full_name,
+          username: match.username,
+          email: match.email,
+          phone: match.phone,
+          tg_user_id: match.tg_user_id,
+          max_user_id: match.max_user_id,
+          max_username: match.max_username,
+          created_at: undefined,
+          match_score: match.match_score,
+          reasons: match.reasons
+        }));
+        setSearchResults(mapped);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, orgId, currentParticipantId]);
 
   const handleMerge = async () => {
     if (!selectedId) {
@@ -228,7 +251,7 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
   };
 
   const currentScore = profileCompleteness(detail.participant as any);
-  const selectedEntry = suggestions.find(s => s.id === selectedId);
+  const selectedEntry = displayedSuggestions.find(s => s.id === selectedId);
   const selectedScore = selectedEntry ? profileCompleteness(selectedEntry as any) : null;
   // Warn if the selected duplicate is more complete than the current profile
   const mergeDirectionWarning =
@@ -303,23 +326,31 @@ export default function ParticipantDuplicatesCard({ orgId, detail, onDetailUpdat
           <p className="text-sm font-medium text-gray-700 mb-2">Найти и объединить дубликаты</p>
           <div className="flex flex-col md:flex-row md:items-end gap-3">
             <div className="flex-1">
-              <label className="text-sm text-neutral-500">Поиск по совпадениям</label>
+              <label className="text-sm text-neutral-500">
+                {searchMode ? 'Поиск по всем участникам организации' : 'Автоматически найденные совпадения'}
+              </label>
               <Input
                 value={search}
                 onChange={event => setSearch(event.target.value)}
-                placeholder="Имя, username, email или телефон"
+                placeholder="Введите имя, username, email или телефон для поиска…"
               />
             </div>
             <Button type="button" variant="outline" onClick={handleFreshCheck} disabled={checking}>
-              {checking ? 'Проверяем…' : 'Обновить список'}
+              {checking ? 'Проверяем…' : 'Обновить'}
             </Button>
           </div>
 
-          {filteredSuggestions.length === 0 ? (
-            <div className="py-4 text-sm text-neutral-500">Совпадения не найдены</div>
+          {(checking || searchLoading) ? (
+            <div className="py-4 text-sm text-neutral-400">Поиск…</div>
+          ) : displayedSuggestions.length === 0 ? (
+            <div className="py-4 text-sm text-neutral-500">
+              {searchMode
+                ? 'Ничего не найдено. Попробуйте другой запрос.'
+                : 'Автоматических совпадений не найдено. Введите имя или username для ручного поиска.'}
+            </div>
           ) : (
             <div className="space-y-2 mt-3">
-              {filteredSuggestions.map(duplicate => {
+              {displayedSuggestions.map(duplicate => {
                 const selected = selectedId === duplicate.id;
                 const dupScore = profileCompleteness(duplicate as any);
                 return (

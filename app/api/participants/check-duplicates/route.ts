@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     const payload = await request.json();
     orgId = payload?.orgId as string | undefined;
     const currentParticipantId = payload?.currentParticipantId as string | undefined;
+    const searchTerm = payload?.searchTerm as string | undefined;
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
@@ -43,25 +44,35 @@ export async function POST(request: Request) {
       return access.error;
     }
 
-    const matches = await participantMatcher.findMatches({
-      orgId,
-      email: payload?.email,
-      phone: payload?.phone,
-      username: payload?.username,
-      tg_user_id: payload?.tg_user_id,
-      max_user_id: payload?.max_user_id,
-      max_username: payload?.max_username,
-      full_name: payload?.full_name,
-      first_name: payload?.first_name,
-      last_name: payload?.last_name
-    });
+    let matches;
+    if (searchTerm && searchTerm.trim().length >= 2) {
+      // Free-text search mode: search all org participants by name/username/email/phone
+      matches = await participantMatcher.findBySearchTerm({
+        orgId,
+        searchTerm: searchTerm.trim(),
+        excludeId: currentParticipantId
+      });
+    } else {
+      matches = await participantMatcher.findMatches({
+        orgId,
+        email: payload?.email,
+        phone: payload?.phone,
+        username: payload?.username,
+        tg_user_id: payload?.tg_user_id,
+        max_user_id: payload?.max_user_id,
+        max_username: payload?.max_username,
+        full_name: payload?.full_name,
+        first_name: payload?.first_name,
+        last_name: payload?.last_name
+      });
 
-    // Исключаем текущего участника из результатов
-    const filteredMatches = currentParticipantId 
-      ? matches.filter(match => match.id !== currentParticipantId)
-      : matches;
+      // Исключаем текущего участника из результатов
+      if (currentParticipantId) {
+        matches = matches.filter(match => match.id !== currentParticipantId);
+      }
+    }
 
-    return NextResponse.json({ matches: filteredMatches });
+    return NextResponse.json({ matches });
   } catch (error: any) {
     logger.error({ 
       error: error?.message || String(error),
