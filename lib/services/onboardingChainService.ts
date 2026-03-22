@@ -48,26 +48,26 @@ const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
 const EMAIL_CHAIN: ChainStep[] = [
-  { key: 'connect_telegram', delayMs: 1 * HOUR, skipIf: ctx => ctx.hasTelegramLinked },
-  { key: 'add_group',        delayMs: 1 * DAY,  skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 3 * DAY,  skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 5 * DAY },
+  { key: 'connect_telegram', delayMs: 30 * 60 * 1000,  skipIf: ctx => ctx.hasTelegramLinked },
+  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
+  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 4 * DAY },
   { key: 'check_in',         delayMs: 7 * DAY },
 ]
 
 const TELEGRAM_CHAIN: ChainStep[] = [
-  { key: 'workspace_ready',  delayMs: 1 * HOUR },
-  { key: 'add_group',        delayMs: 1 * DAY,  skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 3 * DAY,  skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 5 * DAY },
+  { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
+  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
+  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 4 * DAY },
   { key: 'check_in',         delayMs: 7 * DAY },
 ]
 
 const MAX_CHAIN: ChainStep[] = [
-  { key: 'workspace_ready',  delayMs: 1 * HOUR },
-  { key: 'add_group',        delayMs: 1 * DAY,  skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 3 * DAY,  skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 5 * DAY },
+  { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
+  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
+  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 4 * DAY },
   { key: 'check_in',         delayMs: 7 * DAY },
 ]
 
@@ -502,46 +502,47 @@ async function sendMaxStep(ctx: UserContext, stepKey: string): Promise<void> {
 function getMaxContent(ctx: UserContext, stepKey: string): string {
   const name = ctx.name ? ctx.name.split(' ')[0] : ''
   const hi = name ? `${name}, ` : ''
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://my.orbo.ru'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://my.orbo.ru'
 
   switch (stepKey) {
     case 'workspace_ready':
       return (
-        `🏠 <b>${hi}аккаунт создан!</b>\n\n` +
-        `Чтобы увидеть Orbo в деле:\n` +
+        `${hi}аккаунт создан!\n\n` +
+        `Три шага до первого результата:\n\n` +
         `1. Подключите группу MAX — участники появятся в карточках\n` +
-        `2. Создайте событие — участники смогут регистрироваться через MiniApp\n` +
-        `3. Поделитесь ссылкой в группу — и получите первые регистрации\n\n` +
-        `👉 ${APP_URL}/orgs`
+        `2. Создайте событие — MiniApp для регистрации + автонапоминания\n` +
+        `3. Поделитесь ссылкой в группу\n\n` +
+        `→ ${appUrl}/orgs`
       )
     case 'add_group':
       return (
-        `💡 <b>${hi}пока нет группы, Orbo не видит участников</b>\n\n` +
-        `Добавьте бота в группу MAX. После этого:\n` +
-        `• Участники появятся в карточках с именами\n` +
-        `• Заработает аналитика: кто пишет, кто молчит\n` +
-        `• Можно будет создавать события с анонсами в группу\n\n` +
-        `Занимает 2 минуты → ${APP_URL}/orgs`
+        `${hi}пока нет группы — Orbo не видит участников\n\n` +
+        `Добавьте бота в группу MAX как администратора:\n` +
+        `• Участники появятся с именами и активностью\n` +
+        `• Запустится аналитика\n` +
+        `• Контакты сохранятся надёжно\n\n` +
+        `2 минуты → ${appUrl}/orgs`
       )
     case 'create_event':
       return (
-        `🎉 <b>${hi}попробуйте создать событие</b>\n\n` +
-        `MiniApp — участник регистрируется в один тап, не выходя из MAX.\n` +
+        `${hi}попробуйте создать событие\n\n` +
+        `MiniApp — регистрация в один тап, без перехода на сайт.\n` +
         `Бот напомнит каждому в личку.\n` +
-        `Вы видите: кто зарегистрировался, оплатил, пришёл.\n\n` +
-        `Создайте событие → ${APP_URL}/orgs`
+        `Видно: кто зарегистрировался, оплатил, пришёл.\n\n` +
+        `→ ${appUrl}/orgs`
       )
     case 'video_overview':
       return (
-        `✨ <b>${hi}попробуйте AI-анализ сообщества</b>\n\n` +
-        `На дашборде есть кнопка «AI-анализ» — запустите для оценки здоровья сообщества.\n\n` +
-        `У вас 5 бесплатных анализов → ${APP_URL}/orgs`
+        `${hi}попробуйте AI-анализ\n\n` +
+        `На дашборде или в профиле участника — кнопка AI-анализа.\n` +
+        `Покажет интересы, экспертизу и запросы.\n\n` +
+        `5 бесплатных анализов → ${appUrl}/orgs`
       )
     case 'check_in':
       return (
-        `👋 <b>${hi}как дела с Orbo?</b>\n\n` +
-        `Прошла неделя. Всё получилось? Если что-то непонятно — напишите нам.\n\n` +
-        `Telegram основателя: @timgorshkov`
+        `${hi}как дела с Orbo?\n\n` +
+        `Прошла неделя. Получилось настроить? Если что-то непонятно — напишите, отвечу лично.\n\n` +
+        `@timgorshkov — основатель`
       )
     default:
       return `Orbo: ${stepKey}`
@@ -558,91 +559,109 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
   switch (stepKey) {
     case 'connect_telegram':
       return {
-        subject: 'Подключите Telegram — увидьте, кто в вашем сообществе',
+        subject: 'Подключите Telegram — сохраните базу участников',
         html: emailLayout(greeting, `
-          <p>Привяжите Telegram-аккаунт, чтобы Orbo заработал в полную силу:</p>
-          <ul style="color:#4b5563; padding-left:20px;">
-            <li>Добавите бота в группу — участники начнут появляться в карточках</li>
-            <li>Будете получать уведомления о важных событиях в группе</li>
-            <li>Сможете отправлять анонсы и напоминания от имени бота</li>
-          </ul>
-          ${ctaButton(`${APP_URL}/settings`, 'Привязать Telegram')}
-          <p style="font-size:13px; color:#9ca3af; margin-top:20px;">Это займёт 30 секунд.</p>
-        `),
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Без привязки Telegram Orbo не сможет работать с вашей группой. Подключение занимает 30 секунд.
+          </p>
+          ${featureRow('👥', 'База участников', 'Бот соберёт профили всех, кто пишет в группе — имена, username, активность')}
+          ${featureRow('🔒', 'Сохранность контактов', 'Даже если Telegram станет недоступен — контакты и история останутся у вас')}
+          ${featureRow('📊', 'AI-анализ', '5 бесплатных AI-анализов профилей — интересы, экспертиза, запросы участников')}
+          ${ctaButton(`${APP_URL}/orgs`, 'Подключить Telegram')}
+          ${hint('Нажмите → в настройках выберите «Telegram-аккаунт» → следуйте инструкции')}
+        `, { preheader: 'Без Telegram Orbo не увидит участников вашей группы' }),
       }
 
     case 'workspace_ready':
       return {
-        subject: 'Ваше пространство в Orbo готово — 3 шага до первого события',
+        subject: 'Пространство готово — 3 шага до результата',
         html: emailLayout(greeting, `
-          <p>Аккаунт создан! Вот что стоит сделать первым:</p>
-          <ol style="color:#4b5563; padding-left:20px;">
-            <li><strong>Подключите Telegram-группу</strong> — добавьте бота, и участники начнут появляться в карточках</li>
-            <li><strong>Создайте событие</strong> — MiniApp для регистрации прямо в Telegram, напоминания за 24ч и 1ч</li>
-            <li><strong>Поделитесь ссылкой</strong> — киньте в группу и получите первые регистрации</li>
-          </ol>
-          ${ctaButton(`${APP_URL}/orgs`, 'Перейти в Orbo')}
-        `),
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Аккаунт создан. Вот как получить первые результаты за 5 минут:
+          </p>
+          ${stepRow('1', '<b>Подключите группу</b> — добавьте бота, и участники начнут появляться в карточках с именами и профилями')}
+          ${stepRow('2', '<b>Создайте событие</b> — MiniApp для регистрации прямо в Telegram. Бот напомнит каждому в личку')}
+          ${stepRow('3', '<b>Поделитесь ссылкой</b> — отправьте в группу и получите первые регистрации')}
+          ${ctaButton(`${APP_URL}/orgs`, 'Начать настройку')}
+          ${divider()}
+          <p style="font-size:13px; color:#64748b; line-height:1.5; margin:0; text-align:center;">
+            Бесплатно до 500 участников. Данные хранятся на серверах в России.
+          </p>
+        `, { preheader: 'Подключите группу → создайте событие → получите первые регистрации' }),
       }
 
     case 'add_group':
       return {
-        subject: 'Добавьте группу — участники появятся в карточках',
+        subject: 'Без группы Orbo не видит участников',
         html: emailLayout(greeting, `
-          <p>Пока группа не подключена, Orbo не видит ваших участников.</p>
-          <p><strong>Что произойдёт после подключения:</strong></p>
-          <ul style="color:#4b5563; padding-left:20px;">
-            <li>Участники автоматически появятся в карточках с именами и username</li>
-            <li>Заработает аналитика: кто пишет, кто молчит, кто ушёл</li>
-            <li>Можно будет создавать события с анонсами прямо в группу</li>
-          </ul>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 6px;">
+            Вы создали пространство, но группа ещё не подключена.
+          </p>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Пока бот не в группе — карточки участников пустые, аналитика не работает.
+          </p>
+          <p style="font-size:14px; font-weight:600; color:#1e1b4b; margin:0 0 12px;">Что изменится после подключения:</p>
+          ${featureRow('👤', 'Карточки участников', 'Имена, username, дата вступления, число сообщений — по каждому участнику')}
+          ${featureRow('📈', 'Аналитика активности', 'Кто пишет, кто молчит, кто ушёл. Без ручного подсчёта')}
+          ${featureRow('📢', 'Анонсы в группу', 'Бот автоматически опубликует анонс мероприятия в нужное время')}
           ${ctaButton(`${APP_URL}/orgs`, 'Подключить группу')}
-          <p style="font-size:13px; color:#9ca3af; margin-top:20px;">Добавьте бота в группу как администратора — занимает 2 минуты.</p>
-        `),
+          ${hint('Добавьте бота в группу как администратора — 2 минуты')}
+        `, { preheader: 'Подключите группу — участники появятся в карточках автоматически' }),
       }
 
     case 'create_event':
       return {
-        subject: 'Создайте событие — люди регистрируются прямо в Telegram',
+        subject: 'Создайте событие — увидите Orbo в деле',
         html: emailLayout(greeting, `
-          <p>Мероприятие — лучший способ проверить Orbo в деле:</p>
-          <ul style="color:#4b5563; padding-left:20px;">
-            <li><strong>MiniApp</strong> — участник регистрируется в один тап, не покидая Telegram</li>
-            <li><strong>Напоминания</strong> — бот пишет в личку за 24ч и за 1ч до события</li>
-            <li><strong>Учёт</strong> — кто зарегистрировался, оплатил, пришёл</li>
-          </ul>
-          <p>Создайте событие, поделитесь ссылкой в группу — и посмотрите, как это работает.</p>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Мероприятие — самый быстрый способ проверить, как Orbo работает с вашей аудиторией.
+          </p>
+          ${featureRow('⚡', 'MiniApp-регистрация', 'Участник регистрируется в один тап прямо в Telegram — без перехода на внешний сайт')}
+          ${featureRow('🔔', 'Автоматические напоминания', 'Бот пишет в личку за 24ч и за 1ч. Организатору больше не нужно писать каждому')}
+          ${featureRow('💰', 'Учёт оплат', 'Видно, кто зарегистрировался, кто оплатил, кто дошёл')}
+          ${divider()}
+          <p style="font-size:14px; color:#64748b; line-height:1.5; margin:0 0 16px;">
+            Создайте событие, отправьте ссылку в группу — и посмотрите на результат.
+          </p>
           ${ctaButton(`${APP_URL}/orgs`, 'Создать событие')}
-        `),
+        `, { preheader: 'MiniApp-регистрация + автонапоминания = больше людей на событии' }),
       }
 
     case 'video_overview':
       return {
-        subject: 'Что ещё умеет Orbo — AI-анализ и не только',
+        subject: 'AI-анализ участников и ещё 3 функции, которые вы не пробовали',
         html: emailLayout(greeting, `
-          <p>Помимо событий и участников, в Orbo есть:</p>
-          <ul style="color:#4b5563; padding-left:20px;">
-            <li><strong>✨ AI-анализ участников</strong> — запустите на дашборде или в профиле участника: интересы, экспертиза, запросы. У вас 5 бесплатных анализов</li>
-            <li><strong>Заявки на вступление</strong> — анкета через MiniApp, spam-score, воронка со статусами</li>
-            <li><strong>Анонсы</strong> — бот автоматически публикует в группы по расписанию</li>
-            <li><strong>Импорт истории</strong> — загрузите историю чата, чтобы сразу увидеть активных участников</li>
-          </ul>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Помимо событий, у вас есть инструменты, которые помогут лучше понять вашу аудиторию.
+          </p>
+          ${featureRow('✨', 'AI-анализ профилей', 'Запустите на дашборде — получите интересы, экспертизу и запросы участников. 5 анализов бесплатно')}
+          ${featureRow('📋', 'Заявки на вступление', 'Анкета через MiniApp, spam-score, воронка со статусами. Меньше ботов, больше реальных людей')}
+          ${featureRow('📢', 'Анонсы по расписанию', 'Бот публикует в группы автоматически. Не нужно помнить и писать вручную')}
+          ${featureRow('📥', 'Импорт истории чата', 'Загрузите архив — увидите, кто был активен задолго до подключения бота')}
           ${ctaButton(`${APP_URL}/orgs`, 'Попробовать AI-анализ')}
-        `),
+        `, { preheader: 'AI покажет интересы, экспертизу и запросы ваших участников' }),
       }
 
     case 'check_in':
       return {
-        subject: 'Как дела с Orbo? Нужна помощь?',
+        subject: 'Как дела с Orbo? Ответьте одним словом',
         html: emailLayout(greeting, `
-          <p>Прошла неделя с регистрации. Хотел уточнить — всё ли получилось?</p>
-          <p>Если что-то не работает или непонятно — просто ответьте на это письмо. Я читаю все ответы лично.</p>
-          <p>Или напишите в Telegram — обычно отвечаем в течение часа.</p>
-          ${ctaButton(`${APP_URL}/orgs`, 'Открыть Orbo')}
-          <p style="margin-top:10px; text-align:center;">
-            <a href="https://t.me/timgorshkov" style="color:#667eea; font-size:14px;">Написать основателю в Telegram →</a>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 16px;">
+            Прошла неделя с регистрации. Мне важно знать — получилось ли настроить?
           </p>
-        `),
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 16px;">
+            Если что-то не работает, непонятно или не хватает какой-то функции — <b>просто ответьте на это письмо</b>. Я читаю каждый ответ лично.
+          </p>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Мне помогут даже короткие ответы: «не разобрался», «нет нужной функции», «всё ок» — любой формат.
+          </p>
+          ${ctaButton(`${APP_URL}/orgs`, 'Открыть Orbo')}
+          ${divider()}
+          <p style="font-size:14px; color:#64748b; line-height:1.5; margin:0; text-align:center;">
+            Или напишите в Telegram — обычно отвечаем в течение часа<br>
+            <a href="https://t.me/timgorshkov" style="color:#4f46e5; text-decoration:none; font-weight:600;">@timgorshkov →</a>
+          </p>
+        `, { preheader: 'Ответьте одним словом: получилось или нет' }),
       }
 
     default:
@@ -661,49 +680,52 @@ function getTelegramContent(ctx: UserContext, stepKey: string): string {
   switch (stepKey) {
     case 'workspace_ready':
       return (
-        `🏠 <b>${hi}аккаунт создан!</b>\n\n` +
-        `Чтобы увидеть Orbo в деле:\n` +
-        `1. Подключите Telegram-группу — участники появятся в карточках\n` +
-        `2. Создайте событие — участники смогут регистрироваться через MiniApp\n` +
-        `3. Поделитесь ссылкой в группу — и получите первые регистрации\n\n` +
-        `👉 <a href="${APP_URL}/orgs">Перейти в Orbo</a>`
+        `${hi}аккаунт создан 🎉\n\n` +
+        `Три шага до первого результата:\n\n` +
+        `1️⃣ <b>Подключите группу</b> — добавьте бота, и участники начнут появляться в карточках с именами и профилями\n\n` +
+        `2️⃣ <b>Создайте событие</b> — MiniApp для регистрации прямо в Telegram + автонапоминания в личку\n\n` +
+        `3️⃣ <b>Поделитесь ссылкой</b> — отправьте в группу и получите регистрации\n\n` +
+        `→ <a href="${APP_URL}/orgs">Начать настройку</a>`
       )
 
     case 'add_group':
       return (
-        `💡 <b>${hi}пока нет группы, Orbo не видит участников</b>\n\n` +
-        `Добавьте бота в Telegram-группу как администратора. После этого:\n` +
-        `• Участники появятся в карточках с именами\n` +
-        `• Заработает аналитика: кто пишет, кто молчит\n` +
-        `• Можно будет создавать события с анонсами в группу\n\n` +
-        `Занимает 2 минуты → <a href="${APP_URL}/orgs">Подключить группу</a>`
+        `${hi}пока нет группы — Orbo не видит участников\n\n` +
+        `Добавьте бота в группу как администратора, и:\n` +
+        `• Участники появятся с именами, username, активностью\n` +
+        `• Запустится аналитика — кто пишет, кто молчит\n` +
+        `• Контакты сохранятся, даже если Telegram станет недоступен\n\n` +
+        `Занимает 2 минуты → <a href="${APP_URL}/orgs">Подключить</a>`
       )
 
     case 'create_event':
       return (
-        `🎉 <b>${hi}попробуйте создать событие</b>\n\n` +
-        `Это лучший способ увидеть Orbo в деле:\n` +
-        `• MiniApp — участник регистрируется в один тап, не выходя из Telegram\n` +
-        `• Бот напомнит каждому в личку за 24ч и за 1ч\n` +
-        `• Вы видите: кто зарегистрировался, оплатил, пришёл\n\n` +
-        `Создайте, киньте ссылку в группу → <a href="${APP_URL}/orgs">Создать событие</a>`
+        `${hi}попробуйте создать событие 🎟\n\n` +
+        `Самый быстрый способ проверить Orbo:\n\n` +
+        `⚡ <b>MiniApp</b> — регистрация в один тап, без перехода на сайт\n` +
+        `🔔 <b>Напоминания</b> — бот пишет каждому в личку за 24ч и за 1ч\n` +
+        `💰 <b>Оплаты</b> — видно, кто зарегистрировался и оплатил\n\n` +
+        `Создайте → отправьте ссылку в группу → посмотрите результат\n\n` +
+        `→ <a href="${APP_URL}/orgs">Создать событие</a>`
       )
 
     case 'video_overview':
       return (
-        `✨ <b>${hi}попробуйте AI-анализ сообщества</b>\n\n` +
-        `На дашборде есть кнопка «AI-анализ» — запустите, и получите:\n` +
-        `• Оценку здоровья сообщества\n` +
-        `• Конкретные находки по данным\n` +
-        `• Рекомендации на ближайшую неделю\n\n` +
-        `У вас 5 бесплатных анализов → <a href="${APP_URL}/orgs">Попробовать</a>`
+        `${hi}попробуйте AI-анализ ✨\n\n` +
+        `На дашборде или в профиле любого участника — кнопка AI-анализа.\n\n` +
+        `Что покажет:\n` +
+        `• Интересы и экспертизу участника\n` +
+        `• Запросы, которые он озвучивал\n` +
+        `• Кого из участников стоит знакомить\n\n` +
+        `У вас 5 бесплатных анализов → <a href="${APP_URL}/orgs">Запустить</a>`
       )
 
     case 'check_in':
       return (
-        `👋 <b>${hi}как дела с Orbo?</b>\n\n` +
-        `Прошла неделя. Всё получилось? Если что-то непонятно или не работает — напишите мне прямо сюда. Отвечу лично.\n\n` +
-        `Telegram основателя: @timgorshkov`
+        `${hi}как дела с Orbo? 👋\n\n` +
+        `Прошла неделя. Мне важно знать — получилось настроить?\n\n` +
+        `Если что-то непонятно или не хватает — напишите мне прямо сюда, даже коротко. Отвечу лично.\n\n` +
+        `@timgorshkov — основатель`
       )
 
     default:
@@ -712,39 +734,103 @@ function getTelegramContent(ctx: UserContext, stepKey: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// HTML email helpers
+// HTML email helpers — modern, polished design
 // ---------------------------------------------------------------------------
 
-function emailLayout(greeting: string, body: string): string {
+function emailLayout(greeting: string, body: string, options?: { preheader?: string }): string {
+  const preheader = options?.preheader || ''
   return `
 <!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; border-radius: 12px 12px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Orbo</h1>
-  </div>
-  <div style="background: #ffffff; padding: 32px 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-    <p style="font-size: 16px; margin-top: 0;">${greeting}!</p>
-    ${body}
-  </div>
-  <div style="text-align: center; margin-top: 24px; padding: 16px; color: #9ca3af; font-size: 12px;">
-    <p style="margin: 4px 0;">Orbo — CRM участников и событий для Telegram-сообществ</p>
-    <p style="margin: 4px 0;">
-      <a href="https://orbo.ru" style="color: #9ca3af;">orbo.ru</a> · <a href="${APP_URL}" style="color: #9ca3af;">my.orbo.ru</a>
-    </p>
-  </div>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Orbo</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; -webkit-font-smoothing:antialiased;">
+  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>` : ''}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;">
+    <tr><td align="center" style="padding:32px 16px 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+
+        <!-- Header -->
+        <tr><td style="padding:0 0 24px; text-align:center;">
+          <a href="https://orbo.ru" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:32px; height:32px; background:linear-gradient(135deg,#4f46e5,#7c3aed); border-radius:8px; line-height:32px; text-align:center; color:#fff; font-weight:800; font-size:16px;">O</span>
+            <span style="font-size:20px; font-weight:700; color:#1e1b4b; letter-spacing:-0.5px;">Orbo</span>
+          </a>
+        </td></tr>
+
+        <!-- Body card -->
+        <tr><td style="background:#ffffff; border-radius:16px; box-shadow:0 1px 3px rgba(0,0,0,0.08); padding:36px 32px 32px;">
+          <p style="font-size:17px; font-weight:600; color:#1e1b4b; margin:0 0 16px;">${greeting}!</p>
+          ${body}
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="padding:24px 0 0; text-align:center;">
+          <p style="margin:0 0 6px; font-size:13px; color:#94a3b8;">Orbo — CRM для групп и сообществ</p>
+          <p style="margin:0 0 12px; font-size:12px; color:#94a3b8;">
+            <a href="https://orbo.ru" style="color:#6366f1; text-decoration:none;">orbo.ru</a>
+            &nbsp;&middot;&nbsp;
+            <a href="${APP_URL}" style="color:#6366f1; text-decoration:none;">my.orbo.ru</a>
+            &nbsp;&middot;&nbsp;
+            <a href="https://t.me/timgorshkov" style="color:#6366f1; text-decoration:none;">Telegram</a>
+          </p>
+          <p style="margin:0; font-size:11px; color:#cbd5e1;">Данные хранятся на серверах в России</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>`.trim()
 }
 
 function ctaButton(href: string, text: string): string {
   return `
-  <div style="text-align: center; margin: 24px 0;">
-    <a href="${href}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 36px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">
-      ${text}
+  <div style="text-align:center; margin:24px 0 8px;">
+    <a href="${href}" style="display:inline-block; background-color:#4f46e5; color:#ffffff; padding:14px 32px; text-decoration:none; border-radius:10px; font-weight:600; font-size:15px; letter-spacing:-0.2px; mso-padding-alt:0;">
+      <!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%;mso-text-raise:21pt">&nbsp;</i><![endif]-->
+      <span style="mso-text-raise:10pt;">${text}</span>
+      <!--[if mso]><i style="letter-spacing:32px;mso-font-width:-100%">&nbsp;</i><![endif]-->
     </a>
   </div>`
+}
+
+function featureRow(emoji: string, title: string, description: string): string {
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+    <tr>
+      <td width="36" valign="top" style="padding-top:2px; font-size:18px;">${emoji}</td>
+      <td style="padding-left:8px;">
+        <p style="margin:0; font-size:14px; font-weight:600; color:#1e1b4b;">${title}</p>
+        <p style="margin:2px 0 0; font-size:13px; color:#64748b; line-height:1.5;">${description}</p>
+      </td>
+    </tr>
+  </table>`
+}
+
+function stepRow(num: string, text: string): string {
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+    <tr>
+      <td width="28" valign="top" style="padding-top:1px;">
+        <div style="width:24px; height:24px; background:#eef2ff; border-radius:50%; text-align:center; line-height:24px; font-size:12px; font-weight:700; color:#4f46e5;">${num}</div>
+      </td>
+      <td style="padding-left:8px; font-size:14px; color:#334155; line-height:1.5;">${text}</td>
+    </tr>
+  </table>`
+}
+
+function divider(): string {
+  return `<hr style="border:none; border-top:1px solid #f1f5f9; margin:20px 0;">`
+}
+
+function hint(text: string): string {
+  return `<p style="font-size:12px; color:#94a3b8; margin:16px 0 0; text-align:center;">${text}</p>`
 }
 
 // ---------------------------------------------------------------------------
@@ -793,9 +879,14 @@ export function getAllTemplatesForPreview(): TemplatePreview[] {
   }
 
   const delayMap: Record<number, string> = {
+    [5 * 60 * 1000]: '+5 мин',
+    [30 * 60 * 1000]: '+30 мин',
+    [4 * HOUR]: '+4 часа',
     [1 * HOUR]: '+1 час',
     [1 * DAY]: '+1 день',
+    [2 * DAY]: '+2 дня',
     [3 * DAY]: '+3 дня',
+    [4 * DAY]: '+4 дня',
     [5 * DAY]: '+5 дней',
     [7 * DAY]: '+7 дней',
   }
