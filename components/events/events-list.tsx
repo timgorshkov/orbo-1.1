@@ -107,6 +107,10 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
     return timeStr.substring(0, 5)
   }
 
+  // Strip HTML tags from description — the source may contain <strong>, <em> etc.
+  // that should not be rendered as literal text in the card preview.
+  const stripHtml = (text: string) => text.replace(/<[^>]+>/g, '')
+
   const getStatusBadge = (status: string) => {
     const styles = {
       draft: 'bg-gray-100 text-gray-800',
@@ -119,7 +123,8 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
       cancelled: 'Отменено'
     }
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status as keyof typeof styles]}`}>
+      // shrink-0 + whitespace-nowrap: badge never wraps or overflows the card edge
+      <span className={`shrink-0 whitespace-nowrap px-2 py-1 rounded-full text-xs font-medium ${styles[status as keyof typeof styles]}`}>
         {labels[status as keyof typeof labels]}
       </span>
     )
@@ -130,22 +135,25 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
       <CardContent className="p-0">
         {event.cover_image_url && (
           <div className="h-48 w-full overflow-hidden rounded-t-lg">
-            <img 
-              src={event.cover_image_url} 
+            <img
+              src={event.cover_image_url}
               alt={event.title}
               className="h-full w-full object-cover"
             />
           </div>
         )}
-        <div className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="text-lg font-semibold">{event.title}</h3>
+        {/* p-3 on mobile, p-4 on sm+ — reduces edge-to-content gap on small screens */}
+        <div className="p-3 sm:p-4">
+          {/* gap-2 + min-w-0/flex-1 on title: prevents badge from overflowing or squishing title */}
+          <div className="flex items-start gap-2 mb-2">
+            <h3 className="text-lg font-semibold min-w-0 flex-1">{event.title}</h3>
             {getStatusBadge(event.status)}
           </div>
-          
+
           {event.description && (
             <p className="text-sm text-neutral-600 mb-3 line-clamp-2">
-              {stripTelegramMarkdown(event.description)}
+              {/* stripHtml removes <strong> etc. that appear as literal text in previews */}
+              {stripHtml(stripTelegramMarkdown(event.description))}
             </p>
           )}
 
@@ -221,38 +229,47 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex gap-2">
+      {/*
+        Mobile layout: filters wrap to new line, "Создать" goes below.
+        Counts in brackets hidden on mobile (sm:inline) — keeps buttons compact
+        and prevents horizontal overflow / scroll on narrow screens.
+      */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
           <Button
+            size="sm"
             variant={statusFilter === 'upcoming' ? 'default' : 'outline'}
             onClick={() => setStatusFilter('upcoming')}
           >
-            Предстоящие ({upcomingEvents.length})
+            Предстоящие<span className="hidden sm:inline"> ({upcomingEvents.length})</span>
           </Button>
           {showAdminFeatures && (
             <Button
+              size="sm"
               variant={statusFilter === 'draft' ? 'default' : 'outline'}
               onClick={() => setStatusFilter('draft')}
             >
-              Черновики ({draftEvents.length})
+              Черновики<span className="hidden sm:inline"> ({draftEvents.length})</span>
             </Button>
           )}
           <Button
+            size="sm"
             variant={statusFilter === 'past' ? 'default' : 'outline'}
             onClick={() => setStatusFilter('past')}
           >
-            Прошедшие ({pastEvents.length})
+            Прошедшие<span className="hidden sm:inline"> ({pastEvents.length})</span>
           </Button>
           <Button
+            size="sm"
             variant={statusFilter === 'all' ? 'default' : 'outline'}
             onClick={() => setStatusFilter('all')}
           >
-            Все ({events.length})
+            Все<span className="hidden sm:inline"> ({events.length})</span>
           </Button>
         </div>
 
         {showAdminFeatures && (
-          <Button onClick={() => router.push(`/p/${orgId}/events/new`)}>
+          <Button size="sm" className="self-start sm:self-auto" onClick={() => router.push(`/p/${orgId}/events/new`)}>
             Создать событие
           </Button>
         )}
@@ -265,7 +282,7 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
               showAdminFeatures ? (
                 <>
                   Пока нет событий.{' '}
-                  <button 
+                  <button
                     className="text-blue-600 hover:underline"
                     onClick={() => router.push(`/p/${orgId}/events/new`)}
                   >
@@ -281,7 +298,7 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {filteredEvents.map(renderEventCard)}
         </div>
       )}
