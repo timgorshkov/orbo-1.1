@@ -20,3 +20,22 @@ body {
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
+
+/*
+ * HelpDeskEddy — скрываем виджет поддержки на мобильных устройствах (< 1024px).
+ *
+ * НЕ УДАЛЯТЬ и не переносить в useEffect — только глобальный CSS гарантирует,
+ * что виджет не мелькнёт до гидратации React.
+ *
+ * На мобильных поддержка доступна через пункт «Поддержка» в меню навигации,
+ * который открывает @orbo_support_bot в Telegram.
+ * См. components/support/helpdesk-widget.tsx и components/navigation/mobile-bottom-nav.tsx.
+ */
+@media (max-width: 1023px) {
+  #hde-contact-widget-button,
+  .hde-contact-widget-button,
+  [id*="hde-contact"],
+  [class*="hde-contact"] {
+    display: none !important;
+  }
+}
