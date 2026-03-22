@@ -57,18 +57,23 @@ const EMAIL_CHAIN: ChainStep[] = [
 
 const TELEGRAM_CHAIN: ChainStep[] = [
   { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
-  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 4 * DAY },
-  { key: 'check_in',         delayMs: 7 * DAY },
+  // Все последующие шаги отправляются только пользователям, создавшим организацию.
+  // Без этого условия цепочка продолжается даже для тех, кто зарегистрировался
+  // из любопытства и ушёл — они блокируют бота, теряя возможность получать
+  // важные уведомления в будущем. workspace_ready отправляется всем как приветствие.
+  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  { key: 'check_in',         delayMs: 7 * DAY,          skipIf: ctx => !ctx.hasOrg },
 ]
 
 const MAX_CHAIN: ChainStep[] = [
   { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
-  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 4 * DAY },
-  { key: 'check_in',         delayMs: 7 * DAY },
+  // Аналогично TELEGRAM_CHAIN: советы только тем, кто создал организацию.
+  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
+  { key: 'video_overview',   delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  { key: 'check_in',         delayMs: 7 * DAY,          skipIf: ctx => !ctx.hasOrg },
 ]
 
 // ---------------------------------------------------------------------------
