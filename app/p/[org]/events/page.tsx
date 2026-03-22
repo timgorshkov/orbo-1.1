@@ -104,8 +104,8 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     }
   }
   
+  // p-3 on mobile, p-6 on sm+ — reduces wasted horizontal space on phones
   return (
-    {/* p-3 on mobile, p-6 on sm+ — reduces wasted horizontal space on phones */}
     <div className="p-3 sm:p-6">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between">
