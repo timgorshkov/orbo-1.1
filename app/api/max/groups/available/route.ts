@@ -84,7 +84,9 @@ export async function GET(request: NextRequest) {
       logger.warn({ error: discoverErr.message }, 'Failed to auto-discover MAX groups from API');
     }
 
-    // Get chat IDs already linked to this org
+    // Get chat IDs already linked to THIS org (active) — these go into existingGroups, not availableGroups.
+    // Groups linked to OTHER orgs are still shown as available: the same user can be
+    // admin of the same group in multiple orgs (mirrors Telegram for-user logic).
     const { data: linkedLinks } = await admin
       .from('org_max_groups')
       .select('max_chat_id')
@@ -146,7 +148,12 @@ export async function GET(request: NextRequest) {
       groupsWithAdminStatus = [];
     }
 
-    return NextResponse.json({ groups: groupsWithAdminStatus });
+    // Only return groups where the current user is confirmed to be an admin.
+    // user_is_admin=null means we couldn't determine it (bot not admin) — exclude those too,
+    // since we can't verify the user's rights and they should not be able to claim the group.
+    const adminGroups = groupsWithAdminStatus.filter(g => g.user_is_admin === true);
+
+    return NextResponse.json({ groups: adminGroups });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error in available MAX groups');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
