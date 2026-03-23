@@ -59,8 +59,8 @@ export default function HomePage() {
             <Link href="https://my.orbo.ru/signup?from=main" className="btn-pill btn-pill--primary btn-pill--sm">
               Попробуйте бесплатно
             </Link>
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost btn-pill--sm" target="_blank" rel="noopener noreferrer">
-              Записаться на демо
+            <Link href="/demo" className="btn-pill btn-pill--ghost btn-pill--sm">
+              Посмотреть демо
             </Link>
           </div>
           
@@ -317,8 +317,8 @@ export default function HomePage() {
             <Link href="https://my.orbo.ru/signup?from=main" className="btn-pill btn-pill--white">
               Попробуйте бесплатно
             </Link>
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--ghost-dark" target="_blank" rel="noopener noreferrer">
-              Записаться на демо
+            <Link href="/demo" className="btn-pill btn-pill--ghost-dark">
+              Посмотреть демо
             </Link>
           </div>
         </div>

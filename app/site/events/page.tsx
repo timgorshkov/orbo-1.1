@@ -34,8 +34,8 @@ export default function EventsPage() {
             <Link href="https://my.orbo.ru/signup?from=events" className="btn-pill btn-pill--primary">
               Начать бесплатно
             </Link>
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline">
-              Записаться на демо
+            <Link href="/demo" className="btn-pill btn-pill--outline">
+              Посмотреть демо
             </Link>
           </div>
         </div>

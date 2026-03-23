@@ -28,7 +28,10 @@
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -name *event* -type f)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -type f -name *funnel* -o -name *pipeline*)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1/app/p/[org]/applications' -type f -name *.tsx -o -name *.ts)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(sed -i 's|href=\"\"https://calendly.com/timgorshkov/30min\"\" className=\"\"btn-pill btn-pill--ghost btn-pill--sm\"\" target=\"\"_blank\"\" rel=\"\"noopener noreferrer\"\"|href=\"\"/demo\"\" className=\"\"btn-pill btn-pill--ghost btn-pill--sm\"\"|g' app/site/page.tsx)",
+      "Bash(sed -i 's|Записаться на демо\\\\n            </Link>|Посмотреть демо\\\\n            </Link>|g' app/site/page.tsx)",
+      "Bash(node -e \":*)"
     ]
   }
 }

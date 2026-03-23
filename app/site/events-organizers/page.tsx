@@ -412,8 +412,8 @@ export default function EventsOrganizersPage() {
               <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--lg">
                 Попробовать бесплатно
               </Link>
-              <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline btn-pill--lg">
-                Записаться на демо
+              <Link href="/demo" className="btn-pill btn-pill--outline btn-pill--lg">
+                Посмотреть демо
               </Link>
             </div>
             <p className="events-org-hero__note">
@@ -623,8 +623,8 @@ export default function EventsOrganizersPage() {
           </div>
           
           <div className="agencies-cta-center">
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--primary btn-pill--lg">
-              Записаться на демо
+            <Link href="/demo" className="btn-pill btn-pill--primary btn-pill--lg">
+              Посмотреть демо
             </Link>
           </div>
         </div>

@@ -355,8 +355,8 @@ export default function AgenciesPage() {
               <Link href="https://my.orbo.ru/signup" className="btn-pill btn-pill--primary btn-pill--lg">
                 Попробовать бесплатно
               </Link>
-              <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--outline btn-pill--lg">
-                Записаться на демо
+              <Link href="/demo" className="btn-pill btn-pill--outline btn-pill--lg">
+                Посмотреть демо
               </Link>
             </div>
             <p className="agencies-hero__note">
@@ -522,8 +522,8 @@ export default function AgenciesPage() {
           </div>
           
           <div className="agencies-cta-center">
-            <Link href="https://calendly.com/timgorshkov/30min" className="btn-pill btn-pill--primary btn-pill--lg">
-              Записаться на демо
+            <Link href="/demo" className="btn-pill btn-pill--primary btn-pill--lg">
+              Посмотреть демо
             </Link>
           </div>
         </div>
