@@ -1365,24 +1365,26 @@ async function handleAuthCode(message: any, code: string, logger: ReturnType<typ
     authLogger.debug({ result: verifyResult }, 'Auth code verification completed');
 
     if (verifyResult.success) {
-      // Успешная авторизация - отправляем ТОЛЬКО одноразовую ссылку
-      // Постоянная ссылка будет отправлена после успешного перехода
       const telegramService = createTelegramService('main');
-      
-      let message = '✅ Код подтверждён!\n\n';
-      message += '🔐 Нажмите на ссылку ниже для входа:\n';
-      message += `${verifyResult.sessionUrl}\n\n`;
-      message += '⏰ _Ссылка действует 1 час и работает только один раз._';
-      
-      await telegramService.sendMessage(chatId, message, {
-        parse_mode: 'Markdown'
-      });
-      
-      authLogger.info({ 
-        telegram_user_id: from.id,
-        code,
-        org_id: verifyResult.orgId
-      }, 'One-time auth link sent');
+
+      if (verifyResult.alreadyAuthenticated) {
+        // Welcome-screen linking flow: the user is already logged in via email/OAuth.
+        // No auth link needed — just confirm the connection and tell them to return to the browser.
+        await telegramService.sendMessage(chatId,
+          '✅ Telegram подключён к Orbo!\n\nВернитесь в браузер — страница обновится автоматически.',
+          { parse_mode: 'Markdown' }
+        );
+        authLogger.info({ telegram_user_id: from.id, code }, 'TG linked to existing user (welcome screen flow)');
+      } else {
+        // Standard registration flow: send one-time auth link.
+        // Permanent org link will be sent after the handler processes it.
+        let message = '✅ Код подтверждён!\n\n';
+        message += '🔐 Нажмите на ссылку ниже для входа:\n';
+        message += `${verifyResult.sessionUrl}\n\n`;
+        message += '⏰ _Ссылка действует 1 час и работает только один раз._';
+        await telegramService.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        authLogger.info({ telegram_user_id: from.id, code, org_id: verifyResult.orgId }, 'One-time auth link sent');
+      }
     } else {
       // Ошибка верификации
       let errorMessage = '❌ Неверный или просроченный код авторизации.'

@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { createAPILogger } from '@/lib/logger'
 import { RequestTiming } from '@/lib/utils/timing'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import crypto from 'crypto'
 
 /**
@@ -21,7 +22,10 @@ export async function POST(req: NextRequest) {
   
   try {
     const supabaseAdmin = createAdminServer()
-    
+
+    // Capture logged-in user (optional — anonymous callers, e.g. event registration, pass no session)
+    const sessionUser = await getUnifiedUser().catch(() => null)
+
     const body = await req.json()
     const { orgId, eventId, redirectUrl, inviteToken } = body
 
@@ -86,7 +90,11 @@ export async function POST(req: NextRequest) {
         redirect_url: redirectUrl || null,
         expires_at: expiresAt.toISOString(),
         ip_address: ipAddress,
-        user_agent: userAgent
+        user_agent: userAgent,
+        // If a logged-in user generates a code (e.g. from the welcome screen to link TG
+        // to an existing email account), store their id so verifyTelegramAuthCode can
+        // update that user's tg_user_id instead of creating a new TG-only account.
+        user_id: sessionUser?.id || null,
       })
       .select()
       .single();

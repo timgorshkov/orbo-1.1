@@ -46,14 +46,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if code has been used (verified)
-    const verified = authCode.is_used && !!authCode.telegram_user_id;
+    // linked: bot processed the code (telegram_user_id recorded).
+    //         Used by the welcome screen auto-polling to detect TG connection
+    //         without requiring the user to click an auth link (they're already logged in).
+    // verified: full auth flow completed (is_used = true after handler processes the link).
+    const linked = !!authCode.telegram_user_id;
+    const verified = authCode.is_used && linked;
 
-    logger.debug({ 
-      verified,
-      code_id: authCode.id
-    }, 'Code status checked');
+    logger.debug({ linked, verified, code_id: authCode.id }, 'Code status checked');
     return NextResponse.json({
+      linked,
       verified,
       used_at: authCode.used_at,
     });

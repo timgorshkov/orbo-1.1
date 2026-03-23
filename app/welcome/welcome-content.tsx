@@ -136,6 +136,10 @@ function getContextMessage(fromPage?: string, utmCampaign?: string): {
   };
 }
 
+// Max polling attempts before showing a manual fallback (2.5s × 72 = 3 minutes)
+const MAX_POLL_ATTEMPTS = 72;
+const POLL_INTERVAL_MS = 2500;
+
 function TelegramConnectStep({
   onConnected,
   onSkip,
@@ -147,12 +151,83 @@ function TelegramConnectStep({
   fromPage?: string;
   utmCampaign?: string;
 }) {
-  const [checking, setChecking] = useState(false);
-  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot';
   const ctx = getContextMessage(fromPage, utmCampaign);
 
-  const handleCheckConnection = async () => {
-    setChecking(true);
+  // Code generated on mount — stored so we can build the deep link and poll status
+  const [code, setCode] = useState<string | null>(null);
+  const [botUsername, setBotUsername] = useState(
+    process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
+  );
+  const [codeError, setCodeError] = useState(false);
+
+  // Polling state
+  const [pollStatus, setPollStatus] = useState<'idle' | 'waiting' | 'connected' | 'timeout'>('idle');
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollCount = useRef(0);
+
+  // Generate code immediately on mount
+  useEffect(() => {
+    fetch('/api/auth/telegram-code/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.code) {
+          setCode(data.code);
+          if (data.botUsername) setBotUsername(data.botUsername);
+        } else {
+          setCodeError(true);
+        }
+      })
+      .catch(() => setCodeError(true));
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
+  }, []);
+
+  const startPolling = (codeValue: string) => {
+    pollCount.current = 0;
+    setPollStatus('waiting');
+
+    const tick = async () => {
+      pollCount.current++;
+
+      if (pollCount.current > MAX_POLL_ATTEMPTS) {
+        setPollStatus('timeout');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/auth/telegram-code/status?code=${codeValue}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.linked) {
+            setPollStatus('connected');
+            ymGoal('telegram_account_connected', undefined, { once: true });
+            onConnected();
+            return;
+          }
+        }
+      } catch { /* network hiccup — retry next tick */ }
+
+      pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
+    };
+
+    pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
+  };
+
+  const handleConnectClick = () => {
+    if (code && pollStatus === 'idle') {
+      startPolling(code);
+    }
+  };
+
+  // Manual re-check for timeout / fallback case
+  const handleManualCheck = async () => {
     try {
       const res = await fetch('/api/user/me');
       if (res.ok) {
@@ -164,12 +239,16 @@ function TelegramConnectStep({
         }
       }
     } catch { /* ignore */ }
-    setChecking(false);
+    // Restart polling if code is still valid
+    if (code) {
+      setPollStatus('idle');
+      startPolling(code);
+    }
   };
 
-  useEffect(() => {
-    handleCheckConnection();
-  }, []);
+  const deepLink = code
+    ? `https://t.me/${botUsername}?start=${code}`
+    : `https://t.me/${botUsername}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -179,50 +258,65 @@ function TelegramConnectStep({
             <Send className="w-8 h-8 text-blue-600" />
           </div>
           <CardTitle className="text-xl leading-snug">{ctx.headline}</CardTitle>
-          <CardDescription className="text-base mt-2">
-            {ctx.subtitle}
-          </CardDescription>
+          <CardDescription className="text-base mt-2">{ctx.subtitle}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 text-sm text-gray-600">
-              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs font-bold text-blue-600">1</span>
-              </div>
-              <span>Откройте бота <a href={`https://t.me/${botUsername}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-medium hover:underline">@{botUsername}</a> в Telegram и нажмите Start</span>
+
+          {/* Single-step instruction */}
+          <div className="flex items-start gap-3 text-sm text-gray-600 bg-blue-50 rounded-lg p-3">
+            <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-xs font-bold text-blue-700">1</span>
             </div>
-            <div className="flex items-start gap-3 text-sm text-gray-600">
-              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs font-bold text-blue-600">2</span>
-              </div>
-              <span>Бот пришлёт код подтверждения</span>
-            </div>
-            <div className="flex items-start gap-3 text-sm text-gray-600">
-              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-xs font-bold text-blue-600">3</span>
-              </div>
-              <span>Вернитесь сюда и нажмите «Проверить подключение»</span>
-            </div>
+            <span>
+              Нажмите кнопку — откроется бот{' '}
+              <span className="font-medium text-blue-700">@{botUsername}</span>.
+              Нажмите <strong>Start</strong> — и готово.
+            </span>
           </div>
 
+          {/* Main CTA */}
           <a
-            href={`https://t.me/${botUsername}`}
+            href={deepLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-3 w-full h-12 rounded-xl bg-[#2AABEE] hover:bg-[#229ED9] text-white font-semibold transition-colors"
+            onClick={handleConnectClick}
+            className={`flex items-center justify-center gap-3 w-full h-12 rounded-xl font-semibold transition-colors ${
+              !code
+                ? 'bg-blue-300 cursor-wait text-white'
+                : 'bg-[#2AABEE] hover:bg-[#229ED9] text-white'
+            }`}
           >
             <Send className="w-5 h-5" />
-            {ctx.ctaLabel}
+            {!code ? 'Подготовка...' : ctx.ctaLabel}
           </a>
 
-          <Button
-            variant="outline"
-            className="w-full h-11"
-            onClick={handleCheckConnection}
-            disabled={checking}
-          >
-            {checking ? 'Проверяем...' : 'Проверить подключение'}
-          </Button>
+          {/* Auto-detection status */}
+          {pollStatus === 'waiting' && (
+            <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              Ожидаем подтверждение от бота…
+            </div>
+          )}
+          {pollStatus === 'connected' && (
+            <div className="flex items-center justify-center gap-2 text-sm text-green-600 font-medium">
+              <CheckCircle2 className="w-4 h-4" />
+              Telegram подключён!
+            </div>
+          )}
+          {pollStatus === 'timeout' && (
+            <div className="text-center space-y-2">
+              <p className="text-sm text-gray-500">Не получили подтверждения. Убедитесь, что нажали Start в боте.</p>
+              <Button variant="outline" size="sm" onClick={handleManualCheck}>
+                Проверить подключение
+              </Button>
+            </div>
+          )}
+
+          {codeError && (
+            <p className="text-xs text-amber-600 text-center">
+              Не удалось подготовить ссылку. Обновите страницу и попробуйте снова.
+            </p>
+          )}
 
           <div className="bg-gray-50 rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -235,12 +329,15 @@ function TelegramConnectStep({
             </div>
           </div>
 
-          <button
+          {/* Skip — visually equal to the info block, not hidden */}
+          <Button
+            variant="outline"
+            className="w-full text-gray-500 border-gray-200"
             onClick={onSkip}
-            className="w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors pt-1"
           >
             Пропустить и подключить позже
-          </button>
+          </Button>
+
         </CardContent>
       </Card>
     </div>
