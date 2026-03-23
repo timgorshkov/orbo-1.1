@@ -113,8 +113,12 @@ export async function POST(req: NextRequest) {
       org_name: name
     }, 'Organization created successfully');
 
-    // Auto-link Telegram account if user registered via Telegram
+    // Auto-link Telegram account when org is created.
+    // Covers two cases:
+    //   1. User registered via Telegram OAuth (accounts.provider = 'telegram')
+    //   2. User linked TG on the welcome screen (users.tg_user_id set, no OAuth record)
     try {
+      // Case 1: OAuth registration
       const { data: tgAccount } = await supabase
         .from('accounts')
         .select('provider_account_id')
@@ -122,8 +126,21 @@ export async function POST(req: NextRequest) {
         .eq('provider', 'telegram')
         .maybeSingle()
 
-      if (tgAccount?.provider_account_id) {
-        const tgUserId = Number(tgAccount.provider_account_id)
+      // Case 2: welcome-screen linking — read tg_user_id directly from users table
+      let tgUserIdFromUser: number | null = null
+      if (!tgAccount?.provider_account_id) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('tg_user_id')
+          .eq('id', user.id)
+          .maybeSingle()
+        tgUserIdFromUser = userData?.tg_user_id ? Number(userData.tg_user_id) : null
+      }
+
+      const rawTgId = tgAccount?.provider_account_id || (tgUserIdFromUser ? String(tgUserIdFromUser) : null)
+
+      if (rawTgId) {
+        const tgUserId = Number(rawTgId)
 
         // Check if this org already has a link for this user (shouldn't, but be safe)
         const { data: existing } = await supabase

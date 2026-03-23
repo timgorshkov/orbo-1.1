@@ -423,7 +423,7 @@ async function buildUserContext(userId: string): Promise<UserContext> {
     tgUserId,
     maxUserId,
     hasOrg: !!orgId,
-    hasTelegramLinked: !!tgAccount,
+    hasTelegramLinked: !!(tgAccount || user.tg_user_id),
     hasGroup,
     hasEvent,
     emailVerified: !!user.email_verified,

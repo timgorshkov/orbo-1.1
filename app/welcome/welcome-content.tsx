@@ -312,6 +312,19 @@ function TelegramConnectStep({
             </div>
           )}
 
+          {/* VPN hint — shown always, non-intrusive */}
+          <p className="text-xs text-gray-400 text-center">
+            Если Telegram не открывается — возможно, нужен VPN. Можно{' '}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-gray-600"
+              onClick={onSkip}
+            >
+              пропустить этот шаг
+            </button>{' '}
+            и подключить позже из настроек.
+          </p>
+
           {codeError && (
             <p className="text-xs text-amber-600 text-center">
               Не удалось подготовить ссылку. Обновите страницу и попробуйте снова.

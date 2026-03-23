@@ -45,7 +45,8 @@ export async function GET(
         .eq('org_id', orgId)
         .eq('is_verified', true)
         .limit(1),
-      // Fallback: check if org owner registered via Telegram (accounts table)
+      // Fallback: check if org owner/admin has TG connected via OAuth (accounts table)
+      // or via the welcome-screen linking flow (users.tg_user_id set directly).
       (async () => {
         const { data: owners } = await adminSupabase
           .from('memberships')
@@ -54,13 +55,24 @@ export async function GET(
           .in('role', ['owner', 'admin'])
         if (!owners || owners.length === 0) return { data: [] }
         const ownerIds = owners.map(o => o.user_id)
-        const { data } = await adminSupabase
+
+        // Check OAuth-linked Telegram accounts
+        const { data: oauthTg } = await adminSupabase
           .from('accounts')
           .select('user_id')
           .eq('provider', 'telegram')
           .in('user_id', ownerIds)
           .limit(1)
-        return { data: data || [] }
+        if (oauthTg && oauthTg.length > 0) return { data: oauthTg }
+
+        // Check welcome-screen TG linking (users.tg_user_id set, no OAuth record)
+        const { data: usersWithTg } = await adminSupabase
+          .from('users')
+          .select('id')
+          .in('id', ownerIds)
+          .not('tg_user_id', 'is', null)
+          .limit(1)
+        return { data: usersWithTg || [] }
       })(),
       (async () => {
         const { data: orgGroupLinks } = await adminSupabase
