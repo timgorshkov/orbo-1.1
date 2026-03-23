@@ -21,6 +21,14 @@ import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('OnboardingChain')
 
+// Thrown when a step should be silently skipped (data condition, not delivery failure)
+class StepSkipError extends Error {
+  constructor(reason: string) {
+    super(reason)
+    this.name = 'StepSkipError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Chain definitions
 // ---------------------------------------------------------------------------
@@ -304,6 +312,17 @@ export async function processOnboardingMessages(): Promise<{
       stats.sent++
       logger.info({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel }, 'Message sent successfully')
     } catch (err) {
+      // StepSkipError: data condition (no email, internal domain) — mark skipped, not failed
+      if (err instanceof StepSkipError) {
+        await supabase
+          .from('onboarding_messages')
+          .update({ status: 'skipped', sent_at: new Date().toISOString(), error: err.message })
+          .eq('id', msg.id)
+        stats.skipped++
+        logger.debug({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, reason: err.message }, 'Step silently skipped (data condition)')
+        continue
+      }
+
       const errMsg = err instanceof Error ? err.message : String(err)
       const errLower = errMsg.toLowerCase()
 
@@ -445,12 +464,13 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
 const SENDER_ONLY_DOMAINS = ['orbo.ru'];
 
 async function sendEmailStep(ctx: UserContext, stepKey: string): Promise<void> {
-  if (!ctx.email) throw new Error('No email for user ' + ctx.userId)
+  if (!ctx.email) {
+    throw new StepSkipError('No email address for user ' + ctx.userId)
+  }
 
   // Skip emails to internal/sender-only domains — they have no real mailboxes
   if (SENDER_ONLY_DOMAINS.some(d => ctx.email!.toLowerCase().endsWith('@' + d))) {
-    logger.debug({ user_id: ctx.userId, email: ctx.email, step: stepKey }, 'Skipping onboarding email to internal domain')
-    return
+    throw new StepSkipError('Internal domain, no real mailbox: ' + ctx.email)
   }
 
   const { subject, html } = getEmailContent(ctx, stepKey)

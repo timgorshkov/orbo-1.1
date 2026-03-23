@@ -34,14 +34,37 @@ export async function POST(req: NextRequest) {
         error: result.description
       }, 'Failed to send message via bot')
 
-      if (result.description?.includes('bot was blocked') || result.description?.includes('chat not found')) {
+      const desc = result.description || ''
+
+      if (desc.includes('bot was blocked')) {
         return NextResponse.json({
-          error: 'Пользователь не запустил бота или заблокировал его',
+          error: 'Пользователь заблокировал бота',
           code: 'BOT_BLOCKED'
         }, { status: 400 })
       }
 
-      return NextResponse.json({ error: result.description || 'Failed to send' }, { status: 400 })
+      if (desc.includes('user is deactivated')) {
+        return NextResponse.json({
+          error: 'Аккаунт Telegram удалён или деактивирован',
+          code: 'USER_DEACTIVATED'
+        }, { status: 400 })
+      }
+
+      if (desc.includes('chat not found') || desc.includes('user not found')) {
+        return NextResponse.json({
+          error: 'Пользователь не найден в Telegram — возможно, удалил аккаунт или ID устарел',
+          code: 'CHAT_NOT_FOUND'
+        }, { status: 400 })
+      }
+
+      if (desc.includes('have no rights') || desc.includes('not enough rights')) {
+        return NextResponse.json({
+          error: 'Нет прав для отправки сообщения этому пользователю',
+          code: 'NO_RIGHTS'
+        }, { status: 400 })
+      }
+
+      return NextResponse.json({ error: desc || 'Failed to send' }, { status: 400 })
     }
 
     logger.info({

@@ -142,53 +142,6 @@ export async function POST(request: Request) {
     // Note: telegram_groups.org_id was removed in migration 071
     // All org-group mappings are now in org_telegram_groups table (already fetched above)
 
-    // ✅ НОВОЕ: Добавляем ВСЕ группы, где есть активность бота (включая новые группы)
-    // Используем activity_events вместо удалённой таблицы telegram_activity_events
-    try {
-      logger.debug({}, 'Scanning activity_events for new groups');
-      const { data: activityGroups } = await supabaseService
-        .from('activity_events')
-        .select('tg_chat_id')
-        .not('tg_chat_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1000); // Последние 1000 событий
-      
-      const uniqueChatIds = new Set<string>();
-      activityGroups?.forEach(record => {
-        if (record?.tg_chat_id !== undefined && record?.tg_chat_id !== null) {
-          uniqueChatIds.add(String(record.tg_chat_id));
-        }
-      });
-      
-      logger.debug({ unique_groups_count: uniqueChatIds.size }, 'Found unique groups in activity events');
-      
-      // Добавляем в кандидаты
-      uniqueChatIds.forEach(chatId => candidateChatIds.add(chatId));
-    } catch (activityError) {
-      logger.error({ error: activityError instanceof Error ? activityError.message : String(activityError) }, 'Error scanning activity events');
-      // Не критично, продолжаем
-    }
-
-    // ✅ НОВОЕ: Добавляем ВСЕ группы из telegram_groups где бот подключен или pending
-    try {
-      logger.debug({}, 'Scanning telegram_groups for groups with connected bot');
-      const { data: connectedGroups } = await supabaseService
-        .from('telegram_groups')
-        .select('tg_chat_id')
-        .in('bot_status', ['connected', 'pending']);
-      
-      connectedGroups?.forEach(record => {
-        if (record?.tg_chat_id !== undefined && record?.tg_chat_id !== null) {
-          candidateChatIds.add(String(record.tg_chat_id));
-        }
-      });
-      
-      logger.debug({ groups_count: connectedGroups?.length || 0 }, 'Found groups with connected bot in telegram_groups');
-    } catch (groupsError) {
-      logger.error({ error: groupsError instanceof Error ? groupsError.message : String(groupsError) }, 'Error scanning telegram_groups');
-      // Не критично, продолжаем
-    }
-
     if (candidateChatIds.size === 0) {
       return NextResponse.json({
         success: true,
@@ -205,6 +158,8 @@ export async function POST(request: Request) {
     const updatedGroups: any[] = [];
     const warnings: string[] = [];
 
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
     // ✅ Получаем ВСЕХ администраторов для каждой группы
     for (const chatIdStr of normalizedChatIds) {
       const chatId = Number(chatIdStr);
@@ -220,7 +175,14 @@ export async function POST(request: Request) {
         const adminsResponse = await telegramService.getChatAdministrators(chatId);
 
         if (!adminsResponse?.ok) {
-          warnings.push(`Failed to fetch administrators for chat ${chatId}: ${adminsResponse?.description || 'Unknown error'}`);
+          const desc = adminsResponse?.description || 'Unknown error'
+          // На 429 ждём retry_after и пропускаем этот чат (не критично)
+          if (desc.includes('Too Many Requests')) {
+            const retryAfter = adminsResponse?.parameters?.retry_after ?? 5
+            logger.warn({ tg_chat_id: chatId, retry_after: retryAfter }, 'Rate limited by Telegram, waiting')
+            await sleep(retryAfter * 1000)
+          }
+          warnings.push(`Failed to fetch administrators for chat ${chatId}: ${desc}`);
           continue;
         }
 
@@ -362,6 +324,9 @@ export async function POST(request: Request) {
       } catch (groupError: any) {
         warnings.push(`Error processing chat ${chatId}: ${groupError?.message || groupError?.code || 'Unknown error'}`);
       }
+
+      // Throttle: 300ms between getChatAdministrators calls to stay within Telegram rate limits
+      await sleep(300);
     }
     
     // После обновления всех админов, вызываем sync_telegram_admins для создания memberships
