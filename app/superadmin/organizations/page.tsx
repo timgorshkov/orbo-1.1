@@ -30,17 +30,23 @@ export default async function SuperadminOrganizationsPage() {
   const [
     { data: orgGroups },
     { data: participants },
-    { data: materialPages },
     { data: events },
     { data: memberships },
-    { data: telegramAccounts }
+    { data: telegramAccounts },
+    { data: activityData },
   ] = await Promise.all([
     supabase.from('org_telegram_groups').select('org_id, tg_chat_id').in('org_id', orgIds),
     supabase.from('participants').select('id, org_id').in('org_id', orgIds),
-    supabase.from('material_pages').select('id, org_id').in('org_id', orgIds),
     supabase.from('events').select('id, org_id').in('org_id', orgIds),
     supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
-    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name').in('org_id', orgIds)
+    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name').in('org_id', orgIds),
+    supabase.raw<{ org_id: string; last_at: string }>(
+      `SELECT org_id, MAX(created_at) AS last_at
+       FROM activity_events
+       WHERE org_id = ANY($1::uuid[])
+       GROUP BY org_id`,
+      [orgIds]
+    ),
   ])
   
   // Получаем telegram_groups для подсчёта bot_status
@@ -69,11 +75,11 @@ export default async function SuperadminOrganizationsPage() {
     participantsMap.set(p.org_id, (participantsMap.get(p.org_id) || 0) + 1)
   }
   
-  const materialsMap = new Map<string, number>()
-  for (const m of materialPages || []) {
-    materialsMap.set(m.org_id, (materialsMap.get(m.org_id) || 0) + 1)
+  const activityMap = new Map<string, string>()
+  for (const a of activityData || []) {
+    activityMap.set(a.org_id, a.last_at)
   }
-  
+
   const eventsMap = new Map<string, number>()
   for (const e of events || []) {
     eventsMap.set(e.org_id, (eventsMap.get(e.org_id) || 0) + 1)
@@ -178,11 +184,10 @@ export default async function SuperadminOrganizationsPage() {
       telegram_verified: telegram.telegram_verified,
       telegram_username: telegram.telegram_username,
       telegram_display_name: telegram.telegram_display_name,
-      groups_count: groups.count,
       groups_with_bot: groups.withBot,
       participants_count: participantsMap.get(org.id) || 0,
-      materials_count: materialsMap.get(org.id) || 0,
-      events_count: eventsMap.get(org.id) || 0
+      events_count: eventsMap.get(org.id) || 0,
+      last_activity: activityMap.get(org.id) || null,
     }
   })
   
