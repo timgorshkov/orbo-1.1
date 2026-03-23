@@ -48,11 +48,13 @@ const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
 const EMAIL_CHAIN: ChainStep[] = [
-  { key: 'connect_telegram', delayMs: 30 * 60 * 1000,  skipIf: ctx => ctx.hasTelegramLinked },
-  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
-  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 4 * DAY },
-  { key: 'check_in',         delayMs: 7 * DAY },
+  { key: 'connect_telegram',    delayMs: 30 * 60 * 1000,  skipIf: ctx => ctx.hasTelegramLinked },
+  { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
+  { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
+  { key: 'video_overview',      delayMs: 4 * DAY },
+  // Реактивация: отправляется только тем, у кого нет орга или уже всё настроено
+  { key: 'reactivation_connect', delayMs: 10 * DAY,        skipIf: ctx => !ctx.hasOrg || (ctx.hasTelegramLinked && ctx.hasGroup) },
+  { key: 'check_in',            delayMs: 14 * DAY },
 ]
 
 const TELEGRAM_CHAIN: ChainStep[] = [
@@ -61,19 +63,22 @@ const TELEGRAM_CHAIN: ChainStep[] = [
   // Без этого условия цепочка продолжается даже для тех, кто зарегистрировался
   // из любопытства и ушёл — они блокируют бота, теряя возможность получать
   // важные уведомления в будущем. workspace_ready отправляется всем как приветствие.
-  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
-  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
-  { key: 'check_in',         delayMs: 7 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
+  { key: 'video_overview',      delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  // Реактивация: только тем, у кого есть орг, но нет подключённой группы
+  { key: 'reactivation_connect', delayMs: 10 * DAY,        skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'check_in',            delayMs: 14 * DAY,         skipIf: ctx => !ctx.hasOrg },
 ]
 
 const MAX_CHAIN: ChainStep[] = [
   { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
   // Аналогично TELEGRAM_CHAIN: советы только тем, кто создал организацию.
-  { key: 'add_group',        delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
-  { key: 'create_event',     delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
-  { key: 'video_overview',   delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
-  { key: 'check_in',         delayMs: 7 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
+  { key: 'video_overview',      delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
+  { key: 'reactivation_connect', delayMs: 10 * DAY,        skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  { key: 'check_in',            delayMs: 14 * DAY,         skipIf: ctx => !ctx.hasOrg },
 ]
 
 // ---------------------------------------------------------------------------
@@ -543,6 +548,17 @@ function getMaxContent(ctx: UserContext, stepKey: string): string {
         `Покажет интересы, экспертизу и запросы.\n\n` +
         `5 бесплатных анализов → ${appUrl}/orgs`
       )
+    case 'reactivation_connect':
+      return (
+        `Привет! Это не очередное напоминание из рассылки.\n\n` +
+        `Мы заметили, что группа так и не подключена к Orbo. Без этого бот не видит ваших участников.\n\n` +
+        `Как исправить за 2 минуты:\n` +
+        `1. Добавьте бота в группу MAX как администратора\n` +
+        `2. Откройте настройки Orbo → Telegram → Доступные группы\n` +
+        `3. Выберите группу — готово\n\n` +
+        `→ ${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/orgs\n\n` +
+        `Если нужна помощь — напишите: @timgorshkov`
+      )
     case 'check_in':
       return (
         `${hi}как дела с Orbo?\n\n` +
@@ -647,6 +663,46 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
         `, { preheader: 'AI покажет интересы, экспертизу и запросы ваших участников' }),
       }
 
+    case 'reactivation_connect': {
+      if (!ctx.hasTelegramLinked) {
+        return {
+          subject: 'Кажется, подключить Telegram не получилось — исправили, теперь это 30 секунд',
+          html: emailLayout(greeting, `
+            <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 8px;">
+              Это не очередное письмо из рассылки.
+            </p>
+            <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+              Мы заметили, что Telegram-аккаунт так и не подключился. Мы только что переделали этот шаг — теперь не нужно искать никаких кодов, всё происходит автоматически.
+            </p>
+            <p style="font-size:14px; font-weight:600; color:#1e1b4b; margin:0 0 12px;">Как подключить прямо сейчас:</p>
+            ${stepRow('1', 'Нажмите кнопку ниже — откроется бот <b>в Telegram</b>')}
+            ${stepRow('2', 'Нажмите <b>Start</b> — аккаунт подключится автоматически')}
+            ${stepRow('3', 'Добавьте бота в вашу группу — и Orbo начнёт видеть участников')}
+            ${ctaButton(`${APP_URL}/orgs`, 'Подключить Telegram')}
+            ${hint('Если Telegram не открывается — может потребоваться VPN. Или напишите нам: <a href="https://t.me/timgorshkov" style="color:#94a3b8;">@timgorshkov</a>')}
+          `, { preheader: 'Мы упростили подключение: одна кнопка — и готово' }),
+        }
+      } else {
+        return {
+          subject: 'Последний шаг до работающего Orbo: подключите группу',
+          html: emailLayout(greeting, `
+            <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 8px;">
+              Это не очередное письмо из рассылки.
+            </p>
+            <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+              Telegram-аккаунт подключён — отлично! Но группа ещё не добавлена в Orbo. Пока бот не в группе, карточки участников пустые и аналитика не работает.
+            </p>
+            <p style="font-size:14px; font-weight:600; color:#1e1b4b; margin:0 0 12px;">Как подключить группу за 2 минуты:</p>
+            ${stepRow('1', 'Откройте <b>Настройки → Telegram → Доступные группы</b>')}
+            ${stepRow('2', 'Выберите вашу группу из списка')}
+            ${stepRow('3', 'Добавьте бота <b>@orbo_community_bot</b> как администратора группы')}
+            ${ctaButton(`${APP_URL}/orgs`, 'Подключить группу')}
+            ${hint('После подключения участники начнут появляться в карточках автоматически')}
+          `, { preheader: 'Один шаг — и участники появятся в Orbo автоматически' }),
+        }
+      }
+    }
+
     case 'check_in':
       return {
         subject: 'Как дела с Orbo? Ответьте одним словом',
@@ -723,6 +779,18 @@ function getTelegramContent(ctx: UserContext, stepKey: string): string {
         `• Запросы, которые он озвучивал\n` +
         `• Кого из участников стоит знакомить\n\n` +
         `У вас 5 бесплатных анализов → <a href="${APP_URL}/orgs">Запустить</a>`
+      )
+
+    case 'reactivation_connect':
+      return (
+        `Привет! Это не очередное напоминание из рассылки.\n\n` +
+        `Мы заметили, что группа так и не подключена к Orbo. Без этого бот не видит ваших участников и аналитика не работает.\n\n` +
+        `Как исправить за 2 минуты:\n\n` +
+        `1️⃣ Добавьте <b>@orbo_community_bot</b> в вашу группу как администратора\n` +
+        `2️⃣ Перейдите в настройки Orbo → Telegram → Доступные группы\n` +
+        `3️⃣ Выберите группу — и готово\n\n` +
+        `→ <a href="${APP_URL}/orgs">Открыть настройки</a>\n\n` +
+        `Если возникнут трудности — напишите мне лично: @timgorshkov`
       )
 
     case 'check_in':
@@ -848,6 +916,7 @@ const STEP_LABELS: Record<string, string> = {
   add_group: 'Подключите группу',
   create_event: 'Создайте событие',
   video_overview: 'AI-анализ и возможности',
+  reactivation_connect: 'Реактивация: подключение',
   check_in: 'Как дела?',
 }
 
@@ -855,6 +924,7 @@ const SKIP_LABELS: Record<string, string> = {
   connect_telegram: 'Telegram уже привязан',
   add_group: 'Группа уже подключена',
   create_event: 'Событие уже создано',
+  reactivation_connect: 'Telegram и группа уже подключены',
 }
 
 export interface TemplatePreview {
