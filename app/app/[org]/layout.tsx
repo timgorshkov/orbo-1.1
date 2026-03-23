@@ -87,13 +87,27 @@ export default async function OrgLayout({
     redirect('/orgs')
   }
 
-  logger.debug({ 
+  logger.debug({
     user_id: user.id,
     org_id: org.id,
     role: membership.role
   }, 'Membership found');
 
   const role = membership.role as UserRole
+
+  // Fire-and-forget: record that an owner/admin visited the interface.
+  // Throttled to at most once per hour via conditional UPDATE (no extra read needed).
+  if (role === 'owner' || role === 'admin') {
+    adminSupabase.raw(
+      `UPDATE organizations
+       SET last_admin_visit_at = NOW()
+       WHERE id = $1
+         AND (last_admin_visit_at IS NULL OR last_admin_visit_at < NOW() - INTERVAL '1 hour')`,
+      [org.id]
+    ).catch(() => {
+      // Non-critical — ignore errors silently
+    })
+  }
 
   // ⚡ Параллельные запросы: telegram groups (для админов) + participant
   let telegramGroups: any[] = []
