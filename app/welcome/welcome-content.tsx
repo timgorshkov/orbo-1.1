@@ -262,18 +262,6 @@ function TelegramConnectStep({
         </CardHeader>
         <CardContent className="space-y-5">
 
-          {/* Single-step instruction */}
-          <div className="flex items-start gap-3 text-sm text-gray-600 bg-blue-50 rounded-lg p-3">
-            <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-xs font-bold text-blue-700">1</span>
-            </div>
-            <span>
-              Нажмите кнопку — откроется бот{' '}
-              <span className="font-medium text-blue-700">@{botUsername}</span>.
-              Нажмите <strong>Start</strong> — и готово.
-            </span>
-          </div>
-
           {/* Main CTA */}
           <a
             href={deepLink}

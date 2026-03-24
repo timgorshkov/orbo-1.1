@@ -21,14 +21,6 @@ interface OnboardingChecklistProps {
 export default function OnboardingChecklist({ orgId, status }: OnboardingChecklistProps) {
   const steps = [
     {
-      id: 'org',
-      label: 'Организация создана',
-      description: 'Ваше пространство для управления сообществом готово',
-      completed: true,
-      link: null,
-      action: null
-    },
-    {
       id: 'telegram',
       label: 'Привяжите Telegram-аккаунт',
       description: 'Для отправки уведомлений и анонсов участникам',
@@ -79,7 +71,7 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Быстрый старт</CardTitle>
-            <p className="text-sm text-neutral-500 mt-1">
+            <p className="hidden md:block text-sm text-neutral-500 mt-1">
               Выполните шаги, чтобы начать собирать людей на мероприятия
             </p>
           </div>
@@ -122,7 +114,7 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
                   {step.label}
                 </span>
                 {!step.completed && step.description && (
-                  <span className="block text-xs text-neutral-500 mt-0.5 truncate">
+                  <span className="hidden sm:block text-xs text-neutral-500 mt-0.5 truncate">
                     {step.description}
                   </span>
                 )}

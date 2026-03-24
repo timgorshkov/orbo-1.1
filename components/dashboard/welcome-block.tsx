@@ -9,11 +9,25 @@ export default function WelcomeBlock({ orgName }: { orgName: string }) {
         <h1 className="text-3xl font-bold text-neutral-900 mb-3">
           Добро пожаловать в {orgName}
         </h1>
-        <p className="text-lg text-neutral-700 mb-6">
+        <p className="hidden md:block text-lg text-neutral-700 mb-6">
           Собирайте людей на мероприятия и управляйте сообществом без ручной рутины
         </p>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-semibold text-neutral-900 mb-1">База участников</h3>
+              <p className="text-sm text-neutral-600">
+                Карточки с историей активности, контактами и профилем каждого участника
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
               <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -24,20 +38,6 @@ export default function WelcomeBlock({ orgName }: { orgName: string }) {
               <h3 className="font-semibold text-neutral-900 mb-1">Мероприятия в 1 клик</h3>
               <p className="text-sm text-neutral-600">
                 Создавайте события, собирайте регистрации и оплаты через Telegram miniapp
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-semibold text-neutral-900 mb-1">База участников</h3>
-              <p className="text-sm text-neutral-600">
-                Карточки участников с историей событий и активности
               </p>
             </div>
           </div>
