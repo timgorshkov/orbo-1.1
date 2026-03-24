@@ -16,6 +16,7 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(false)
   const logger = createClientLogger('SignUp');
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -70,7 +71,7 @@ export default function SignUp() {
       if (!response.ok) {
         setMessage(`Ошибка: ${data.error || 'Не удалось отправить письмо'}`)
       } else {
-        setMessage('Отлично! Мы отправили ссылку для подтверждения на ваш email.')
+        setEmailSent(true)
       }
     } catch (error) {
       logger.error({
@@ -174,13 +175,35 @@ export default function SignUp() {
           </div>
 
           <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8">
+            {emailSent ? (
+              <div className="text-center py-4 space-y-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Проверьте почту</h2>
+                <p className="text-gray-600">
+                  Мы отправили ссылку для входа на <strong>{email}</strong>. Перейдите по ней — и ваш аккаунт будет создан.
+                </p>
+                <p className="text-sm text-gray-500">Ссылка действительна 15 минут. Проверьте папку «Спам», если письмо не пришло.</p>
+                <button
+                  type="button"
+                  onClick={() => { setEmailSent(false); setMessage(null) }}
+                  className="text-sm text-blue-600 hover:text-blue-700 underline mt-2"
+                >
+                  Отправить на другой email
+                </button>
+              </div>
+            ) : (
+            <>
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Начните бесплатно</h1>
               <p className="text-sm text-gray-600">
                 Создайте пространство и проведите первое событие за 5 минут
               </p>
             </div>
-            
+
             {/* OAuth Buttons */}
             <div className="space-y-3 mb-6">
               <Button
@@ -304,6 +327,8 @@ export default function SignUp() {
                 </Link>
               </p>
             </form>
+            </>
+            )}
           </div>
 
           <p className="text-sm text-center text-gray-600">

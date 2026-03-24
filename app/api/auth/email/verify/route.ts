@@ -16,14 +16,26 @@ const supabaseAdmin = createAdminServer()
  * 3. Создаёт JWT сессию напрямую (без Credentials callback)
  * 4. Редиректит на redirectUrl
  */
+// Паттерн для определения ботов/сканеров ссылок (Telegram, Slack, Facebook и др.)
+// Они делают prefetch magic link и сжигают токен до того, как пользователь кликает
+const BOT_UA_PATTERN = /TelegramBot|facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|WhatsApp|Discordbot|Applebot|Googlebot|bingbot|YandexBot|SemrushBot|AhrefsBot|DotBot|linkpreview|preview|crawler|spider/i
+
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: 'auth/email/verify' })
   const { searchParams } = new URL(request.url)
   const token = searchParams.get('token')
-  
+
   // Определяем базовый URL
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
-  
+
+  // Блокируем ботов и сканеры ссылок — они не должны обрабатывать токены
+  // TelegramBot и подобные делают prefetch magic link, сжигая одноразовый токен
+  const userAgent = request.headers.get('user-agent') || ''
+  if (BOT_UA_PATTERN.test(userAgent)) {
+    logger.info({ userAgent }, 'Bot/scanner prefetch detected, returning empty response')
+    return new NextResponse(null, { status: 200 })
+  }
+
   if (!token) {
     logger.warn({}, 'Missing token')
     return NextResponse.redirect(new URL('/signin?error=missing_token', baseUrl))
