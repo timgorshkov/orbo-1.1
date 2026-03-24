@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
+import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
 
 const logger = createServiceLogger('RegistrationBotWebhook')
 
@@ -102,7 +103,65 @@ export async function POST(request: NextRequest) {
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
 
-      if (startParam === 'login') {
+      if (startParam && /^[0-9A-Fa-f]{6}$/.test(startParam)) {
+        // Auth code from welcome-screen Telegram linking flow
+        logger.info({
+          chat_id: chatId,
+          tg_user_id: userId,
+          code: startParam.toUpperCase(),
+        }, 'Registration bot: received auth code via /start')
+
+        const result = await verifyTelegramAuthCode({
+          code: startParam.toUpperCase(),
+          telegramUserId: userId,
+          telegramUsername: tgUsername || undefined,
+          firstName: message.from?.first_name || undefined,
+          lastName: message.from?.last_name || undefined,
+        })
+
+        if (result.success && result.alreadyAuthenticated) {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '✅ Telegram подключён к Orbo!\n\nВернитесь в браузер — страница обновится автоматически.',
+            }),
+          })
+          logger.info({ chat_id: chatId, tg_user_id: userId, code: startParam.toUpperCase() }, 'Registration bot: auth code verified, account linked')
+        } else if (result.success && result.sessionUrl) {
+          // Login flow via registration bot (code was for login, not linking)
+          const loginButton = {
+            inline_keyboard: [[{ text: '🔑 Войти в Orbo', url: result.sessionUrl }]]
+          }
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '🔐 Нажмите кнопку ниже для входа в Orbo:',
+              reply_markup: loginButton,
+            }),
+          })
+          logger.info({ chat_id: chatId, tg_user_id: userId, code: startParam.toUpperCase() }, 'Registration bot: auth code verified, login link sent')
+        } else {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '❌ Код недействителен или уже использован. Вернитесь в браузер и запросите новый код.',
+            }),
+          })
+          logger.warn({
+            chat_id: chatId,
+            tg_user_id: userId,
+            code: startParam.toUpperCase(),
+            error: result.error,
+            error_code: result.errorCode,
+          }, 'Registration bot: auth code verification failed')
+        }
+      } else if (startParam === 'login') {
         const loginText =
           '🔐 *Вход в Orbo*\n\n' +
           'Нажмите кнопку ниже для входа в ваш аккаунт:'
