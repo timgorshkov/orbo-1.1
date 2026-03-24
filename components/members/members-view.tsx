@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { Search, LayoutGrid, Table as TableIcon, Filter, FileJson, Loader2, ChevronDown, FileSpreadsheet } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Button } from '../ui/button'
@@ -612,7 +613,7 @@ export default function MembersView({
         )
       ) : /* Контент */ filteredParticipants.length === 0 ? (
         <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
-          <div className="text-center">
+          <div className="text-center px-4">
             <p className="text-lg font-medium text-gray-900">
               {searchQuery ? 'Участники не найдены' : 'Пока нет участников'}
             </p>
@@ -621,8 +622,16 @@ export default function MembersView({
                 ? 'Полный список ещё загружается, попробуйте снова через секунду'
                 : searchQuery
                 ? 'Попробуйте изменить поисковый запрос'
-                : 'Участники появятся после подключения Telegram-групп'}
+                : 'Участники появятся после подключения Telegram-группы'}
             </p>
+            {!searchQuery && (
+              <Link
+                href={`/p/${orgId}/telegram`}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                Подключить группу →
+              </Link>
+            )}
           </div>
         </div>
       ) : viewMode === 'table' ? (
