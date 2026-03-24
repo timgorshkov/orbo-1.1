@@ -160,16 +160,16 @@ export async function POST(request: Request) {
       logger.debug({ telegram_user_id: telegramUserId, result_ok: result.ok }, 'Verification code send result');
       
       if (!result.ok) {
-        logger.error({ telegram_user_id: telegramUserId, error: result.description }, 'Failed to send verification code');
-        
-        // Если пользователь не начал диалог с ботом
-        if (result.description?.includes('chat not found') || 
+        // Если пользователь не начал диалог с ботом — ожидаемое поведение, не ошибка
+        if (result.description?.includes('chat not found') ||
             result.description?.includes('bot was blocked')) {
-          return NextResponse.json({ 
+          logger.warn({ telegram_user_id: telegramUserId, error: result.description }, 'Verification code not sent: user has not started the bot');
+          return NextResponse.json({
             error: 'Please start a conversation with @orbo_assistant_bot first',
             code: 'BOT_BLOCKED'
           }, { status: 400 });
         }
+        logger.error({ telegram_user_id: telegramUserId, error: result.description }, 'Failed to send verification code');
       }
     } catch (notificationError: any) {
       logger.error({ 

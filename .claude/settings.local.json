@@ -31,7 +31,9 @@
       "Bash(ls:*)",
       "Bash(sed -i 's|href=\"\"https://calendly.com/timgorshkov/30min\"\" className=\"\"btn-pill btn-pill--ghost btn-pill--sm\"\" target=\"\"_blank\"\" rel=\"\"noopener noreferrer\"\"|href=\"\"/demo\"\" className=\"\"btn-pill btn-pill--ghost btn-pill--sm\"\"|g' app/site/page.tsx)",
       "Bash(sed -i 's|Записаться на демо\\\\n            </Link>|Посмотреть демо\\\\n            </Link>|g' app/site/page.tsx)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -maxdepth 3 -name *.tsx -o -name *.ts)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\app' -maxdepth 5 -name *.tsx)"
     ]
   }
 }

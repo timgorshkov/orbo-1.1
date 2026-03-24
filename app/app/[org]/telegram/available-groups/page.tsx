@@ -391,25 +391,42 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Импорт истории переписки</DialogTitle>
+            <DialogTitle>
+              {addedGroupTitle
+                ? `«${addedGroupTitle}» подключена — восстановите базу участников`
+                : 'Группа подключена — восстановите базу участников'}
+            </DialogTitle>
             <DialogDescription>
-              {addedGroupTitle && (
-                <span className="block mb-2 font-medium text-gray-900">
-                  Группа "{addedGroupTitle}" успешно добавлена!
-                </span>
-              )}
-              Загрузите историю чата группы, чтобы составить профили участников и их интересы.
+              Бот фиксирует только тех, кто написал после подключения — обычно 5–30 человек. Загрузите экспорт, чтобы восстановить всю историческую базу.
             </DialogDescription>
+
+            <div className="mt-3 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+              <p className="font-semibold mb-1">Почему сейчас видно мало участников?</p>
+              <p>
+                Бот фиксирует только тех, кто написал в группе <strong>после его подключения</strong>.
+                Обычно это 5–30 человек. Чтобы увидеть всю историческую базу — загрузите экспорт переписки.
+              </p>
+            </div>
+
+            <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
+              <p className="font-semibold mb-2">Как экспортировать историю из Telegram:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Откройте группу в <strong>Telegram Desktop</strong> (не в телефоне)</li>
+                <li>Нажмите <strong>⋯ → Экспорт истории чата</strong></li>
+                <li>Выберите формат <strong>JSON</strong> (рекомендуется — точнее распознаёт участников)</li>
+                <li>Снимите галочки с медиа — они не нужны, файл будет меньше</li>
+                <li>Нажмите «Экспорт» и загрузите полученный файл ниже</li>
+              </ol>
+            </div>
           </DialogHeader>
-          
+
           {addedGroupId && (
             <div className="mt-4">
-              <ImportHistory 
-                groupId={addedGroupId} 
+              <ImportHistory
+                groupId={addedGroupId}
                 orgId={params.org}
                 simplified={true}
                 onImportSuccess={() => {
-                  // ✅ Закрываем диалог и перенаправляем на страницу Telegram после успешного импорта
                   setShowImportDialog(false)
                   setTimeout(() => {
                     router.push(`/app/${params.org}/telegram`)
@@ -418,7 +435,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
               />
             </div>
           )}
-          
+
           <div className="mt-6 flex justify-end gap-3">
             <Button
               variant="outline"
@@ -429,7 +446,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
                 }, 300)
               }}
             >
-              Пропустить
+              Пропустить — загружу позже
             </Button>
           </div>
         </DialogContent>

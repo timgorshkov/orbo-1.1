@@ -48,6 +48,7 @@ interface UserContext {
   hasOrg: boolean
   hasTelegramLinked: boolean
   hasGroup: boolean
+  hasImport: boolean
   hasEvent: boolean
   emailVerified: boolean
 }
@@ -58,6 +59,8 @@ const DAY = 24 * HOUR
 const EMAIL_CHAIN: ChainStep[] = [
   { key: 'connect_telegram',    delayMs: 30 * 60 * 1000,  skipIf: ctx => ctx.hasTelegramLinked },
   { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => ctx.hasGroup },
+  // Импорт: отправляется тем, кто подключил группу, но ещё не загружал историю
+  { key: 'import_history',      delayMs: 1 * DAY,          skipIf: ctx => !ctx.hasGroup || ctx.hasImport },
   { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => ctx.hasEvent },
   { key: 'video_overview',      delayMs: 4 * DAY },
   // Реактивация: отправляется только тем, у кого нет орга или уже всё настроено
@@ -72,6 +75,8 @@ const TELEGRAM_CHAIN: ChainStep[] = [
   // из любопытства и ушёл — они блокируют бота, теряя возможность получать
   // важные уведомления в будущем. workspace_ready отправляется всем как приветствие.
   { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  // Импорт: только тем, кто подключил группу, но ещё не загружал историю
+  { key: 'import_history',      delayMs: 1 * DAY,          skipIf: ctx => !ctx.hasOrg || !ctx.hasGroup || ctx.hasImport },
   { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
   { key: 'video_overview',      delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
   // Реактивация: только тем, у кого есть орг, но нет подключённой группы
@@ -83,6 +88,8 @@ const MAX_CHAIN: ChainStep[] = [
   { key: 'workspace_ready',  delayMs: 5 * 60 * 1000 },
   // Аналогично TELEGRAM_CHAIN: советы только тем, кто создал организацию.
   { key: 'add_group',           delayMs: 4 * HOUR,         skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
+  // Импорт: только тем, кто подключил группу, но ещё не загружал историю
+  { key: 'import_history',      delayMs: 1 * DAY,          skipIf: ctx => !ctx.hasOrg || !ctx.hasGroup || ctx.hasImport },
   { key: 'create_event',        delayMs: 2 * DAY,          skipIf: ctx => !ctx.hasOrg || ctx.hasEvent },
   { key: 'video_overview',      delayMs: 4 * DAY,          skipIf: ctx => !ctx.hasOrg },
   { key: 'reactivation_connect', delayMs: 10 * DAY,        skipIf: ctx => !ctx.hasOrg || ctx.hasGroup },
@@ -389,7 +396,7 @@ async function buildUserContext(userId: string): Promise<UserContext> {
   if (!user) {
     return {
       userId, email: null, name: null, tgUserId: null, maxUserId: null,
-      hasOrg: false, hasTelegramLinked: false, hasGroup: false,
+      hasOrg: false, hasTelegramLinked: false, hasGroup: false, hasImport: false,
       hasEvent: false, emailVerified: false,
     }
   }
@@ -437,6 +444,17 @@ async function buildUserContext(userId: string): Promise<UserContext> {
     hasEvent = (count || 0) > 0
   }
 
+  // Check completed history imports
+  let hasImport = false
+  if (orgId) {
+    const { count } = await supabase
+      .from('telegram_import_batches')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+      .eq('status', 'completed')
+    hasImport = (count || 0) > 0
+  }
+
   // Check MAX user ID (from user_telegram_accounts or future MAX accounts table)
   const maxUserId = (user as any).max_user_id || null
 
@@ -449,6 +467,7 @@ async function buildUserContext(userId: string): Promise<UserContext> {
     hasOrg: !!orgId,
     hasTelegramLinked: !!(tgAccount || user.tg_user_id),
     hasGroup,
+    hasImport,
     hasEvent,
     emailVerified: !!user.email_verified,
   }
@@ -553,6 +572,16 @@ function getMaxContent(ctx: UserContext, stepKey: string): string {
         `• Контакты сохранятся надёжно\n\n` +
         `2 минуты → ${appUrl}/orgs`
       )
+    case 'import_history':
+      return (
+        `${hi}группа подключена — но бот видит только тех, кто написал после подключения\n\n` +
+        `Чтобы восстановить всю базу:\n\n` +
+        `1. Откройте группу в Telegram Desktop\n` +
+        `2. Нажмите ⋯ → Экспорт истории чата → формат JSON\n` +
+        `3. Загрузите файл в Orbo → Telegram → группа → Импорт истории\n\n` +
+        `Orbo автоматически распознает всех участников и создаст профили.\n\n` +
+        `→ ${appUrl}/orgs`
+      )
     case 'create_event':
       return (
         `${hi}попробуйте создать событие\n\n` +
@@ -650,6 +679,29 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
           ${ctaButton(`${APP_URL}/orgs`, 'Подключить группу')}
           ${hint('Добавьте бота в группу как администратора — 2 минуты')}
         `, { preheader: 'Подключите группу — участники появятся в карточках автоматически' }),
+      }
+
+    case 'import_history':
+      return {
+        subject: 'Группа подключена. Загрузите историю — увидите всю базу',
+        html: emailLayout(greeting, `
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 8px;">
+            Группа подключена, но сейчас Orbo видит только тех, кто написал <strong>после</strong> подключения бота — обычно это 5–30 человек.
+          </p>
+          <p style="font-size:15px; color:#334155; line-height:1.6; margin:0 0 20px;">
+            Чтобы восстановить <strong>всю историческую базу</strong> — загрузите экспорт переписки из Telegram Desktop.
+          </p>
+          <p style="font-size:14px; font-weight:600; color:#1e1b4b; margin:0 0 12px;">Как это сделать:</p>
+          ${stepRow('1', 'Откройте группу в <b>Telegram Desktop</b> (не в мобильном приложении)')}
+          ${stepRow('2', 'Нажмите <b>⋯ → Экспорт истории чата</b>')}
+          ${stepRow('3', 'Выберите формат <b>JSON</b>, снимите галочки с медиа — файл будет меньше')}
+          ${stepRow('4', 'Загрузите файл в <b>Orbo → Telegram → группа → Импорт истории</b>')}
+          ${ctaButton(`${APP_URL}/orgs`, 'Загрузить историю')}
+          ${divider()}
+          <p style="font-size:13px; color:#64748b; line-height:1.5; margin:0; text-align:center;">
+            Orbo автоматически распознает участников по Telegram ID — точно, без дубликатов.
+          </p>
+        `, { preheader: 'Бот видит только последние 5–30 человек. Загрузите историю — увидите всех' }),
       }
 
     case 'create_event':
@@ -782,6 +834,17 @@ function getTelegramContent(ctx: UserContext, stepKey: string): string {
         `• Запустится аналитика — кто пишет, кто молчит\n` +
         `• Контакты сохранятся, даже если Telegram станет недоступен\n\n` +
         `Занимает 2 минуты → <a href="${APP_URL}/orgs">Подключить</a>`
+      )
+
+    case 'import_history':
+      return (
+        `${hi}группа подключена, но бот видит только последние 5–30 человек\n\n` +
+        `Чтобы восстановить всю базу — загрузите историю из Telegram Desktop:\n\n` +
+        `1️⃣ Откройте группу в <b>Telegram Desktop</b>\n` +
+        `2️⃣ Нажмите <b>⋯ → Экспорт истории чата → формат JSON</b>\n` +
+        `3️⃣ Загрузите файл: <b>Orbo → Telegram → группа → Импорт истории</b>\n\n` +
+        `Orbo распознает участников по Telegram ID — точно и без дубликатов.\n\n` +
+        `→ <a href="${APP_URL}/orgs">Загрузить историю</a>`
       )
 
     case 'create_event':
@@ -973,6 +1036,7 @@ export function getAllTemplatesForPreview(): TemplatePreview[] {
     hasOrg: true,
     hasTelegramLinked: false,
     hasGroup: false,
+    hasImport: false,
     hasEvent: false,
     emailVerified: true,
   }

@@ -56,3 +56,6 @@ deploy/nginx/logs/
 id_rsa*
 selectel_key*
 .s3cfgorbo-app.tar.gz
+
+
+docs/productradar-materials.md

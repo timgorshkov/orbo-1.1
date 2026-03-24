@@ -35,22 +35,25 @@ if (process.env.NEXT_PHASE !== 'phase-production-build') {
 const providers: NextAuthConfig['providers'] = []
 
 // Google Provider
+// Runtime override type → 'oauth' чтобы обойти строгую валидацию openid-client v5,
+// которая требует параметр `iss` в authorization response (RFC 9207).
+// Безопасно: profile по-прежнему верифицируется через userinfo endpoint с валидным access token.
 if (hasGoogleCredentials) {
-  providers.push(
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      // Разрешаем связывать OAuth с существующими пользователями по email
-      allowDangerousEmailAccountLinking: true,
-      authorization: {
-        params: {
-          prompt: 'select_account',
-          access_type: 'offline',
-          response_type: 'code',
-        },
+  const googleProvider = Google({
+    clientId: process.env.GOOGLE_CLIENT_ID!,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    allowDangerousEmailAccountLinking: true,
+    authorization: {
+      params: {
+        prompt: 'select_account',
+        access_type: 'offline',
+        response_type: 'code',
       },
-    })
-  )
+    },
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(googleProvider as any).type = 'oauth'
+  providers.push(googleProvider)
 }
 
 // Custom Yandex provider

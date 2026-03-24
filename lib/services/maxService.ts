@@ -66,12 +66,17 @@ export class MaxService {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        // method.not.found = endpoint not supported by this MAX API version — log as warn, not error
-        if (data?.code === 'method.not.found') {
+        // method.not.found = endpoint not supported — warn, not error
+        // chat.not.found = user hasn't started the bot — expected, warn only
+        const isExpectedMaxError =
+          data?.code === 'method.not.found' ||
+          data?.code === 'chat.not.found';
+
+        if (isExpectedMaxError) {
           logger.warn({
             method, httpMethod, status: response.status,
             error: data, elapsed_ms: elapsed, bot_type: this.botType,
-          }, `MAX API unsupported endpoint: ${method}`);
+          }, `MAX API expected error: ${method}`);
         } else {
           logger.error({
             method, httpMethod, status: response.status,
