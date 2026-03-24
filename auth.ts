@@ -351,6 +351,21 @@ export const authConfig: NextAuthConfig = {
   secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
 
   debug: process.env.NODE_ENV === 'development',
+
+  logger: {
+    error(error: Error & { cause?: { err?: Error; [key: string]: unknown }; details?: unknown }) {
+      const cause = error.cause?.err ?? (error.cause instanceof Error ? error.cause : undefined)
+      logger.error({
+        auth_error_code: error.message,
+        cause: cause?.message ?? (typeof error.cause === 'string' ? error.cause : undefined),
+        details: (error as any).details ?? error.cause?.details,
+        stack: cause?.stack?.split('\n').slice(0, 3).join(' | '),
+      }, '[auth] error')
+    },
+    warn(code: string) {
+      logger.warn({ auth_warn_code: code }, '[auth] warning')
+    },
+  },
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig)

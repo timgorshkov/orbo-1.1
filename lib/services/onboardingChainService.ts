@@ -639,8 +639,8 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
           ${featureRow('👥', 'База участников', 'Бот соберёт профили всех, кто пишет в группе — имена, username, активность')}
           ${featureRow('🔒', 'Сохранность контактов', 'Даже если Telegram станет недоступен — контакты и история останутся у вас')}
           ${featureRow('📊', 'AI-анализ', '5 бесплатных AI-анализов профилей — интересы, экспертиза, запросы участников')}
-          ${ctaButton(`${APP_URL}/orgs`, 'Подключить Telegram')}
-          ${hint('Нажмите → в настройках выберите «Telegram-аккаунт» → следуйте инструкции')}
+          ${ctaButton(`${APP_URL}/welcome`, 'Подключить Telegram')}
+          ${hint('Нажмите → откроется страница настройки → нажмите кнопку «Подключить Telegram» → откроется бот → нажмите Start')}
         `, { preheader: 'Без Telegram Orbo не увидит участников вашей группы' }),
       }
 
@@ -752,10 +752,10 @@ function getEmailContent(ctx: UserContext, stepKey: string): { subject: string; 
               Мы заметили, что Telegram-аккаунт так и не подключился. Мы только что переделали этот шаг — теперь не нужно искать никаких кодов, всё происходит автоматически.
             </p>
             <p style="font-size:14px; font-weight:600; color:#1e1b4b; margin:0 0 12px;">Как подключить прямо сейчас:</p>
-            ${stepRow('1', 'Нажмите кнопку ниже — откроется бот <b>в Telegram</b>')}
-            ${stepRow('2', 'Нажмите <b>Start</b> — аккаунт подключится автоматически')}
-            ${stepRow('3', 'Добавьте бота в вашу группу — и Orbo начнёт видеть участников')}
-            ${ctaButton(`${APP_URL}/orgs`, 'Подключить Telegram')}
+            ${stepRow('1', 'Нажмите кнопку ниже — откроется страница настройки')}
+            ${stepRow('2', 'Нажмите «Подключить Telegram» → откроется бот → нажмите <b>Start</b>')}
+            ${stepRow('3', 'Готово — аккаунт подключится автоматически')}
+            ${ctaButton(`${APP_URL}/welcome`, 'Подключить Telegram')}
             ${hint('Если Telegram не открывается — может потребоваться VPN. Или напишите нам: <a href="https://t.me/timgorshkov" style="color:#94a3b8;">@timgorshkov</a>')}
           `, { preheader: 'Мы упростили подключение: одна кнопка — и готово' }),
         }
