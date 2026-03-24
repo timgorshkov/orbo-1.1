@@ -86,18 +86,8 @@ export default function MobileBottomNav({
   // Основные пункты навигации для нижнего меню
   const mainNavItems = []
 
-  const showDashboard = isAdmin && adminMode
-  const showHome = !isAdmin || !adminMode
-
-  if (showHome) {
-    mainNavItems.push({
-      key: 'home',
-      label: 'Главная',
-      icon: Home,
-      href: `/p/${orgId}`,
-      active: pathname === `/p/${orgId}`,
-    })
-  } else if (showDashboard) {
+  if (isAdmin && adminMode) {
+    // Порядок для администраторов: Дашборд → Участники → События → Группы(⚙)
     mainNavItems.push({
       key: 'dashboard',
       label: 'Дашборд',
@@ -105,36 +95,58 @@ export default function MobileBottomNav({
       href: `/p/${orgId}/dashboard`,
       active: pathname === `/p/${orgId}/dashboard`,
     })
-  }
-
-  if (permissions.canManageSettings && adminMode) {
+    if (permissions.canViewMembers) {
+      mainNavItems.push({
+        key: 'members',
+        label: 'Участники',
+        icon: Users,
+        href: `/p/${orgId}/members`,
+        active: pathname?.startsWith(`/p/${orgId}/members`),
+      })
+    }
+    if (permissions.canViewEvents) {
+      mainNavItems.push({
+        key: 'events',
+        label: 'События',
+        icon: Calendar,
+        href: `/p/${orgId}/events`,
+        active: pathname?.startsWith(`/p/${orgId}/events`),
+      })
+    }
     mainNavItems.push({
-      key: 'applications',
-      label: 'Заявки',
-      icon: FileText,
-      href: `/p/${orgId}/applications`,
-      active: pathname?.startsWith(`/p/${orgId}/applications`),
+      key: 'telegram',
+      label: 'Группы',
+      icon: Settings,
+      href: `/p/${orgId}/telegram`,
+      active: pathname?.startsWith(`/p/${orgId}/telegram`) || pathname?.startsWith(`/p/${orgId}/max`),
     })
-  }
-
-  if (permissions.canViewEvents && ((isAdmin && adminMode) || portalSettings.show_events)) {
+  } else {
+    // Режим участника / гость
     mainNavItems.push({
-      key: 'events',
-      label: 'События',
-      icon: Calendar,
-      href: `/p/${orgId}/events`,
-      active: pathname?.startsWith(`/p/${orgId}/events`),
+      key: 'home',
+      label: 'Главная',
+      icon: Home,
+      href: `/p/${orgId}`,
+      active: pathname === `/p/${orgId}`,
     })
-  }
-
-  if (permissions.canViewMembers && ((isAdmin && adminMode) || portalSettings.show_members)) {
-    mainNavItems.push({
-      key: 'members',
-      label: 'Участники',
-      icon: Users,
-      href: `/p/${orgId}/members`,
-      active: pathname?.startsWith(`/p/${orgId}/members`),
-    })
+    if (permissions.canViewEvents && portalSettings.show_events) {
+      mainNavItems.push({
+        key: 'events',
+        label: 'События',
+        icon: Calendar,
+        href: `/p/${orgId}/events`,
+        active: pathname?.startsWith(`/p/${orgId}/events`),
+      })
+    }
+    if (permissions.canViewMembers && portalSettings.show_members) {
+      mainNavItems.push({
+        key: 'members',
+        label: 'Участники',
+        icon: Users,
+        href: `/p/${orgId}/members`,
+        active: pathname?.startsWith(`/p/${orgId}/members`),
+      })
+    }
   }
 
   return (
@@ -192,8 +204,23 @@ export default function MobileBottomNav({
                 </div>
               )}
 
-              {/* Дополнительные пункты в порядке: Уведомления → Анонсы → Приложения → Настройки групп → Настройки */}
+              {/* Дополнительные пункты: Заявки → Уведомления → Анонсы → Материалы → Приложения → группы → Настройки */}
               <nav className="px-2 py-4 space-y-1">
+
+                {/* Заявки (только для админов в режиме админа) */}
+                {permissions.canManageSettings && adminMode && (
+                  <Link
+                    href={`/p/${orgId}/applications`}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      pathname?.startsWith(`/p/${orgId}/applications`)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <FileText className="h-5 w-5 flex-shrink-0" />
+                    <span>Заявки</span>
+                  </Link>
+                )}
 
                 {/* Уведомления (только для админов в режиме админа) */}
                 {permissions.canManageSettings && adminMode && (
@@ -256,21 +283,8 @@ export default function MobileBottomNav({
                 )}
 
                 {/* Telegram-группы и каналы (только для админов в режиме админа) */}
-                {permissions.canManageTelegram && adminMode && (
+                {permissions.canManageTelegram && adminMode && (telegramGroups.length > 0 || telegramChannels.length > 0 || maxGroups.length > 0) && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
-                    {/* Настройки групп — основная ссылка (шестерёнка) */}
-                    <Link
-                      href={`/p/${orgId}/telegram`}
-                      className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
-                        pathname === `/p/${orgId}/telegram` || pathname === `/p/${orgId}/telegram/`
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <Settings className="h-5 w-5 flex-shrink-0" />
-                      <span>Настройки групп</span>
-                    </Link>
-
                     {/* Список групп */}
                     {telegramGroups && telegramGroups.length > 0 && telegramGroups.map((group: any) => (
                       <Link
