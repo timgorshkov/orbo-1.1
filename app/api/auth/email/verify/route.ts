@@ -42,24 +42,36 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // 1. Проверяем токен в БД
-    const { data: authToken, error: tokenError } = await supabaseAdmin
+    // 1. Проверяем токен в БД (без фильтра is_used — чтобы различить "не найден" vs "уже использован")
+    const { data: tokenRow, error: tokenLookupError } = await supabaseAdmin
       .from('email_auth_tokens')
       .select('*')
       .eq('token', token)
-      .eq('is_used', false)
       .single()
-    
-    if (tokenError || !authToken) {
-      logger.warn({ token_prefix: token.substring(0, 8) }, 'Invalid or used token')
+
+    if (tokenLookupError || !tokenRow) {
+      logger.warn({ token_prefix: token.substring(0, 8) }, 'Token not found')
       return NextResponse.redirect(new URL('/signin?error=invalid_token', baseUrl))
     }
-    
+
+    if (tokenRow.is_used) {
+      logger.warn({
+        token_prefix: token.substring(0, 8),
+        email: tokenRow.email,
+        used_at: tokenRow.used_at,
+        token_id: tokenRow.id
+      }, 'Token already used — possible bot prefetch or double-click')
+      return NextResponse.redirect(new URL('/signin?error=invalid_token', baseUrl))
+    }
+
+    const authToken = tokenRow
+
     // 2. Проверяем срок действия
     const expiresAt = new Date(authToken.expires_at)
     if (expiresAt < new Date()) {
-      logger.warn({ 
+      logger.warn({
         token_id: authToken.id,
+        email: authToken.email,
         expires_at: expiresAt.toISOString()
       }, 'Token expired')
       return NextResponse.redirect(new URL('/signin?error=expired_token', baseUrl))
@@ -106,7 +118,9 @@ export async function GET(request: NextRequest) {
       isNewUser = true
       logger.info({ email, user_id: user.id }, 'Created new user via email')
       
-      scheduleOnboardingChain(user.id, 'email').catch(() => {})
+      scheduleOnboardingChain(user.id, 'email').catch((err: unknown) => {
+        logger.error({ error: err instanceof Error ? err.message : String(err), user_id: user.id }, 'Failed to schedule onboarding chain')
+      })
     } else {
       // Обновляем email_verified
       await supabaseAdmin
@@ -130,7 +144,7 @@ export async function GET(request: NextRequest) {
       .single()
     
     if (!existingAccount) {
-      await supabaseAdmin
+      const { error: accountError } = await supabaseAdmin
         .from('accounts')
         .insert({
           user_id: user.id,
@@ -138,6 +152,9 @@ export async function GET(request: NextRequest) {
           provider: 'email',
           provider_account_id: email,
         })
+      if (accountError) {
+        logger.error({ error: accountError.message, user_id: user.id, email }, 'Failed to create email account record')
+      }
     }
     
     // 6. Создаём JWT токен напрямую

@@ -62,7 +62,7 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
     const chatId = post.chat.id;
     const chatType = post.chat.type;
     
-    logger.info({
+    logger.debug({
       chat_id: chatId,
       chat_type: chatType,
       message_id: post.message_id,
@@ -71,7 +71,6 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       has_text: !!post.text,
       has_caption: !!post.caption,
       text_preview: (post.text || post.caption || '').substring(0, 50),
-      views: post.views,
       date: post.date
     }, '📢 [CHANNEL] Processing channel post');
     
@@ -122,15 +121,15 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       const memberCountResponse = await telegramService.getChatMembersCount(chatId);
       if (memberCountResponse.ok && memberCountResponse.result) {
         subscriberCount = memberCountResponse.result;
-        logger.info({ chat_id: chatId, subscriber_count: subscriberCount }, '👥 [CHANNEL] Got subscriber count');
+        logger.debug({ chat_id: chatId, subscriber_count: subscriberCount }, '👥 [CHANNEL] Got subscriber count');
       }
     } catch (error) {
       logger.warn({ error, chat_id: chatId }, '⚠️ [CHANNEL] Failed to get subscriber count (bot may not be admin)');
     }
     
     // Upsert channel first
-    logger.info({ 
-      chat_id: chatId, 
+    logger.debug({
+      chat_id: chatId,
       title: post.chat.title,
       username: post.chat.username,
       subscriber_count: subscriberCount
@@ -163,10 +162,10 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       return { success: false, error: 'Failed to get channel ID' };
     }
     
-    logger.info({ channel_id: channelId, chat_id: chatId }, '✅ [CHANNEL] Channel upserted');
-    
+    logger.debug({ channel_id: channelId, chat_id: chatId }, '✅ [CHANNEL] Channel upserted');
+
     // Upsert post
-    logger.info({ 
+    logger.debug({
       chat_id: chatId,
       channel_id: channelId,
       message_id: post.message_id,
@@ -199,17 +198,12 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       return { success: false, error: postError.message };
     }
     
-    logger.info({ 
-      chat_id: chatId, 
-      message_id: post.message_id,
-      post_result: postResult 
-    }, '✅ [CHANNEL] Post upserted successfully');
-    
     logger.info({
       chat_id: chatId,
       message_id: post.message_id,
       has_media: hasMedia,
-      media_type: mediaType
+      media_type: mediaType,
+      subscriber_count: subscriberCount
     }, 'Channel post processed');
     
     return { success: true };
