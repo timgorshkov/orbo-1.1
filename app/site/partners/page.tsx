@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Users, Zap, Calendar, Code, Megaphone, GraduationCap, MessageCircle, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowRight, Users, Zap, Calendar, Code, Megaphone, GraduationCap, MessageCircle, Check, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { Header, Footer } from '@/components/website';
 
 function FAQItem({ q, a }: { q: string; a: string }) {
@@ -180,6 +180,13 @@ export default function PartnersPage() {
               </div>
             </div>
             <div className="partners-feature">
+              <Shield size={20} />
+              <div>
+                <h4>Telegram + Max из коробки</h4>
+                <p>MiniApp работает в обоих мессенджерах. Единая база участников — даже если клиент переезжает с Telegram на Max, данные и история сохраняются</p>
+              </div>
+            </div>
+            <div className="partners-feature">
               <Zap size={20} />
               <div>
                 <h4>Быстрый старт</h4>
@@ -200,6 +207,7 @@ export default function PartnersPage() {
             <div className="partners-easy__item"><Check size={16} /> Продукт понятный — это Telegram, клиент уже там</div>
             <div className="partners-easy__item"><Check size={16} /> Подключение группы за 2 минуты, без программирования</div>
             <div className="partners-easy__item"><Check size={16} /> Видимый результат: участники и регистрации появляются сразу</div>
+            <div className="partners-easy__item"><Check size={16} /> Готовая поддержка Max — актуальный аргумент для клиентов, которым важна непрерывность</div>
             <div className="partners-easy__item"><Check size={16} /> Бесплатный тариф — легко зайти, потом перевести на платный</div>
             <div className="partners-easy__item"><Check size={16} /> Нет конкуренции с вами — вы контролируете внедрение</div>
           </div>
