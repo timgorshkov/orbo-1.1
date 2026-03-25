@@ -244,6 +244,8 @@ export default async function MembersPage({ params, searchParams }: {
         .from('user_telegram_accounts')
         .select('id')
         .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .eq('is_verified', true)
         .limit(1)
         .maybeSingle(),
       adminSupabase

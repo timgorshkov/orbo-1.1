@@ -28,11 +28,13 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     const { org: orgId } = await params
     const { supabase, user, role } = await requireOrgAccess(orgId)
 
-    // Проверяем, подключён ли Telegram-аккаунт текущего пользователя
+    // Проверяем, подключён ли верифицированный Telegram-аккаунт для данной организации
     const { data: tgAccount } = await supabase
       .from('user_telegram_accounts')
       .select('id')
       .eq('user_id', user.id)
+      .eq('org_id', orgId)
+      .eq('is_verified', true)
       .limit(1)
       .maybeSingle()
     const hasTelegramAccount = !!tgAccount

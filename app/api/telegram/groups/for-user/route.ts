@@ -116,14 +116,19 @@ export async function GET(request: Request) {
       
       // Ищем аккаунт для текущей организации
       const telegramAccount = telegramAccounts.find(account => account.org_id === orgId);
-      
-      // Если нет аккаунта для текущей организации, используем первый доступный
+
+      // Если нет аккаунта для текущей организации — возвращаем пустой список.
+      // Нельзя использовать аккаунт другой организации: это покажет чужие группы.
       if (!telegramAccount) {
-        logger.debug({ org_id: orgId }, 'No verified Telegram account found for org, using first available account');
+        logger.info({ org_id: orgId, user_id: user.id }, 'No verified Telegram account found for this org — returning empty groups');
+        return NextResponse.json({
+          groups: [],
+          availableGroups: [],
+          message: 'No verified Telegram account found for this organization'
+        });
       }
-      
-      // Выбираем аккаунт для текущей организации или первый доступный
-      const activeAccount = telegramAccount || telegramAccounts[0];
+
+      const activeAccount = telegramAccount;
       
       logger.debug({ telegram_user_id: activeAccount.telegram_user_id, org_id: activeAccount.org_id }, 'Using Telegram account');
       
