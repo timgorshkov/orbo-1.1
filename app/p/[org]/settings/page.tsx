@@ -1,6 +1,6 @@
 import React from 'react'
 import { requireOrgAccess } from '@/lib/orgGuard'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 // Supabase removed — using createAdminServer() for all DB operations
 import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
@@ -252,6 +252,9 @@ export default async function OrganizationSettingsPage({
       </div>
     )
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      redirect(`/p/${orgId}/auth`)
+    }
     logger.error({
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,

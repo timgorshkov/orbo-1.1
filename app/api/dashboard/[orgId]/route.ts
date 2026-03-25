@@ -320,10 +320,14 @@ export async function GET(
     
     if (!isOnboarding && connectedGroupsCount > 0) {
       // 4a-c. Parallel fetch for attention zones + resolved items
+      // Таймаут 5с — RPC могут быть медленными для больших орг, не даём им завесить страницу
+      const attentionZonesTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+
       const threeDaysFromNow = new Date()
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
 
-      const [criticalEventsResult, churningResult, inactiveResult, resolvedItemsResult] = await Promise.all([
+      const attentionZonesData = await Promise.race([
+        Promise.all([
         adminSupabase
           .from('events')
           .select('id, title, event_date, start_time, capacity')
@@ -346,7 +350,14 @@ export async function GET(
           .eq('org_id', orgId)
           .not('resolved_at', 'is', null)
           .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        ]),
+        attentionZonesTimeout
       ])
+
+      if (!attentionZonesData) {
+        logger.warn({ org_id: orgId }, 'Attention zones timeout (5s), returning empty')
+      } else {
+      const [criticalEventsResult, churningResult, inactiveResult, resolvedItemsResult] = attentionZonesData
 
       // Получаем регистрации для критических событий отдельно
       const criticalEventIds = criticalEventsResult.data?.map(e => e.id) || [];
@@ -436,6 +447,7 @@ export async function GET(
       attentionZones.inactiveNewcomers = getRotatedSlice(newcomersList, newcomersOffset, 3)
       attentionZones.hasMore.churning = Math.max(0, churningList.length - 3)
       attentionZones.hasMore.newcomers = Math.max(0, newcomersList.length - 3)
+      } // else (attentionZonesData not null)
     }
 
     // 4d. Fetch latest AI alerts from notification_logs (last 5 unresolved)
