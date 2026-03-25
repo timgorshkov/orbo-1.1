@@ -251,8 +251,52 @@ export default function SignIn() {
             <>
             <h1 className="text-2xl font-bold text-gray-900 mb-6">Вход в Orbo</h1>
 
+            <form onSubmit={onSubmit} className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="h-11"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                disabled={loading}
+              >
+                {loading ? 'Отправка...' : 'Получить ссылку для входа'}
+              </Button>
+
+              {message && (
+                <div className={`p-3 rounded-lg text-sm ${
+                  message.includes('Ошибка')
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : message.includes('отправили')
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {message}
+                </div>
+              )}
+            </form>
+
+            {/* Divider */}
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-white text-gray-500">или через</span>
+              </div>
+            </div>
+
             {/* OAuth Buttons */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3">
               {/* Google временно скрыт — требует дополнительных подтверждений и редиректит через youtube.com (без VPN не работает) */}
               {false && (
               <Button
@@ -326,50 +370,6 @@ export default function SignIn() {
                 </span>
               </a>
             </div>
-
-            {/* Divider */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-gray-500">или по email</span>
-              </div>
-            </div>
-            
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Input 
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  className="h-11"
-                />
-              </div>
-              
-              <Button 
-                type="submit" 
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-                disabled={loading}
-              >
-                {loading ? 'Отправка...' : 'Получить ссылку для входа'}
-              </Button>
-              
-              {message && (
-                <div className={`p-3 rounded-lg text-sm ${
-                  message.includes('Ошибка')
-                    ? 'bg-red-50 text-red-600 border border-red-200' 
-                    : message.includes('отправили')
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
-                  {message}
-                </div>
-              )}
-            </form>
             </>
             )}
           </div>

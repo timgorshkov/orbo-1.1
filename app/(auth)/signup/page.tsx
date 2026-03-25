@@ -204,8 +204,62 @@ export default function SignUp() {
               </p>
             </div>
 
+            <form onSubmit={onSubmit} className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="h-11"
+                />
+                <p className="text-xs text-gray-500">
+                  Мы отправим вам ссылку для входа без пароля
+                </p>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                disabled={loading}
+              >
+                {loading ? 'Отправка...' : 'Зарегистрироваться бесплатно'}
+              </Button>
+
+              {message && (
+                <div className={`p-3 rounded-lg text-sm ${
+                  message.includes('Ошибка')
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : message.includes('Отлично')
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {message}
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500 text-center pt-2">
+                Регистрируясь, вы соглашаетесь с{' '}
+                <Link href="https://orbo.ru/terms" className="text-gray-500 hover:text-gray-700">
+                  условиями использования
+                </Link>
+              </p>
+            </form>
+
+            {/* Divider */}
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-white text-gray-500">или через</span>
+              </div>
+            </div>
+
             {/* OAuth Buttons */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3">
               {/* Google временно скрыт — требует дополнительных подтверждений и редиректит через youtube.com (без VPN не работает) */}
               {false && (
               <Button
@@ -279,60 +333,6 @@ export default function SignUp() {
                 </span>
               </a>
             </div>
-
-            {/* Divider */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-gray-500">или по email</span>
-              </div>
-            </div>
-            
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Input 
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  className="h-11"
-                />
-                <p className="text-xs text-gray-500">
-                  Мы отправим вам ссылку для входа без пароля
-                </p>
-              </div>
-              
-              <Button 
-                type="submit" 
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" 
-                disabled={loading}
-              >
-                {loading ? 'Отправка...' : 'Зарегистрироваться бесплатно'}
-              </Button>
-              
-              {message && (
-                <div className={`p-3 rounded-lg text-sm ${
-                  message.includes('Ошибка')
-                    ? 'bg-red-50 text-red-600 border border-red-200' 
-                    : message.includes('Отлично')
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                }`}>
-                  {message}
-                </div>
-              )}
-
-              <p className="text-xs text-gray-500 text-center pt-2">
-                Регистрируясь, вы соглашаетесь с{' '}
-                <Link href="https://orbo.ru/terms" className="text-gray-500 hover:text-gray-700">
-                  условиями использования
-                </Link>
-              </p>
-            </form>
             </>
             )}
           </div>
