@@ -26,8 +26,17 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
   const logger = createServiceLogger('TelegramPage');
   try {
     const { org: orgId } = await params
-    const { supabase, role } = await requireOrgAccess(orgId)
-    
+    const { supabase, user, role } = await requireOrgAccess(orgId)
+
+    // Проверяем, подключён ли Telegram-аккаунт текущего пользователя
+    const { data: tgAccount } = await supabase
+      .from('user_telegram_accounts')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle()
+    const hasTelegramAccount = !!tgAccount
+
     // Получаем список подключенных групп через org_telegram_groups
     const { data: orgGroupLinks, error: linksError } = await supabase
       .from('org_telegram_groups')
@@ -89,32 +98,56 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
               {role === 'owner' ? (
                 // ✅ Блок для владельца организации
                 <>
-                  <div className="text-sm text-neutral-600 space-y-3">
-                    <p>
-                      <strong className="font-medium">1)</strong> Пригласите бота в вашу группу и назначьте администратором.
-                    </p>
-                    <p className="bg-neutral-50 rounded p-2 font-mono">
-                      @orbo_community_bot
-                    </p>
-                    <p>
-                      <strong className="font-medium">2)</strong> Нажмите «Доступные группы», чтобы увидеть список групп, в которых вы являетесь администратором, и подключить их к организации.
-                    </p>
-                  </div>
-                  
-                  <div className="flex gap-2 flex-wrap">
-                    <Link href={`/p/${orgId}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
-                      Доступные группы
-                    </Link>
-                  </div>
-                  
-                  <div className="border-t pt-4">
-                    <Link href={`/p/${orgId}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
-                      Настроить Telegram-аккаунт
-                    </Link>
-                    <p className="mt-2 text-xs text-neutral-500 text-center">
-                      Необходимо для получения списка ваших групп
-                    </p>
-                  </div>
+                  {!hasTelegramAccount ? (
+                    // Шаг 0: аккаунт не подключён — это первое, что нужно сделать
+                    <div className="space-y-4">
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
+                        <p className="font-medium mb-1">Сначала подключите Telegram-аккаунт</p>
+                        <p className="text-amber-800">Чтобы видеть доступные группы и подключать их, необходимо привязать ваш личный Telegram-аккаунт к Orbo.</p>
+                      </div>
+                      <Link
+                        href={`/p/${orgId}/telegram/account`}
+                        className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 w-full"
+                      >
+                        Подключить Telegram-аккаунт
+                      </Link>
+                      <div className="border-t pt-4 text-sm text-neutral-500 space-y-2">
+                        <p className="font-medium text-neutral-700">После подключения аккаунта:</p>
+                        <p><strong className="font-medium">1)</strong> Пригласите бота <span className="font-mono bg-neutral-100 px-1 rounded">@orbo_community_bot</span> в вашу группу и назначьте его администратором.</p>
+                        <p><strong className="font-medium">2)</strong> Откройте «Доступные группы» и подключите нужную группу к организации.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    // Аккаунт подключён — показываем инструкцию и кнопку групп
+                    <>
+                      <div className="text-sm text-neutral-600 space-y-3">
+                        <p>
+                          <strong className="font-medium">1)</strong> Пригласите бота в вашу группу и назначьте администратором.
+                        </p>
+                        <p className="bg-neutral-50 rounded p-2 font-mono">
+                          @orbo_community_bot
+                        </p>
+                        <p>
+                          <strong className="font-medium">2)</strong> Нажмите «Доступные группы», чтобы увидеть список групп, в которых вы являетесь администратором, и подключить их к организации.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2 flex-wrap">
+                        <Link href={`/p/${orgId}/telegram/available-groups`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">
+                          Доступные группы
+                        </Link>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <Link href={`/p/${orgId}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
+                          Настроить Telegram-аккаунт
+                        </Link>
+                        <p className="mt-2 text-xs text-neutral-500 text-center">
+                          Необходимо для получения списка ваших групп
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 // ✅ Блок для администратора
