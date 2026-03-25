@@ -40,6 +40,7 @@ export class UnisenderGoEmailProvider implements EmailProvider {
     try {
       const response = await fetch(`${this.baseUrl}/email/send.json`, {
         method: 'POST',
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Content-Type': 'application/json',
           'X-API-KEY': this.apiKey,

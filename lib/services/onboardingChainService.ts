@@ -179,8 +179,8 @@ const TRANSIENT_ERROR_PATTERNS = [
   '504',
 ]
 
-const MAX_RETRIES = 3
-const RETRY_DELAY_MS = 15 * 60 * 1000 // 15 minutes
+const MAX_RETRIES = 8
+const RETRY_DELAY_MS = 20 * 60 * 1000 // 20 minutes (8 retries × 20min = ~2.5h window)
 
 async function cancelRemainingMessages(
   supabase: ReturnType<typeof createAdminServer>,

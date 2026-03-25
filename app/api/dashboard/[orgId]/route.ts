@@ -174,7 +174,9 @@ export async function GET(
         if (tgUserId) {
           const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
           if (notifBotToken) {
-            const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`)
+            const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`, {
+              signal: AbortSignal.timeout(3000)
+            })
             const chatData = await res.json()
             assistBotStarted = chatData.ok === true
           }

@@ -53,10 +53,11 @@ if (hasGoogleCredentials) {
   })
   // Runtime override: 'oauth' вместо 'oidc' чтобы обойти строгую валидацию openid-client v5
   // (требует параметр `iss` в authorization response по RFC 9207).
-  // После смены типа явно восстанавливаем userinfo endpoint, который OIDC выставляет автоматически
-  // через discovery, но 'oauth' тип теряет.
+  // После смены типа OIDC-discovery отключается — явно указываем все endpoints,
+  // иначе openid-client пытается делать OAuth metadata discovery (RFC 8414) которое у Google не работает.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(googleProvider as any).type = 'oauth'
+  ;(googleProvider as any).token = { url: 'https://oauth2.googleapis.com/token' }
   ;(googleProvider as any).userinfo = { url: 'https://openidconnect.googleapis.com/v1/userinfo' }
   providers.push(googleProvider)
 }
