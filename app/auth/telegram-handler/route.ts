@@ -110,16 +110,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
-    // 3. Ищем пользователя по telegram_user_id и org_id в локальной БД
-    const { data: telegramAccount, error: accountError } = await dbClient
+    // 3. Ищем пользователя по telegram_user_id в локальной БД
+    // Если org_id задан — фильтруем по нему; если null (логин-поток) — берём любую запись
+    let accountQuery = dbClient
       .from('user_telegram_accounts')
       .select('user_id')
       .eq('telegram_user_id', authCodes.telegram_user_id)
-      .eq('org_id', authCodes.org_id)
-      .maybeSingle()
-    
+
+    if (authCodes.org_id) {
+      accountQuery = accountQuery.eq('org_id', authCodes.org_id)
+    }
+
+    const { data: telegramAccount, error: accountError } = await accountQuery.limit(1).maybeSingle()
+
     if (accountError || !telegramAccount) {
-      logger.error({ 
+      logger.error({
         error: accountError?.message,
         telegram_user_id: authCodes.telegram_user_id,
         org_id: authCodes.org_id
