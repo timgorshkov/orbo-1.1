@@ -253,6 +253,8 @@ export default function SignIn() {
 
             {/* OAuth Buttons */}
             <div className="space-y-3 mb-6">
+              {/* Google временно скрыт — требует дополнительных подтверждений и редиректит через youtube.com (без VPN не работает) */}
+              {false && (
               <Button
                 type="button"
                 variant="outline"
@@ -280,6 +282,7 @@ export default function SignIn() {
                   </span>
                 )}
               </Button>
+              )}
 
               <Button
                 type="button"
