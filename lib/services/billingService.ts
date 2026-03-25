@@ -542,14 +542,9 @@ export async function processExpiringSubscriptions(): Promise<{
 
       if (!shouldNotify) continue
 
-      const dedupKey = `billing_expiry_${sub.org_id}_${daysLeft <= 0 ? 'expired' : `d${daysLeft}`}`
-      const { data: existing } = await supabase
-        .from('notification_logs')
-        .select('id')
-        .eq('dedup_hash', dedupKey)
-        .limit(1)
-
-      if (existing && existing.length > 0) continue
+      const dedupKey = daysLeft <= 0 ? 'expired' : `d${daysLeft}`
+      const alreadySent = sub.billing_notifications?.[dedupKey]
+      if (alreadySent) continue
 
       const { data: org } = await supabase
         .from('organizations')
@@ -592,14 +587,14 @@ export async function processExpiringSubscriptions(): Promise<{
       let groupNames: string[] = []
       const { data: groups } = await supabase
         .from('org_telegram_groups')
-        .select('telegram_group_id')
+        .select('tg_chat_id')
         .eq('org_id', sub.org_id)
       if (groups && groups.length > 0) {
-        const groupIds = groups.map(g => g.telegram_group_id)
+        const groupIds = groups.map(g => g.tg_chat_id)
         const { data: groupDetails } = await supabase
           .from('telegram_groups')
-          .select('id, title')
-          .in('id', groupIds)
+          .select('tg_chat_id, title')
+          .in('tg_chat_id', groupIds)
         if (groupDetails) groupNames = groupDetails.map(g => g.title).filter(Boolean)
       }
 
@@ -655,14 +650,12 @@ export async function processExpiringSubscriptions(): Promise<{
         }
       }
 
-      await supabase.from('notification_logs').insert({
-        org_id: sub.org_id,
-        type: 'billing_expiry',
-        dedup_hash: dedupKey,
-        channel: 'multi',
-        status: 'sent',
-        details: { days_left: daysLeft, expired, org_name: org.name },
-      }).then(() => {}, () => {})
+      // Mark as sent in org_subscriptions.billing_notifications for dedup
+      const updatedNotifications = { ...(sub.billing_notifications || {}), [dedupKey]: new Date().toISOString() }
+      await supabase.from('org_subscriptions')
+        .update({ billing_notifications: updatedNotifications })
+        .eq('org_id', sub.org_id)
+        .then(() => {}, () => {})
 
       stats.notified++
     } catch (err) {
