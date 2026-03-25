@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, CheckCircle2 } from 'lucide-react'
+import { X, Send, CheckCircle2, Copy, Check } from 'lucide-react'
 import { ymGoal } from '@/components/analytics/YandexMetrika'
 
 const STORAGE_KEY = 'orbo_tg_modal_shown'
@@ -20,6 +20,7 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
     process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
   )
   const [pollStatus, setPollStatus] = useState<'idle' | 'waiting' | 'connected'>('idle')
+  const [copied, setCopied] = useState(false)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollCount = useRef(0)
 
@@ -89,6 +90,14 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
     if (code && pollStatus === 'idle') startPolling(code)
   }
 
+  const handleCopyCode = () => {
+    if (!code) return
+    navigator.clipboard.writeText(code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    if (pollStatus === 'idle') startPolling(code)
+  }
+
   if (!visible) return null
 
   const deepLink = code
@@ -135,6 +144,27 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
             <Send className="w-4 h-4" />
             {pollStatus === 'waiting' ? 'Ожидаем подтверждение…' : 'Подключить Telegram'}
           </a>
+        )}
+
+        {pollStatus !== 'connected' && code && (
+          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs text-gray-500 mb-2">
+              Если кнопка не открывает Telegram — откройте{' '}
+              <span className="font-medium text-gray-700">@{botUsername}</span> вручную и отправьте код:
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="flex-1 font-mono text-xl font-bold tracking-widest text-gray-900 select-all text-center">
+                {code}
+              </span>
+              <button
+                onClick={handleCopyCode}
+                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                aria-label="Скопировать код"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
         )}
 
         {pollStatus !== 'connected' && (

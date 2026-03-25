@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
+import crypto from 'crypto'
 
 const logger = createServiceLogger('RegistrationBotWebhook')
 
@@ -162,33 +163,77 @@ export async function POST(request: NextRequest) {
           }, 'Registration bot: auth code verification failed')
         }
       } else if (startParam === 'login') {
-        const loginText =
-          '🔐 *Вход в Orbo*\n\n' +
-          'Нажмите кнопку ниже для входа в ваш аккаунт:'
+        // Generate a server-side auth code and send a regular URL button.
+        // Previously used web_app which breaks for users with Telegram proxy (no VPN).
+        // Regular URL button opens in the system browser where the proxy is irrelevant.
+        try {
+          const db = createAdminServer()
 
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: loginText,
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [[
-                {
-                  text: '🔑 Войти в Orbo',
-                  web_app: { url: `${appUrl}/tg-app/login` },
+          // Generate unique code (same logic as /api/auth/telegram-code/generate)
+          let loginCode = ''
+          for (let i = 0; i < 10; i++) {
+            const candidate = crypto.randomBytes(3).toString('hex').toUpperCase()
+            const { data: existing } = await db
+              .from('telegram_auth_codes')
+              .select('id')
+              .eq('code', candidate)
+              .eq('is_used', false)
+              .maybeSingle()
+            if (!existing) { loginCode = candidate; break }
+          }
+          if (!loginCode) loginCode = crypto.randomBytes(3).toString('hex').toUpperCase()
+
+          await db.from('telegram_auth_codes').insert({
+            code: loginCode,
+            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+          })
+
+          const result = await verifyTelegramAuthCode({
+            code: loginCode,
+            telegramUserId: userId,
+            telegramUsername: tgUsername || undefined,
+            firstName: message.from?.first_name || undefined,
+            lastName: message.from?.last_name || undefined,
+          })
+
+          if (result.success && result.sessionUrl) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: '🔐 Нажмите кнопку ниже для входа в Orbo:',
+                reply_markup: {
+                  inline_keyboard: [[{ text: '🔑 Войти в Orbo', url: result.sessionUrl }]]
                 }
-              ]]
-            }
-          }),
-        })
-
-        logger.info({
-          chat_id: chatId,
-          tg_user_id: message.from?.id,
-        }, 'Registration bot /start login handled')
+              }),
+            })
+            logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot: login link sent (URL button)')
+          } else {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `👋 Аккаунт в Orbo не найден.\n\nЗарегистрируйтесь на сайте и войдите:\n🌐 ${appUrl}/signup`,
+              }),
+            })
+            logger.info({ chat_id: chatId, tg_user_id: userId, error: result.error }, 'Registration bot: login — user not found, sent signup link')
+          }
+        } catch (err) {
+          logger.error({ chat_id: chatId, tg_user_id: userId, error: err instanceof Error ? err.message : String(err) }, 'Registration bot: login flow error')
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `😔 Не удалось создать ссылку для входа. Попробуйте на сайте: ${appUrl}/signin`,
+            }),
+          })
+        }
       } else {
+        // Regular URL button instead of web_app — web_app breaks for users with
+        // Telegram proxy only (no VPN), as Telegram's WebView ignores proxy settings.
         const welcomeText =
           '🚀 *Orbo — платформа для управления сообществами*\n\n' +
           'Регистрация, напоминания, карточки участников, события — всё в одном месте.\n\n' +
@@ -204,8 +249,8 @@ export async function POST(request: NextRequest) {
             reply_markup: {
               inline_keyboard: [[
                 {
-                  text: '📱 Создать пространство',
-                  web_app: { url: `${appUrl}/tg-app/register` },
+                  text: '🌐 Создать пространство',
+                  url: `${appUrl}/signup`,
                 }
               ]]
             }
