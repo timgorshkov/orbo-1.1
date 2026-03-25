@@ -37,7 +37,8 @@
       "Bash(ssh selectel-orbo \"docker exec orbo_postgres psql -U orbo -d orbo -t -c \"\":*)",
       "Bash(__NEW_LINE_69e8b821ae6c9410__ ssh selectel-orbo \"docker exec orbo_postgres psql -U orbo -d orbo -t -c \"\":*)",
       "Bash(__NEW_LINE_d8173c54f1c54dc0__ ssh selectel-orbo \"docker exec orbo_postgres psql -U orbo -d orbo -t -c \"\":*)",
-      "Bash(__NEW_LINE_0e428fa8e862aee4__ ssh:*)"
+      "Bash(__NEW_LINE_0e428fa8e862aee4__ ssh:*)",
+      "Bash(ssh -o ConnectTimeout=20 selectel-orbo \"docker exec orbo_postgres psql -U orbo -d orbo -t -c \"\":*)"
     ]
   }
 }

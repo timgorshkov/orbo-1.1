@@ -15,6 +15,7 @@ import KeyMetrics from '@/components/analytics/key-metrics'
 import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 import { createServiceLogger } from '@/lib/logger'
 import { Skeleton } from '@/components/ui/skeleton'
+import { TelegramConnectModal } from '@/components/dashboard/telegram-connect-modal'
 
 // Loading skeletons for analytics components
 function ChartSkeleton() {
@@ -211,6 +212,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ org:
           </Suspense>
         </div>
       </div>
+
+      {/* Telegram connect modal — shown once after 1.5s if not connected */}
+      <TelegramConnectModal hasTelegramAccount={dashboardData.onboardingStatus.hasTelegramAccount} />
     </div>
   )
 }

@@ -372,7 +372,6 @@ export function WelcomeContent({
 
   const getInitialStep = (): WelcomeStep => {
     if (needsEmailVerification) return 'email_verify';
-    if (!hasTelegramAccount && !isTelegramRegistration) return 'telegram_connect';
     if (!initialCompleted) return 'qualification';
     return 'creating';
   };
@@ -447,9 +446,7 @@ export function WelcomeContent({
   }
 
   const handleEmailVerified = () => {
-    if (!hasTelegramAccount && !isTelegramRegistration) {
-      setStep('telegram_connect');
-    } else if (!initialCompleted) {
+    if (!initialCompleted) {
       setStep('qualification');
     } else {
       autoCreateOrgAndRedirect();

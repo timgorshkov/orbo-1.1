@@ -13,6 +13,7 @@ export function Footer() {
           <Link href="/events">События</Link>
           <Link href="/telegram-backup">Сохранить базу Telegram</Link>
           <Link href="/whatsapp-migration">Миграция с WhatsApp</Link>
+          <Link href="/partners">Партнёрская программа</Link>
           <Link href="/terms">Условия использования</Link>
           <Link href="/privacy">Политика конфиденциальности</Link>
         </nav>
