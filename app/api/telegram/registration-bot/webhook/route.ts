@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
 
           await db.from('telegram_auth_codes').insert({
             code: loginCode,
-            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+            expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
           })
 
           const result = await verifyTelegramAuthCode({

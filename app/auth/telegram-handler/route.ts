@@ -110,29 +110,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signin?error=expired_code', baseUrl))
     }
     
-    // 3. Ищем пользователя по telegram_user_id в локальной БД
-    // Если org_id задан — фильтруем по нему; если null (логин-поток) — берём любую запись
-    let accountQuery = dbClient
-      .from('user_telegram_accounts')
-      .select('user_id')
-      .eq('telegram_user_id', authCodes.telegram_user_id)
+    // 3. Определяем user_id:
+    //    Сначала используем user_id прямо из кода (сохраняется verifyTelegramAuthCode).
+    //    Fallback: ищем через user_telegram_accounts (для старых кодов без user_id).
+    let userId: string
 
-    if (authCodes.org_id) {
-      accountQuery = accountQuery.eq('org_id', authCodes.org_id)
+    if (authCodes.user_id) {
+      userId = authCodes.user_id
+      logger.debug({ user_id: userId }, 'User id taken directly from auth code');
+    } else {
+      let accountQuery = dbClient
+        .from('user_telegram_accounts')
+        .select('user_id')
+        .eq('telegram_user_id', authCodes.telegram_user_id)
+
+      if (authCodes.org_id) {
+        accountQuery = accountQuery.eq('org_id', authCodes.org_id)
+      }
+
+      const { data: telegramAccount, error: accountError } = await accountQuery.limit(1).maybeSingle()
+
+      if (accountError || !telegramAccount) {
+        logger.error({
+          error: accountError?.message,
+          telegram_user_id: authCodes.telegram_user_id,
+          org_id: authCodes.org_id
+        }, 'Telegram account not found');
+        return NextResponse.redirect(new URL('/signin?error=user_not_found', baseUrl))
+      }
+
+      userId = telegramAccount.user_id
     }
-
-    const { data: telegramAccount, error: accountError } = await accountQuery.limit(1).maybeSingle()
-
-    if (accountError || !telegramAccount) {
-      logger.error({
-        error: accountError?.message,
-        telegram_user_id: authCodes.telegram_user_id,
-        org_id: authCodes.org_id
-      }, 'Telegram account not found');
-      return NextResponse.redirect(new URL('/signin?error=user_not_found', baseUrl))
-    }
-    
-    const userId = telegramAccount.user_id
     logger.debug({ user_id: userId }, 'User found via telegram account');
     
     // 4. Получаем данные пользователя из локальной таблицы users

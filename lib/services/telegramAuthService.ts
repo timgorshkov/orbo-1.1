@@ -271,6 +271,14 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
         userId = newUser.id
         logger.info({ user_id: userId, telegram_user_id: telegramUserId }, 'Created new user');
       }
+
+      // Сохраняем resolved user_id обратно в код, чтобы telegram-handler мог получить
+      // user_id напрямую без поиска через user_telegram_accounts (которого может не быть
+      // когда org_id=null — login-поток через бот).
+      await adminSupabase
+        .from('telegram_auth_codes')
+        .update({ user_id: userId })
+        .eq('id', authCode.id)
     }
 
     // 5. Обработка контекста (org, event)
