@@ -60,12 +60,10 @@ export default async function PublicOrgLayout({
         .select('full_name, username, photo_url')
         .eq('id', participantSession.participantId)
         .maybeSingle()
-      if (participant) {
-        userProfile = {
-          name: participant.full_name,
-          username: participant.username,
-          avatarUrl: participant.photo_url,
-        }
+      userProfile = {
+        name: participant?.full_name || participantSession.name || participantSession.email || 'Участник',
+        username: participant?.username ?? null,
+        avatarUrl: participant?.photo_url ?? null,
       }
     }
   }

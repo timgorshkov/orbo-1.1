@@ -1,34 +1,26 @@
 import { notFound, redirect } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { getUserRoleInOrg } from '@/lib/auth/getUserRole'
 import { getParticipantDetail } from '@/lib/server/getParticipantDetail'
 import ParticipantDetailTabs from '@/components/members/participant-detail-tabs'
 import BackToListButton from '@/components/members/back-to-list-button'
-import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getPublicPortalAccess } from '@/lib/server/portalAccess'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ParticipantPage({ 
-  params 
-}: { 
-  params: Promise<{ org: string; participantId: string }> 
+export default async function ParticipantPage({
+  params
+}: {
+  params: Promise<{ org: string; participantId: string }>
 }) {
   const { org: orgId, participantId } = await params
   const adminSupabase = createAdminServer()
 
-  // Check authentication via unified auth
-  const user = await getUnifiedUser()
-
-  if (!user) {
-    redirect('/signin')
+  const access = await getPublicPortalAccess(orgId)
+  if (!access) {
+    redirect(`/p/${orgId}/auth`)
   }
 
-  // Get user role
-  const role = await getUserRoleInOrg(user.id, orgId)
-  if (role === 'guest') {
-    redirect('/orgs')
-  }
-
+  const role = access.role
   const isAdmin = role === 'owner' || role === 'admin'
 
   // Check if viewing own profile

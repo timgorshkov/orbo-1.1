@@ -6,7 +6,7 @@ import { Metadata } from 'next'
 import { getEventOGImage, getAbsoluteOGImageUrl } from '@/lib/utils/ogImageFallback'
 import { createServiceLogger } from '@/lib/logger'
 import { RequestTiming } from '@/lib/utils/timing'
-import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getPublicPortalAccess } from '@/lib/server/portalAccess'
 import { checkMembershipGate } from '@/lib/server/membershipGate'
 
 /**
@@ -249,16 +249,16 @@ export default async function EventDetailPage({
     )
   }
 
-  // Check authentication via unified auth
+  // Check authentication (NextAuth or participant_session cookie)
   timing.mark('check_auth_start');
-  const user = await getUnifiedUser();
+  const portalAccess = await getPublicPortalAccess(orgId);
   timing.mark('check_auth_end');
   timing.measure('check_auth', 'check_auth_start', 'check_auth_end');
-  const isAuthenticated = !!user
-  
+  const isAuthenticated = !!portalAccess
+
   // For PUBLIC events: show event details to everyone (auth required only for registration)
   // For PRIVATE events: require authentication and org membership
-  
+
   if (!isAuthenticated) {
     if (event.is_public) {
       // Public event - show event details without auth (read-only mode)
@@ -275,10 +275,10 @@ export default async function EventDetailPage({
           : null,
         is_user_registered: false
       }
-      
+
       return (
         <div className="p-6">
-          <EventDetail 
+          <EventDetail
             event={eventWithStats}
             orgId={orgId}
             role="guest"
@@ -295,30 +295,23 @@ export default async function EventDetailPage({
   }
 
   // User is authenticated - check org access for private events
-  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
   let hasOrgAccess = true;
   if (!event.is_public) {
-    // Check membership (with superadmin fallback)
-    timing.mark('check_org_access_start');
-    const accessCheck = await getEffectiveOrgRole(user.id, orgId);
-    timing.mark('check_org_access_end');
-    timing.measure('check_org_access', 'check_org_access_start', 'check_org_access_end');
-    
-    hasOrgAccess = !!accessCheck
-  }
-  
-  // Check membership gate for non-public events
-  if (hasOrgAccess && !event.is_public) {
-    const accessCheck = await getEffectiveOrgRole(user.id, orgId)
-    const role = accessCheck?.role
-    const membershipGate = await checkMembershipGate({
-      orgId,
-      userId: user.id,
-      resourceType: 'events',
-      role: role || undefined,
-    })
-    if (!membershipGate.allowed) {
-      hasOrgAccess = false
+    hasOrgAccess = !!portalAccess
+    // Check membership gate only for NextAuth users (participant-session users are valid members)
+    if (hasOrgAccess && portalAccess!.userId) {
+      timing.mark('check_org_access_start');
+      const membershipGate = await checkMembershipGate({
+        orgId,
+        userId: portalAccess!.userId,
+        resourceType: 'events',
+        role: portalAccess!.role || undefined,
+      })
+      timing.mark('check_org_access_end');
+      timing.measure('check_org_access', 'check_org_access_start', 'check_org_access_end');
+      if (!membershipGate.allowed) {
+        hasOrgAccess = false
+      }
     }
   }
 
@@ -377,16 +370,10 @@ export default async function EventDetailPage({
     ? Math.max(0, event.capacity - registeredCount)
     : null
 
-  // Check user's role (with superadmin fallback)
-  timing.mark('fetch_membership_start');
-  const membershipAccess = await getEffectiveOrgRole(user.id, orgId);
-  timing.mark('fetch_membership_end');
-  timing.measure('fetch_membership', 'fetch_membership_start', 'fetch_membership_end');
+  // Check user's role
+  const role = portalAccess!.role
 
-  const role = membershipAccess?.role || 'guest'
-  
   logger.debug({
-    user_id: user.id,
     event_id: eventId,
     role,
     is_public: event.is_public,
@@ -394,45 +381,49 @@ export default async function EventDetailPage({
   }, 'User viewing event');
 
   // Check if current user is registered
-  // Find participant via user_telegram_accounts
-  timing.mark('fetch_tg_account_start');
-  const { data: telegramAccount } = await adminSupabase
-    .from('user_telegram_accounts')
-    .select('telegram_user_id')
-    .eq('user_id', user.id)
-    .eq('org_id', orgId)
-    .maybeSingle();
-  timing.mark('fetch_tg_account_end');
-  timing.measure('fetch_tg_account', 'fetch_tg_account_start', 'fetch_tg_account_end');
-
   let participant: { id: string } | null = null
-  if (telegramAccount?.telegram_user_id) {
-    timing.mark('find_participant_start');
-    const { data: foundParticipant } = await adminSupabase
-      .from('participants')
-      .select('id')
-      .eq('org_id', event.org_id)
-      .eq('tg_user_id', telegramAccount.telegram_user_id)
-      .is('merged_into', null)
+
+  if (portalAccess!.participantId) {
+    // participant_session — we already know the participant id
+    participant = { id: portalAccess!.participantId }
+  } else if (portalAccess!.userId) {
+    // NextAuth user — find participant via telegram account or email
+    timing.mark('fetch_tg_account_start');
+    const { data: telegramAccount } = await adminSupabase
+      .from('user_telegram_accounts')
+      .select('telegram_user_id')
+      .eq('user_id', portalAccess!.userId)
+      .eq('org_id', orgId)
       .maybeSingle();
-    timing.mark('find_participant_end');
-    timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
-    
-    participant = foundParticipant
-  } else if (user.email) {
-    // Fallback: try finding by email
-    timing.mark('find_participant_start');
-    const { data: foundByEmail } = await adminSupabase
-      .from('participants')
-      .select('id')
-      .eq('org_id', event.org_id)
-      .eq('email', user.email)
-      .is('merged_into', null)
-      .maybeSingle();
-    timing.mark('find_participant_end');
-    timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
-    
-    participant = foundByEmail
+    timing.mark('fetch_tg_account_end');
+    timing.measure('fetch_tg_account', 'fetch_tg_account_start', 'fetch_tg_account_end');
+
+    if (telegramAccount?.telegram_user_id) {
+      timing.mark('find_participant_start');
+      const { data: foundParticipant } = await adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('tg_user_id', telegramAccount.telegram_user_id)
+        .is('merged_into', null)
+        .maybeSingle();
+      timing.mark('find_participant_end');
+      timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
+      participant = foundParticipant
+    } else {
+      // Fallback: try finding by user_id directly
+      timing.mark('find_participant_start');
+      const { data: foundByUserId } = await adminSupabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', event.org_id)
+        .eq('user_id', portalAccess!.userId)
+        .is('merged_into', null)
+        .maybeSingle();
+      timing.mark('find_participant_end');
+      timing.measure('find_participant', 'find_participant_start', 'find_participant_end');
+      participant = foundByUserId
+    }
   }
 
   const isUserRegistered = participant && event.event_registrations?.some(

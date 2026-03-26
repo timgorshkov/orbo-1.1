@@ -1,9 +1,8 @@
 import { fetchMaterialsTree } from '@/app/app/[org]/materials/data';
 import { MaterialsPageViewer } from '@/components/materials/materials-page-viewer';
-import { getUserRoleInOrg } from '@/lib/auth/getUserRole';
-import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getPublicPortalAccess } from '@/lib/server/portalAccess';
 import { checkMembershipGate } from '@/lib/server/membershipGate';
-import { Crown, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import Link from 'next/link';
 
 export default async function PublicMaterialsPage({
@@ -17,13 +16,14 @@ export default async function PublicMaterialsPage({
   const { page: initialPageId } = await searchParams
   const { tree, orgId: resolvedOrgId, orgName, orgLogoUrl } = await fetchMaterialsTree(orgId);
 
-  const user = await getUnifiedUser()
-  const role = user ? await getUserRoleInOrg(user.id, resolvedOrgId) : 'guest'
+  const access = await getPublicPortalAccess(resolvedOrgId)
+  const role = access?.role ?? 'guest'
 
-  if (user && role !== 'owner' && role !== 'admin') {
+  // Check membership gate for members (skip for participant-session users — they're valid members)
+  if (access?.userId && role !== 'owner' && role !== 'admin') {
     const gate = await checkMembershipGate({
       orgId: resolvedOrgId,
-      userId: user.id,
+      userId: access.userId,
       resourceType: 'materials',
       role: role || undefined,
     })

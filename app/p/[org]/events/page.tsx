@@ -3,29 +3,19 @@ import { redirect } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import EventsList from '@/components/events/events-list'
 import { createServiceLogger } from '@/lib/logger'
-import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getPublicPortalAccess } from '@/lib/server/portalAccess'
 
 export default async function EventsPage({ params }: { params: Promise<{ org: string }> }) {
   const logger = createServiceLogger('EventsPage');
   const { org: orgId } = await params
   const adminSupabase = createAdminServer()
-  
-  // Check authentication via unified auth (supports both Supabase and NextAuth)
-  const user = await getUnifiedUser()
-  if (!user) {
+
+  const access = await getPublicPortalAccess(orgId)
+  if (!access) {
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Get user role (with superadmin fallback)
-  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
-  const access = await getEffectiveOrgRole(user.id, orgId)
-
-  if (!access) {
-    redirect(`/p/${orgId}`)
-  }
-  const membership = { role: access.role }
-
-  const role = membership.role
+  const role = access.role
   const isAdmin = role === 'owner' || role === 'admin'
 
   // Fetch all events (admins see all, members see published only)

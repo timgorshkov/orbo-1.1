@@ -3,43 +3,33 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { Suspense } from 'react'
 import MembersTabs from '@/components/members/members-tabs'
 import { createServiceLogger } from '@/lib/logger'
-import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getPublicPortalAccess } from '@/lib/server/portalAccess'
 import { checkMembershipGate } from '@/lib/server/membershipGate'
 import Link from 'next/link'
 
-export default async function MembersPage({ params, searchParams }: { 
+export default async function MembersPage({ params, searchParams }: {
   params: Promise<{ org: string }>
-  searchParams: Promise<{ tab?: string }> 
+  searchParams: Promise<{ tab?: string }>
 }) {
   const { org: orgId } = await params
   const { tab = 'list' } = await searchParams
   const logger = createServiceLogger('MembersPage');
-  
+
   const adminSupabase = createAdminServer()
 
-  // Check authentication via unified auth (supports both Supabase and NextAuth)
-  const user = await getUnifiedUser()
-  if (!user) {
+  const access = await getPublicPortalAccess(orgId)
+  if (!access) {
     redirect(`/p/${orgId}/auth`)
   }
 
-  // Get membership (with superadmin fallback)
-  const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
-  const access = await getEffectiveOrgRole(user.id, orgId)
-
-  if (!access) {
-    redirect(`/p/${orgId}`)
-  }
-  const membership = { role: access.role }
-
-  const role = membership.role
+  const role = access.role
   const isAdmin = role === 'owner' || role === 'admin'
 
-  // Check membership gate for member directory
-  if (!isAdmin) {
+  // Check membership gate for member directory (skip for participant-session users — they're valid members)
+  if (!isAdmin && access.userId) {
     const gate = await checkMembershipGate({
       orgId,
-      userId: user.id,
+      userId: access.userId,
       resourceType: 'member_directory',
       role,
     })
