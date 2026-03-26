@@ -98,15 +98,15 @@ export async function getParticipantSession(): Promise<ParticipantSession | null
     const cookieStore = await cookies()
     const cookie = cookieStore.get(COOKIE_NAME)
     if (!cookie?.value) {
-      logger.debug({ cookie_present: false }, 'participant_session cookie not found')
+      logger.info({ cookie_present: false }, 'participant_session cookie not found in request')
       return null
     }
     const session = verify(cookie.value)
     if (!session) {
-      logger.warn({ cookie_length: cookie.value.length }, 'participant_session cookie found but verification failed')
+      logger.warn({ cookie_length: cookie.value.length }, 'participant_session cookie present but verification failed')
       return null
     }
-    logger.debug({ participant_id: session.participantId, org_id: session.orgId }, 'participant_session verified ok')
+    logger.info({ participant_id: session.participantId, org_id: session.orgId }, 'participant_session verified ok')
     return session
   } catch (err) {
     createServiceLogger('ParticipantSession').error({ error: err instanceof Error ? err.message : String(err) }, 'getParticipantSession error')
