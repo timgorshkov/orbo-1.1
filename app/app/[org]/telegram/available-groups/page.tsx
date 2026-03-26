@@ -362,27 +362,41 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           ))}
         </div>
       ) : (
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
-            <div className="flex items-start gap-4">
-              <div className="text-3xl">📢</div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-blue-900 mb-3">
-                  Нет доступных групп?
-                </h3>
-                <p className="text-blue-800 mb-4">
-                  Чтобы система обнаружила ваши группы, где добавлен <strong>@orbo_community_bot</strong>:
-                </p>
-                <ol className="list-decimal list-inside space-y-2 text-blue-800 mb-4">
-                  <li>Откройте группу в Telegram</li>
-                  <li>Отправьте любое сообщение (например: <code className="bg-blue-100 px-2 py-1 rounded">/start</code>)</li>
-                  <li>Обновите эту страницу через 5-10 секунд</li>
-                </ol>
-                <div className="bg-blue-100 rounded p-3 text-sm text-blue-900">
-                  <strong>Важно:</strong> Вы должны быть администратором группы, и бот должен быть добавлен с правами администратора.
+        <div className="max-w-2xl mx-auto space-y-4">
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-blue-900 mb-4">
+              Как подключить Telegram-группу
+            </h3>
+            <ol className="space-y-3 text-blue-800">
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center">1</span>
+                <div>
+                  <p className="font-medium">Добавьте бота в группу</p>
+                  <p className="text-sm mt-0.5">Откройте вашу группу в Telegram, добавьте участника <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono">@orbo_community_bot</code> и назначьте его <strong>администратором</strong>.</p>
+                  <p className="text-sm text-blue-600 mt-1">Достаточно трёх прав: удаление сообщений, блокировка пользователей, пригласительные ссылки.</p>
                 </div>
-              </div>
-            </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center">2</span>
+                <div>
+                  <p className="font-medium">Отправьте сообщение в группу</p>
+                  <p className="text-sm mt-0.5">Напишите любое сообщение в группу, чтобы бот зафиксировал вас как администратора.</p>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center">3</span>
+                <div>
+                  <p className="font-medium">Обновите страницу</p>
+                  <p className="text-sm mt-0.5">Через 5–10 секунд нажмите кнопку ниже — группа появится в списке.</p>
+                </div>
+              </li>
+            </ol>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              Обновить список групп
+            </button>
           </div>
         </div>
       )}
