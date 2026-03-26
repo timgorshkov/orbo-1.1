@@ -22,7 +22,7 @@ class EmailService {
     const fromEmail = process.env.MAILGUN_FROM_EMAIL || 'noreply@orbo.ru'
 
     if (!apiKey || !domain) {
-      logger.warn({}, 'Mailgun not configured. Email sending will be disabled.');
+      logger.info({}, 'Mailgun not configured. Email sending will be disabled.');
       this.mailgun = null
       this.domain = ''
       this.fromEmail = fromEmail

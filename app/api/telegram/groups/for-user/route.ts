@@ -405,12 +405,13 @@ export async function GET(request: Request) {
             }
             
             if (telegramService) {
-              const countPromises = allChatIdsForCount.map(async (chatId) => {
+              // Sequential with delay to avoid Telegram 429 rate limiting
+              const processOneChat = async (chatId: number) => {
                 try {
                   const result = await telegramService!.getChatMembersCount(chatId);
                   if (result?.ok && typeof result.result === 'number') {
                     memberCountsMap.set(String(chatId), result.result);
-                    
+
                     await supabaseService
                       .from('telegram_groups')
                       .update({ member_count: result.result })
@@ -424,7 +425,7 @@ export async function GET(request: Request) {
                       (errCode === 403 && desc.includes('chat was deactivated')) ||
                       (errCode === 400 && desc.includes('group chat was upgraded')) ||
                       (errCode === 400 && desc.includes('peer_id_invalid'));
-                    
+
                     if (isGroupGone) {
                       deletedChatIds.add(String(chatId));
                       logger.info({ chat_id: chatId, description: result?.description }, 'Group detected as deleted/deactivated in Telegram');
@@ -433,12 +434,15 @@ export async function GET(request: Request) {
                 } catch (e) {
                   logger.debug({ chat_id: chatId, error: e instanceof Error ? e.message : String(e) }, 'Could not get member count from Telegram');
                 }
-              });
-              
-              await Promise.race([
-                Promise.all(countPromises),
-                new Promise(resolve => setTimeout(resolve, 5000))
-              ]);
+              };
+
+              // Process sequentially with 150ms delay to avoid Telegram 429 rate limiting
+              const deadline = Date.now() + 5000;
+              for (const chatId of allChatIdsForCount) {
+                if (Date.now() >= deadline) break;
+                await processOneChat(chatId);
+                if (allChatIdsForCount.length > 1) await new Promise(r => setTimeout(r, 150));
+              }
             }
             
             // Fallback: если Telegram API не вернул данные, используем participant_groups

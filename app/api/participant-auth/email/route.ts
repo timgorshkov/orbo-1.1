@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { setParticipantSession } from '@/lib/participant-auth/session'
-import { getEmailService } from '@/lib/services/emailService'
+import { sendEmail } from '@/lib/services/email'
 import { buildParticipantMagicLinkEmail } from '@/lib/services/email/participantInviteTemplate'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const magicLink = `${APP_URL}/api/participant-auth/email?token=${authToken.token}&redirect=/p/${orgId}`
 
     const { subject, html } = buildParticipantMagicLinkEmail({ org, magicLink })
-    await getEmailService().sendEmail({ to: email, subject, html })
+    await sendEmail({ to: email, subject, html })
 
     logger.info({ participant_id: participant.id, org_id: orgId }, 'Magic link sent')
 

@@ -136,7 +136,7 @@ export async function POST(request: Request) {
           const adminInfo = await telegramService.getChatMember(chatId, activeAccount.telegram_user_id);
           
           if (!adminInfo.ok) {
-            logger.warn({ chat_id: chatId, error: adminInfo.description }, 'Failed to get admin info');
+            logger.debug({ chat_id: chatId, error: adminInfo.description }, 'Failed to get admin info (not an admin or bot lacks access)');
             continue;
           }
           

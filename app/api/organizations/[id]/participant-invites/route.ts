@@ -8,7 +8,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { getEmailService } from '@/lib/services/emailService'
+import { sendEmail } from '@/lib/services/email'
 import { buildParticipantInviteEmail } from '@/lib/services/email/participantInviteTemplate'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
@@ -87,7 +87,7 @@ export async function POST(
           inviteLink,
           personalNote: personalNote || undefined,
         })
-        await getEmailService().sendEmail({ to: normalizedEmail, subject, html })
+        await sendEmail({ to: normalizedEmail, subject, html })
       }
 
       return NextResponse.json({ invite: existing, resent: true })
@@ -131,7 +131,7 @@ export async function POST(
         invitedByName: userInfo?.name || undefined,
         personalNote: personalNote || undefined,
       })
-      await getEmailService().sendEmail({ to: normalizedEmail, subject, html })
+      await sendEmail({ to: normalizedEmail, subject, html })
     }
 
     logger.info({ invite_id: invite.id, email: normalizedEmail, org_id: orgId }, 'Participant invite created')

@@ -9,7 +9,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { getEmailService } from '@/lib/services/emailService'
+import { sendEmail } from '@/lib/services/email'
 import { buildParticipantInviteEmail } from '@/lib/services/email/participantInviteTemplate'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
@@ -88,7 +88,6 @@ export async function POST(
 
     const existingByEmail = new Map<string, string>((existingInvites || []).map((i: any) => [i.email as string, i.token as string]))
 
-    const emailService = getEmailService()
     const results = { sent: 0, skipped: 0, errors: 0 }
 
     for (const email of emails) {
@@ -126,8 +125,8 @@ export async function POST(
           personalNote: personalNote || undefined,
         })
 
-        const ok = await emailService.sendEmail({ to: email, subject, html })
-        if (ok) results.sent++
+        const { success } = await sendEmail({ to: email, subject, html })
+        if (success) results.sent++
         else results.errors++
       } catch {
         results.errors++
