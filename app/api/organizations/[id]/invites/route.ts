@@ -127,7 +127,7 @@ export async function POST(
     }
 
     // Генерируем токен
-    const { data: tokenData, error: tokenError } = await supabase.rpc('generate_invite_token')
+    const { data: tokenData, error: tokenError } = await supabase.rpc('generate_invite_token').single()
 
     if (tokenError) {
       logger.error({ 
