@@ -102,11 +102,11 @@ export async function enrichParticipant(
     if (chatIds.length > 0) {
       const { data: messagesData, error: messagesError } = await supabaseAdmin
         .from('activity_events')
-        .select('id, tg_user_id, tg_chat_id, message_id, event_type, created_at, meta')
+        .select('id, tg_user_id, tg_chat_id, message_id, event_type, created_at, reply_to_message_id, meta')
         .in('tg_chat_id', chatIds)
         .eq('event_type', 'message')
         .order('created_at', { ascending: false })
-        .limit(500); // Increased limit to capture more history
+        .limit(500);
       
       if (messagesError) {
         throw new Error(`Failed to fetch messages: ${messagesError.message}`);
@@ -586,10 +586,9 @@ async function prepareMessagesWithContext(
     }
   }
   
-  // ⭐ NEW: Fetch reply_to message texts
-  // Get all reply_to_message_id from participant's messages
+  // Fetch reply_to message texts using the column (not meta)
   const replyToMessageIds = participantMessages
-    .map(m => m.meta?.reply_to_message_id)
+    .map(m => m.reply_to_message_id)
     .filter(Boolean);
   
   let replyTextsMap = new Map<number, { text: string; author: string }>();
@@ -644,60 +643,81 @@ async function prepareMessagesWithContext(
   const result = [];
   let skippedCount = 0;
   
+  // Fetch author names from participants table
+  const allTgUserIds = Array.from(new Set(participantMessages.map(m => m.tg_user_id).filter(Boolean)));
+  const authorNamesLookup = new Map<number, string>();
+  if (allTgUserIds.length > 0) {
+    const { data: authorParticipants } = await supabaseAdmin
+      .from('participants')
+      .select('tg_user_id, full_name, username')
+      .in('tg_user_id', allTgUserIds);
+    (authorParticipants || []).forEach((p: any) => {
+      if (p.tg_user_id) {
+        authorNamesLookup.set(p.tg_user_id, p.full_name || p.username || `ID${p.tg_user_id}`);
+      }
+    });
+  }
+  
+  // Batch-fetch thread context texts from participant_messages
+  const contextMessageIds = new Set<number>();
   for (const msg of participantMessages) {
-    // ⚠️ Try multiple paths for text extraction:
-    // 1. Full text from participant_messages (preferred)
-    // 2. text_preview from meta (fallback)
-    // 3. Other possible locations
+    const msgIndex = messageIndexMap.get(msg.id);
+    if (msgIndex !== undefined && msgIndex > 0) {
+      for (let i = msgIndex - 1; i >= Math.max(0, msgIndex - 2); i--) {
+        const prevMsg = sortedAllMessages[i];
+        if (prevMsg.tg_chat_id === msg.tg_chat_id && prevMsg.tg_user_id !== participantTgUserId && prevMsg.message_id) {
+          contextMessageIds.add(prevMsg.message_id);
+        }
+      }
+    }
+  }
+  let contextTextsMap = new Map<number, string>();
+  if (contextMessageIds.size > 0 && chatIds.length > 0) {
+    const { data: ctxTexts } = await supabaseAdmin
+      .from('participant_messages')
+      .select('message_id, message_text')
+      .in('tg_chat_id', chatIds)
+      .in('message_id', Array.from(contextMessageIds));
+    (ctxTexts || []).forEach((m: any) => {
+      if (m.message_text) contextTextsMap.set(m.message_id, m.message_text);
+    });
+  }
+  
+  for (const msg of participantMessages) {
     const fullText = msg.message_id ? fullTextsMap.get(msg.message_id) : null;
     const text = 
-      fullText ||                                                    // ✅ Full text from participant_messages
-      msg.meta?.message?.text_preview ||                            // Preview format (first 500 chars)
-      msg.meta?.message?.text ||                                    // Standard format (if exists)
-      msg.meta?.text ||                                             // Direct text
-      msg.meta?.text_entities?.[0]?.text ||                         // Text entities format
-      (typeof msg.meta === 'string' ? msg.meta : '');              // Fallback: meta as string
+      fullText ||
+      msg.meta?.text ||
+      (typeof msg.meta === 'string' ? msg.meta : '');
     
     if (!text || text.trim().length === 0) {
       skippedCount++;
       continue;
     }
     
-    // Extract author name from various possible locations
-    const authorName = 
-      msg.meta?.user?.name ||
-      msg.meta?.message?.from?.first_name ||
-      msg.meta?.message?.from_name ||
-      msg.meta?.from_name ||
-      msg.meta?.author_name ||
-      'Unknown';
+    const authorName = authorNamesLookup.get(msg.tg_user_id) || 'Unknown';
     
-    // ⭐ NEW: Get reply_to context
     let reply_to_text: string | undefined;
     let reply_to_author: string | undefined;
     
-    const replyToMsgId = msg.meta?.reply_to_message_id;
+    const replyToMsgId = msg.reply_to_message_id;
     if (replyToMsgId && replyTextsMap.has(replyToMsgId)) {
       const replyData = replyTextsMap.get(replyToMsgId)!;
       reply_to_text = replyData.text;
       reply_to_author = replyData.author;
     }
     
-    // ⭐ NEW: Get thread context (1-2 messages before in the same chat)
     let thread_context: string[] | undefined;
     const msgIndex = messageIndexMap.get(msg.id);
     if (msgIndex !== undefined && msgIndex > 0) {
       const contextMessages: string[] = [];
-      // Look back up to 2 messages in the same chat
       for (let i = msgIndex - 1; i >= Math.max(0, msgIndex - 2); i--) {
         const prevMsg = sortedAllMessages[i];
         if (prevMsg.tg_chat_id === msg.tg_chat_id && prevMsg.tg_user_id !== participantTgUserId) {
-          const prevText = 
-            prevMsg.meta?.message?.text_preview ||
-            prevMsg.meta?.message?.text ||
-            prevMsg.meta?.text || '';
-          if (prevText && prevText.trim().length > 0) {
-            contextMessages.unshift(prevText.trim());
+          const prevText = prevMsg.message_id ? contextTextsMap.get(prevMsg.message_id) : null;
+          const text = prevText || prevMsg.meta?.text || '';
+          if (text && text.trim().length > 0) {
+            contextMessages.unshift(text.trim());
           }
         }
       }
@@ -758,59 +778,7 @@ async function prepareReactedMessagesForAI(
     .in('message_id', messageIds);
   
   if (!reactedMessages || reactedMessages.length === 0) {
-    // Fallback: try to get from activity_events meta
-    const { data: activityMessages } = await supabaseAdmin
-      .from('activity_events')
-      .select('message_id, tg_user_id, meta')
-      .in('tg_chat_id', chatIds)
-      .eq('event_type', 'message')
-      .in('message_id', messageIds);
-    
-    if (!activityMessages) {
-      return [];
-    }
-    
-    const messageTextsMap = new Map<number, { text: string; author_id: number }>();
-    activityMessages.forEach((m: any) => {
-      const text = m.meta?.message?.text_preview || m.meta?.message?.text || m.meta?.text || '';
-      if (text) {
-        messageTextsMap.set(m.message_id, { text, author_id: m.tg_user_id });
-      }
-    });
-    
-    // Get author names
-    const authorIds = Array.from(new Set(Array.from(messageTextsMap.values()).map(m => m.author_id)));
-    const { data: authors } = await supabaseAdmin
-      .from('participants')
-      .select('tg_user_id, full_name, username')
-      .in('tg_user_id', authorIds);
-    
-    const authorNamesMap = new Map<number, string>();
-    if (authors) {
-      authors.forEach((a: any) => {
-        authorNamesMap.set(a.tg_user_id, a.full_name || a.username || `ID${a.tg_user_id}`);
-      });
-    }
-    
-    // Build result from reactions
-    const result: Array<{ text: string; emoji: string; author?: string }> = [];
-    const seenMessageIds = new Set<number>();
-    
-    for (const reaction of reactions) {
-      if (!reaction.message_id || seenMessageIds.has(reaction.message_id)) continue;
-      
-      const messageData = messageTextsMap.get(reaction.message_id);
-      if (messageData && messageData.text) {
-        seenMessageIds.add(reaction.message_id);
-        result.push({
-          text: messageData.text.slice(0, 300), // Limit text length
-          emoji: reaction.meta?.emoji || '👍',
-          author: authorNamesMap.get(messageData.author_id)
-        });
-      }
-    }
-    
-    return result.slice(0, 20); // Limit to 20 reacted messages
+    return [];
   }
   
   // Get author names

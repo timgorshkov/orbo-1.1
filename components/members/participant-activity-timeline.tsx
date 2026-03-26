@@ -145,47 +145,29 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
           const isMax = source === 'max' || event.tg_chat_id === 'max';
           
           if (event.meta) {
-            // Extract reaction emoji and target message for reaction events
             if (event.event_type === 'reaction') {
-              // Try multiple locations for reaction emoji
               reactionEmoji = event.meta.emoji || 
                               event.meta.reaction?.emoji ||
-                              // reaction_types is an array of emojis
                               (Array.isArray(event.meta.reaction?.reaction_types) && event.meta.reaction.reaction_types[0]) ||
                               (Array.isArray(event.meta.reaction_types) && event.meta.reaction_types[0]) ||
-                              // delta shows what was added
                               (event.meta.reaction?.delta > 0 && event.meta.reaction?.new_reactions?.[0]?.emoji) ||
                               '👍';
-              // Try to get the message that was reacted to
               reactionTargetText = event.meta.target_text || 
                                    event.meta.message_text ||
-                                   event.meta.original_message?.text ||
-                                   event.meta.text_preview || '';
+                                   event.meta.original_message?.text || '';
             }
-            
-            // Try to get message text - check multiple locations
-            // WhatsApp stores in meta.text directly
-            if (event.meta.text) {
-              const text = String(event.meta.text);
-              messageText = text.slice(0, 80);
-              if (text.length > 80) messageText += '...';
-            } else if (event.meta.text_preview) {
-              // Channel comments and other events store text here
-              const text = String(event.meta.text_preview);
-              messageText = text.slice(0, 80);
-              if (text.length > 80) messageText += '...';
-            } else if (event.meta.message?.text_preview) {
-              messageText = event.meta.message.text_preview.slice(0, 80);
-              if (event.meta.message.text_preview.length > 80) messageText += '...';
-            } else if (event.meta.message?.text) {
-              messageText = String(event.meta.message.text).slice(0, 80);
-              if (String(event.meta.message.text).length > 80) messageText += '...';
-            }
-            
-            // Check if it's a reply
-            if (event.meta.message?.reply_to_id || event.meta.reply_to_message_id) {
-              replyIndicator = '↩';
-            }
+          }
+          
+          // Message text: prefer top-level field (from participant_messages), fall back to meta for WhatsApp/channel
+          const rawText = event.message_text || event.meta?.text || event.meta?.text_preview || '';
+          if (rawText) {
+            const text = String(rawText);
+            messageText = text.slice(0, 80);
+            if (text.length > 80) messageText += '...';
+          }
+          
+          if (event.reply_to_message_id) {
+            replyIndicator = '↩';
           }
 
           // Get group/channel name: first from map, then from meta, then show nothing

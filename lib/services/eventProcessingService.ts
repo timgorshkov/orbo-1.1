@@ -972,22 +972,10 @@ export class EventProcessingService {
         mentions_count: mentionsCount,
         reactions_count: reactionsCount,
         meta: {
-          user: {
-            name: fullName,
-            username: username,
-            tg_user_id: userId
-          },
-          message: {
-            reply_to_id: message.reply_to_message?.message_id || null,
-            text_preview: textPreview
-          },
           reactions: reactionsCount > 0 ? {
             total_count: reactionsCount,
             reaction_types: (message as any)?.reactions?.map((r: any) => r.type?.emoji || r.type) || []
-          } : undefined,
-          source: {
-            type: 'webhook'
-          }
+          } : undefined
         }
       };
       

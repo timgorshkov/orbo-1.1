@@ -194,22 +194,10 @@ export function buildMessageMeta(message: any, mediaType: string | null): Record
   ) || 0;
   
   return {
-    user: {
-      name: `${message.from?.first_name || ''} ${message.from?.last_name || ''}`.trim(),
-      username: message.from?.username,
-      tg_user_id: message.from?.id
-    },
-    message: {
-      reply_to_id: message.reply_to_message?.message_id || null,
-      text_preview: textPreview
-    },
     reactions: reactionsCount > 0 ? {
       total_count: reactionsCount,
       reaction_types: message.reactions?.map((r: any) => r.type?.emoji || r.type) || []
-    } : undefined,
-    source: {
-      type: 'webhook'
-    }
+    } : undefined
   };
 }
 

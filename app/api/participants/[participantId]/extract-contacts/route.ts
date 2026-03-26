@@ -143,8 +143,6 @@ export async function POST(
       const fullText = msg.message_id ? fullTextsMap.get(msg.message_id) : null;
       const text =
         fullText ||
-        msg.meta?.message?.text_preview ||
-        msg.meta?.message?.text ||
         msg.meta?.text ||
         (typeof msg.meta === 'string' ? msg.meta : '');
 

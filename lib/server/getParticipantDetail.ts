@@ -300,16 +300,10 @@ export async function getParticipantDetail(orgId: string, participantId: string)
             eventsData = activityEvents.map(event => {
               const eventMeta = event.meta || {};
               
-              // Enhance meta with message text from participant_messages if available
+              let messageText: string | null = null;
               if (event.event_type === 'message' && event.message_id) {
                 const messageKey = `${event.tg_chat_id}_${event.message_id}`;
-                const messageText = messageTextsMap.get(messageKey);
-                
-                if (messageText && !eventMeta.message?.text_preview && !eventMeta.message?.text) {
-                  eventMeta.message = eventMeta.message || {};
-                  eventMeta.message.text_preview = messageText.slice(0, 500);
-                  eventMeta.message.text = messageText;
-                }
+                messageText = messageTextsMap.get(messageKey) || null;
               }
               
               return {
@@ -318,6 +312,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                 created_at: event.created_at,
                 tg_chat_id: String(event.tg_chat_id),
                 message_id: event.message_id ?? null,
+                message_text: messageText,
+                reply_to_message_id: event.reply_to_message_id ?? null,
                 meta: eventMeta
               };
             });
@@ -365,7 +361,9 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         id: event.id,
         event_type: event.event_type,
         created_at: event.created_at,
-        tg_chat_id: 'whatsapp', // Mark as WhatsApp
+        tg_chat_id: 'whatsapp',
+        message_text: (event.meta as any)?.text || null,
+        reply_to_message_id: null,
         meta: event.meta || {}
       }));
       
@@ -426,6 +424,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
             created_at: event.created_at,
             tg_chat_id: 'max',
             message_id: null,
+            message_text: (event.meta as any)?.text || null,
+            reply_to_message_id: null,
             meta: {
               ...(event.meta || {}),
               source: 'max',

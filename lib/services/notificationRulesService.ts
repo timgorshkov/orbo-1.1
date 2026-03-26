@@ -502,14 +502,7 @@ async function getRecentMessages(
       // Fallback to activity_events if participant_messages fails
       const { data: activityData, error: activityError } = await supabaseAdmin
         .from('activity_events')
-        .select(`
-          id,
-          tg_user_id,
-          tg_chat_id,
-          event_type,
-          created_at,
-          meta
-        `)
+        .select('id, tg_user_id, tg_chat_id, message_id, created_at')
         .eq('tg_chat_id', chatIdNum)
         .eq('event_type', 'message')
         .gte('created_at', since)
@@ -517,7 +510,6 @@ async function getRecentMessages(
         .limit(limit);
       
       if (activityError) {
-        // Downgrade to warn for transient network errors
         const isTransient = activityError.message?.includes('fetch failed') || activityError.message?.includes('502');
         if (isTransient) {
           logger.warn({ error: activityError.message, chat_id: chatId, transient: true }, 'Fallback query error (transient)');
@@ -534,6 +526,20 @@ async function getRecentMessages(
       
       logger.debug({ chat_id: chatId, count: activityData.length }, 'Messages from activity_events');
       
+      // Batch-fetch texts from participant_messages by message_id
+      const messageIds = activityData.map(m => m.message_id).filter(Boolean);
+      const textsMap = new Map<number, string>();
+      if (messageIds.length > 0) {
+        const { data: pmTexts } = await supabaseAdmin
+          .from('participant_messages')
+          .select('message_id, message_text')
+          .eq('tg_chat_id', chatIdNum)
+          .in('message_id', messageIds);
+        (pmTexts || []).forEach((pm: any) => {
+          if (pm.message_text) textsMap.set(pm.message_id, pm.message_text);
+        });
+      }
+      
       // Get participant names
       const userIds = Array.from(new Set(activityData.map(m => m.tg_user_id)));
       const { data: participants } = await supabaseAdmin
@@ -549,21 +555,15 @@ async function getRecentMessages(
         nameMap.set(String(p.tg_user_id), displayName);
       });
       
-      return activityData.map(m => {
-        // Extract text from meta - it's stored in message.text_preview
-        const text = m.meta?.message?.text_preview || m.meta?.text || '';
-        // Extract message_id from meta
-        const messageId = m.meta?.message?.message_id || m.meta?.message_id;
-        return {
-          id: m.id,
-          text,
-          author_name: nameMap.get(String(m.tg_user_id)) || 'Участник',
-          author_id: String(m.tg_user_id),
-          created_at: m.created_at,
-          tg_chat_id: String(m.tg_chat_id),
-          tg_message_id: messageId ? Number(messageId) : undefined,
-        };
-      });
+      return activityData.map(m => ({
+        id: m.id,
+        text: (m.message_id ? textsMap.get(m.message_id) : '') || '',
+        author_name: nameMap.get(String(m.tg_user_id)) || 'Участник',
+        author_id: String(m.tg_user_id),
+        created_at: m.created_at,
+        tg_chat_id: String(m.tg_chat_id),
+        tg_message_id: m.message_id ? Number(m.message_id) : undefined,
+      }));
     }
     
     if (!data || data.length === 0) {

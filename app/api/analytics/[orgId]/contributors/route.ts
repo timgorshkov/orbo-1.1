@@ -87,7 +87,7 @@ export async function GET(
     if (telegramChatIds.length > 0) {
       const { data: telegramEvents, error: telegramError } = await adminSupabase
         .from('activity_events')
-        .select('tg_user_id, event_type, meta')
+        .select('tg_user_id, event_type')
         .in('tg_chat_id', telegramChatIds)
         .in('event_type', ['message', 'reaction'])
         .gte('created_at', startDate.toISOString())
@@ -100,11 +100,10 @@ export async function GET(
       }
     }
     
-    // Get WhatsApp events (with org_id filter)
     if (includeWhatsApp) {
       const { data: whatsappEvents, error: whatsappError } = await adminSupabase
         .from('activity_events')
-        .select('tg_user_id, event_type, meta')
+        .select('tg_user_id, event_type')
         .eq('org_id', orgId)
         .eq('tg_chat_id', 0)
         .in('event_type', ['message', 'reaction'])
@@ -117,41 +116,19 @@ export async function GET(
       }
     }
 
-    // Aggregate by tg_user_id
+    const SYSTEM_ACCOUNT_IDS = new Set([777000, 136817688, 1087968824]);
     const userCounts: Record<number, { 
       message_count: number; 
       reaction_count: number;
       tg_user_id: number;
-      username?: string; 
-      full_name?: string;
-      tg_first_name?: string;
-      tg_last_name?: string;
     }> = {};
     
     allEvents.forEach(event => {
       const userId = event.tg_user_id;
-      if (!userId) return;
-      
-      // Filter out system accounts
-      const SYSTEM_ACCOUNT_IDS = [
-        777000,      // Telegram Service Notifications
-        136817688,   // @Channel_Bot
-        1087968824   // Group Anonymous Bot
-      ];
-      if (SYSTEM_ACCOUNT_IDS.includes(userId)) return;
+      if (!userId || SYSTEM_ACCOUNT_IDS.has(userId)) return;
       
       if (!userCounts[userId]) {
-        userCounts[userId] = { 
-          message_count: 0,
-          reaction_count: 0,
-          tg_user_id: userId,
-          username: event.meta?.from?.username,
-          tg_first_name: event.meta?.from?.first_name,
-          tg_last_name: event.meta?.from?.last_name,
-          full_name: event.meta?.from?.first_name 
-            ? `${event.meta.from.first_name} ${event.meta.from.last_name || ''}`.trim()
-            : undefined
-        };
+        userCounts[userId] = { message_count: 0, reaction_count: 0, tg_user_id: userId };
       }
       
       if (event.event_type === 'message') {
@@ -159,29 +136,14 @@ export async function GET(
       } else if (event.event_type === 'reaction') {
         userCounts[userId].reaction_count++;
       }
-      
-      // Update username/name if available from meta
-      if (event.meta?.from?.username && !userCounts[userId].username) {
-        userCounts[userId].username = event.meta.from.username;
-      }
-      if (event.meta?.from?.first_name && !userCounts[userId].tg_first_name) {
-        userCounts[userId].tg_first_name = event.meta.from.first_name;
-        userCounts[userId].tg_last_name = event.meta.from.last_name;
-        userCounts[userId].full_name = `${event.meta.from.first_name} ${event.meta.from.last_name || ''}`.trim();
-      }
     });
 
-    // Sort and prepare data
     const sortedEntries = Object.values(userCounts)
       .sort((a, b) => (b.message_count + b.reaction_count) - (a.message_count + a.reaction_count))
-      .slice(0, limit * 2); // Get more to enrich
+      .slice(0, limit * 2);
 
-    // Collect tg_user_ids without full_name for enrichment
-    const tgUserIdsToEnrich = sortedEntries
-      .filter(data => !data.full_name)
-      .map(data => data.tg_user_id);
-
-    // Enrich from participants table
+    // Enrich ALL top contributors from participants table (single query)
+    const tgUserIdsToEnrich = sortedEntries.map(data => data.tg_user_id);
     let participantNames: Record<number, { full_name: string | null; username: string | null; participant_id: string | null }> = {};
     
     if (tgUserIdsToEnrich.length > 0) {
@@ -202,23 +164,19 @@ export async function GET(
       });
     }
 
-    // Build final result with enriched names
     const sorted = sortedEntries
-      .map((data, index) => {
+      .map((data) => {
         const enriched = participantNames[data.tg_user_id];
-        const finalFullName = data.full_name || enriched?.full_name || null;
-        const finalUsername = data.username || enriched?.username || null;
-        
         return {
           tg_user_id: data.tg_user_id,
           participant_id: enriched?.participant_id || null,
           message_count: data.message_count,
           reaction_count: data.reaction_count,
           activity_count: data.message_count + data.reaction_count,
-          username: finalUsername,
-          full_name: finalFullName,
-          tg_first_name: data.tg_first_name || null,
-          tg_last_name: data.tg_last_name || null,
+          username: enriched?.username || null,
+          full_name: enriched?.full_name || null,
+          tg_first_name: null,
+          tg_last_name: null,
           rank: 0,
           rank_change: 0
         };

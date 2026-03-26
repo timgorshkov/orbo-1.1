@@ -171,12 +171,6 @@ export async function GET(request: Request) {
       return record
     }
 
-    const resolveUserIdFromUsername = (username?: string | null): number | null => {
-      const normalized = normalizeUsername(username)
-      if (!normalized) return null
-      return usernameToUserId.get(normalized) ?? null
-    }
-
     // 1) Загружаем актуальных участников группы
     try {
       logger.debug({ chat_id: chatId, numeric_chat_id: numericChatId }, 'Fetching participant_groups');
@@ -253,7 +247,7 @@ export async function GET(request: Request) {
 
     const { data: activityEvents, error: activityError } = await supabase
       .from('activity_events')
-      .select('id, event_type, created_at, tg_user_id, meta, reply_to_message_id')
+      .select('id, event_type, created_at, tg_user_id, reply_to_message_id')
       .eq('tg_chat_id', numericChatId)
       .gte('created_at', activityWindowStart.toISOString())
       .order('created_at', { ascending: false })
@@ -281,15 +275,6 @@ export async function GET(request: Request) {
       }, 'Activity events sample');
       
       activityEvents.forEach(event => {
-        const metaUsername = event.meta?.user?.username || event.meta?.from?.username || event.meta?.username || null
-        const metaFullName =
-          event.meta?.user?.name ||
-          event.meta?.from?.name ||
-          (event.meta?.first_name
-            ? `${event.meta.first_name}${event.meta.last_name ? ` ${event.meta.last_name}` : ''}`
-            : null)
-
-        // Handle bigint that might come as string from PostgreSQL
         let tgUserId: number | null = null
         if (typeof event.tg_user_id === 'number') {
           tgUserId = event.tg_user_id
@@ -298,29 +283,12 @@ export async function GET(request: Request) {
         } else if (typeof event.tg_user_id === 'bigint') {
           tgUserId = Number(event.tg_user_id)
         }
-        if (tgUserId == null) {
-          const metaId =
-            typeof event.meta?.user?.id === 'number'
-              ? event.meta.user.id
-              : typeof event.meta?.from?.id === 'number'
-                ? event.meta.from.id
-                : null
-          if (metaId != null) {
-            tgUserId = metaId
-          }
-        }
-
-        if (tgUserId == null && metaUsername) {
-          tgUserId = resolveUserIdFromUsername(metaUsername)
-        }
 
         if (tgUserId == null || BOT_USER_IDS.has(tgUserId)) {
           return
         }
 
         const record = addOrUpdateParticipant(tgUserId, {
-          username: metaUsername ?? null,
-          fullName: metaFullName ?? null,
           lastActivity: event.created_at ?? null
         })
 
@@ -346,7 +314,7 @@ export async function GET(request: Request) {
         }
 
         if (event.event_type === 'message') {
-          const uniqueMessageKey = `${tgUserId}:${event.meta?.message_id ?? event.id ?? event.created_at}`
+          const uniqueMessageKey = `${tgUserId}:${event.id ?? event.created_at}`
           if (processedMessageIds.has(uniqueMessageKey)) {
             return
           }
