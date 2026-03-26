@@ -191,7 +191,8 @@ async function getOrgOnlyHomePageData(
  */
 export async function getHomePageData(
   orgId: string,
-  userId: string
+  userId: string,
+  participantId?: string
 ): Promise<HomePageData | null> {
   const logger = createServiceLogger('getHomePageData');
   const supabase = createAdminServer()
@@ -205,7 +206,7 @@ export async function getHomePageData(
       .single()
 
     if (orgError || !org) {
-      logger.error({ 
+      logger.error({
         error: orgError?.message,
         org_id: orgId,
         user_id: userId
@@ -214,39 +215,51 @@ export async function getHomePageData(
     }
 
     // 2. Get current participant info
-    // First try: via user_telegram_accounts
-    const { data: userTelegramAccount } = await supabase
-      .from('user_telegram_accounts')
-      .select('telegram_user_id')
-      .eq('user_id', userId)
-      .eq('org_id', orgId)
-      .maybeSingle()
-
     let participant = null
-    
-    if (userTelegramAccount?.telegram_user_id) {
-      const { data: foundParticipant } = await supabase
+
+    if (participantId) {
+      // Direct lookup by participant ID (used for participant-session users)
+      const { data: directParticipant } = await supabase
         .from('participants')
         .select('*')
+        .eq('id', participantId)
         .eq('org_id', orgId)
-        .eq('tg_user_id', userTelegramAccount.telegram_user_id)
         .is('merged_into', null)
         .maybeSingle()
-      
-      participant = foundParticipant
-    }
-    
-    // Second try: via user_id directly (for OAuth users with linked participant)
-    if (!participant) {
-      const { data: userParticipant } = await supabase
-        .from('participants')
-        .select('*')
-        .eq('org_id', orgId)
+      participant = directParticipant
+    } else {
+      // First try: via user_telegram_accounts
+      const { data: userTelegramAccount } = await supabase
+        .from('user_telegram_accounts')
+        .select('telegram_user_id')
         .eq('user_id', userId)
-        .is('merged_into', null)
+        .eq('org_id', orgId)
         .maybeSingle()
-      
-      participant = userParticipant
+
+      if (userTelegramAccount?.telegram_user_id) {
+        const { data: foundParticipant } = await supabase
+          .from('participants')
+          .select('*')
+          .eq('org_id', orgId)
+          .eq('tg_user_id', userTelegramAccount.telegram_user_id)
+          .is('merged_into', null)
+          .maybeSingle()
+
+        participant = foundParticipant
+      }
+
+      // Second try: via user_id directly (for OAuth users with linked participant)
+      if (!participant) {
+        const { data: userParticipant } = await supabase
+          .from('participants')
+          .select('*')
+          .eq('org_id', orgId)
+          .eq('user_id', userId)
+          .is('merged_into', null)
+          .maybeSingle()
+
+        participant = userParticipant
+      }
     }
 
     if (!participant) {
@@ -254,7 +267,6 @@ export async function getHomePageData(
       logger.info({
         org_id: orgId,
         user_id: userId,
-        has_telegram_account: !!userTelegramAccount,
       }, 'No participant record for user - returning org-level home data');
       return getOrgOnlyHomePageData(supabase, org, orgId, logger)
     }

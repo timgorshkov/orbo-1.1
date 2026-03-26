@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getHomePageData } from '@/lib/server/getHomePageData'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getParticipantSession } from '@/lib/participant-auth/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,15 +22,23 @@ export async function GET(
 
     // Check authentication via unified auth
     const user = await getUnifiedUser()
-    
+
     if (!user) {
+      // Fallback: check participant session cookie (email-invited members)
+      const participantSession = await getParticipantSession()
+      if (participantSession?.orgId === orgId) {
+        logger.info({ participant_id: participantSession.participantId, org_id: orgId }, 'home: serving via participant session')
+        const homePageData = await getHomePageData(orgId, '', participantSession.participantId)
+        if (!homePageData) {
+          return NextResponse.json({ error: 'Failed to load home page data' }, { status: 500 })
+        }
+        return NextResponse.json(homePageData)
+      }
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-
-    const supabase = createAdminServer()
 
     // Check if user has access to this organization (with superadmin fallback)
     const { getEffectiveOrgRole } = await import('@/lib/server/orgAccess')
