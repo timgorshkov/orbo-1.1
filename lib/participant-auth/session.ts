@@ -68,6 +68,11 @@ function verify(token: string): ParticipantSession | null {
   }
 }
 
+/** Verify a participant session token string (for set-session endpoint) */
+export function verifyParticipantToken(token: string): ParticipantSession | null {
+  return verify(token)
+}
+
 export function createParticipantToken(data: Omit<ParticipantSession, 'iat' | 'exp'>): string {
   const now = Math.floor(Date.now() / 1000)
   return sign({ ...data, iat: now, exp: now + COOKIE_MAX_AGE })

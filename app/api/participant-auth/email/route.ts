@@ -141,15 +141,29 @@ export async function GET(req: NextRequest) {
 
     logger.info({ participant_id: authToken.participant_id, org_id: authToken.org_id }, 'Magic link login success')
 
-    const response = NextResponse.redirect(new URL(redirectTo, APP_URL))
-    response.cookies.set('participant_session', sessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
-      path: '/',
+    // Return an HTML page that uses fetch() to set the session cookie, then navigates.
+    // This is more reliable than setting Set-Cookie on a redirect response — some browsers
+    // (and email clients that wrap URLs) can lose cookies set on redirect chains.
+    const destination = new URL(redirectTo, APP_URL).toString()
+    const html = `<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Вход...</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb;color:#374151}p{font-size:1rem}</style>
+</head>
+<body>
+<p>Выполняем вход…</p>
+<script>
+fetch('/api/participant-auth/set-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:${JSON.stringify(sessionToken)}})})
+  .then(function(r){if(r.ok){window.location.replace(${JSON.stringify(destination)})}else{window.location.replace(${JSON.stringify(destination+'?auth_error=session_error')})}})
+  .catch(function(){window.location.replace(${JSON.stringify(destination+'?auth_error=network_error')})});
+</script>
+</body>
+</html>`
+
+    return new NextResponse(html, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
     })
-    return response
   } catch (err: any) {
     logger.error({ error: err.message, stack: err.stack }, 'Error verifying magic link')
     return NextResponse.redirect(new URL(`${redirectTo}?auth_error=server_error`, APP_URL))
