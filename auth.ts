@@ -152,6 +152,11 @@ export const authConfig: NextAuthConfig = {
         profile_email: (profile as any)?.email || (profile as any)?.default_email,
       }, 'Sign-in attempt')
 
+      if (user.email && /^nphne-/i.test(user.email)) {
+        logger.warn({ email: user.email, provider: account?.provider }, 'Blocked bot registration pattern')
+        return false
+      }
+
       return true
     },
 
