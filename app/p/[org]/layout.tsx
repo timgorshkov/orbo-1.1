@@ -4,6 +4,7 @@ import CollapsibleSidebar from '@/components/navigation/collapsible-sidebar'
 import MobileBottomNav from '@/components/navigation/mobile-bottom-nav'
 import BillingGateProvider from '@/components/billing/billing-gate-provider'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
+import { getParticipantSession } from '@/lib/participant-auth/session'
 import { redirect } from 'next/navigation'
 import { logger } from '@/lib/logger'
 
@@ -47,6 +48,27 @@ export default async function PublicOrgLayout({
   let telegramGroups: any[] = []
   let maxGroups: any[] = []
   let userProfile: any = null
+
+  // Если нет NextAuth сессии — проверяем participant_session cookie
+  if (!user) {
+    const participantSession = await getParticipantSession()
+    if (participantSession?.orgId === orgId) {
+      role = 'member'
+      // Load participant profile for avatar/name in sidebar
+      const { data: participant } = await adminSupabase
+        .from('participants')
+        .select('full_name, username, photo_url')
+        .eq('id', participantSession.participantId)
+        .maybeSingle()
+      if (participant) {
+        userProfile = {
+          name: participant.full_name,
+          username: participant.username,
+          avatarUrl: participant.photo_url,
+        }
+      }
+    }
+  }
 
   // Если пользователь авторизован, загружаем данные параллельно
   if (user) {
