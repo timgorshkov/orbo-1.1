@@ -55,6 +55,8 @@ interface MembersViewProps {
   availableTags?: Tag[]
   isAdmin: boolean
   adminMode: boolean
+  hasTelegramAccount?: boolean
+  onGoToInvites?: () => void
 }
 
 type ViewMode = 'cards' | 'table'
@@ -66,6 +68,8 @@ export default function MembersView({
   availableTags = [],
   isAdmin,
   adminMode,
+  hasTelegramAccount = false,
+  onGoToInvites,
 }: MembersViewProps) {
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants)
   // true when enriched list is fully loaded (no background fetch needed)
@@ -612,28 +616,82 @@ export default function MembersView({
           </div>
         )
       ) : /* Контент */ filteredParticipants.length === 0 ? (
-        <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
-          <div className="text-center px-4">
-            <p className="text-lg font-medium text-gray-900">
-              {searchQuery ? 'Участники не найдены' : 'Пока нет участников'}
-            </p>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchQuery && backgroundLoading
-                ? 'Полный список ещё загружается, попробуйте снова через секунду'
-                : searchQuery
-                ? 'Попробуйте изменить поисковый запрос'
-                : 'Участники появятся после подключения Telegram-группы'}
-            </p>
-            {!searchQuery && (
-              <Link
-                href={`/p/${orgId}/telegram`}
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-              >
-                Подключить группу →
-              </Link>
-            )}
+        searchQuery ? (
+          <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
+            <div className="text-center px-4">
+              <p className="text-lg font-medium text-gray-900">Участники не найдены</p>
+              <p className="mt-1 text-sm text-gray-500">
+                {backgroundLoading
+                  ? 'Полный список ещё загружается, попробуйте снова через секунду'
+                  : 'Попробуйте изменить поисковый запрос'}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : showAdminFeatures ? (
+          <div className="py-16 flex flex-col items-center text-center">
+            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+              <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Участников пока нет</h2>
+            <p className="text-sm text-gray-500 mb-8 max-w-sm">
+              Импортируйте из Telegram-группы или пригласите вручную по email
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl text-left">
+              {/* Telegram card */}
+              <Link
+                href={hasTelegramAccount ? `/p/${orgId}/telegram/available-groups` : `/p/${orgId}/telegram/account`}
+                className="group flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 hover:border-blue-300 hover:shadow-sm transition-all"
+              >
+                <div className="w-9 h-9 rounded-lg bg-[#2AABEE]/10 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[#2AABEE]" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Импорт из Telegram</p>
+                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                    {hasTelegramAccount
+                      ? 'Аккаунт подключён. Добавьте бота в группу и подключите её.'
+                      : 'Привяжите Telegram-аккаунт и добавьте группу — участники синхронизируются автоматически.'}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-blue-600 group-hover:underline mt-auto">
+                  {hasTelegramAccount ? 'Подключить группу →' : 'Подключить аккаунт →'}
+                </span>
+              </Link>
+
+              {/* Email invite card */}
+              <button
+                type="button"
+                onClick={onGoToInvites}
+                className="group flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 hover:border-violet-300 hover:shadow-sm transition-all text-left"
+              >
+                <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Пригласить по email</p>
+                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                    Отправьте персональные приглашения — по одному или загрузите список из CSV.
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-violet-600 group-hover:underline mt-auto">
+                  Перейти к приглашениям →
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
+            <div className="text-center px-4">
+              <p className="text-lg font-medium text-gray-900">Пока нет участников</p>
+            </div>
+          </div>
+        )
       ) : viewMode === 'table' ? (
         <>
           <MembersTable

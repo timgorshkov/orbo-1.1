@@ -33,6 +33,7 @@ interface MembersTabsProps {
   role: 'owner' | 'admin' | 'member' | 'guest'
   activeTab: string
   orgPlan?: string
+  hasTelegramAccount?: boolean
 }
 
 export default function MembersTabs({
@@ -44,6 +45,7 @@ export default function MembersTabs({
   role,
   activeTab: initialTab,
   orgPlan,
+  hasTelegramAccount = false,
 }: MembersTabsProps) {
   const router = useRouter()
   const { adminMode, isAdmin } = useAdminMode(role)
@@ -184,6 +186,8 @@ export default function MembersTabs({
           availableTags={availableTags}
           isAdmin={isAdmin}
           adminMode={adminMode}
+          hasTelegramAccount={hasTelegramAccount}
+          onGoToInvites={() => handleTabChange('invites')}
         />
       )}
 

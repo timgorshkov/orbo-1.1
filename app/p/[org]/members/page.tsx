@@ -235,10 +235,10 @@ export default async function MembersPage({ params, searchParams }: {
     }
   }
 
-  // Проверяем Telegram-аккаунт и группы для пустого стейта (только для админов)
+  // Проверяем Telegram-аккаунт для пустого стейта (только для админов без участников)
   let hasTelegramAccount = false
   let hasConnectedGroups = false
-  if (isAdmin && participants.length === 0) {
+  if (isAdmin && (participants.length === 0 || totalParticipantCount === 0)) {
     const [tgAccountResult, groupsResult] = await Promise.all([
       adminSupabase
         .from('user_telegram_accounts')
@@ -298,44 +298,6 @@ export default async function MembersPage({ params, searchParams }: {
     }));
   }
 
-  // Пустой стейт для админов без участников
-  if (isAdmin && participants.length === 0) {
-    const connectHref = !hasTelegramAccount
-      ? `/p/${orgId}/telegram/account`
-      : `/p/${orgId}/telegram/available-groups`
-    const connectLabel = !hasTelegramAccount
-      ? 'Подключить Telegram-аккаунт'
-      : 'Подключить Telegram-группу'
-    const connectDescription = !hasTelegramAccount
-      ? 'Чтобы участники из Telegram-групп появились в Orbo, сначала привяжите ваш личный Telegram-аккаунт.'
-      : 'Telegram-аккаунт подключён. Добавьте бота в вашу группу и подключите её, чтобы участники начали синхронизироваться.'
-
-    return (
-      <div className="p-6">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold">Участники</h1>
-          </div>
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Участников пока нет</h2>
-            <p className="text-sm text-gray-500 max-w-sm mb-6">{connectDescription}</p>
-            <Link
-              href={connectHref}
-              className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {connectLabel}
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="p-6">
       <div className="mx-auto max-w-7xl">
@@ -353,6 +315,7 @@ export default async function MembersPage({ params, searchParams }: {
             role={role as 'owner' | 'admin' | 'member' | 'guest'}
             activeTab={tab}
             orgPlan={orgPlan}
+            hasTelegramAccount={hasTelegramAccount}
           />
         </Suspense>
       </div>
