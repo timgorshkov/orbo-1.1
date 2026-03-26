@@ -72,9 +72,13 @@ export async function GET(request: NextRequest) {
       logger.warn({
         token_id: authToken.id,
         email: authToken.email,
-        expires_at: expiresAt.toISOString()
+        expires_at: expiresAt.toISOString(),
+        user_agent: userAgent,
       }, 'Token expired')
-      return NextResponse.redirect(new URL('/signin?error=expired_token', baseUrl))
+      const expiredUrl = new URL('/signin', baseUrl)
+      expiredUrl.searchParams.set('error', 'expired_token')
+      expiredUrl.searchParams.set('email', authToken.email)
+      return NextResponse.redirect(expiredUrl)
     }
     
     const email = authToken.email.toLowerCase()

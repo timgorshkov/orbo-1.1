@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
     // Генерируем криптографически безопасный токен
     const token = crypto.randomBytes(32).toString('hex')
     
-    // Срок действия: 15 минут
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+    // Срок действия: 60 минут (15 было слишком мало — письма доходят с задержкой)
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
     
     // Получаем IP и User Agent
     const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0].trim() 
@@ -181,7 +181,7 @@ function getMagicLinkEmailTemplate(magicLink: string, email: string): string {
     
     <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
       <p style="font-size: 13px; color: #6b7280; margin-bottom: 10px;">
-        ⏰ Ссылка действительна <strong>15 минут</strong>.
+        ⏰ Ссылка действительна <strong>1 час</strong>.
       </p>
       <p style="font-size: 13px; color: #6b7280; margin: 0;">
         Если вы не запрашивали вход в Orbo, просто проигнорируйте это письмо.

@@ -330,7 +330,7 @@ export default function SignUp() {
                 <p className="text-gray-600">
                   Мы отправили ссылку для входа на <strong>{email}</strong>. Перейдите по ней — и ваш аккаунт будет создан.
                 </p>
-                <p className="text-sm text-gray-500">Ссылка действительна 15 минут. Проверьте папку «Спам», если письмо не пришло.</p>
+                <p className="text-sm text-gray-500">Ссылка действительна 1 час. Проверьте папку «Спам», если письмо не пришло.</p>
                 <button
                   type="button"
                   onClick={() => { setEmailSent(false); setMessage(null) }}

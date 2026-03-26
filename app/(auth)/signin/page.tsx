@@ -138,43 +138,52 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
 }
 
 // Компонент для обработки ошибок из URL (требует Suspense)
-function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
+function ErrorHandler({ onError, onExpiredWithEmail }: {
+  onError: (msg: string) => void
+  onExpiredWithEmail: (email: string) => void
+}) {
   const searchParams = useSearchParams()
-  
+
   useEffect(() => {
     const error = searchParams.get('error')
-    if (error) {
-      const errorMessages: Record<string, string> = {
-        'Configuration': 'Ошибка конфигурации OAuth. Проверьте настройки провайдера.',
-        'AccessDenied': 'Доступ запрещён. Попробуйте другой способ входа.',
-        'Verification': 'Ссылка для входа истекла. Запросите новую.',
-        'OAuthSignin': 'Ошибка при начале OAuth авторизации.',
-        'OAuthCallback': 'Ошибка при обработке ответа от провайдера.',
-        'OAuthCreateAccount': 'Не удалось создать аккаунт через OAuth.',
-        'Callback': 'Ошибка обратного вызова.',
-        'Default': 'Произошла неизвестная ошибка.',
-        // Ошибки email magic link
-        'missing_token': 'Отсутствует токен авторизации. Запросите ссылку повторно.',
-        'invalid_token': 'Недействительная ссылка. Запросите новую ссылку для входа.',
-        'expired_token': 'Срок действия ссылки истёк. Запросите новую ссылку для входа.',
-        'user_create_failed': 'Не удалось создать аккаунт. Попробуйте позже.',
-        'user_error': 'Ошибка пользователя. Попробуйте позже.',
-        'session_error': 'Ошибка создания сессии. Попробуйте позже.',
-        'verification_failed': 'Ошибка верификации. Попробуйте позже.',
-        // Ошибки Telegram авторизации
-        'expired_code': 'Ссылка устарела. Откройте бот и нажмите /start заново.',
-        'invalid_code': 'Недействительный код. Откройте бот и нажмите /start заново.',
-        'code_already_used': 'Ссылка уже была использована. Запросите новую через бот.',
-        'user_not_found': 'Аккаунт не найден. Зарегистрируйтесь на сайте.',
-        'missing_code': 'Отсутствует код авторизации.',
-        'query_error': 'Ошибка при проверке кода. Попробуйте позже.',
-        'config_error': 'Ошибка конфигурации. Обратитесь в поддержку.',
-        'internal_error': 'Внутренняя ошибка. Попробуйте позже.',
+    if (!error) return
+
+    if (error === 'expired_token') {
+      const email = searchParams.get('email') || ''
+      if (email) {
+        onExpiredWithEmail(email)
+        return
       }
-      onError(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
     }
-  }, [searchParams, onError])
-  
+
+    const errorMessages: Record<string, string> = {
+      'Configuration': 'Ошибка конфигурации OAuth. Проверьте настройки провайдера.',
+      'AccessDenied': 'Доступ запрещён. Попробуйте другой способ входа.',
+      'Verification': 'Ссылка для входа истекла. Запросите новую.',
+      'OAuthSignin': 'Ошибка при начале OAuth авторизации.',
+      'OAuthCallback': 'Ошибка при обработке ответа от провайдера.',
+      'OAuthCreateAccount': 'Не удалось создать аккаунт через OAuth.',
+      'Callback': 'Ошибка обратного вызова.',
+      'Default': 'Произошла неизвестная ошибка.',
+      'missing_token': 'Отсутствует токен авторизации. Запросите ссылку повторно.',
+      'invalid_token': 'Недействительная ссылка. Запросите новую ссылку для входа.',
+      'expired_token': 'Срок действия ссылки истёк. Запросите новую ссылку для входа.',
+      'user_create_failed': 'Не удалось создать аккаунт. Попробуйте позже.',
+      'user_error': 'Ошибка пользователя. Попробуйте позже.',
+      'session_error': 'Ошибка создания сессии. Попробуйте позже.',
+      'verification_failed': 'Ошибка верификации. Попробуйте позже.',
+      'expired_code': 'Ссылка устарела. Откройте бот и нажмите /start заново.',
+      'invalid_code': 'Недействительный код. Откройте бот и нажмите /start заново.',
+      'code_already_used': 'Ссылка уже была использована. Запросите новую через бот.',
+      'user_not_found': 'Аккаунт не найден. Зарегистрируйтесь на сайте.',
+      'missing_code': 'Отсутствует код авторизации.',
+      'query_error': 'Ошибка при проверке кода. Попробуйте позже.',
+      'config_error': 'Ошибка конфигурации. Обратитесь в поддержку.',
+      'internal_error': 'Внутренняя ошибка. Попробуйте позже.',
+    }
+    onError(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
+  }, [searchParams, onError, onExpiredWithEmail])
+
   return null
 }
 
@@ -204,6 +213,7 @@ export default function SignIn() {
   const [oauthLoading, setOauthLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [emailSent, setEmailSent] = useState(false)
+  const [expiredEmail, setExpiredEmail] = useState<string | null>(null)
   const logger = createClientLogger('SignIn');
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -315,7 +325,10 @@ export default function SignIn() {
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Обработка ошибок из URL (NextAuth редиректит с ?error=...) */}
       <Suspense fallback={null}>
-        <ErrorHandler onError={setMessage} />
+        <ErrorHandler
+          onError={setMessage}
+          onExpiredWithEmail={(e) => { setExpiredEmail(e); setEmail(e) }}
+        />
       </Suspense>
       
       {/* Left side - Branding */}
@@ -381,6 +394,21 @@ export default function SignIn() {
             />
           </div>
 
+          {expiredEmail && !emailSent && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 space-y-2">
+              <p className="font-medium">⏰ Ссылка для входа устарела</p>
+              <p>Выслать новую на <strong>{expiredEmail}</strong>?</p>
+              <button
+                type="button"
+                onClick={() => onSubmit({ preventDefault: () => {} } as React.FormEvent)}
+                disabled={loading}
+                className="mt-1 inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Отправка...' : 'Выслать новую ссылку'}
+              </button>
+            </div>
+          )}
+
           <div className="bg-white border border-gray-200 shadow-sm rounded-2xl p-8">
             {emailSent ? (
               <div className="text-center py-4 space-y-4">
@@ -393,7 +421,7 @@ export default function SignIn() {
                 <p className="text-gray-600">
                   Мы отправили ссылку для входа на <strong>{email}</strong>. Перейдите по ней — и вы войдёте в Orbo.
                 </p>
-                <p className="text-sm text-gray-500">Ссылка действительна 15 минут. Проверьте папку «Спам», если письмо не пришло.</p>
+                <p className="text-sm text-gray-500">Ссылка действительна 1 час. Проверьте папку «Спам», если письмо не пришло.</p>
                 <button
                   type="button"
                   onClick={() => { setEmailSent(false); setMessage(null) }}
