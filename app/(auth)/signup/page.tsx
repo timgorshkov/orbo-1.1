@@ -19,6 +19,7 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
   const [code, setCode] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'linked' | 'error'>('loading')
   const [copied, setCopied] = useState(false)
+  const [botCopied, setBotCopied] = useState(false)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollCount = useRef(0)
 
@@ -94,9 +95,18 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
 
   return (
     <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-      <p className="text-sm text-blue-800">
-        Откройте <span className="font-semibold">@{botUsername}</span> в Telegram и отправьте этот код:
-      </p>
+      <div className="flex items-center gap-1.5 flex-wrap text-sm text-blue-800">
+        <span>Откройте</span>
+        <span className="font-semibold">@{botUsername}</span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(`@${botUsername}`).catch(() => {}); setBotCopied(true); setTimeout(() => setBotCopied(false), 2000) }}
+          className="inline-flex items-center p-1 rounded text-blue-400 hover:text-blue-600 hover:bg-blue-100 transition-colors"
+          title="Скопировать имя бота"
+        >
+          {botCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        <span>в Telegram и отправьте этот код:</span>
+      </div>
       {status === 'loading' ? (
         <div className="text-sm text-blue-400 text-center py-1">Генерация кода...</div>
       ) : status === 'error' ? (
@@ -110,7 +120,7 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
             onClick={handleCopy}
             className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium transition-colors"
           >
-            {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="text-green-600">Скопировано</span></> : <><Copy className="w-3.5 h-3.5" /><span>Копировать</span></>}
+            {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="hidden sm:inline text-green-600">Скопировано</span></> : <><Copy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Копировать</span></>}
           </button>
         </div>
       )}

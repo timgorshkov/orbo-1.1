@@ -6,6 +6,19 @@ import Link from 'next/link';
 import { ArrowLeft, Check, AlertCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
 import { createClientLogger } from '@/lib/logger';
 
+function CopyBotButton({ name }: { name: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(`@${name}`).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+      className="shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+      title="Скопировать имя бота"
+    >
+      {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+    </button>
+  )
+}
+
 type Props = {
   orgId: string
   redirectUrl: string
@@ -176,12 +189,12 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
                         {copied ? (
                           <>
                             <Check className="w-4 h-4 text-green-600" />
-                            <span className="text-green-600">Скопировано</span>
+                            <span className="hidden sm:inline text-green-600">Скопировано</span>
                           </>
                         ) : (
                           <>
                             <Copy className="w-4 h-4" />
-                            <span>Копировать</span>
+                            <span className="hidden sm:inline">Копировать</span>
                           </>
                         )}
                       </button>
@@ -194,9 +207,12 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
                     <p className="text-sm font-medium text-gray-700 mb-2">
                       Шаг 2 — откройте Telegram, найдите бота и отправьте ему код:
                     </p>
-                    <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
-                      <span className="font-semibold">@{botUsername}</span>
-                      <span className="text-gray-400 ml-2 text-xs">найдите в поиске Telegram</span>
+                    <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm flex items-center justify-between gap-2">
+                      <div>
+                        <span className="font-semibold">@{botUsername}</span>
+                        <span className="text-gray-400 ml-2 text-xs">найдите в поиске Telegram</span>
+                      </div>
+                      <CopyBotButton name={botUsername} />
                     </div>
                     <p className="text-xs text-gray-500 text-center mt-2">
                       После отправки кода вы получите ссылку для входа
