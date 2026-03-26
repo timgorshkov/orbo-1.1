@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
-import { setParticipantSession } from '@/lib/participant-auth/session'
+import { createParticipantToken } from '@/lib/participant-auth/session'
 
 export async function POST(
   req: NextRequest,
@@ -88,8 +88,9 @@ export async function POST(
       return NextResponse.json({ error: 'Ошибка создания профиля' }, { status: 500 })
     }
 
-    // 4. Set session cookie
-    await setParticipantSession({
+    // 4. Set session cookie directly on the response (cookies().set() from next/headers
+    //    is not reliably merged into NextResponse.json() — set it explicitly instead)
+    const sessionToken = createParticipantToken({
       participantId,
       orgId: invite.org_id,
       email: invite.email,
@@ -97,7 +98,15 @@ export async function POST(
 
     logger.info({ invite_id: invite.id, participant_id: participantId, org_id: invite.org_id }, 'Invite accepted')
 
-    return NextResponse.json({ ok: true, participantId, orgId: invite.org_id })
+    const response = NextResponse.json({ ok: true, participantId, orgId: invite.org_id })
+    response.cookies.set('participant_session', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30,
+      path: '/',
+    })
+    return response
   } catch (err: any) {
     logger.error({ error: err.message, stack: err.stack }, 'Error accepting invite')
     return NextResponse.json({ error: 'Внутренняя ошибка' }, { status: 500 })

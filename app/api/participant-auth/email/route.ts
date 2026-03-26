@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
-import { setParticipantSession } from '@/lib/participant-auth/session'
+import { createParticipantToken } from '@/lib/participant-auth/session'
 import { sendEmail } from '@/lib/services/email'
 import { buildParticipantMagicLinkEmail } from '@/lib/services/email/participantInviteTemplate'
 
@@ -125,15 +125,13 @@ export async function GET(req: NextRequest) {
       .eq('id', authToken.participant_id)
       .is('email_verified_at', null)
 
-    // Get participant name for session
     const { data: participant } = await db
       .from('participants')
       .select('full_name, tg_user_id')
       .eq('id', authToken.participant_id)
       .single()
 
-    // Create session
-    await setParticipantSession({
+    const sessionToken = createParticipantToken({
       participantId: authToken.participant_id,
       orgId: authToken.org_id,
       email: authToken.email,
@@ -144,6 +142,13 @@ export async function GET(req: NextRequest) {
     logger.info({ participant_id: authToken.participant_id, org_id: authToken.org_id }, 'Magic link login success')
 
     const response = NextResponse.redirect(new URL(redirectTo, APP_URL))
+    response.cookies.set('participant_session', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30,
+      path: '/',
+    })
     return response
   } catch (err: any) {
     logger.error({ error: err.message, stack: err.stack }, 'Error verifying magic link')

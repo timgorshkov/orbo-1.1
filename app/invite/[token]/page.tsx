@@ -109,20 +109,16 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   }
 
   const goToLogin = () => {
-    // Store the invite token to process after login
     sessionStorage.setItem('pendingInviteToken', params.token)
-    router.push('/signin')
+    router.push(`/signin?invite=${params.token}`)
   }
 
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
-      // Logout from all providers (Supabase + NextAuth)
       await fetch('/api/auth/logout', { method: 'POST' })
-      // Store the invite token to process after re-login
       sessionStorage.setItem('pendingInviteToken', params.token)
-      // Redirect to signin
-      window.location.href = '/signin'
+      window.location.href = `/signin?invite=${params.token}`
     } catch (err) {
       setLoggingOut(false)
       setError('Ошибка выхода из аккаунта')

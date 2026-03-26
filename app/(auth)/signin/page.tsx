@@ -15,7 +15,7 @@ const REGISTRATION_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_
 const POLL_INTERVAL_MS = 2500
 const MAX_POLL_ATTEMPTS = 72
 
-function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
+function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; inviteToken?: string | null }) {
   const [code, setCode] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'linked' | 'error'>('loading')
   const [copied, setCopied] = useState(false)
@@ -58,7 +58,8 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
             ymGoal('telegram_signin_linked', undefined, { once: true })
             // Auto-redirect: create NextAuth session directly in this browser tab.
             // The /auth/telegram route marks the code as used and signs the user in.
-            router.push(`/auth/telegram?code=${codeValue}&redirect=/orgs`)
+            const dest = inviteToken ? `/invite/${inviteToken}` : '/orgs'
+            router.push(`/auth/telegram?code=${codeValue}&redirect=${encodeURIComponent(dest)}`)
             return
           }
         }
@@ -137,14 +138,17 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
   )
 }
 
-// Компонент для обработки ошибок из URL (требует Suspense)
-function ErrorHandler({ onError, onExpiredWithEmail }: {
+function ErrorHandler({ onError, onExpiredWithEmail, onInviteToken }: {
   onError: (msg: string) => void
   onExpiredWithEmail: (email: string) => void
+  onInviteToken: (token: string) => void
 }) {
   const searchParams = useSearchParams()
 
   useEffect(() => {
+    const invite = searchParams.get('invite')
+    if (invite) onInviteToken(invite)
+
     const error = searchParams.get('error')
     if (!error) return
 
@@ -182,12 +186,12 @@ function ErrorHandler({ onError, onExpiredWithEmail }: {
       'internal_error': 'Внутренняя ошибка. Попробуйте позже.',
     }
     onError(`Ошибка: ${errorMessages[error] || errorMessages['Default']}`)
-  }, [searchParams, onError, onExpiredWithEmail])
+  }, [searchParams, onError, onExpiredWithEmail, onInviteToken])
 
   return null
 }
 
-function TelegramSigninButton() {
+function TelegramSigninButton({ inviteToken }: { inviteToken?: string | null }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -202,7 +206,7 @@ function TelegramSigninButton() {
         </svg>
         Войти через Telegram
       </button>
-      {expanded && <TelegramCodeBlock botUsername={REGISTRATION_BOT_USERNAME} />}
+      {expanded && <TelegramCodeBlock botUsername={REGISTRATION_BOT_USERNAME} inviteToken={inviteToken} />}
     </div>
   )
 }
@@ -214,6 +218,7 @@ export default function SignIn() {
   const [message, setMessage] = useState<string | null>(null)
   const [emailSent, setEmailSent] = useState(false)
   const [expiredEmail, setExpiredEmail] = useState<string | null>(null)
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
   const logger = createClientLogger('SignIn');
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -226,13 +231,13 @@ export default function SignIn() {
     ymGoal('signin_page_view', undefined, { once: true });
   }, []);
 
-  // Редирект на /orgs если пользователь уже авторизован
   useEffect(() => {
     if (status === 'authenticated' && session) {
-      logger.info({ email: session.user?.email }, 'User already authenticated, redirecting to /orgs');
-      router.replace('/orgs');
+      const dest = inviteToken ? `/invite/${inviteToken}` : '/orgs'
+      logger.info({ email: session.user?.email, redirect: dest }, 'User already authenticated, redirecting');
+      router.replace(dest);
     }
-  }, [status, session, router, logger]);
+  }, [status, session, router, logger, inviteToken]);
 
   // Показываем загрузку пока проверяем сессию
   if (status === 'loading') {
@@ -270,14 +275,11 @@ export default function SignIn() {
     setMessage(null)
     
     try {
-      // Используем собственный email auth через Unisender Go
+      const redirectUrl = inviteToken ? `/invite/${inviteToken}` : '/orgs'
       const response = await fetch('/api/auth/email/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email,
-          redirectUrl: '/orgs'
-        })
+        body: JSON.stringify({ email, redirectUrl })
       })
       
       const data = await response.json()
@@ -309,7 +311,7 @@ export default function SignIn() {
     
     try {
       await signIn(provider, {
-        callbackUrl: '/orgs',
+        callbackUrl: inviteToken ? `/invite/${inviteToken}` : '/orgs',
       })
     } catch (error) {
       logger.error({
@@ -328,6 +330,7 @@ export default function SignIn() {
         <ErrorHandler
           onError={setMessage}
           onExpiredWithEmail={(e) => { setExpiredEmail(e); setEmail(e) }}
+          onInviteToken={setInviteToken}
         />
       </Suspense>
       
@@ -537,7 +540,7 @@ export default function SignIn() {
                 )}
               </Button>
 
-              <TelegramSigninButton />
+              <TelegramSigninButton inviteToken={inviteToken} />
             </div>
             </>
             )}
