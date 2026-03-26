@@ -441,7 +441,7 @@ export async function GET(request: Request) {
               for (const chatId of allChatIdsForCount) {
                 if (Date.now() >= deadline) break;
                 await processOneChat(chatId);
-                if (allChatIdsForCount.length > 1) await new Promise(r => setTimeout(r, 150));
+                if (allChatIdsForCount.length > 1) await new Promise(r => setTimeout(r, 50));
               }
             }
             

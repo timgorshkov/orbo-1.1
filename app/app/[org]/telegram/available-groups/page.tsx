@@ -57,16 +57,10 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         
         if (updateRes.ok) {
           const updateData = await updateRes.json();
-          logger.debug({ 
+          logger.debug({
             updated_count: updateData.updatedGroups?.length || 0,
             org: params.org
           }, 'Updated admin rights for groups');
-          
-          // ✅ После обновления прав - перезагружаем список групп, если компонент ещё смонтирован
-          if (isMounted) {
-            logger.debug({ org: params.org }, 'Refreshing available groups after admin rights update');
-            fetchAvailableGroups();
-          }
         } else {
           logger.error({ 
             status: updateRes.status,

@@ -165,14 +165,6 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
                         </Link>
                       </div>
 
-                      <div className="border-t pt-4">
-                        <Link href={`/p/${orgId}/telegram/account`} className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50 w-full">
-                          Настроить Telegram-аккаунт
-                        </Link>
-                        <p className="mt-2 text-xs text-neutral-500 text-center">
-                          Необходимо для получения списка ваших групп
-                        </p>
-                      </div>
                     </>
                   )}
                 </>
