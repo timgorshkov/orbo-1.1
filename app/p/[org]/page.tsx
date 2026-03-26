@@ -208,6 +208,28 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ o
     return <AuthenticatedHome orgId={orgId} role="member" />
   }
 
+  // Check by email: participant may have been created via email invite without user_id linked yet.
+  // This happens when a NextAuth user accepts an email invite — the participant row has no user_id.
+  if (user.email) {
+    const { data: participantByEmail } = await adminSupabase
+      .from('participants')
+      .select('id')
+      .eq('org_id', orgId)
+      .eq('email', user.email)
+      .is('merged_into', null)
+      .maybeSingle()
+
+    if (participantByEmail) {
+      // Link participant to this NextAuth user for future lookups
+      await adminSupabase
+        .from('participants')
+        .update({ user_id: user.id })
+        .eq('id', participantByEmail.id)
+        .is('user_id', null)
+      return <AuthenticatedHome orgId={orgId} role="member" />
+    }
+  }
+
   // No access at all — redirect to auth
   redirect(`/p/${orgId}/auth`)
 }
