@@ -119,6 +119,17 @@ export default function InvitesManager({
 
   return (
     <div className="space-y-6">
+      {/* Hint: email branding from portal settings */}
+      <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <span className="shrink-0 mt-0.5">💡</span>
+        <span>
+          Письма приглашений и входа оформляются с названием и логотипом вашего сообщества.{' '}
+          <a href={`/p/${orgId}/settings?tab=portal`} className="underline underline-offset-2 hover:text-blue-900">
+            Настроить оформление портала →
+          </a>
+        </span>
+      </div>
+
       {/* Email invites section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">

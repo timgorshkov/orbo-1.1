@@ -6,6 +6,7 @@ import AuthenticatedHome from '@/components/home/authenticated-home'
 import PublicCommunityHub from '@/components/home/public-community-hub'
 import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getParticipantSession } from '@/lib/participant-auth/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -164,8 +165,12 @@ export default async function CommunityHubPage({ params }: { params: Promise<{ o
   // Check authentication via unified auth (supports both Supabase and NextAuth)
   const user = await getUnifiedUser()
 
-  // If not authenticated, show public version
+  // If not authenticated via NextAuth, check participant session (email-invited members)
   if (!user) {
+    const participantSession = await getParticipantSession()
+    if (participantSession?.orgId === orgId) {
+      return <AuthenticatedHome orgId={orgId} role="member" />
+    }
     return <PublicCommunityHub orgId={orgId} />
   }
 

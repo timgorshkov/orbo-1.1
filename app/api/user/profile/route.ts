@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getParticipantSession } from '@/lib/participant-auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,14 +25,77 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
     }
 
-    // Check auth via unified auth
+    // Check auth: NextAuth users (owners/admins/members) first
     const user = await getUnifiedUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      // Fallback: community participants authenticated via participant_session cookie
+      const participantSession = await getParticipantSession()
+      if (!participantSession || participantSession.orgId !== orgId) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      const adminSupabaseP = createAdminServer();
+
+      // Resolve merged participants (ghost session: participant was merged while logged in)
+      let participantId = participantSession.participantId
+      for (let depth = 0; depth < 5; depth++) {
+        const { data: p } = await adminSupabaseP
+          .from('participants')
+          .select('id, merged_into')
+          .eq('id', participantId)
+          .maybeSingle()
+        if (!p || !p.merged_into) break
+        participantId = p.merged_into
+      }
+
+      const [{ data: participant }, { data: orgData }] = await Promise.all([
+        adminSupabaseP
+          .from('participants')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, email_verified_at, created_at')
+          .eq('id', participantId)
+          .is('merged_into', null)
+          .maybeSingle(),
+        adminSupabaseP
+          .from('organizations')
+          .select('id, name, logo_url')
+          .eq('id', orgId)
+          .single(),
+      ])
+
+      if (!participant) {
+        return NextResponse.json({ error: 'Participant not found' }, { status: 404 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        profile: {
+          user: {
+            id: participant.id,
+            email: participant.email,
+            email_confirmed: !!participant.email_verified_at,
+            email_confirmed_at: participant.email_verified_at || null,
+            metadata: {},
+            created_at: participant.created_at || new Date().toISOString(),
+          },
+          membership: {
+            role: 'member' as const,
+            role_source: participant.source || 'email_invite',
+            is_shadow_profile: false,
+            created_at: participant.created_at || null,
+            admin_groups: [],
+            metadata: null,
+            is_superadmin: false,
+          },
+          telegram: null,
+          maxAccount: null,
+          participant,
+          organization: orgData || null,
+        },
+      })
     }
 
-    logger.debug({ 
+    logger.debug({
       user_id: user.id,
       org_id: orgId,
       email: user.email
@@ -198,7 +262,7 @@ export async function GET(request: NextRequest) {
     }, 'Initial queries complete');
 
     // 4. Профиль участника (если есть)
-    let participant = null;
+    let participant: Record<string, any> | null = null;
     
     // Сначала пробуем найти по telegram_user_id (если есть привязанный Telegram)
     if (telegramAccount?.telegram_user_id) {

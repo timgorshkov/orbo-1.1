@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ParticipantAvatar } from '@/components/members/participant-avatar'
-import { Crown, Shield, User, Mail, MessageSquare, LogOut, Edit2, Save, X } from 'lucide-react'
+import { Crown, Shield, User, Mail, MessageSquare, LogOut, Edit2, Save, X, CheckCircle2, Copy, Check, ExternalLink } from 'lucide-react'
 import { createClientLogger } from '@/lib/logger'
 
 type ProfileData = {
@@ -130,14 +130,17 @@ export default function ProfilePage() {
     return result
   }
 
-  // Telegram linking state
-  const [showTelegramForm, setShowTelegramForm] = useState(false)
-  const [telegramUserId, setTelegramUserId] = useState('')
-  const [verificationCode, setVerificationCode] = useState('')
-  const [telegramError, setTelegramError] = useState<string | null>(null)
-  const [telegramSuccess, setTelegramSuccess] = useState<string | null>(null)
-  const [savingTelegram, setSavingTelegram] = useState(false)
-  const [verifying, setVerifying] = useState(false)
+  // Telegram linking state (6-digit code flow for participants)
+  const [tgLinkCode, setTgLinkCode] = useState<string | null>(null)
+  const [tgLinkBotUsername, setTgLinkBotUsername] = useState(
+    process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
+  )
+  const [tgLinkStatus, setTgLinkStatus] = useState<'idle' | 'generating' | 'waiting' | 'linked' | 'error'>('idle')
+  const [tgLinkError, setTgLinkError] = useState<string | null>(null)
+  const [tgMergedName, setTgMergedName] = useState<string | null>(null)
+  const [tgCodeCopied, setTgCodeCopied] = useState(false)
+  const tgPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tgPollCount = useRef(0)
 
   // MAX account state
   const [maxVerificationCode, setMaxVerificationCode] = useState('')
@@ -158,6 +161,7 @@ export default function ProfilePage() {
     if (org) {
       fetchProfile()
     }
+    return () => { if (tgPollTimer.current) clearTimeout(tgPollTimer.current) }
   }, [org])
 
   const fetchProfile = async () => {
@@ -275,105 +279,79 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     if (confirm('Вы уверены, что хотите выйти?')) {
       try {
-        await fetch('/api/auth/logout', { 
+        await fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
         })
-        window.location.href = '/signin'
       } catch (error) {
         const logger = createClientLogger('ProfilePage', { org });
         logger.error({
           error: error instanceof Error ? error.message : String(error),
           org
         }, 'Logout error');
-        window.location.href = '/signin'
       }
+      window.location.href = `/p/${org}/auth`
     }
   }
 
-  const handleLinkTelegram = async () => {
-    if (!telegramUserId) {
-      setTelegramError('Пожалуйста, укажите Telegram User ID')
-      return
-    }
-
-    setSavingTelegram(true)
-    setTelegramError(null)
-    setTelegramSuccess(null)
+  const startTgLink = async () => {
+    setTgLinkStatus('generating')
+    setTgLinkError(null)
+    setTgMergedName(null)
+    if (tgPollTimer.current) clearTimeout(tgPollTimer.current)
+    tgPollCount.current = 0
 
     try {
-      const response = await fetch('/api/telegram/accounts', {
+      const res = await fetch('/api/participant-auth/telegram-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: org,
-          telegramUserId: parseInt(telegramUserId)
-        })
+        body: JSON.stringify({ orgId: org }),
       })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Не удалось создать код')
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.details || data.error || 'Failed to link Telegram')
-      }
-
-      setTelegramSuccess('Telegram User ID сохранен! Теперь верифицируйте аккаунт.')
-      await fetchProfile() // Reload profile
+      setTgLinkCode(data.code)
+      if (data.botUsername) setTgLinkBotUsername(data.botUsername)
+      setTgLinkStatus('waiting')
+      scheduleTgPoll(data.code)
     } catch (e: any) {
-      const logger = createClientLogger('ProfilePage', { org });
-      logger.error({
-        error: e.message,
-        stack: e.stack,
-        org,
-        telegram_user_id: telegramUserId
-      }, 'Error linking Telegram');
-      setTelegramError(e.message || 'Failed to link Telegram')
-    } finally {
-      setSavingTelegram(false)
+      setTgLinkStatus('error')
+      setTgLinkError(e.message || 'Ошибка генерации кода')
     }
   }
 
-  const handleVerifyTelegram = async () => {
-    if (!verificationCode) {
-      setTelegramError('Пожалуйста, введите код верификации')
-      return
-    }
-
-    setVerifying(true)
-    setTelegramError(null)
-    setTelegramSuccess(null)
-
-    try {
-      const response = await fetch('/api/telegram/accounts/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: org,
-          code: verificationCode
-        })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.details || data.error || 'Failed to verify Telegram')
+  const scheduleTgPoll = (code: string) => {
+    const MAX_POLLS = 72 // 3 minutes
+    const tick = async () => {
+      tgPollCount.current++
+      if (tgPollCount.current > MAX_POLLS) {
+        setTgLinkStatus('error')
+        setTgLinkError('Время ожидания истекло. Попробуйте снова.')
+        return
       }
-
-      setTelegramSuccess('Telegram аккаунт успешно верифицирован!')
-      setVerificationCode('')
-      await fetchProfile() // Reload profile
-    } catch (e: any) {
-      const logger = createClientLogger('ProfilePage', { org });
-      logger.error({
-        error: e.message,
-        stack: e.stack,
-        org
-      }, 'Error verifying Telegram');
-      setTelegramError(e.message || 'Failed to verify Telegram')
-    } finally {
-      setVerifying(false)
+      try {
+        const res = await fetch(`/api/auth/telegram-code/status?code=${code}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.linked) {
+            // Finalize: update participant.tg_user_id, handle merge
+            const finalRes = await fetch(`/api/participant-auth/telegram-link?code=${code}`)
+            const finalData = await finalRes.json()
+            if (finalRes.ok && finalData.linked) {
+              setTgLinkStatus('linked')
+              if (finalData.merged && finalData.conflictName) {
+                setTgMergedName(finalData.conflictName)
+              }
+              await fetchProfile()
+              return
+            }
+          }
+        }
+      } catch { /* retry */ }
+      tgPollTimer.current = setTimeout(tick, 2500)
     }
+    tgPollTimer.current = setTimeout(tick, 2500)
   }
 
   const handleVerifyMax = async () => {
@@ -1140,10 +1118,11 @@ export default function ProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              Telegram аккаунт в этой организации
+              Telegram аккаунт
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Admin TG account (user_telegram_accounts) — for owners/admins syncing groups */}
             {profile.telegram ? (
               <div className="space-y-3">
                 {profile.telegram.telegram_username && (
@@ -1170,107 +1149,122 @@ export default function ProfilePage() {
                     </span>
                   )}
                 </div>
+              </div>
 
-                {!profile.telegram.is_verified && (
-                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-sm text-amber-800 mb-3">
-                      Введите код из сообщения бота @orbo_assistant_bot:
-                    </p>
-                    {telegramError && (
-                      <div className="bg-red-50 border border-red-200 rounded p-2 text-sm text-red-800 mb-3">
-                        {telegramError}
-                      </div>
-                    )}
-                    {telegramSuccess && (
-                      <div className="bg-green-50 border border-green-200 rounded p-2 text-sm text-green-800 mb-3">
-                        {telegramSuccess}
-                      </div>
-                    )}
-                    <Input
-                      type="text"
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value)}
-                      placeholder="Введите код"
-                      className="mb-3"
-                      disabled={verifying}
-                    />
-                    <Button
-                      onClick={handleVerifyTelegram}
-                      disabled={verifying || !verificationCode}
-                      className="w-full"
-                    >
-                      {verifying ? 'Верификация...' : 'Верифицировать'}
-                    </Button>
+            ) : profile.participant?.tg_user_id ? (
+              /* Participant TG identity linked (from group activity or previous linking) */
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <span className="font-medium">Telegram подключён</span>
+                </div>
+                {profile.participant.username && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Username:</span>
+                    <span className="font-medium">@{profile.participant.username}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">User ID:</span>
+                  <span className="font-medium font-mono text-sm">{profile.participant.tg_user_id}</span>
+                </div>
+                {tgMergedName && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    ✅ Профили объединены: история сообщений из профиля «{tgMergedName}» добавлена к вашему аккаунту.
                   </div>
                 )}
               </div>
-            ) : (
-              <div>
-                {!showTelegramForm ? (
-                  <div className="text-center py-4">
-                    <p className="text-gray-600 mb-4">Telegram не привязан</p>
-                    <Button onClick={() => setShowTelegramForm(true)}>
-                      Привязать Telegram
-                    </Button>
+
+            ) : tgLinkStatus === 'linked' ? (
+              /* Just linked in this session */
+              <div className="flex items-center gap-2 text-green-700 py-2">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">Telegram успешно привязан!</span>
+              </div>
+
+            ) : tgLinkCode && tgLinkStatus !== 'idle' ? (
+              /* 6-digit code flow active */
+              <div className="space-y-4">
+                <div className="flex items-center gap-1.5 flex-wrap text-sm text-gray-700">
+                  <span>Откройте</span>
+                  <span className="font-semibold">@{tgLinkBotUsername}</span>
+                  <span>в Telegram и отправьте этот код:</span>
+                </div>
+
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
+                      {tgLinkCode}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(tgLinkCode).catch(() => {})
+                        setTgCodeCopied(true)
+                        setTimeout(() => setTgCodeCopied(false), 2000)
+                      }}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 hover:border-blue-400 text-blue-600 text-sm font-medium transition-colors"
+                    >
+                      {tgCodeCopied
+                        ? <><Check className="w-4 h-4 text-green-500" /><span className="hidden sm:inline text-green-600">Скопировано</span></>
+                        : <><Copy className="w-4 h-4" /><span className="hidden sm:inline">Копировать</span></>
+                      }
+                    </button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
-                      <p className="font-medium text-blue-900 mb-2">Как узнать Telegram User ID:</p>
-                      <ol className="list-decimal list-inside space-y-1 text-blue-800">
-                        <li>Откройте бота @orbo_assistant_bot</li>
-                        <li>Отправьте команду /start</li>
-                        <li>Бот пришлет ваш User ID</li>
-                        <li>Скопируйте ID и вставьте ниже</li>
-                      </ol>
-                    </div>
+                </div>
 
-                    {telegramError && (
-                      <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800">
-                        {telegramError}
-                      </div>
-                    )}
-                    {telegramSuccess && (
-                      <div className="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
-                        {telegramSuccess}
-                      </div>
-                    )}
+                <div className="text-center">
+                  <a
+                    href={`https://t.me/${tgLinkBotUsername}?start=${tgLinkCode}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Открыть бота в один клик
+                  </a>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Telegram User ID
-                      </label>
-                      <Input
-                        type="text"
-                        value={telegramUserId}
-                        onChange={(e) => setTelegramUserId(e.target.value)}
-                        placeholder="Введите ваш Telegram User ID"
-                        disabled={savingTelegram}
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handleLinkTelegram}
-                        disabled={savingTelegram || !telegramUserId}
-                        className="flex-1"
-                      >
-                        {savingTelegram ? 'Сохранение...' : 'Привязать'}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setShowTelegramForm(false)
-                          setTelegramUserId('')
-                          setTelegramError(null)
-                          setTelegramSuccess(null)
-                        }}
-                        variant="outline"
-                      >
-                        Отмена
-                      </Button>
-                    </div>
+                {tgLinkStatus === 'waiting' && (
+                  <p className="text-xs text-gray-500 text-center">Ожидаем подтверждение от бота...</p>
+                )}
+                {tgLinkError && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800">
+                    {tgLinkError}
                   </div>
                 )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (tgPollTimer.current) clearTimeout(tgPollTimer.current)
+                    setTgLinkCode(null)
+                    setTgLinkStatus('idle')
+                    setTgLinkError(null)
+                  }}
+                >
+                  Отмена
+                </Button>
+              </div>
+
+            ) : (
+              /* No TG linked yet — show connect button */
+              <div className="text-center py-4">
+                <p className="text-gray-600 mb-1">Telegram не привязан</p>
+                <p className="text-xs text-gray-400 mb-4">
+                  Привяжите Telegram, чтобы ваш профиль объединился с историей сообщений в группе.
+                </p>
+                {tgLinkError && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800 mb-3">
+                    {tgLinkError}
+                  </div>
+                )}
+                <Button
+                  onClick={startTgLink}
+                  disabled={tgLinkStatus === 'generating'}
+                >
+                  {tgLinkStatus === 'generating' ? 'Генерация кода...' : 'Привязать Telegram'}
+                </Button>
               </div>
             )}
           </CardContent>
