@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { requireOrgAccess } from '@/lib/orgGuard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,7 +33,7 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
     // Проверяем, подключён ли верифицированный Telegram-аккаунт для данной организации
     const { data: tgAccount } = await supabase
       .from('user_telegram_accounts')
-      .select('id')
+      .select('id, telegram_username, telegram_first_name, telegram_last_name')
       .eq('user_id', user.id)
       .eq('org_id', orgId)
       .eq('is_verified', true)
@@ -91,6 +93,29 @@ export default async function TelegramPage({ params }: { params: Promise<{ org: 
         
         <TabsLayout orgId={orgId}>
           <div className="grid gap-6">
+
+          {/* Баннер подключённого Telegram-аккаунта */}
+          {hasTelegramAccount && tgAccount && (
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm">
+                <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-green-800 font-medium">Telegram-аккаунт подключён</span>
+                <span className="text-green-600">
+                  {[tgAccount.telegram_first_name, tgAccount.telegram_last_name].filter(Boolean).join(' ')}
+                  {tgAccount.telegram_username ? ` @${tgAccount.telegram_username}` : ''}
+                </span>
+              </div>
+              <Link
+                href={`/p/${orgId}/telegram/account`}
+                className="text-xs text-green-700 hover:text-green-900 underline underline-offset-2 shrink-0"
+              >
+                Настроить
+              </Link>
+            </div>
+          )}
+
           {/* Карточка подключения */}
           <Card>
             <CardHeader>
