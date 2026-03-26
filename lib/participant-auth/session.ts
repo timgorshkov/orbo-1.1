@@ -6,6 +6,7 @@
 
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
+import { createServiceLogger } from '@/lib/logger'
 
 const COOKIE_NAME = 'participant_session'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
@@ -40,18 +41,29 @@ function sign(payload: object): string {
 }
 
 function verify(token: string): ParticipantSession | null {
+  const logger = createServiceLogger('ParticipantSession')
   try {
     const parts = token.split('.')
-    if (parts.length !== 3) return null
+    if (parts.length !== 3) {
+      logger.warn({ parts: parts.length }, 'JWT has wrong number of parts')
+      return null
+    }
     const [header, body, sig] = parts
     const expected = base64url(
       crypto.createHmac('sha256', getSecret()).update(`${header}.${body}`).digest()
     )
-    if (sig !== expected) return null
+    if (sig !== expected) {
+      logger.warn({}, 'JWT signature mismatch')
+      return null
+    }
     const payload = JSON.parse(Buffer.from(body, 'base64').toString()) as ParticipantSession
-    if (payload.exp < Math.floor(Date.now() / 1000)) return null
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+      logger.warn({ exp: payload.exp, now: Math.floor(Date.now() / 1000) }, 'JWT expired')
+      return null
+    }
     return payload
-  } catch {
+  } catch (err) {
+    logger.error({ error: err instanceof Error ? err.message : String(err) }, 'JWT verify exception')
     return null
   }
 }
@@ -76,12 +88,23 @@ export async function setParticipantSession(data: Omit<ParticipantSession, 'iat'
 
 /** Get participant session from cookie (call from server component or route handler) */
 export async function getParticipantSession(): Promise<ParticipantSession | null> {
+  const logger = createServiceLogger('ParticipantSession')
   try {
     const cookieStore = await cookies()
     const cookie = cookieStore.get(COOKIE_NAME)
-    if (!cookie?.value) return null
-    return verify(cookie.value)
-  } catch {
+    if (!cookie?.value) {
+      logger.debug({ cookie_present: false }, 'participant_session cookie not found')
+      return null
+    }
+    const session = verify(cookie.value)
+    if (!session) {
+      logger.warn({ cookie_length: cookie.value.length }, 'participant_session cookie found but verification failed')
+      return null
+    }
+    logger.debug({ participant_id: session.participantId, org_id: session.orgId }, 'participant_session verified ok')
+    return session
+  } catch (err) {
+    createServiceLogger('ParticipantSession').error({ error: err instanceof Error ? err.message : String(err) }, 'getParticipantSession error')
     return null
   }
 }
