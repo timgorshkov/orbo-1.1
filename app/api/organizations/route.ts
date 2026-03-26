@@ -178,6 +178,7 @@ export async function POST(req: NextRequest) {
               telegram_first_name: tgFirstName,
               telegram_last_name: tgLastName,
               is_verified: true,
+              verified_at: new Date().toISOString(),
             })
 
           logger.info({

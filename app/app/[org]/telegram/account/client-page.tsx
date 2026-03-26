@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { createClientLogger } from '@/lib/logger'
 import { ymGoal } from '@/components/analytics/YandexMetrika'
-import { ArrowRight, RefreshCw, Shield, Unlink, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  ArrowRight, RefreshCw, Shield, Unlink,
+  ChevronDown, ChevronUp, Copy, Check, ExternalLink, CheckCircle2,
+} from 'lucide-react'
 
 type TelegramAccount = {
   id: number;
@@ -20,13 +22,14 @@ type TelegramAccount = {
   created_at: string;
 }
 
+const POLL_INTERVAL_MS = 2500
+const MAX_POLL_ATTEMPTS = 72 // 3 min
+
 export default function TelegramAccountClient({ params }: { params: { org: string } }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [verifying, setVerifying] = useState(false)
   const [telegramAccount, setTelegramAccount] = useState<TelegramAccount | null>(null)
-  const [error, setError] = useState<string | React.ReactNode | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
@@ -34,11 +37,19 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
   const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false)
   const [unlinking, setUnlinking] = useState(false)
 
-  const [telegramUserId, setTelegramUserId] = useState('')
-  const [verificationCode, setVerificationCode] = useState('')
+  // Code-based connect flow
+  const [connectCode, setConnectCode] = useState<string | null>(null)
+  const [connectBotUsername, setConnectBotUsername] = useState(
+    process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
+  )
+  const [connectStatus, setConnectStatus] = useState<'idle' | 'waiting' | 'connected' | 'error'>('idle')
+  const [codeCopied, setCodeCopied] = useState(false)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollCount = useRef(0)
 
   useEffect(() => {
     fetchTelegramAccount()
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current) }
   }, [params.org])
 
   const fetchTelegramAccount = async () => {
@@ -46,131 +57,109 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
     try {
       const response = await fetch(`/api/telegram/accounts?orgId=${params.org}`)
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch telegram account')
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch telegram account')
       setTelegramAccount(data.telegramAccount)
-
-      if (data.telegramAccount) {
-        setTelegramUserId(data.telegramAccount.telegram_user_id.toString())
-      }
     } catch (e: any) {
-      const logger = createClientLogger('TelegramAccountClient', { org: params.org });
-      logger.error({ error: e.message, org: params.org }, 'Error fetching telegram account');
+      const logger = createClientLogger('TelegramAccountClient', { org: params.org })
+      logger.error({ error: e.message }, 'Error fetching telegram account')
       setError(e.message || 'Failed to fetch telegram account')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSaveTelegramId = async () => {
-    if (!telegramUserId) {
-      setError('Пожалуйста, укажите Telegram User ID')
-      return
-    }
+  // Generate a code when no account is connected (or when change form is open)
+  useEffect(() => {
+    const shouldGenerate = !loading && (!telegramAccount || showChangeForm)
+    if (!shouldGenerate || connectCode) return
 
-    setSaving(true)
-    setError(null)
-    setSuccess(null)
-
-    try {
-      const response = await fetch('/api/telegram/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: params.org,
-          telegramUserId: parseInt(telegramUserId)
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.code === 'BOT_BLOCKED') {
-          setError(
-            <span>
-              Пожалуйста, сначала запустите диалог с{' '}
-              <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-red-700 hover:underline font-medium">
-                @orbo_assistant_bot
-              </a>
-              {' '}в Telegram
-            </span>
-          )
+    fetch('/api/auth/telegram-code/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: params.org }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.code) {
+          setConnectCode(data.code)
+          if (data.botUsername) setConnectBotUsername(data.botUsername)
         } else {
-          throw new Error(data.error || 'Failed to save telegram account')
+          setConnectStatus('error')
         }
-        return
-      }
+      })
+      .catch(() => setConnectStatus('error'))
+  }, [loading, telegramAccount, showChangeForm])
 
-      setSuccess(data.message)
-      setTelegramAccount(data.telegramAccount)
-      setShowChangeForm(false)
-    } catch (e: any) {
-      setError(e.message || 'Failed to save telegram account')
-    } finally {
-      setSaving(false)
+  // Start polling as soon as code is ready
+  useEffect(() => {
+    if (connectCode && connectStatus === 'idle') {
+      startConnectPolling(connectCode)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectCode])
+
+  const startConnectPolling = (codeValue: string) => {
+    setConnectStatus('waiting')
+    pollCount.current = 0
+
+    const tick = async () => {
+      pollCount.current++
+      if (pollCount.current > MAX_POLL_ATTEMPTS) return
+
+      try {
+        const res = await fetch(`/api/auth/telegram-code/status?code=${codeValue}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.linked) {
+            setConnectStatus('connected')
+            ymGoal('telegram_account_connected')
+            setShowChangeForm(false)
+            setConnectCode(null)
+            setConnectStatus('idle')
+            // Reload account data
+            await fetchTelegramAccount()
+            // Sync groups non-blocking
+            syncGroups()
+            return
+          }
+        }
+      } catch { /* retry */ }
+
+      pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS)
+    }
+
+    pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS)
   }
 
-  const handleVerifyCode = async () => {
-    if (!verificationCode) {
-      setError('Пожалуйста, введите код верификации')
-      return
-    }
+  const handleCopyCode = () => {
+    if (!connectCode) return
+    navigator.clipboard.writeText(connectCode).catch(() => {})
+    setCodeCopied(true)
+    setTimeout(() => setCodeCopied(false), 2000)
+  }
 
-    setVerifying(true)
-    setError(null)
-    setSuccess(null)
-
-    try {
-      const response = await fetch('/api/telegram/accounts', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: params.org, verificationCode }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to verify code')
-      }
-
-      setSuccess(data.message)
-      setTelegramAccount(data.telegramAccount)
-      setVerificationCode('')
-
-      if (data.telegramAccount?.is_verified) {
-        ymGoal('telegram_account_connected')
-        syncGroups()
-      }
-    } catch (e: any) {
-      setError(e.message || 'Failed to verify code')
-    } finally {
-      setVerifying(false)
-    }
+  const handleOpenChangeForm = () => {
+    setShowChangeForm(true)
+    setShowUnlinkConfirm(false)
+    // Reset connect flow so a new code gets generated
+    if (pollTimer.current) clearTimeout(pollTimer.current)
+    setConnectCode(null)
+    setConnectStatus('idle')
   }
 
   const handleUnlink = async () => {
     setUnlinking(true)
     setError(null)
     setSuccess(null)
-
     try {
-      const response = await fetch(`/api/telegram/accounts?orgId=${params.org}`, {
-        method: 'DELETE',
-      })
+      const response = await fetch(`/api/telegram/accounts?orgId=${params.org}`, { method: 'DELETE' })
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to unlink account')
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to unlink account')
       setTelegramAccount(null)
-      setTelegramUserId('')
       setShowUnlinkConfirm(false)
       setShowChangeForm(false)
+      setConnectCode(null)
+      setConnectStatus('idle')
       setSuccess('Telegram-аккаунт отвязан. Подключённые группы удалены.')
     } catch (e: any) {
       setError(e.message || 'Failed to unlink account')
@@ -183,12 +172,11 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
     setSyncing(true)
     setSyncResult(null)
     setError(null)
-
     try {
       const adminResponse = await fetch('/api/telegram/groups/update-admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: params.org })
+        body: JSON.stringify({ orgId: params.org }),
       })
       const adminData = await adminResponse.json()
       if (!adminResponse.ok) throw new Error(adminData.error || 'Failed to update admin rights')
@@ -213,22 +201,114 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
     setSyncing(true)
     setSyncResult(null)
     setError(null)
-
     try {
       const response = await fetch('/api/telegram/groups/update-admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: params.org })
+        body: JSON.stringify({ orgId: params.org }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to update admin rights')
-
       setSyncResult(`Обновлены права администраторов: ${data.updated} из ${data.total}`)
     } catch (e: any) {
       setError(e.message || 'Failed to update admin rights')
     } finally {
       setSyncing(false)
     }
+  }
+
+  // Code-based connect UI (used when no account, or change form is open)
+  const renderConnectForm = (title: string) => {
+    const deepLink = connectCode
+      ? `https://t.me/${connectBotUsername}?start=${connectCode}`
+      : `https://t.me/${connectBotUsername}`
+
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">{title}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {telegramAccount && (
+            <div className="bg-amber-50 p-3 rounded-lg text-sm text-amber-800">
+              ⚠️ При смене аккаунта подключённые группы сохранятся, но убедитесь,
+              что новый аккаунт является администратором тех же групп.
+            </div>
+          )}
+
+          {connectStatus === 'connected' ? (
+            <div className="flex items-center gap-2 text-green-600 font-medium py-2">
+              <CheckCircle2 className="w-5 h-5" />
+              Telegram подключён!
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-700">
+                Откройте{' '}
+                <span className="font-semibold">@{connectBotUsername}</span>{' '}
+                в Telegram и отправьте этот код:
+              </p>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                {connectCode ? (
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
+                      {connectCode}
+                    </span>
+                    <button
+                      onClick={handleCopyCode}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 hover:border-blue-400 text-blue-600 text-sm font-medium transition-colors"
+                    >
+                      {codeCopied ? (
+                        <><Check className="w-4 h-4 text-green-500" /><span className="text-green-600">Скопировано</span></>
+                      ) : (
+                        <><Copy className="w-4 h-4" /><span>Копировать</span></>
+                      )}
+                    </button>
+                  </div>
+                ) : connectStatus === 'error' ? (
+                  <p className="text-sm text-red-500 text-center py-1">
+                    Не удалось сгенерировать код.{' '}
+                    <button onClick={() => { setConnectCode(null); setConnectStatus('idle') }} className="underline">
+                      Попробовать снова
+                    </button>
+                  </p>
+                ) : (
+                  <div className="text-center text-sm text-blue-400 py-1">Генерация кода...</div>
+                )}
+              </div>
+
+              {connectStatus === 'waiting' && (
+                <p className="text-xs text-gray-500 text-center">
+                  Ожидаем подтверждение от бота...
+                </p>
+              )}
+
+              {connectCode && (
+                <div className="text-center">
+                  <a
+                    href={deepLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Открыть бота в один клик
+                  </a>
+                  <p className="text-xs text-gray-400 mt-0.5">Может не работать при блокировках</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {telegramAccount && (
+            <Button variant="outline" size="sm" onClick={() => { setShowChangeForm(false); setConnectCode(null); setConnectStatus('idle') }}>
+              Отмена
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -244,7 +324,6 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
         <div className="text-center py-8 text-gray-500">Загрузка...</div>
       ) : (
         <div className="space-y-6">
-          {/* Messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -256,7 +335,7 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
             </div>
           )}
 
-          {/* === CONNECTED ACCOUNT === */}
+          {/* Connected account info */}
           {telegramAccount && (
             <Card>
               <CardHeader className="pb-3">
@@ -281,9 +360,7 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
                   <div>
                     <span className="text-xs text-gray-400">Статус</span>
                     <div className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      telegramAccount.is_verified
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-amber-100 text-amber-800'
+                      telegramAccount.is_verified ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
                     }`}>
                       {telegramAccount.is_verified ? '✅ Подтверждён' : '⏳ Ожидает подтверждения'}
                     </div>
@@ -297,11 +374,10 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
                   </div>
                 )}
 
-                {/* Action buttons in the card */}
                 {telegramAccount.is_verified && (
                   <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-3">
                     <button
-                      onClick={() => { setShowChangeForm(!showChangeForm); setShowUnlinkConfirm(false) }}
+                      onClick={() => showChangeForm ? (setShowChangeForm(false), setConnectCode(null), setConnectStatus('idle')) : handleOpenChangeForm()}
                       className="text-xs text-gray-500 hover:text-gray-700 transition flex items-center gap-1"
                     >
                       {showChangeForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -321,168 +397,45 @@ export default function TelegramAccountClient({ params }: { params: { org: strin
             </Card>
           )}
 
-          {/* === UNLINK CONFIRMATION === */}
+          {/* Unlink confirmation */}
           {showUnlinkConfirm && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <h3 className="font-medium text-red-900 mb-2">Отвязать Telegram-аккаунт?</h3>
-              <p className="text-sm text-red-800 mb-1">Это действие:</p>
               <ul className="text-sm text-red-800 list-disc pl-5 mb-4 space-y-0.5">
                 <li>Удалит привязку вашего Telegram-аккаунта к этой организации</li>
                 <li>Удалит все подключённые Telegram-группы и каналы</li>
                 <li>Остановит уведомления и аналитику по группам</li>
               </ul>
               <div className="flex gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleUnlink}
-                  disabled={unlinking}
-                >
+                <Button variant="destructive" size="sm" onClick={handleUnlink} disabled={unlinking}>
                   {unlinking ? 'Отвязка...' : 'Да, отвязать'}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowUnlinkConfirm(false)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowUnlinkConfirm(false)}>
                   Отмена
                 </Button>
               </div>
             </div>
           )}
 
-          {/* === VERIFICATION FORM (unverified account) === */}
-          {telegramAccount && !telegramAccount.is_verified && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Подтверждение аккаунта</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-amber-50 p-3 rounded-lg text-sm text-amber-800">
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>
-                      Откройте{' '}
-                      <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-amber-900 hover:underline font-medium">
-                        @orbo_assistant_bot
-                      </a>{' '}
-                      в Telegram
-                    </li>
-                    <li>Нажмите /start если еще не сделали</li>
-                    <li>Вы получите код верификации</li>
-                    <li>Введите код ниже</li>
-                  </ol>
-                </div>
-
-                <div>
-                  <label className="text-sm text-gray-500 block mb-1.5">Код верификации</label>
-                  <Input
-                    value={verificationCode}
-                    onChange={e => setVerificationCode(e.target.value.toUpperCase())}
-                    placeholder="Введите код из Telegram"
-                    maxLength={8}
-                  />
-                </div>
-
-                <Button onClick={handleVerifyCode} disabled={verifying} size="sm">
-                  {verifying ? 'Проверка...' : 'Подтвердить код'}
-                </Button>
-              </CardContent>
-            </Card>
+          {/* Connect form: no account yet OR change form opened */}
+          {(!telegramAccount || showChangeForm) && renderConnectForm(
+            telegramAccount ? 'Сменить Telegram аккаунт' : 'Добавить Telegram аккаунт'
           )}
 
-          {/* === CHANGE ACCOUNT FORM (shown on toggle or when no account) === */}
-          {(showChangeForm || !telegramAccount) && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">
-                  {telegramAccount ? 'Сменить Telegram аккаунт' : 'Добавить Telegram аккаунт'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {telegramAccount && (
-                  <div className="bg-amber-50 p-3 rounded-lg text-sm text-amber-800">
-                    ⚠️ При смене аккаунта потребуется повторная верификация.
-                    Подключённые группы сохранятся, но убедитесь, что новый аккаунт
-                    является администратором тех же групп.
-                  </div>
-                )}
-
-                <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800">
-                  <p className="font-medium mb-1.5">Как узнать Telegram User ID:</p>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>
-                      Откройте{' '}
-                      <a href="https://t.me/orbo_assistant_bot" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                        @orbo_assistant_bot
-                      </a>{' '}
-                      и нажмите <code className="bg-blue-100 px-1 rounded">/start</code>
-                    </li>
-                    <li>Бот отправит вам ваш Telegram User ID</li>
-                    <li>Скопируйте ID и вставьте в поле ниже</li>
-                  </ol>
-                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                    💡 Сначала запустите бота, иначе код верификации не будет доставлен!
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm text-gray-500 block mb-1.5">Telegram User ID *</label>
-                  <Input
-                    type="number"
-                    value={telegramUserId}
-                    onChange={e => setTelegramUserId(e.target.value)}
-                    placeholder="Например: 123456789"
-                    required
-                  />
-                  <p className="mt-1.5 text-xs text-gray-400">
-                    Username, имя и фамилия будут загружены автоматически
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button onClick={handleSaveTelegramId} disabled={saving} size="sm">
-                    {saving ? 'Сохранение...' : 'Сохранить и отправить код'}
-                  </Button>
-                  {telegramAccount && (
-                    <Button variant="outline" size="sm" onClick={() => setShowChangeForm(false)}>
-                      Отмена
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* === ACTIONS (verified account) === */}
-          {telegramAccount?.is_verified && (
+          {/* Actions for verified account */}
+          {telegramAccount?.is_verified && !showChangeForm && (
             <div className="space-y-3">
-              <Button
-                onClick={() => router.push(`/app/${params.org}/telegram`)}
-                className="gap-2"
-              >
+              <Button onClick={() => router.push(`/app/${params.org}/telegram`)} className="gap-2">
                 Управление группами
                 <ArrowRight className="w-4 h-4" />
               </Button>
 
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={syncGroups}
-                  disabled={syncing}
-                  className="gap-1.5"
-                >
+                <Button variant="outline" size="sm" onClick={syncGroups} disabled={syncing} className="gap-1.5">
                   <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
                   {syncing ? 'Синхронизация...' : 'Синхронизировать группы'}
                 </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={updateAdminRights}
-                  disabled={syncing}
-                  className="gap-1.5"
-                >
+                <Button variant="outline" size="sm" onClick={updateAdminRights} disabled={syncing} className="gap-1.5">
                   <Shield className="w-3.5 h-3.5" />
                   Обновить права
                 </Button>

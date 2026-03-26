@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, CheckCircle2, Copy, Check } from 'lucide-react'
+import { X, Send, CheckCircle2, Copy, Check, ExternalLink } from 'lucide-react'
 import { ymGoal } from '@/components/analytics/YandexMetrika'
 
 const STORAGE_KEY = 'orbo_tg_modal_shown'
@@ -28,7 +28,6 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
     if (hasTelegramAccount) return
     if (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) return
 
-    // Generate code immediately so it's ready when modal appears
     fetch('/api/auth/telegram-code/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -44,6 +43,13 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
     const timer = setTimeout(() => setVisible(true), SHOW_DELAY_MS)
     return () => clearTimeout(timer)
   }, [hasTelegramAccount])
+
+  // Start polling as soon as code is available
+  useEffect(() => {
+    if (code && visible && pollStatus === 'idle') {
+      startPolling(code)
+    }
+  }, [code, visible])
 
   useEffect(() => {
     return () => {
@@ -86,16 +92,11 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
     pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS)
   }
 
-  const handleConnectClick = () => {
-    if (code && pollStatus === 'idle') startPolling(code)
-  }
-
   const handleCopyCode = () => {
     if (!code) return
     navigator.clipboard.writeText(code).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-    if (pollStatus === 'idle') startPolling(code)
   }
 
   if (!visible) return null
@@ -132,45 +133,68 @@ export function TelegramConnectModal({ hasTelegramAccount }: TelegramConnectModa
             Telegram подключён!
           </div>
         ) : (
-          <a
-            href={deepLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleConnectClick}
-            className={`flex items-center justify-center gap-2 w-full h-11 rounded-xl font-semibold text-white transition-colors ${
-              !code ? 'bg-blue-300 cursor-wait' : 'bg-[#2AABEE] hover:bg-[#229ED9]'
-            }`}
-          >
-            <Send className="w-4 h-4" />
-            {pollStatus === 'waiting' ? 'Ожидаем подтверждение…' : 'Подключить Telegram'}
-          </a>
-        )}
-
-        {pollStatus !== 'connected' && code && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500 mb-2">
-              Если кнопка не открывает Telegram — откройте{' '}
-              <span className="font-medium text-gray-700">@{botUsername}</span> вручную и отправьте код:
+          <>
+            {/* Instruction */}
+            <p className="text-sm text-gray-600 mb-2">
+              Откройте{' '}
+              <span className="font-semibold text-gray-900">@{botUsername}</span>{' '}
+              в Telegram и отправьте этот код:
             </p>
-            <div className="flex items-center gap-2">
-              <span className="flex-1 font-mono text-xl font-bold tracking-widest text-gray-900 select-all text-center">
-                {code}
-              </span>
-              <button
-                onClick={handleCopyCode}
-                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-                aria-label="Скопировать код"
-              >
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-              </button>
+
+            {/* Primary: code block */}
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-4">
+              {code ? (
+                <div className="flex items-center gap-3">
+                  <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
+                    {code}
+                  </span>
+                  <button
+                    onClick={handleCopyCode}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 hover:border-blue-400 text-blue-600 text-sm font-medium transition-colors"
+                  >
+                    {copied ? (
+                      <><Check className="w-4 h-4 text-green-500" /><span className="text-green-600">Скопировано</span></>
+                    ) : (
+                      <><Copy className="w-4 h-4" /><span>Копировать</span></>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center text-sm text-blue-400 py-1">Генерация кода...</div>
+              )}
             </div>
-          </div>
+
+            {/* Polling status */}
+            {pollStatus === 'waiting' && (
+              <p className="text-xs text-gray-400 text-center mb-3">
+                Ожидаем подтверждение от бота...
+              </p>
+            )}
+
+            {/* Secondary: t.me link */}
+            {code && (
+              <a
+                href={deepLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-500 hover:text-blue-600 text-xs font-medium transition-colors mb-1"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Открыть бота в один клик
+              </a>
+            )}
+            {code && (
+              <p className="text-xs text-gray-400 text-center mb-3">
+                Может не работать при блокировках
+              </p>
+            )}
+          </>
         )}
 
         {pollStatus !== 'connected' && (
           <button
             onClick={dismiss}
-            className="mt-3 w-full text-sm text-gray-400 hover:text-gray-600 transition-colors py-1"
+            className="mt-1 w-full text-sm text-gray-400 hover:text-gray-600 transition-colors py-1"
           >
             Пропустить
           </button>

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { QualificationForm } from '@/components/onboarding/qualification-form';
-import { Mail, CheckCircle2, Send, Users, Shield, ArrowRight } from 'lucide-react';
+import { Mail, CheckCircle2, Send, Users, Shield, ArrowRight, Copy, Check, ExternalLink } from 'lucide-react';
 import { ymGoal } from '@/components/analytics/YandexMetrika';
 import { getRegistrationMeta, clearRegistrationMeta } from '@/lib/client/registration-meta';
 
@@ -153,19 +153,18 @@ function TelegramConnectStep({
 }) {
   const ctx = getContextMessage(fromPage, utmCampaign);
 
-  // Code generated on mount — stored so we can build the deep link and poll status
   const [code, setCode] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState(
     process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
   );
   const [codeError, setCodeError] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Polling state
   const [pollStatus, setPollStatus] = useState<'idle' | 'waiting' | 'connected' | 'timeout'>('idle');
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCount = useRef(0);
 
-  // Generate code immediately on mount
+  // Generate code on mount
   useEffect(() => {
     fetch('/api/auth/telegram-code/generate', {
       method: 'POST',
@@ -184,10 +183,24 @@ function TelegramConnectStep({
       .catch(() => setCodeError(true));
   }, []);
 
-  // Cleanup polling on unmount
+  // Start polling as soon as code is ready
+  useEffect(() => {
+    if (code && pollStatus === 'idle') {
+      startPolling(code);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
   useEffect(() => {
     return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
   }, []);
+
+  const handleCopyCode = () => {
+    if (!code) return;
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const startPolling = (codeValue: string) => {
     pollCount.current = 0;
@@ -218,12 +231,6 @@ function TelegramConnectStep({
     };
 
     pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
-  };
-
-  const handleConnectClick = () => {
-    if (code && pollStatus === 'idle') {
-      startPolling(code);
-    }
   };
 
   // Manual re-check for timeout / fallback case
@@ -262,61 +269,81 @@ function TelegramConnectStep({
         </CardHeader>
         <CardContent className="space-y-5">
 
-          {/* Main CTA */}
-          <a
-            href={deepLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleConnectClick}
-            className={`flex items-center justify-center gap-3 w-full h-12 rounded-xl font-semibold transition-colors ${
-              !code
-                ? 'bg-blue-300 cursor-wait text-white'
-                : 'bg-[#2AABEE] hover:bg-[#229ED9] text-white'
-            }`}
-          >
-            <Send className="w-5 h-5" />
-            {!code ? 'Подготовка...' : ctx.ctaLabel}
-          </a>
-
-          {/* Auto-detection status */}
-          {pollStatus === 'waiting' && (
-            <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
-              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              Ожидаем подтверждение от бота…
-            </div>
-          )}
-          {pollStatus === 'connected' && (
-            <div className="flex items-center justify-center gap-2 text-sm text-green-600 font-medium">
-              <CheckCircle2 className="w-4 h-4" />
+          {pollStatus === 'connected' ? (
+            <div className="flex items-center justify-center gap-2 text-green-600 font-medium py-2">
+              <CheckCircle2 className="w-5 h-5" />
               Telegram подключён!
             </div>
-          )}
-          {pollStatus === 'timeout' && (
-            <div className="text-center space-y-2">
-              <p className="text-sm text-gray-500">Не получили подтверждения. Убедитесь, что нажали Start в боте.</p>
-              <Button variant="outline" size="sm" onClick={handleManualCheck}>
-                Проверить подключение
-              </Button>
-            </div>
-          )}
+          ) : (
+            <>
+              {/* Instruction */}
+              <p className="text-sm text-gray-700">
+                Откройте{' '}
+                <span className="font-semibold">@{botUsername}</span>{' '}
+                в Telegram и отправьте этот код:
+              </p>
 
-          {/* VPN hint — shown always, non-intrusive */}
-          <p className="text-xs text-gray-400 text-center">
-            Если Telegram не открывается — возможно, нужен VPN. Можно{' '}
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:text-gray-600"
-              onClick={onSkip}
-            >
-              пропустить этот шаг
-            </button>{' '}
-            и подключить позже из настроек.
-          </p>
+              {/* Primary: code block */}
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+                {code ? (
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 font-mono text-3xl font-bold tracking-widest text-blue-700 select-all text-center">
+                      {code}
+                    </span>
+                    <button
+                      onClick={handleCopyCode}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-blue-200 hover:border-blue-400 text-blue-600 text-sm font-medium transition-colors"
+                    >
+                      {copied ? (
+                        <><Check className="w-4 h-4 text-green-500" /><span className="text-green-600">Скопировано</span></>
+                      ) : (
+                        <><Copy className="w-4 h-4" /><span>Копировать</span></>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center text-sm text-blue-400 py-2">Генерация кода...</div>
+                )}
+              </div>
 
-          {codeError && (
-            <p className="text-xs text-amber-600 text-center">
-              Не удалось подготовить ссылку. Обновите страницу и попробуйте снова.
-            </p>
+              {/* Polling status */}
+              {pollStatus === 'waiting' && (
+                <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  Ожидаем подтверждение от бота…
+                </div>
+              )}
+              {pollStatus === 'timeout' && (
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-gray-500">Не получили подтверждения. Попробуйте отправить код заново.</p>
+                  <Button variant="outline" size="sm" onClick={handleManualCheck}>
+                    Проверить подключение
+                  </Button>
+                </div>
+              )}
+
+              {codeError && (
+                <p className="text-xs text-amber-600 text-center">
+                  Не удалось подготовить код. Обновите страницу и попробуйте снова.
+                </p>
+              )}
+
+              {/* Secondary: t.me link */}
+              {code && (
+                <div className="text-center">
+                  <a
+                    href={deepLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Открыть бота в один клик
+                  </a>
+                  <p className="text-xs text-gray-400 mt-0.5">Может не работать при блокировках</p>
+                </div>
+              )}
+            </>
           )}
 
           <div className="bg-gray-50 rounded-lg p-3 space-y-2">
@@ -330,14 +357,15 @@ function TelegramConnectStep({
             </div>
           </div>
 
-          {/* Skip — visually equal to the info block, not hidden */}
-          <Button
-            variant="outline"
-            className="w-full text-gray-500 border-gray-200"
-            onClick={onSkip}
-          >
-            Пропустить и подключить позже
-          </Button>
+          {pollStatus !== 'connected' && (
+            <Button
+              variant="outline"
+              className="w-full text-gray-500 border-gray-200"
+              onClick={onSkip}
+            >
+              Пропустить и подключить позже
+            </Button>
+          )}
 
         </CardContent>
       </Card>

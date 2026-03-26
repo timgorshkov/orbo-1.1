@@ -8,8 +8,128 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { createClientLogger } from '@/lib/logger'
 import { ymGoal } from '@/components/analytics/YandexMetrika'
+import { Copy, Check, ExternalLink, CheckCircle2 } from 'lucide-react'
 
 const REGISTRATION_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
+
+const POLL_INTERVAL_MS = 2500
+const MAX_POLL_ATTEMPTS = 72
+
+function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
+  const [code, setCode] = useState<string | null>(null)
+  const [status, setStatus] = useState<'loading' | 'ready' | 'linked' | 'error'>('loading')
+  const [copied, setCopied] = useState(false)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollCount = useRef(0)
+
+  useEffect(() => {
+    fetch('/api/auth/telegram-code/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.code) {
+          setCode(data.code)
+          setStatus('ready')
+          startPolling(data.code)
+        } else {
+          setStatus('error')
+        }
+      })
+      .catch(() => setStatus('error'))
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current) }
+  }, [])
+
+  const startPolling = (codeValue: string) => {
+    pollCount.current = 0
+    const tick = async () => {
+      pollCount.current++
+      if (pollCount.current > MAX_POLL_ATTEMPTS) return
+      try {
+        const res = await fetch(`/api/auth/telegram-code/status?code=${codeValue}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.linked) {
+            setStatus('linked')
+            ymGoal('telegram_signin_linked', undefined, { once: true })
+            return
+          }
+        }
+      } catch { /* retry */ }
+      pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS)
+    }
+    pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS)
+  }
+
+  const handleCopy = () => {
+    if (!code) return
+    navigator.clipboard.writeText(code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const deepLink = code ? `https://t.me/${botUsername}?start=${code}` : `https://t.me/${botUsername}`
+
+  if (status === 'linked') {
+    return (
+      <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4 space-y-2">
+        <div className="flex items-center gap-2 text-green-700 font-medium text-sm">
+          <CheckCircle2 className="w-4 h-4" />
+          Бот получил код
+        </div>
+        <p className="text-xs text-green-700">
+          Нажмите кнопку «Войти в Orbo» в сообщении от бота, чтобы завершить вход.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-xs text-green-600 underline underline-offset-2"
+        >
+          Уже нажали? Обновить страницу
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+      <p className="text-sm text-blue-800">
+        Откройте <span className="font-semibold">@{botUsername}</span> в Telegram и отправьте этот код:
+      </p>
+      {status === 'loading' ? (
+        <div className="text-sm text-blue-400 text-center py-1">Генерация кода...</div>
+      ) : status === 'error' ? (
+        <div className="text-sm text-red-500 text-center py-1">Не удалось создать код. Обновите страницу.</div>
+      ) : (
+        <div className="flex items-center gap-3 bg-white rounded-lg border border-blue-200 px-4 py-2">
+          <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
+            {code}
+          </span>
+          <button
+            onClick={handleCopy}
+            className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium transition-colors"
+          >
+            {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="text-green-600">Скопировано</span></> : <><Copy className="w-3.5 h-3.5" /><span>Копировать</span></>}
+          </button>
+        </div>
+      )}
+      <p className="text-xs text-blue-600 text-center">
+        Бот отправит ссылку для входа в Telegram
+      </p>
+      {code && (
+        <div className="text-center pt-1">
+          <a href={deepLink} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-600 transition-colors">
+            <ExternalLink className="w-3 h-3" />
+            Открыть бота в один клик
+          </a>
+          <p className="text-xs text-blue-400 mt-0.5">Может не работать при блокировках</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Компонент для обработки ошибок из URL (требует Suspense)
 function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
@@ -50,6 +170,26 @@ function ErrorHandler({ onError }: { onError: (msg: string) => void }) {
   }, [searchParams, onError])
   
   return null
+}
+
+function TelegramSigninButton() {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => { setExpanded(v => !v); ymGoal('telegram_login_click', undefined, { once: true }) }}
+        className="flex items-center justify-center gap-3 w-full h-11 rounded-lg bg-[#2AABEE] hover:bg-[#229ED9] text-white font-medium transition-colors"
+      >
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+        </svg>
+        Войти через Telegram
+      </button>
+      {expanded && <TelegramCodeBlock botUsername={REGISTRATION_BOT_USERNAME} />}
+    </div>
+  )
 }
 
 export default function SignIn() {
@@ -363,21 +503,7 @@ export default function SignIn() {
                 )}
               </Button>
 
-              <a
-                href={`https://t.me/${REGISTRATION_BOT_USERNAME}?start=login`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => ymGoal('telegram_login_click', undefined, { once: true })}
-                className="flex items-center justify-center gap-3 w-full h-11 rounded-lg bg-[#2AABEE] hover:bg-[#229ED9] text-white font-medium transition-colors"
-              >
-                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-                </svg>
-                <span className="flex flex-col items-start leading-tight">
-                  <span>Войти через Telegram</span>
-                  <span className="text-xs opacity-70">требует VPN в России</span>
-                </span>
-              </a>
+              <TelegramSigninButton />
             </div>
             </>
             )}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Send, Check, AlertCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Check, AlertCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
 import { createClientLogger } from '@/lib/logger';
 
 type Props = {
@@ -102,12 +102,6 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
     }, 10 * 60 * 1000);
   };
 
-  const openTelegramBot = () => {
-    if (botUsername) {
-      window.open(`https://t.me/${botUsername}`, '_blank');
-    }
-  };
-
   const copyCode = async () => {
     if (!generatedCode) return;
     try {
@@ -196,17 +190,14 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
                       Код действителен 10 минут
                     </p>
 
-                    {/* Step 2: Open bot and send code */}
+                    {/* Step 2: Send code to bot */}
                     <p className="text-sm font-medium text-gray-700 mb-2">
-                      Шаг 2 — откройте бота и отправьте ему скопированный код:
+                      Шаг 2 — откройте Telegram, найдите бота и отправьте ему код:
                     </p>
-                    <button
-                      onClick={openTelegramBot}
-                      className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Send className="w-5 h-5" />
-                      Открыть @{botUsername}
-                    </button>
+                    <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                      <span className="font-semibold">@{botUsername}</span>
+                      <span className="text-gray-400 ml-2 text-xs">найдите в поиске Telegram</span>
+                    </div>
                     <p className="text-xs text-gray-500 text-center mt-2">
                       После отправки кода вы получите ссылку для входа
                     </p>
@@ -239,22 +230,19 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
                 </div>
               )}
 
-              {/* Mini-app alternative */}
+              {/* Mini-app alternative — secondary small option */}
               {botUsername && (
-                <div className="mt-6 pt-5 border-t border-gray-200">
-                  <p className="text-center text-xs text-gray-400 mb-3">или быстрый вход</p>
+                <div className="mt-4 pt-4 border-t border-gray-100 text-center">
                   <a
                     href={`https://t.me/${botUsername}?startapp=org-${orgId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-600 hover:text-blue-700 text-sm font-medium transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
                   >
-                    <ExternalLink className="w-4 h-4 flex-shrink-0" />
-                    Открыть мини-приложение Orbo
+                    <ExternalLink className="w-3 h-3" />
+                    Войти одним кликом
                   </a>
-                  <p className="text-xs text-gray-400 text-center mt-2">
-                    Если уже авторизованы в боте — войдёт автоматически
-                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">Может не работать при блокировках</p>
                 </div>
               )}
             </>
