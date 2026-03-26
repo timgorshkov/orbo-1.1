@@ -264,33 +264,79 @@ export async function POST(request: NextRequest) {
         }, 'Registration bot /start handled')
       }
     } else if (userId) {
-      // Non-command message → forward to support only if user is known in Orbo
-      const knownUser = await isKnownOrbUser(userId)
+      // Check if the message looks like an auth code (6 hex chars) — user typed code manually
+      if (/^[0-9A-Fa-f]{6}$/.test(text)) {
+        logger.info({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase() }, 'Registration bot: received auth code as plain text')
 
-      if (!knownUser) {
-        logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot: ignoring message from unknown Telegram user (not in Orbo)')
-      } else {
-        const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
-        try {
+        const result = await verifyTelegramAuthCode({
+          code: text.toUpperCase(),
+          telegramUserId: userId,
+          telegramUsername: tgUsername || undefined,
+          firstName: message.from?.first_name || undefined,
+          lastName: message.from?.last_name || undefined,
+        })
+
+        if (result.success && result.alreadyAuthenticated) {
           await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: `Ваше сообщение получено! Для создания пространства нажмите /start.\n\nЕсли нужна помощь — напишите: @${supportContact}`,
+              text: '✅ Telegram подключён к Orbo!\n\nВернитесь в браузер — страница обновится автоматически.',
             }),
           })
-        } catch (_) { /* ignore */ }
+          logger.info({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase() }, 'Registration bot: auth code verified (plain text), account linked')
+        } else if (result.success && result.sessionUrl) {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '🔐 Нажмите кнопку ниже для входа в Orbo:',
+              reply_markup: { inline_keyboard: [[{ text: '🔑 Войти в Orbo', url: result.sessionUrl }]] },
+            }),
+          })
+          logger.info({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase() }, 'Registration bot: auth code verified (plain text), login link sent')
+        } else {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: '❌ Код недействителен или уже использован. Вернитесь в браузер и запросите новый код.',
+            }),
+          })
+          logger.warn({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase(), error: result.error }, 'Registration bot: auth code (plain text) verification failed')
+        }
+      } else {
+        // Non-command message → forward to support only if user is known in Orbo
+        const knownUser = await isKnownOrbUser(userId)
 
-        forwardToHelpDesk({
-          telegramUserId: userId,
-          telegramUsername: tgUsername,
-          firstName,
-          text,
-          botName: '@orbo_start_bot'
-        }).catch(() => {})
+        if (!knownUser) {
+          logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot: ignoring message from unknown Telegram user (not in Orbo)')
+        } else {
+          const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
+          try {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `Ваше сообщение получено! Для создания пространства нажмите /start.\n\nЕсли нужна помощь — напишите: @${supportContact}`,
+              }),
+            })
+          } catch (_) { /* ignore */ }
 
-        logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot non-command message forwarded to support')
+          forwardToHelpDesk({
+            telegramUserId: userId,
+            telegramUsername: tgUsername,
+            firstName,
+            text,
+            botName: '@orbo_start_bot'
+          }).catch(() => {})
+
+          logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot non-command message forwarded to support')
+        }
       }
     }
 
