@@ -118,9 +118,11 @@ export async function POST(request: NextRequest) {
       // Validate and sanitize JSONB fields
       const schema = ensureValidJson(collectionConfig.schema, { fields: [] });
       const permissions = ensureValidJson(collectionConfig.permissions, {});
-      const workflows = ensureValidJson(collectionConfig.workflows, []);
-      const views = Array.isArray(collectionConfig.views) ? collectionConfig.views : ['list'];
-      
+      // Stringify arrays explicitly — postgres-client passes primitive arrays as PG array {a,b}
+      // but these columns are JSONB, so they need JSON string ["a","b"]
+      const workflows = JSON.stringify(ensureValidJson(collectionConfig.workflows, []));
+      const views = JSON.stringify(Array.isArray(collectionConfig.views) ? collectionConfig.views : ['list']);
+
       const { data: collection, error: collectionError } = await supabaseAdmin
         .from('app_collections')
         .insert({
