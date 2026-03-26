@@ -200,14 +200,8 @@ export function buildMessageMeta(message: any, mediaType: string | null): Record
       tg_user_id: message.from?.id
     },
     message: {
-      id: message.message_id,
-      thread_id: message.message_thread_id || null,
       reply_to_id: message.reply_to_message?.message_id || null,
-      text_preview: textPreview,
-      text_length: messageText.length,
-      has_media: !!(message.photo || message.video || message.document || message.audio || message.voice),
-      media_type: mediaType,
-      is_topic_message: message.is_topic_message ?? false
+      text_preview: textPreview
     },
     reactions: reactionsCount > 0 ? {
       total_count: reactionsCount,
