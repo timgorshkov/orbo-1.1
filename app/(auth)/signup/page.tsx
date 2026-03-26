@@ -22,6 +22,7 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
   const [botCopied, setBotCopied] = useState(false)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollCount = useRef(0)
+  const router = useRouter()
 
   useEffect(() => {
     fetch('/api/auth/telegram-code/generate', {
@@ -55,6 +56,7 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
           if (data.linked) {
             setStatus('linked')
             ymGoal('telegram_signup_linked', undefined, { once: true })
+            router.push(`/auth/telegram?code=${codeValue}&redirect=/welcome`)
             return
           }
         }
@@ -78,17 +80,9 @@ function TelegramCodeBlock({ botUsername }: { botUsername: string }) {
       <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4 space-y-2">
         <div className="flex items-center gap-2 text-green-700 font-medium text-sm">
           <CheckCircle2 className="w-4 h-4" />
-          Бот получил код
+          Код получен — выполняем вход...
         </div>
-        <p className="text-xs text-green-700">
-          Нажмите кнопку «Войти в Orbo» в сообщении от бота, чтобы завершить регистрацию.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="text-xs text-green-600 underline underline-offset-2"
-        >
-          Уже нажали? Обновить страницу
-        </button>
+        <p className="text-xs text-green-600">Подождите секунду, страница перенаправит вас автоматически.</p>
       </div>
     )
   }
