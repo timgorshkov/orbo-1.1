@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Check, AlertCircle, Loader2, Copy, ExternalLink } from 'lucide-react';
 import { createClientLogger } from '@/lib/logger';
+import ParticipantEmailAuthForm from '@/components/auth/participant-email-auth-form';
 
 function CopyBotButton({ name }: { name: string }) {
   const [copied, setCopied] = useState(false)
@@ -28,6 +29,7 @@ type Props = {
 export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEventId }: Props) {
   const router = useRouter();
   const clientLogger = createClientLogger('MemberAuthClient', { orgId, eventId: propEventId });
+  const [authTab, setAuthTab] = useState<'telegram' | 'email'>('telegram');
 
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState('');
@@ -151,11 +153,34 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
             Войти как участник
           </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-8">
-            Используйте Telegram для быстрой авторизации
-          </p>
 
-          {success ? (
+          {/* Auth tabs */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+            <button
+              onClick={() => setAuthTab('telegram')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                authTab === 'telegram'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Telegram
+            </button>
+            <button
+              onClick={() => setAuthTab('email')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                authTab === 'email'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Email
+            </button>
+          </div>
+
+          {authTab === 'email' ? (
+            <ParticipantEmailAuthForm orgId={orgId} />
+          ) : success ? (
             <div className="text-center py-8">
               <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -266,6 +291,7 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
         </div>
 
         {/* Admin Login Link */}
+
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Администратор?{' '}

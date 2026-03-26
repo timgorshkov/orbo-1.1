@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
-import { Copy, Plus, Trash2, Calendar, Users } from 'lucide-react'
+import { Copy, Plus, Trash2, Calendar, Users, Mail, Upload } from 'lucide-react'
+import EmailInviteForm from '@/components/participants/email-invite-form'
+import CsvImportDialog from '@/components/participants/csv-import-dialog'
 
 interface Invite {
   id: string
@@ -35,6 +37,7 @@ export default function InvitesManager({
   const [invites, setInvites] = useState<Invite[]>(initialInvites)
   const [isCreating, setIsCreating] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [showCsvDialog, setShowCsvDialog] = useState(false)
 
   // Форма создания
   const [accessType, setAccessType] = useState<string>('full')
@@ -116,22 +119,45 @@ export default function InvitesManager({
 
   return (
     <div className="space-y-6">
-      {/* Кнопка создания */}
-      {!isCreating && (
-        <Button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Создать приглашение
-        </Button>
+      {/* Email invites section */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-gray-500" />
+            <h3 className="text-base font-semibold text-gray-900">Пригласить по email</h3>
+          </div>
+          <button
+            onClick={() => setShowCsvDialog(true)}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            Загрузить CSV
+          </button>
+        </div>
+        <EmailInviteForm orgId={orgId} />
+      </div>
+
+      {showCsvDialog && (
+        <CsvImportDialog orgId={orgId} onClose={() => setShowCsvDialog(false)} />
       )}
+
+      {/* Ссылки-приглашения */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900">Ссылки-приглашения</h3>
+          {!isCreating && (
+            <Button onClick={() => setIsCreating(true)} className="flex items-center gap-2" size="sm">
+              <Plus className="h-4 w-4" />
+              Создать ссылку
+            </Button>
+          )}
+        </div>
 
       {/* Форма создания */}
       {isCreating && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Новое приглашение
+        <div className="rounded-lg border border-gray-200 p-4 space-y-4 mb-4">
+          <h3 className="text-base font-semibold text-gray-900">
+            Новая ссылка-приглашение
           </h3>
 
           {/* Тип доступа */}
@@ -215,7 +241,6 @@ export default function InvitesManager({
         </div>
       )}
 
-      {/* Список приглашений */}
       <div className="space-y-4">
         {invites.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
@@ -284,6 +309,7 @@ export default function InvitesManager({
             </div>
           ))
         )}
+      </div>
       </div>
     </div>
   )

@@ -41,7 +41,10 @@
       "Bash(ssh -o ConnectTimeout=20 selectel-orbo \"docker exec orbo_postgres psql -U orbo -d orbo -t -c \"\":*)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\p' -name settings*)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\p' -maxdepth 4 -name *.tsx)",
-      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app' -path */telegram/account* -o -path */telegram/available*)"
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app' -path */telegram/account* -o -path */telegram/available*)",
+      "Read(//c//**)",
+      "Bash(mkdir -p \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/app/api/participant-invite/[token]\")",
+      "Bash(mkdir -p \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/app/api/organizations/[id]/participant-invites/csv-import\")"
     ]
   }
 }
