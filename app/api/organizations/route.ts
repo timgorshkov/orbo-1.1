@@ -32,6 +32,35 @@ export async function POST(req: NextRequest) {
     
     const user = { id: session.user.id, email: session.user.email };
 
+    // Idempotency: if this is the auto-created "Моё сообщество" org and the user
+    // already owns one created in the last 10 minutes, return it instead of creating a duplicate.
+    // This prevents duplicate orgs when two browser sessions hit /welcome simultaneously.
+    if (name.trim() === 'Моё сообщество') {
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      const { data: recentMemberships } = await supabase
+        .from('memberships')
+        .select('org_id, created_at')
+        .eq('user_id', user.id)
+        .eq('role', 'owner')
+        .gte('created_at', tenMinAgo)
+        .limit(5)
+
+      if (recentMemberships && recentMemberships.length > 0) {
+        const recentOrgIds = recentMemberships.map((m: any) => m.org_id)
+        const { data: existingOrgs } = await supabase
+          .from('organizations')
+          .select('id, name')
+          .in('id', recentOrgIds)
+          .eq('name', 'Моё сообщество')
+          .limit(1)
+
+        if (existingOrgs && existingOrgs.length > 0) {
+          logger.info({ user_id: user.id, org_id: existingOrgs[0].id }, 'Auto-create idempotency: returning existing org')
+          return NextResponse.json({ org_id: existingOrgs[0].id, existed: true })
+        }
+      }
+    }
+
     // Создаем новую организацию (с серверной стороны обходит RLS)
     const insertData = {
       name: name.trim(),

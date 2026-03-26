@@ -40,7 +40,7 @@ export default async function ParticipantPage({
       .eq('org_id', orgId)
       .single()
     
-    isOwnProfile = telegramAccount?.user_id === user.id
+    isOwnProfile = telegramAccount?.user_id === access.userId
   }
 
   const canEdit = isAdmin || isOwnProfile
@@ -48,12 +48,12 @@ export default async function ParticipantPage({
   return (
     <div className="p-6">
       <BackToListButton orgId={orgId} participantName={detail.participant.full_name || detail.participant.username || undefined} />
-      <ParticipantDetailTabs 
-        orgId={orgId} 
+      <ParticipantDetailTabs
+        orgId={orgId}
         initialDetail={detail}
         isAdmin={isAdmin}
         canEdit={canEdit}
-        currentUserId={user.id}
+        currentUserId={access.userId ?? ''}
         userRole={role}
       />
     </div>

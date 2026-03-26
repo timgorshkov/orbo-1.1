@@ -233,7 +233,7 @@ export default async function MembersPage({ params, searchParams }: {
       adminSupabase
         .from('user_telegram_accounts')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', access.userId)
         .eq('org_id', orgId)
         .eq('is_verified', true)
         .limit(1)

@@ -461,6 +461,19 @@ export function WelcomeContent({
       return;
     }
 
+    // Fresh server-side check to handle stale hasOrganizations prop
+    // (can happen when two browser sessions hit /welcome before the first org is committed)
+    try {
+      const checkRes = await fetch('/api/user/organizations')
+      if (checkRes.ok) {
+        const { organizations } = await checkRes.json()
+        if (organizations && organizations.length > 0) {
+          router.push('/orgs')
+          return
+        }
+      }
+    } catch { /* proceed with creation */ }
+
     setCreatingOrg(true);
     setStep('creating');
     try {
