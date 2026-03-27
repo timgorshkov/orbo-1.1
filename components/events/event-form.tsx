@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useCallback } from 'react'
+import { useState, useTransition, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -234,6 +234,19 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
   )
   // Edit scope for child instances
   const [updateScope, setUpdateScope] = useState<'this' | 'this_and_future' | 'all'>('this_and_future')
+
+  // When recurring is enabled OR eventDate changes while recurring is on,
+  // auto-derive day_of_week and day_of_month from the chosen start date
+  useEffect(() => {
+    if (isRecurring && eventDate) {
+      const d = new Date(eventDate)
+      // JS: 0=Sun..6=Sat → our system: 1=Mon..7=Sun
+      const jsDay = d.getDay()
+      setRecurrenceDayOfWeek(jsDay === 0 ? 7 : jsDay)
+      setRecurrenceDayOfMonth(d.getDate())
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecurring, eventDate])
 
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
