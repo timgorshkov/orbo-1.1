@@ -156,16 +156,16 @@ export async function generateMetadata({
   }
 }
 
-export default async function EventDetailPage({ 
+export default async function EventDetailPage({
   params,
-  searchParams 
-}: { 
+  searchParams
+}: {
   params: Promise<{ org: string; id: string }>
-  searchParams: Promise<{ edit?: string }>
+  searchParams: Promise<{ edit?: string; view_parent?: string }>
 }) {
   const timing = new RequestTiming('EventDetailPage');
   const { org: orgId, id: eventId } = await params
-  const { edit } = await searchParams
+  const { edit, view_parent } = await searchParams
   
   if (!UUID_RE.test(eventId) || !UUID_RE.test(orgId)) {
     return (
@@ -195,11 +195,14 @@ export default async function EventDetailPage({
   let event = eventBase as any;
   
   if (eventBase && !error) {
+    // For recurring child instances, registrations are stored on the parent event
+    const regEventId = (eventBase as any).parent_event_id || eventId
+
     // Получаем регистрации
     const { data: registrations } = await adminSupabase
       .from('event_registrations')
       .select('id, status, registered_at, payment_status, paid_amount, quantity, price, registration_data, participant_id')
-      .eq('event_id', eventId);
+      .eq('event_id', regEventId);
     
     if (registrations && registrations.length > 0) {
       // Получаем участников
@@ -251,7 +254,8 @@ export default async function EventDetailPage({
   }
 
   // Recurring parent: redirect to the nearest future child instance
-  if (event.is_recurring && !event.parent_event_id) {
+  // Exception: admin accessing with ?view_parent=1 sees the parent page for series editing
+  if (event.is_recurring && !event.parent_event_id && view_parent !== '1') {
     const nextChild = await getNextInstance(event.id)
     if (nextChild) {
       redirect(`/p/${orgId}/events/${nextChild.id}`)

@@ -618,6 +618,18 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             )}
           </div>
 
+          {/* Admin: link to edit the whole series (parent event) */}
+          {showAdminFeatures && (
+            <div className="mb-3 pt-2 border-t border-violet-200">
+              <button
+                onClick={() => window.location.href = `/p/${orgId}/events/${event.parent_event_id}?edit=true&view_parent=1`}
+                className="text-xs text-violet-700 hover:text-violet-900 hover:underline font-medium"
+              >
+                ⚙️ Редактировать всю серию
+              </button>
+            </div>
+          )}
+
           {/* Upcoming dates */}
           {recurringContext.futureInstances.length > 0 && (
             <div>

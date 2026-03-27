@@ -19,6 +19,7 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
   const isAdmin = role === 'owner' || role === 'admin'
 
   // Fetch all events (admins see all, members see published only)
+  // Exclude recurring series parents — only child instances and standalone events are shown
   let eventsQuery = adminSupabase
     .from('events')
     .select('*')
@@ -30,8 +31,8 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     eventsQuery = eventsQuery.eq('status', 'published')
   }
 
-  const { data: events, error } = await eventsQuery
-  
+  const { data: allEvents, error } = await eventsQuery
+
   if (error) {
     logger.error({
       error: error.message,
@@ -39,32 +40,39 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
       org_id: orgId
     }, 'Error fetching events');
   }
-  
-  // Получаем регистрации отдельно
-  const eventIds = events?.map(e => e.id) || [];
+
+  // Hide recurring series parents from the calendar — navigate to them via child instance pages
+  const events = (allEvents || []).filter(
+    (e: any) => !(e.is_recurring && !e.parent_event_id)
+  )
+
+  // For registration counts: child instances look up their parent's registrations
+  const regEventIds = [...new Set(events.map((e: any) => e.parent_event_id || e.id))]
   let registrationsMap = new Map<string, any[]>();
-  
-  if (eventIds.length > 0) {
+
+  if (regEventIds.length > 0) {
     const { data: registrations } = await adminSupabase
       .from('event_registrations')
       .select('id, status, event_id')
-      .in('event_id', eventIds);
-    
+      .in('event_id', regEventIds);
+
     for (const reg of registrations || []) {
       const existing = registrationsMap.get(reg.event_id) || [];
       existing.push(reg);
       registrationsMap.set(reg.event_id, existing);
     }
   }
-  
+
   // Calculate stats for each event
-  const eventsWithStats = events?.map(event => {
-    const eventRegs = registrationsMap.get(event.id) || [];
+  const eventsWithStats = events.map((event: any) => {
+    // Children: registrations stored on parent
+    const regEventId = event.parent_event_id || event.id
+    const eventRegs = registrationsMap.get(regEventId) || [];
     const registeredCount = eventRegs.filter(
       (reg: any) => reg.status === 'registered'
     ).length || 0
 
-    const availableSpots = event.capacity 
+    const availableSpots = event.capacity
       ? Math.max(0, event.capacity - registeredCount)
       : null
 
@@ -73,7 +81,7 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
       registered_count: registeredCount,
       available_spots: availableSpots
     }
-  }) || []
+  })
 
   // Fetch telegram groups for notifications (admin only)
   let telegramGroups: any[] = []
