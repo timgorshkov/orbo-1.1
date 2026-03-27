@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import Link from 'next/link'
-import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft, Trash2 } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, Edit, Download, Share2, Link as LinkIcon, Copy, Check, Pencil, ArrowLeft, Trash2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { renderTelegramContent } from '@/lib/utils/telegramMarkdown'
+import { formatRecurrenceLabel, RecurrenceRule } from '@/lib/utils/recurringEventsUtils'
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
 import QRCode from '@/components/ui/qr-code'
@@ -51,6 +52,11 @@ type Event = {
   registered_count: number
   available_spots: number | null
   is_user_registered: boolean
+  // Recurring events
+  is_recurring?: boolean
+  parent_event_id?: string | null
+  recurrence_rule?: RecurrenceRule | null
+  occurrence_index?: number | null
   event_registrations?: Array<{
     id: string
     status: string
@@ -82,6 +88,12 @@ type UserRegistration = {
   qr_token?: string | null
 }
 
+type RecurringContext = {
+  futureInstances: Array<{ id: string; event_date: string; start_time: string; occurrence_index: number }>
+  prevInstance: { id: string; event_date: string } | null
+  nextInstance: { id: string; event_date: string } | null
+} | null
+
 type Props = {
   event: Event
   orgId: string
@@ -90,9 +102,10 @@ type Props = {
   telegramGroups: Array<{ id: number; tg_chat_id: number; title: string | null }>
   requireAuthForRegistration?: boolean // For public events viewed by unauthenticated users
   maxEventLink?: string | null
+  recurringContext?: RecurringContext
 }
 
-export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups, requireAuthForRegistration = false, maxEventLink = null }: Props) {
+export default function EventDetail({ event, orgId, role, isEditMode, telegramGroups, requireAuthForRegistration = false, maxEventLink = null, recurringContext = null }: Props) {
   const { adminMode, isAdmin } = useAdminMode(role)
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -561,11 +574,73 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                 }
               }}
             >
-              Зарегистрироваться на событие
+              {event.parent_event_id ? 'Зарегистрироваться на серию' : 'Зарегистрироваться на событие'}
             </Button>
           </div>
         )}
       </div>
+
+      {/* Recurring event info block for child instances */}
+      {event.parent_event_id && recurringContext && (
+        <div className="mb-6 rounded-lg border border-violet-200 bg-violet-50 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <RefreshCw className="w-4 h-4 text-violet-600" />
+            <span className="font-medium text-violet-900">Регулярное мероприятие</span>
+            {event.recurrence_rule && (
+              <span className="text-sm text-violet-700">· {formatRecurrenceLabel(event.recurrence_rule)}</span>
+            )}
+          </div>
+
+          {/* Navigation between instances */}
+          <div className="flex items-center gap-2 mb-3">
+            {recurringContext.prevInstance ? (
+              <button
+                onClick={() => window.location.href = `/p/${orgId}/events/${recurringContext.prevInstance!.id}`}
+                className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 hover:underline"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                {new Date(recurringContext.prevInstance.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+              </button>
+            ) : (
+              <span className="text-xs text-violet-400">← первое</span>
+            )}
+            <span className="text-violet-300 mx-1">|</span>
+            {recurringContext.nextInstance ? (
+              <button
+                onClick={() => window.location.href = `/p/${orgId}/events/${recurringContext.nextInstance!.id}`}
+                className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 hover:underline"
+              >
+                {new Date(recurringContext.nextInstance.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            ) : (
+              <span className="text-xs text-violet-400">последнее →</span>
+            )}
+          </div>
+
+          {/* Upcoming dates */}
+          {recurringContext.futureInstances.length > 0 && (
+            <div>
+              <p className="text-xs text-violet-600 mb-1 font-medium">Предстоящие встречи:</p>
+              <div className="flex flex-wrap gap-2">
+                {recurringContext.futureInstances.slice(0, 6).map(inst => (
+                  <button
+                    key={inst.id}
+                    onClick={() => window.location.href = `/p/${orgId}/events/${inst.id}`}
+                    className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                      inst.id === event.id
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-white text-violet-700 border-violet-200 hover:border-violet-400 hover:bg-violet-100'
+                    }`}
+                  >
+                    {new Date(inst.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Show tabs only for admins, otherwise show content directly */}
       {showAdminFeatures ? (
@@ -764,7 +839,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               onClick={handleRegister}
                               disabled={isPending}
                             >
-                              Зарегистрироваться
+                              {event.parent_event_id ? 'Зарегистрироваться на серию' : 'Зарегистрироваться'}
                             </Button>
                           </>
                         )}
@@ -1308,7 +1383,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               onClick={handleRegister}
                               disabled={isPending}
                             >
-                              Зарегистрироваться
+                              {event.parent_event_id ? 'Зарегистрироваться на серию' : 'Зарегистрироваться'}
                             </Button>
                           </>
                         )}

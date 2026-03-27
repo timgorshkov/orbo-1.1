@@ -39,20 +39,23 @@ export async function POST(
       )
     }
 
+    // For recurring child instances: registration links to the parent series event
+    const registrationEventId: string = event.parent_event_id ?? eventId
+
     // Parse request body for registration_data and quantity
     const body = await request.json().catch(() => ({}))
     const registrationData = body.registration_data || {}
     const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5) // Clamp between 1 and 5
 
-    // Check capacity
+    // Check capacity (always against the registration event — parent for recurring)
     if (event.capacity) {
       const countByPaid = event.capacity_count_by_paid || false
-      
+
       // Получаем регистрации отдельно для подсчёта
       const { data: eventRegistrations } = await adminSupabase
         .from('event_registrations')
         .select('id, status, payment_status, quantity')
-        .eq('event_id', eventId)
+        .eq('event_id', registrationEventId)
       
       let registeredCount = 0
       if (countByPaid) {
@@ -190,7 +193,7 @@ export async function POST(
     const { data: existingRegistration } = await adminSupabase
       .from('event_registrations')
       .select('id, status')
-      .eq('event_id', eventId)
+      .eq('event_id', registrationEventId)
       .eq('participant_id', participant.id)
       .maybeSingle()
 
@@ -239,7 +242,7 @@ export async function POST(
     
     const { data: registrationResult, error: rpcError } = await adminSupabase
       .rpc('register_for_event', {
-        p_event_id: eventId,
+        p_event_id: registrationEventId,  // parent event for recurring series
         p_participant_id: participant.id,
         p_registration_data: registrationData,
         p_quantity: quantity

@@ -4,6 +4,7 @@ import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminActio
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createEventReminders } from '@/lib/services/announcementService'
+import { generateAndScheduleInstances, getNextInstance } from '@/lib/services/recurringEventsService'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const publicOnly = searchParams.get('public') === 'true'
     const upcomingOnly = searchParams.get('upcoming') === 'true'
+    const pastOnly = searchParams.get('past') === 'true'
     const limitParam = searchParams.get('limit')
     const limit = limitParam ? parseInt(limitParam, 10) : null
 
@@ -22,78 +24,120 @@ export async function GET(request: NextRequest) {
     }
 
     const adminSupabase = createAdminServer()
+    const today = new Date().toISOString().split('T')[0]
 
-    // Build query - простой запрос без JOIN
-    let query = adminSupabase
-      .from('events')
-      .select('*')
-      .eq('org_id', orgId)
-      .order('event_date', { ascending: true })
+    let events: any[] = []
 
-    // Apply filters
-    if (status) {
-      query = query.eq('status', status)
-    }
+    if (pastOnly) {
+      // Past view: standalone past events + child instances of recurring series
+      // (exclude recurring parents from past — they live in upcoming)
+      const [standaloneRes, childRes] = await Promise.all([
+        adminSupabase
+          .from('events')
+          .select('*')
+          .eq('org_id', orgId)
+          .is('parent_event_id', null)
+          .eq('is_recurring', false)
+          .lt('event_date', today)
+          .eq('status', 'published')
+          .order('event_date', { ascending: false }),
+        adminSupabase
+          .from('events')
+          .select('*')
+          .eq('org_id', orgId)
+          .not('parent_event_id', 'is', null)
+          .lt('event_date', today)
+          .eq('status', 'published')
+          .order('event_date', { ascending: false }),
+      ])
+      const standalone = standaloneRes.data ?? []
+      const children = childRes.data ?? []
+      events = [...standalone, ...children].sort(
+        (a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime()
+      )
+    } else {
+      // Default / upcoming view: exclude child instances (they show only in past)
+      let query = adminSupabase
+        .from('events')
+        .select('*')
+        .eq('org_id', orgId)
+        .is('parent_event_id', null)   // parents + standalone only
+        .order('event_date', { ascending: true })
 
-    if (publicOnly) {
-      query = query.eq('is_public', true)
-    }
+      if (status) {
+        query = query.eq('status', status)
+      }
+      if (publicOnly) {
+        query = query.eq('is_public', true)
+      }
+      if (upcomingOnly) {
+        query = query.gte('event_date', today)
+      }
+      if (limit && limit > 0) {
+        query = query.limit(limit)
+      }
 
-    if (upcomingOnly) {
-      const today = new Date().toISOString().split('T')[0]
-      query = query.gte('event_date', today)
-    }
-
-    if (limit && limit > 0) {
-      query = query.limit(limit)
-    }
-
-    const { data: events, error } = await query
-
-    if (error) {
-      logger.error({ error: error.message, org_id: orgId }, 'Error fetching events');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      const { data, error } = await query
+      if (error) {
+        logger.error({ error: error.message, org_id: orgId }, 'Error fetching events');
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+      events = data ?? []
     }
 
     // Получаем регистрации отдельно
-    const eventIds = events?.map(e => e.id) || [];
-    let registrationsMap = new Map<string, any[]>();
-    
+    // For recurring parents: registrations are on the parent event_id
+    const eventIds = events.map(e => e.id)
+    let registrationsMap = new Map<string, any[]>()
+
     if (eventIds.length > 0) {
       const { data: registrations } = await adminSupabase
         .from('event_registrations')
         .select('id, status, event_id')
-        .in('event_id', eventIds);
-      
-      // Группируем регистрации по event_id
+        .in('event_id', eventIds)
+
       for (const reg of registrations || []) {
-        const existing = registrationsMap.get(reg.event_id) || [];
-        existing.push(reg);
-        registrationsMap.set(reg.event_id, existing);
+        const existing = registrationsMap.get(reg.event_id) || []
+        existing.push(reg)
+        registrationsMap.set(reg.event_id, existing)
       }
     }
 
-    // Calculate registered count for each event
-    const eventsWithStats = events?.map(event => {
-      const eventRegistrations = registrationsMap.get(event.id) || [];
+    // Enrich recurring parents with next_occurrence_date
+    const eventsWithStats = await Promise.all(events.map(async event => {
+      // For recurring children: registrations are on parent — fetch parent's count
+      const regEventId = event.parent_event_id ?? event.id
+      const eventRegistrations = registrationsMap.get(regEventId) || []
       const registeredCount = eventRegistrations.filter(
         (reg: any) => reg.status === 'registered'
       ).length || 0
 
-      const availableSpots = event.capacity 
+      const availableSpots = event.capacity
         ? Math.max(0, event.capacity - registeredCount)
         : null
+
+      let next_occurrence_date: string | null = null
+      if (event.is_recurring && !event.parent_event_id) {
+        const next = await getNextInstance(event.id)
+        next_occurrence_date = next?.event_date ?? null
+      }
 
       return {
         ...event,
         registered_count: registeredCount,
-        available_spots: availableSpots
+        available_spots: availableSpots,
+        ...(next_occurrence_date !== null ? { next_occurrence_date } : {}),
       }
-    })
+    }))
 
-    return NextResponse.json({ events: eventsWithStats })
+    // For upcoming: filter out recurring parents whose series has ended (no future instances)
+    const filteredEvents = upcomingOnly
+      ? eventsWithStats.filter(e => !e.is_recurring || e.next_occurrence_date !== null)
+      : eventsWithStats
+
+    return NextResponse.json({ events: filteredEvents })
   } catch (error: any) {
-    logger.error({ 
+    logger.error({
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in GET /api/events');
@@ -139,7 +183,10 @@ export async function POST(request: NextRequest) {
       registrationFieldsConfig,
       status,
       isPublic,
-      telegramGroupLink
+      telegramGroupLink,
+      // Recurring events
+      isRecurring,
+      recurrenceRule,
     } = body
 
     // Validation
@@ -194,7 +241,10 @@ export async function POST(request: NextRequest) {
       status: status || 'draft', // Use status from form, default to draft
       is_public: isPublic || false,
       telegram_group_link: telegramGroupLink || null,
-      created_by: user.id
+      created_by: user.id,
+      // Recurring events
+      is_recurring: isRecurring === true,
+      recurrence_rule: isRecurring === true && recurrenceRule ? recurrenceRule : null,
     }
 
     // Handle payment fields (support both old and new formats)
@@ -285,81 +335,56 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create auto-announcements (reminders) for the event
-    // Only for future events with event_date set
-    // Only if client requests it (skip_announcements flag)
+    // Create auto-announcements / generate recurring instances
     const shouldCreateAnnouncements = body.create_announcements !== false;
-    const useMiniAppLink = body.use_miniapp_link !== false; // Default to MiniApp link
-    
+    const useMiniAppLink = body.use_miniapp_link !== false;
+
     if (event?.id && event.event_date && shouldCreateAnnouncements) {
       try {
-        // Get all org groups for announcements (via org_telegram_groups -> telegram_groups)
         const { data: orgGroups } = await adminSupabase
           .from('org_telegram_groups')
           .select('tg_chat_id')
           .eq('org_id', orgId)
           .eq('status', 'active');
-        
-        if (orgGroups && orgGroups.length > 0) {
-          // target_groups stores tg_chat_id (BIGINT[]) for the announcements table
-          const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
-          
-          if (targetGroups.length > 0 && event.event_date) {
-            // Normalize event_date: extract YYYY-MM-DD from ISO string or plain date
-            // event_date can be "2026-02-10" or "2026-02-10T00:00:00.000Z"
-            const dateStr = typeof event.event_date === 'string' 
-              ? event.event_date.split('T')[0] 
-              : new Date(event.event_date).toISOString().split('T')[0];
-            
-            // Combine event_date + start_time for correct timezone handling
-            let eventStartTime: Date;
-            if (event.start_time) {
-              // Parse as Moscow time (UTC+3) since all our events are in MSK
-              const timeStr = event.start_time.substring(0, 5); // "10:00" from "10:00:00"
-              // Create date in MSK timezone
-              eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`);
-            } else {
-              // Fallback: use event_date at 10:00 MSK
-              eventStartTime = new Date(`${dateStr}T10:00:00+03:00`);
-            }
-            
-            // Validate date
-            if (!isNaN(eventStartTime.getTime())) {
-              await createEventReminders(
-                event.id,
-                orgId,
-                event.title,
-                event.description,
-                eventStartTime,
-                event.location_info,
-                targetGroups,
-                useMiniAppLink,
-                event.event_type ?? 'offline'
-              );
-              logger.info({ 
-                event_id: event.id, 
-                targetGroupsCount: targetGroups.length,
-                event_start_time: eventStartTime.toISOString(),
-                event_date: event.event_date,
-                start_time: event.start_time,
-                use_miniapp_link: useMiniAppLink
-              }, 'Event reminders created');
-            } else {
-              logger.error({ 
-                event_date: event.event_date, 
-                start_time: event.start_time,
-                event_id: event.id 
-              }, 'Invalid date/time for event reminders');
-            }
-          } else if (!event.event_date) {
-            logger.warn({ event_id: event.id }, 'Skipping event reminders - no valid event_date');
+
+        const targetGroups = (orgGroups ?? []).map(g => String(g.tg_chat_id));
+
+        if (event.is_recurring && recurrenceRule) {
+          // Recurring: generate child instances for the next 4 weeks from first occurrence
+          const fromDate = new Date(
+            typeof event.event_date === 'string'
+              ? event.event_date.split('T')[0]
+              : new Date(event.event_date).toISOString().split('T')[0]
+          )
+          fromDate.setHours(0, 0, 0, 0)
+          const toDate = new Date(fromDate.getTime() + 28 * 24 * 60 * 60 * 1000)
+          const count = await generateAndScheduleInstances(event, fromDate, toDate, targetGroups, useMiniAppLink)
+          logger.info({ event_id: event.id, instance_count: count }, 'Generated recurring instances')
+        } else {
+          // Non-recurring: create 24h + 1h reminder announcements as before
+          const dateStr = typeof event.event_date === 'string'
+            ? event.event_date.split('T')[0]
+            : new Date(event.event_date).toISOString().split('T')[0]
+          const timeStr = event.start_time?.substring(0, 5) ?? '10:00'
+          const eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`)
+
+          if (!isNaN(eventStartTime.getTime()) && targetGroups.length > 0) {
+            await createEventReminders(
+              event.id,
+              orgId,
+              event.title,
+              event.description,
+              eventStartTime,
+              event.location_info,
+              targetGroups,
+              useMiniAppLink,
+              event.event_type ?? 'offline'
+            )
+            logger.info({ event_id: event.id, targetGroupsCount: targetGroups.length }, 'Event reminders created')
           }
         }
       } catch (reminderError: any) {
-        logger.warn({ 
-          error: reminderError.message, 
-          event_id: event.id 
-        }, 'Failed to create event reminders (non-critical)');
+        logger.warn({ error: reminderError.message, event_id: event.id }, 'Failed to create event reminders (non-critical)')
       }
     }
 

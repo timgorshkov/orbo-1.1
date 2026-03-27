@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import TelegramRichEditor from '@/components/ui/telegram-rich-editor'
 import CoverImageUpload from './cover-image-upload'
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink, X, RefreshCw } from 'lucide-react'
 
 const PRODAMUS_REF_URL = 'https://connect.prodamus.ru/?ref=ORBOPARTNERS&c=Rw6'
 const PRODAMUS_DISMISSED_KEY = 'prodamus_banner_dismissed'
@@ -57,6 +57,10 @@ type Event = {
   show_participants_list?: boolean
   enable_qr_checkin?: boolean
   telegram_group_link: string | null
+  // Recurring fields
+  is_recurring?: boolean
+  parent_event_id?: string | null
+  recurrence_rule?: { frequency: string; day_of_week?: number; day_of_month?: number; end_date?: string | null } | null
 }
 
 type Props = {
@@ -214,6 +218,23 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
   const [enableQrCheckin, setEnableQrCheckin] = useState(initialEvent?.enable_qr_checkin ?? true)
   const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')
   
+  // Recurring fields (create mode)
+  const [isRecurring, setIsRecurring] = useState(initialEvent?.is_recurring ?? false)
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<'weekly' | 'biweekly' | 'monthly'>(
+    (initialEvent?.recurrence_rule?.frequency as 'weekly' | 'biweekly' | 'monthly') || 'weekly'
+  )
+  const [recurrenceDayOfWeek, setRecurrenceDayOfWeek] = useState<number>(
+    initialEvent?.recurrence_rule?.day_of_week || 3 // Wednesday default
+  )
+  const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState<number>(
+    initialEvent?.recurrence_rule?.day_of_month || 1
+  )
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>(
+    initialEvent?.recurrence_rule?.end_date || ''
+  )
+  // Edit scope for child instances
+  const [updateScope, setUpdateScope] = useState<'this' | 'this_and_future' | 'all'>('this_and_future')
+
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false)
@@ -251,9 +272,22 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
       isPublic,
       showParticipantsList,
       enableQrCheckin,
-      telegramGroupLink: telegramGroupLink || null
+      telegramGroupLink: telegramGroupLink || null,
+      // Recurring (create mode only)
+      ...(mode === 'create' ? {
+        isRecurring,
+        recurrenceRule: isRecurring ? {
+          frequency: recurrenceFrequency,
+          ...(recurrenceFrequency !== 'monthly' ? { day_of_week: recurrenceDayOfWeek } : {}),
+          ...(recurrenceFrequency === 'monthly' ? { day_of_month: recurrenceDayOfMonth } : {}),
+          end_date: recurrenceEndDate || null
+        } : null,
+      } : {}),
+      // Edit scope for child instances
+      ...(mode === 'edit' && initialEvent?.parent_event_id ? { updateScope } : {})
     }
-  }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, showParticipantsList, enableQrCheckin, telegramGroupLink])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, title, description, coverImageUrl, eventType, locationInfo, mapLink, eventDate, endDate, startTime, endTime, requiresPayment, defaultPrice, currency, paymentDeadlineDays, paymentInstructions, paymentLink, allowMultipleTickets, requestContactInfo, fieldsConfig, capacity, status, isPublic, showParticipantsList, enableQrCheckin, telegramGroupLink, mode, isRecurring, recurrenceFrequency, recurrenceDayOfWeek, recurrenceDayOfMonth, recurrenceEndDate, updateScope])
 
   const submitEvent = async (eventData: any, createAnnouncements: boolean, useMiniAppLink: boolean = true) => {
     startTransition(async () => {
@@ -342,19 +376,51 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
     const eventData = buildEventData()
 
     // For create mode, show announcement confirmation dialog
-    if (mode === 'create') {
+    // (skip for recurring: API creates per-instance announcements automatically)
+    if (mode === 'create' && !isRecurring) {
       setPendingEventData(eventData)
       setShowAnnouncementDialog(true)
       return
     }
 
-    // For edit mode, just submit without announcements
-    await submitEvent(eventData, false)
+    // For recurring create or edit mode, submit directly
+    await submitEvent(eventData, mode === 'create')
   }
 
   return (
     <>
     <form onSubmit={handleSubmit}>
+      {/* Edit scope selector — shown only when editing a child instance */}
+      {mode === 'edit' && initialEvent?.parent_event_id && (
+        <Card className="mb-6 border-violet-200 bg-violet-50">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <RefreshCw className="w-4 h-4 text-violet-700" />
+              <span className="text-sm font-medium text-violet-900">Применить изменения к:</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { value: 'this', label: 'Только этому занятию' },
+                { value: 'this_and_future', label: 'Этому и следующим' },
+                { value: 'all', label: 'Всей серии' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="updateScope"
+                    value={opt.value}
+                    checked={updateScope === opt.value}
+                    onChange={() => setUpdateScope(opt.value as typeof updateScope)}
+                    className="w-4 h-4 text-violet-600"
+                  />
+                  <span className="text-sm text-violet-900">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
@@ -410,7 +476,7 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium block mb-2">
-                    Дата начала <span className="text-red-500">*</span>
+                    {isRecurring ? 'Дата первого занятия' : 'Дата начала'} <span className="text-red-500">*</span>
                   </label>
                   <Input
                     type="date"
@@ -475,6 +541,127 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
               </div>
             </CardContent>
           </Card>
+
+          {/* Recurring section — create mode only */}
+          {mode === 'create' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4" />
+                  Регулярность
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isRecurring"
+                    checked={isRecurring}
+                    onChange={(e) => setIsRecurring(e.target.checked)}
+                    className="mr-2 h-4 w-4"
+                  />
+                  <label htmlFor="isRecurring" className="text-sm font-medium">
+                    Регулярное мероприятие
+                  </label>
+                </div>
+
+                {isRecurring && (
+                  <div className="space-y-4 pt-2 border-t border-neutral-200">
+                    {/* Frequency selector */}
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Частота</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {([
+                          { value: 'weekly', label: 'Еженедельно' },
+                          { value: 'biweekly', label: 'Каждые 2 недели' },
+                          { value: 'monthly', label: 'Ежемесячно' },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setRecurrenceFrequency(opt.value)}
+                            className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                              recurrenceFrequency === opt.value
+                                ? 'bg-violet-600 text-white border-violet-600'
+                                : 'bg-white text-neutral-700 border-neutral-300 hover:border-violet-400'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Day of week — for weekly/biweekly */}
+                    {recurrenceFrequency !== 'monthly' && (
+                      <div>
+                        <label className="text-sm font-medium block mb-2">День недели</label>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {[
+                            { value: 1, label: 'Пн' },
+                            { value: 2, label: 'Вт' },
+                            { value: 3, label: 'Ср' },
+                            { value: 4, label: 'Чт' },
+                            { value: 5, label: 'Пт' },
+                            { value: 6, label: 'Сб' },
+                            { value: 7, label: 'Вс' },
+                          ].map(day => (
+                            <button
+                              key={day.value}
+                              type="button"
+                              onClick={() => setRecurrenceDayOfWeek(day.value)}
+                              className={`w-9 h-9 rounded-lg text-sm font-medium border transition-colors ${
+                                recurrenceDayOfWeek === day.value
+                                  ? 'bg-violet-600 text-white border-violet-600'
+                                  : 'bg-white text-neutral-700 border-neutral-300 hover:border-violet-400'
+                              }`}
+                            >
+                              {day.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Day of month — for monthly */}
+                    {recurrenceFrequency === 'monthly' && (
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Число месяца</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={28}
+                          value={recurrenceDayOfMonth}
+                          onChange={(e) => setRecurrenceDayOfMonth(parseInt(e.target.value) || 1)}
+                          className="w-24 p-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
+                        />
+                        <p className="text-xs text-neutral-500 mt-1">Максимум 28, чтобы событие было каждый месяц</p>
+                      </div>
+                    )}
+
+                    {/* End date */}
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Дата окончания серии (необязательно)</label>
+                      <input
+                        type="date"
+                        value={recurrenceEndDate}
+                        onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                        className="p-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
+                      />
+                      <p className="text-xs text-neutral-500 mt-1">Оставьте пустым для бессрочной серии</p>
+                    </div>
+
+                    {requiresPayment && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                        ⚠️ Для регулярных мероприятий поддерживается единократная регистрация и оплата за всю серию.
+                        «Разрешить несколько билетов» недоступно.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -686,12 +873,13 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                     </p>
                   </div>
 
-                  <div className="flex items-center pt-2 border-t border-neutral-200">
+                  <div className={`flex items-center pt-2 border-t border-neutral-200 ${isRecurring ? 'opacity-50' : ''}`}>
                     <input
                       type="checkbox"
                       id="allowMultipleTickets"
                       checked={allowMultipleTickets}
                       onChange={(e) => setAllowMultipleTickets(e.target.checked)}
+                      disabled={isRecurring}
                       className="mr-2 h-4 w-4"
                     />
                     <label htmlFor="allowMultipleTickets" className="text-sm font-medium">

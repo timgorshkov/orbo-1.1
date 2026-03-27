@@ -8,6 +8,7 @@ import { createServiceLogger } from '@/lib/logger'
 import { RequestTiming } from '@/lib/utils/timing'
 import { getPublicPortalAccess } from '@/lib/server/portalAccess'
 import { checkMembershipGate } from '@/lib/server/membershipGate'
+import { getNextInstance, getFutureInstances, getPreviousInstance, getNextInstanceByIndex } from '@/lib/services/recurringEventsService'
 
 /**
  * Generate dynamic metadata for event pages (OG tags for Telegram sharing)
@@ -249,6 +250,15 @@ export default async function EventDetailPage({
     )
   }
 
+  // Recurring parent: redirect to the nearest future child instance
+  if (event.is_recurring && !event.parent_event_id) {
+    const nextChild = await getNextInstance(event.id)
+    if (nextChild) {
+      redirect(`/p/${orgId}/events/${nextChild.id}`)
+    }
+    // If no future child exists — series ended, fall through and render the parent page as-is
+  }
+
   // Check authentication (NextAuth or participant_session cookie)
   timing.mark('check_auth_start');
   const portalAccess = await getPublicPortalAccess(orgId);
@@ -426,11 +436,44 @@ export default async function EventDetailPage({
     }
   }
 
-  const isUserRegistered = participant && event.event_registrations?.some(
-    (reg: any) => 
-      reg.participants?.id === participant.id && 
+  // For recurring child instances: registrations are stored on the parent event
+  let isUserRegistered = participant && event.event_registrations?.some(
+    (reg: any) =>
+      reg.participants?.id === participant.id &&
       (reg.status === 'registered' || reg.status === 'attended')
   )
+
+  if (!isUserRegistered && participant && event.parent_event_id) {
+    // Child instance: check registrations on the parent series
+    const { data: parentRegs } = await adminSupabase
+      .from('event_registrations')
+      .select('id, status, participant_id')
+      .eq('event_id', event.parent_event_id)
+      .eq('participant_id', participant.id)
+      .in('status', ['registered', 'attended'])
+      .maybeSingle()
+    isUserRegistered = !!parentRegs
+  }
+
+  // Fetch recurring context for child instances
+  let recurringContext: {
+    futureInstances: Array<{ id: string; event_date: string; start_time: string; occurrence_index: number }>
+    prevInstance: { id: string; event_date: string } | null
+    nextInstance: { id: string; event_date: string } | null
+  } | null = null
+
+  if (event.parent_event_id) {
+    const [futureInstances, prevInstance, nextSibling] = await Promise.all([
+      getFutureInstances(event.parent_event_id, 8),
+      event.occurrence_index
+        ? getPreviousInstance(event.parent_event_id, event.occurrence_index)
+        : Promise.resolve(null),
+      event.occurrence_index
+        ? getNextInstanceByIndex(event.parent_event_id, event.occurrence_index)
+        : Promise.resolve(null),
+    ])
+    recurringContext = { futureInstances, prevInstance, nextInstance: nextSibling }
+  }
 
   const eventWithStats = {
     ...event,
@@ -505,6 +548,7 @@ export default async function EventDetailPage({
         isEditMode={isEditMode}
         telegramGroups={telegramGroups}
         maxEventLink={maxEventLink}
+        recurringContext={recurringContext}
       />
     </div>
   )

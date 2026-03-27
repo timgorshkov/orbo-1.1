@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { rescheduleAnnouncements, getOrgTargetGroups } from '@/lib/services/recurringEventsService'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -186,7 +187,9 @@ export async function PUT(
       registrationFieldsConfig,
       status,
       isPublic,
-      telegramGroupLink
+      telegramGroupLink,
+      // Recurring edit scope: 'this' | 'this_and_future' | 'all'
+      updateScope = 'this',
     } = body
 
     const adminSupabase = createAdminServer()
@@ -200,7 +203,7 @@ export async function PUT(
     // Get event to check org_id and current cover_image_url
     const { data: existingEvent, error: fetchError } = await adminSupabase
       .from('events')
-      .select('org_id, cover_image_url')
+      .select('org_id, cover_image_url, parent_event_id, is_recurring, occurrence_index, event_date, start_time, event_type, location_info, title, description')
       .eq('id', eventId)
       .single()
 
@@ -287,6 +290,120 @@ export async function PUT(
     if (error) {
       logger.error({ error: error.message, event_id: eventId, user_id: user.id }, 'Error updating event');
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // --- Recurring event cascade logic ---
+    const isChildInstance = !!existingEvent.parent_event_id
+    const isRecurringParent = existingEvent.is_recurring && !existingEvent.parent_event_id
+    const timeOrLocationChanged =
+      eventDate !== existingEvent.event_date ||
+      startTime !== existingEvent.start_time ||
+      locationInfo !== existingEvent.location_info ||
+      eventType !== existingEvent.event_type
+
+    if (isChildInstance && updateScope !== 'this') {
+      // Build the update payload for sibling events (same fields, same values)
+      const siblingUpdate: any = {}
+      if (title !== undefined) siblingUpdate.title = title || null
+      if (description !== undefined) siblingUpdate.description = description || null
+      if (eventType !== undefined) siblingUpdate.event_type = eventType
+      if (locationInfo !== undefined) siblingUpdate.location_info = locationInfo || null
+      if (mapLink !== undefined) siblingUpdate.map_link = eventType === 'offline' && mapLink ? mapLink : null
+      if (startTime !== undefined) siblingUpdate.start_time = startTime
+      if (endTime !== undefined) siblingUpdate.end_time = endTime
+      if (status !== undefined) siblingUpdate.status = status
+      if (isPublic !== undefined) siblingUpdate.is_public = isPublic
+
+      const today = new Date().toISOString().split('T')[0]
+
+      if (updateScope === 'this_and_future') {
+        // Update this + all future siblings with occurrence_index >= current
+        await adminSupabase
+          .from('events')
+          .update(siblingUpdate)
+          .eq('parent_event_id', existingEvent.parent_event_id)
+          .gte('occurrence_index', existingEvent.occurrence_index ?? 1)
+          .gte('event_date', today)
+          .neq('id', eventId) // already updated above
+      } else if (updateScope === 'all') {
+        // Update the parent template
+        await adminSupabase
+          .from('events')
+          .update(siblingUpdate)
+          .eq('id', existingEvent.parent_event_id)
+
+        // Update all future children (not past ones — they may have video links)
+        await adminSupabase
+          .from('events')
+          .update(siblingUpdate)
+          .eq('parent_event_id', existingEvent.parent_event_id)
+          .gte('event_date', today)
+          .neq('id', eventId)
+      }
+
+      // Reschedule announcements for affected future siblings if time/location changed
+      if (timeOrLocationChanged) {
+        const targetGroups = await getOrgTargetGroups(existingEvent.org_id)
+        if (targetGroups.length > 0) {
+          let siblingsQuery = adminSupabase
+            .from('events')
+            .select('id, event_date, start_time, org_id, location_info, event_type, title, description')
+            .eq('parent_event_id', existingEvent.parent_event_id)
+            .gte('event_date', today)
+            .neq('id', eventId)
+
+          if (updateScope === 'this_and_future') {
+            siblingsQuery = siblingsQuery.gte('occurrence_index', existingEvent.occurrence_index ?? 1)
+          }
+
+          const { data: siblings } = await siblingsQuery
+          for (const sibling of siblings ?? []) {
+            const dateStr = typeof sibling.event_date === 'string'
+              ? sibling.event_date.split('T')[0]
+              : new Date(sibling.event_date).toISOString().split('T')[0]
+            const timeStr = (sibling.start_time ?? startTime ?? '10:00').substring(0, 5)
+            const eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`)
+            if (!isNaN(eventStartTime.getTime())) {
+              await rescheduleAnnouncements(
+                sibling.id,
+                sibling.org_id,
+                title ?? sibling.title,
+                description ?? sibling.description,
+                eventStartTime,
+                locationInfo ?? sibling.location_info,
+                eventType ?? sibling.event_type,
+                targetGroups
+              )
+            }
+          }
+        }
+      }
+    }
+
+    // Reschedule announcements for the edited event itself if time/location changed
+    if (timeOrLocationChanged) {
+      try {
+        const targetGroups = await getOrgTargetGroups(existingEvent.org_id)
+        if (targetGroups.length > 0) {
+          const dateStr = (eventDate ?? existingEvent.event_date ?? '').split('T')[0]
+          const timeStr = (startTime ?? existingEvent.start_time ?? '10:00').substring(0, 5)
+          const eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`)
+          if (!isNaN(eventStartTime.getTime())) {
+            await rescheduleAnnouncements(
+              eventId,
+              existingEvent.org_id,
+              title ?? existingEvent.title,
+              description ?? existingEvent.description,
+              eventStartTime,
+              locationInfo ?? existingEvent.location_info,
+              eventType ?? existingEvent.event_type,
+              targetGroups
+            )
+          }
+        }
+      } catch (err) {
+        logger.warn({ error: String(err), event_id: eventId }, 'Failed to reschedule announcements (non-critical)')
+      }
     }
 
     // Log admin action

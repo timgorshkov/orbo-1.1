@@ -4,9 +4,10 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Calendar, MapPin, Users, Ticket, Globe, Lock } from 'lucide-react'
+import { Calendar, MapPin, Users, Ticket, Globe, Lock, RefreshCw } from 'lucide-react'
 import { useAdminMode } from '@/lib/hooks/useAdminMode'
 import { stripTelegramMarkdown } from '@/lib/utils/telegramMarkdownToHtml'
+import { formatRecurrenceLabel, RecurrenceRule } from '@/lib/utils/recurringEventsUtils'
 
 type Event = {
   id: string
@@ -26,6 +27,11 @@ type Event = {
   is_public: boolean
   registered_count: number
   available_spots: number | null
+  // Recurring fields
+  is_recurring?: boolean
+  recurrence_rule?: RecurrenceRule | null
+  parent_event_id?: string | null
+  next_occurrence_date?: string | null // for recurring parents
 }
 
 type Props = {
@@ -52,18 +58,22 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
   
+  // For recurring parents, effective date for sorting/filtering is next_occurrence_date
+  const effectiveDate = (e: Event): Date => {
+    if (e.is_recurring && e.next_occurrence_date) return new Date(e.next_occurrence_date)
+    return new Date(e.event_date)
+  }
+
   const upcomingEvents = events.filter(e => {
     if (e.status !== 'published') return false
-    const eventDate = new Date(e.event_date)
-    // Include events today and future dates
-    return eventDate >= today
+    return effectiveDate(e) >= today
   })
-  
+
   const pastEvents = events.filter(e => {
     if (e.status !== 'published') return false
-    const eventDate = new Date(e.event_date)
-    // Only consider past if event date is before today (i.e., yesterday or earlier)
-    return eventDate < today
+    // Recurring parents with future instances are NOT past
+    if (e.is_recurring && e.next_occurrence_date) return false
+    return effectiveDate(e) < today
   })
   const draftEvents = events.filter(e => e.status === 'draft')
 
@@ -71,12 +81,14 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
   let filteredEvents = events.filter(event => {
     if (statusFilter === 'all') return true
     if (statusFilter === 'upcoming') {
-      const eventDate = new Date(event.event_date)
-      return event.status === 'published' && eventDate >= today
+      if (event.status !== 'published') return false
+      if (event.is_recurring && event.next_occurrence_date) return true
+      return effectiveDate(event) >= today
     }
     if (statusFilter === 'past') {
-      const eventDate = new Date(event.event_date)
-      return event.status === 'published' && eventDate < today
+      if (event.status !== 'published') return false
+      if (event.is_recurring && event.next_occurrence_date) return false
+      return effectiveDate(event) < today
     }
     return event.status === statusFilter
   })
@@ -85,13 +97,13 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
   // 'all' and 'past': newest first (desc)
   // 'upcoming' and 'draft': oldest first (asc)
   if (statusFilter === 'all' || statusFilter === 'past') {
-    filteredEvents = [...filteredEvents].sort((a, b) => 
-      new Date(b.event_date).getTime() - new Date(a.event_date).getTime()
+    filteredEvents = [...filteredEvents].sort((a, b) =>
+      effectiveDate(b).getTime() - effectiveDate(a).getTime()
     )
   } else {
     // upcoming, draft
-    filteredEvents = [...filteredEvents].sort((a, b) => 
-      new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
+    filteredEvents = [...filteredEvents].sort((a, b) =>
+      effectiveDate(a).getTime() - effectiveDate(b).getTime()
     )
   }
 
@@ -147,8 +159,26 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
           {/* gap-2 + min-w-0/flex-1 on title: prevents badge from overflowing or squishing title */}
           <div className="flex items-start gap-2 mb-2">
             <h3 className="text-lg font-semibold min-w-0 flex-1">{event.title}</h3>
+            {event.is_recurring && (
+              <span className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-violet-100 text-violet-800">
+                <RefreshCw className="w-3 h-3" />
+                Регулярное
+              </span>
+            )}
             {getStatusBadge(event.status)}
           </div>
+
+          {/* Recurrence label for series parents */}
+          {event.is_recurring && event.recurrence_rule && (
+            <p className="text-xs text-violet-700 mb-2">
+              {formatRecurrenceLabel(event.recurrence_rule)}
+            </p>
+          )}
+
+          {/* Series label for child instances */}
+          {event.parent_event_id && (
+            <p className="text-xs text-neutral-400 mb-2">Регулярная серия</p>
+          )}
 
           {event.description && (
             <p className="text-sm text-neutral-600 mb-3 line-clamp-2">
@@ -160,11 +190,17 @@ export default function EventsList({ events, orgId, role, telegramGroups }: Prop
           <div className="space-y-2 text-sm text-neutral-600">
             <div className="flex items-center">
               <Calendar className="w-4 h-4 mr-2" />
-              <span>
-                {event.end_date && event.end_date !== event.event_date
-                  ? `${formatDate(event.event_date)} - ${formatDate(event.end_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`
-                  : `${formatDate(event.event_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
-              </span>
+              {event.is_recurring && event.next_occurrence_date ? (
+                <span>
+                  Следующее: {formatDate(event.next_occurrence_date)}, {formatTime(event.start_time)} – {formatTime(event.end_time)}
+                </span>
+              ) : (
+                <span>
+                  {event.end_date && event.end_date !== event.event_date
+                    ? `${formatDate(event.event_date)} - ${formatDate(event.end_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`
+                    : `${formatDate(event.event_date)}, ${formatTime(event.start_time)} - ${formatTime(event.end_time)}`}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center">

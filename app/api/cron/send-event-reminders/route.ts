@@ -126,9 +126,10 @@ async function sendRemindersForWindow({
   errors: string[];
 }): Promise<number> {
   // Fetch published events in the window
+  // Exclude recurring series parents (is_recurring=true AND parent_event_id IS NULL) — they have no fixed date
   const { data: eventsRaw, error: eventsError } = await adminSupabase
     .from('events')
-    .select('id, title, event_date, start_time, org_id, location_info, requires_payment')
+    .select('id, title, event_date, start_time, org_id, location_info, requires_payment, is_recurring, parent_event_id')
     .eq('status', 'published')
     .gte('event_date', startDate)
     .lt('event_date', endDate);
@@ -138,8 +139,12 @@ async function sendRemindersForWindow({
     return 0;
   }
 
+  // Filter out recurring series parents — only standalone events and child instances get DM reminders
+  const events = eventsRaw.filter((e: any) => !(e.is_recurring && !e.parent_event_id));
+  if (events.length === 0) return 0;
+
   // Get org names
-  const orgIds = Array.from(new Set(eventsRaw.map((e: any) => e.org_id)));
+  const orgIds = Array.from(new Set(events.map((e: any) => e.org_id)));
   const { data: orgs } = await adminSupabase
     .from('organizations')
     .select('id, name')
@@ -148,7 +153,7 @@ async function sendRemindersForWindow({
 
   let totalSent = 0;
 
-  for (const event of eventsRaw) {
+  for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
       adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType, errors
@@ -174,7 +179,7 @@ async function sendOneHourReminders({
   // Fetch events today with start_time in the 1-2 hour window
   const { data: eventsRaw, error: eventsError } = await adminSupabase
     .from('events')
-    .select('id, title, event_date, start_time, org_id, location_info, requires_payment')
+    .select('id, title, event_date, start_time, org_id, location_info, requires_payment, is_recurring, parent_event_id')
     .eq('status', 'published')
     .eq('event_date', today)
     .gte('start_time', startTime)
@@ -184,7 +189,11 @@ async function sendOneHourReminders({
     return 0;
   }
 
-  const orgIds = Array.from(new Set(eventsRaw.map((e: any) => e.org_id)));
+  // Exclude recurring series parents
+  const events = eventsRaw.filter((e: any) => !(e.is_recurring && !e.parent_event_id));
+  if (events.length === 0) return 0;
+
+  const orgIds = Array.from(new Set(events.map((e: any) => e.org_id)));
   const { data: orgs } = await adminSupabase
     .from('organizations')
     .select('id, name')
@@ -193,7 +202,7 @@ async function sendOneHourReminders({
 
   let totalSent = 0;
 
-  for (const event of eventsRaw) {
+  for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
       adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType: '1h', errors
@@ -217,7 +226,7 @@ async function sendPostEventFollowUps({
   // Fetch events that happened yesterday
   const { data: eventsRaw, error: eventsError } = await adminSupabase
     .from('events')
-    .select('id, title, event_date, org_id')
+    .select('id, title, event_date, org_id, is_recurring, parent_event_id')
     .eq('status', 'published')
     .eq('event_date', eventDate);
 
@@ -225,7 +234,11 @@ async function sendPostEventFollowUps({
     return 0;
   }
 
-  const orgIds = Array.from(new Set(eventsRaw.map((e: any) => e.org_id)));
+  // Exclude recurring series parents — they have no real date occurrence
+  const events = eventsRaw.filter((e: any) => !(e.is_recurring && !e.parent_event_id));
+  if (events.length === 0) return 0;
+
+  const orgIds = Array.from(new Set(events.map((e: any) => e.org_id)));
   const { data: orgs } = await adminSupabase
     .from('organizations')
     .select('id, name')
@@ -234,20 +247,24 @@ async function sendPostEventFollowUps({
 
   let totalSent = 0;
 
-  for (const event of eventsRaw) {
+  for (const event of events) {
     try {
+      // For recurring child instances, registrations are stored on the parent
+      const regEventId = event.parent_event_id ?? event.id;
+      const isRecurringChild = !!event.parent_event_id;
+
       // Get registrations that attended (check-in)
       const { data: attendedRegs } = await adminSupabase
         .from('event_registrations')
         .select('participant_id')
-        .eq('event_id', event.id)
+        .eq('event_id', regEventId)
         .eq('status', 'attended');
 
       // Get registrations that were registered but didn't attend (no-show)
       const { data: noShowRegs } = await adminSupabase
         .from('event_registrations')
         .select('participant_id')
-        .eq('event_id', event.id)
+        .eq('event_id', regEventId)
         .eq('status', 'registered'); // Still "registered" = didn't check in
 
       const org = orgsMap.get(event.org_id) as any;
@@ -285,11 +302,8 @@ async function sendPostEventFollowUps({
         }
       }
 
-      // Mark no-shows (optional: send gentle follow-up)
-      if (noShowRegs && noShowRegs.length > 0) {
-        // Update status to no_show for registrations that didn't check in
-        const noShowIds = noShowRegs.map((r: any) => r.participant_id);
-        
+      // Mark no-shows — but NOT for recurring series (registration covers the whole series)
+      if (!isRecurringChild && noShowRegs && noShowRegs.length > 0) {
         // Only mark as no_show if event has check-ins (otherwise we can't determine no-shows)
         if (attendedRegs && attendedRegs.length > 0) {
           await adminSupabase
@@ -331,11 +345,14 @@ async function sendReminderToParticipants({
   let sent = 0;
 
   try {
+    // For recurring child instances, registrations are on the parent event
+    const regEventId = event.parent_event_id ?? event.id;
+
     // Get registrations
     const { data: regsRaw, error: regsError } = await adminSupabase
       .from('event_registrations')
       .select('id, payment_status, participant_id')
-      .eq('event_id', event.id)
+      .eq('event_id', regEventId)
       .eq('status', 'registered');
 
     if (regsError || !regsRaw || regsRaw.length === 0) return 0;
