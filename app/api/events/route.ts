@@ -333,7 +333,8 @@ export async function POST(request: NextRequest) {
                 eventStartTime,
                 event.location_info,
                 targetGroups,
-                useMiniAppLink
+                useMiniAppLink,
+                event.event_type ?? 'offline'
               );
               logger.info({ 
                 event_id: event.id, 

@@ -303,7 +303,8 @@ export async function createEventReminders(
   eventStartTime: Date,
   eventLocation: string | null,
   targetGroups: string[],
-  useMiniAppLink: boolean = true
+  useMiniAppLink: boolean = true,
+  eventType: 'online' | 'offline' = 'offline'
 ): Promise<void> {
   const supabase = createAdminServer();
   
@@ -323,7 +324,12 @@ export async function createEventReminders(
   const escapedTitle = escapeHtml(eventTitle);
   let content24h = `🗓 <b>Напоминание: ${escapedTitle}</b>\n\n`;
   content24h += `📅 Завтра, ${formatDateTime(eventStartTime)}\n`;
-  if (eventLocation) {
+  if (eventType === 'online') {
+    content24h += `🌐 Онлайн\n`;
+    if (eventLocation) {
+      content24h += `🔗 <a href="${escapeHtml(eventLocation)}">Ссылка на встречу</a>\n`;
+    }
+  } else if (eventLocation) {
     content24h += `📍 ${escapeHtml(eventLocation)}\n`;
   }
   if (eventDescription) {
@@ -335,7 +341,12 @@ export async function createEventReminders(
   // Формируем текст напоминания за 1 час (в формате Telegram HTML)
   let content1h = `⏰ <b>Через час начинается: ${escapedTitle}</b>\n\n`;
   content1h += `🕐 Начало в ${formatDateTime(eventStartTime).split(', ').pop()}\n`;
-  if (eventLocation) {
+  if (eventType === 'online') {
+    content1h += `🌐 Онлайн\n`;
+    if (eventLocation) {
+      content1h += `🔗 <a href="${escapeHtml(eventLocation)}">Ссылка на встречу</a>\n`;
+    }
+  } else if (eventLocation) {
     content1h += `📍 ${escapeHtml(eventLocation)}\n`;
   }
   content1h += `\n🔗 <a href="${eventUrl}">Подробнее</a>`;

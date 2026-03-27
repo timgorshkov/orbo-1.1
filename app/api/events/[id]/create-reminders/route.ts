@@ -28,7 +28,7 @@ export async function POST(
     // Fetch event
     const { data: event, error: eventError } = await db
       .from('events')
-      .select('id, org_id, title, description, event_date, start_time, location_info')
+      .select('id, org_id, title, description, event_date, start_time, location_info, event_type')
       .eq('id', eventId)
       .single();
 
@@ -96,7 +96,8 @@ export async function POST(
       eventStartTime,
       event.location_info,
       targetGroups,
-      useMiniAppLink
+      useMiniAppLink,
+      event.event_type ?? 'offline'
     );
 
     if (reminder24h > now) created.push('за 24 часа');

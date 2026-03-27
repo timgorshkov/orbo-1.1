@@ -165,6 +165,9 @@ export async function POST(
 
     if (event.event_type === 'online') {
       message += `🌐 Онлайн\n`
+      if (event.location_info) {
+        message += `🔗 <a href="${event.location_info}">Ссылка на встречу</a>\n`
+      }
     } else if (event.location_info) {
       message += `📍 ${event.location_info}\n`
       if (event.map_link) {
