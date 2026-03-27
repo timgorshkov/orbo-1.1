@@ -85,11 +85,6 @@ export async function GET(
       .maybeSingle();
     const orgTimezone = (orgRow?.timezone as string) || 'Europe/Moscow';
 
-    const toDateKey = (iso: string | Date) => {
-      const d = typeof iso === 'string' ? new Date(iso) : iso;
-      return d.toLocaleDateString('en-CA', { timeZone: orgTimezone });
-    };
-
     // Initialize daily data (keys in org timezone)
     const dailyData: Record<string, { message_count: number; reaction_count: number }> = {};
     for (let i = days - 1; i >= 0; i--) {
@@ -114,91 +109,89 @@ export async function GET(
     // Calculate date range
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    const startIso = startDate.toISOString();
 
-    // Fetch Telegram events - NO org_id filter!
-    if (telegramChatIds.length > 0) {
-      const { data: telegramEvents, error: telegramError } = await adminSupabase
-        .from('activity_events')
-        .select('created_at, event_type')
-        .in('tg_chat_id', telegramChatIds)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: true });
+    // SQL-side aggregation: GROUP BY date in org timezone — returns ~30 rows instead of thousands
+    const numericTgChatIds = telegramChatIds.map(Number).filter(Number.isFinite);
+    const numericMaxChatIds = maxChatIds.map(Number).filter(Number.isFinite);
 
-      if (telegramError) {
-        logger.error({ error: telegramError.message }, 'Error fetching telegram events');
-      } else {
-        telegramEvents?.forEach(event => {
-          const createdAt = event.created_at instanceof Date
-            ? event.created_at.toISOString()
-            : String(event.created_at);
-          const dateKey = toDateKey(createdAt);
-          if (dailyData[dateKey]) {
-            if (event.event_type === 'message') {
-              dailyData[dateKey].message_count++;
-            } else if (event.event_type === 'reaction') {
-              dailyData[dateKey].reaction_count++;
+    const queries: Promise<void>[] = [];
+
+    // Telegram events (no org_id filter for cross-org history)
+    if (numericTgChatIds.length > 0) {
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<{ date: string; message_count: string; reaction_count: string }>(
+          `SELECT (created_at AT TIME ZONE $1)::date::text AS date,
+                  COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+                  COUNT(*) FILTER (WHERE event_type = 'reaction') AS reaction_count
+           FROM activity_events
+           WHERE tg_chat_id = ANY($2) AND created_at >= $3
+           GROUP BY 1`,
+          [orgTimezone, numericTgChatIds, startIso]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching telegram events');
+        } else {
+          rows?.forEach(r => {
+            if (dailyData[r.date]) {
+              dailyData[r.date].message_count += Number(r.message_count) || 0;
+              dailyData[r.date].reaction_count += Number(r.reaction_count) || 0;
             }
-          }
-        });
-      }
+          });
+        }
+      })());
     }
 
-    // Fetch WhatsApp events - WITH org_id filter
+    // WhatsApp events (org_id filter)
     if (includeWhatsApp) {
-      const { data: whatsappEvents, error: whatsappError } = await adminSupabase
-        .from('activity_events')
-        .select('created_at, event_type')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', 0)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: true });
-
-      if (whatsappError) {
-        logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
-      } else {
-        whatsappEvents?.forEach(event => {
-          const createdAt = event.created_at instanceof Date
-            ? event.created_at.toISOString()
-            : String(event.created_at);
-          const dateKey = toDateKey(createdAt);
-          if (dailyData[dateKey]) {
-            if (event.event_type === 'message') {
-              dailyData[dateKey].message_count++;
-            } else if (event.event_type === 'reaction') {
-              dailyData[dateKey].reaction_count++;
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<{ date: string; message_count: string; reaction_count: string }>(
+          `SELECT (created_at AT TIME ZONE $1)::date::text AS date,
+                  COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+                  COUNT(*) FILTER (WHERE event_type = 'reaction') AS reaction_count
+           FROM activity_events
+           WHERE org_id = $2 AND tg_chat_id = 0 AND created_at >= $3
+           GROUP BY 1`,
+          [orgTimezone, orgId, startIso]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching whatsapp events');
+        } else {
+          rows?.forEach(r => {
+            if (dailyData[r.date]) {
+              dailyData[r.date].message_count += Number(r.message_count) || 0;
+              dailyData[r.date].reaction_count += Number(r.reaction_count) || 0;
             }
-          }
-        });
-      }
+          });
+        }
+      })());
     }
 
-    // Fetch MAX group events - org_id + messenger_type + max_chat_id in linked groups
-    if (maxChatIds.length > 0) {
-      const { data: maxEvents, error: maxError } = await adminSupabase
-        .from('activity_events')
-        .select('created_at, event_type')
-        .eq('org_id', orgId)
-        .eq('messenger_type', 'max')
-        .eq('event_type', 'message')
-        .in('max_chat_id', maxChatIds)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: true });
-
-      if (maxError) {
-        logger.error({ error: maxError.message }, 'Error fetching MAX events');
-      } else {
-        maxEvents?.forEach(event => {
-          const createdAt = event.created_at instanceof Date
-            ? event.created_at.toISOString()
-            : String(event.created_at);
-          const dateKey = toDateKey(createdAt);
-          if (dailyData[dateKey]) {
-            dailyData[dateKey].message_count++;
-          }
-        });
-        logger.debug({ count: maxEvents?.length ?? 0, org_id: orgId }, 'Added MAX events to timeline');
-      }
+    // MAX group events
+    if (numericMaxChatIds.length > 0) {
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<{ date: string; message_count: string }>(
+          `SELECT (created_at AT TIME ZONE $1)::date::text AS date,
+                  COUNT(*) AS message_count
+           FROM activity_events
+           WHERE org_id = $2 AND messenger_type = 'max' AND event_type = 'message'
+             AND max_chat_id = ANY($3) AND created_at >= $4
+           GROUP BY 1`,
+          [orgTimezone, orgId, numericMaxChatIds, startIso]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching MAX events');
+        } else {
+          rows?.forEach(r => {
+            if (dailyData[r.date]) {
+              dailyData[r.date].message_count += Number(r.message_count) || 0;
+            }
+          });
+        }
+      })());
     }
+
+    await Promise.all(queries);
 
     // Convert to array
     const data = Object.entries(dailyData)

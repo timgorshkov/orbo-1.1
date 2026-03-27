@@ -67,10 +67,10 @@ export async function GET(
       })
     }
 
-    // Get registrations count by date
+    // Single query: fetch registrations with payment_status included
     const { data: registrations, error: regError } = await adminSupabase
       .from('event_registrations')
-      .select('registered_at, event_id')
+      .select('registered_at, payment_status')
       .in('event_id', eventIds)
       .gte('registered_at', startDate.toISOString())
       .lte('registered_at', endDate.toISOString())
@@ -81,22 +81,6 @@ export async function GET(
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
-    // Get payments count by date
-    const { data: payments, error: payError } = await adminSupabase
-      .from('event_registrations')
-      .select('registered_at, payment_status, event_id')
-      .in('event_id', eventIds)
-      .eq('payment_status', 'paid')
-      .gte('registered_at', startDate.toISOString())
-      .lte('registered_at', endDate.toISOString())
-      .order('registered_at', { ascending: true })
-
-    if (payError) {
-      logger.error({ error: payError, orgId }, 'Failed to fetch event payments')
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
-    }
-
-    // Create date array for all days in range
     const dateArray: string[] = []
     const currentDate = new Date(startDate)
     while (currentDate <= endDate) {
@@ -104,43 +88,33 @@ export async function GET(
       currentDate.setDate(currentDate.getDate() + 1)
     }
 
-    // Aggregate data by date
     const dataMap: { [key: string]: { registrations: number; payments: number } } = {}
     dateArray.forEach(date => {
       dataMap[date] = { registrations: 0, payments: 0 }
     })
 
-    // Count registrations per day
+    let totalPayments = 0
     registrations?.forEach(reg => {
       const date = new Date(reg.registered_at).toISOString().split('T')[0]
       if (dataMap[date]) {
         dataMap[date].registrations++
+        if (reg.payment_status === 'paid') {
+          dataMap[date].payments++
+          totalPayments++
+        }
       }
     })
 
-    // Count payments per day
-    payments?.forEach(pay => {
-      const date = new Date(pay.registered_at).toISOString().split('T')[0]
-      if (dataMap[date]) {
-        dataMap[date].payments++
-      }
-    })
-
-    // Convert to array format
     const data = dateArray.map(date => ({
       date,
       registrations: dataMap[date].registrations,
       payments: dataMap[date].payments
     }))
 
-    // Calculate totals
-    const totalRegistrations = registrations?.length || 0
-    const totalPayments = payments?.length || 0
-
     return NextResponse.json({
       data,
       totals: {
-        registrations: totalRegistrations,
+        registrations: registrations?.length || 0,
         payments: totalPayments
       }
     })

@@ -5,12 +5,7 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
-interface ActivityEvent {
-  event_type: string;
-  tg_user_id: number | null;
-  reply_to_message_id: number | null;
-}
-
+// SQL-side aggregation: returns 1 row with all metrics instead of loading thousands of events
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getMetricsForPeriod(
   supabase: any,
@@ -21,60 +16,60 @@ async function getMetricsForPeriod(
   endDate: Date,
   totalMembersInOrg: number
 ) {
-  let allEvents: ActivityEvent[] = [];
-  
-  // Get Telegram events (without org_id filter for cross-org history)
-  if (telegramChatIds.length > 0) {
-    const { data: telegramEvents, error: telegramError } = await supabase
-      .from('activity_events')
-      .select('event_type, tg_user_id, reply_to_message_id')
-      .in('tg_chat_id', telegramChatIds)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
-    
-    if (!telegramError && telegramEvents) {
-      allEvents = [...telegramEvents];
-    }
+  const numericTgChatIds = telegramChatIds.map(Number).filter(Number.isFinite);
+  const startIso = startDate.toISOString();
+  const endIso = endDate.toISOString();
+
+  type MetricsRow = { messages: string; reactions: string; replies: string; active_users: string };
+
+  let messages = 0, reactions = 0, replies = 0, activeParticipants = 0;
+
+  const queries: Promise<void>[] = [];
+
+  if (numericTgChatIds.length > 0) {
+    queries.push((async () => {
+      const { data: rows } = await supabase.raw<MetricsRow>(
+        `SELECT COUNT(*) FILTER (WHERE event_type = 'message') AS messages,
+                COUNT(*) FILTER (WHERE event_type = 'reaction') AS reactions,
+                COUNT(*) FILTER (WHERE event_type = 'message' AND reply_to_message_id IS NOT NULL) AS replies,
+                COUNT(DISTINCT tg_user_id) FILTER (WHERE event_type = 'message' AND tg_user_id IS NOT NULL) AS active_users
+         FROM activity_events
+         WHERE tg_chat_id = ANY($1) AND created_at >= $2 AND created_at <= $3`,
+        [numericTgChatIds, startIso, endIso]
+      );
+      if (rows?.[0]) {
+        messages += Number(rows[0].messages) || 0;
+        reactions += Number(rows[0].reactions) || 0;
+        replies += Number(rows[0].replies) || 0;
+        activeParticipants += Number(rows[0].active_users) || 0;
+      }
+    })());
   }
-  
-  // Get WhatsApp events (with org_id filter)
+
   if (includeWhatsApp) {
-    const { data: whatsappEvents, error: whatsappError } = await supabase
-      .from('activity_events')
-      .select('event_type, tg_user_id, reply_to_message_id')
-      .eq('org_id', orgId)
-      .eq('tg_chat_id', 0)
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString());
-    
-    if (!whatsappError && whatsappEvents) {
-      allEvents = [...allEvents, ...whatsappEvents];
-    }
+    queries.push((async () => {
+      const { data: rows } = await supabase.raw<MetricsRow>(
+        `SELECT COUNT(*) FILTER (WHERE event_type = 'message') AS messages,
+                COUNT(*) FILTER (WHERE event_type = 'reaction') AS reactions,
+                COUNT(*) FILTER (WHERE event_type = 'message' AND reply_to_message_id IS NOT NULL) AS replies,
+                COUNT(DISTINCT tg_user_id) FILTER (WHERE event_type = 'message' AND tg_user_id IS NOT NULL) AS active_users
+         FROM activity_events
+         WHERE org_id = $1 AND tg_chat_id = 0 AND created_at >= $2 AND created_at <= $3`,
+        [orgId, startIso, endIso]
+      );
+      if (rows?.[0]) {
+        messages += Number(rows[0].messages) || 0;
+        reactions += Number(rows[0].reactions) || 0;
+        replies += Number(rows[0].replies) || 0;
+        activeParticipants += Number(rows[0].active_users) || 0;
+      }
+    })());
   }
 
-  let messages = 0;
-  let reactions = 0;
-  let replies = 0;
-  const activeUsers = new Set<number>(); // Track by tg_user_id
+  await Promise.all(queries);
 
-  allEvents.forEach(event => {
-    if (event.event_type === 'message') {
-      messages++;
-      if (event.tg_user_id) activeUsers.add(event.tg_user_id);
-      if (event.reply_to_message_id) replies++;
-    } else if (event.event_type === 'reaction') {
-      reactions++;
-    }
-  });
-
-  const activeParticipants = activeUsers.size;
-  
-  // Вовлечённость = % активных участников от общего числа участников в организации
-  // Если totalMembersInOrg = 0, используем activeParticipants как базу
   const engagementBase = totalMembersInOrg > 0 ? totalMembersInOrg : activeParticipants;
   const engagementRate = engagementBase > 0 ? (activeParticipants / engagementBase) * 100 : 0;
-  
-  // Доля ответов = % сообщений которые являются ответами
   const replyRatio = messages > 0 ? (replies / messages) * 100 : 0;
 
   return {
@@ -82,7 +77,7 @@ async function getMetricsForPeriod(
     messages,
     reactions,
     replies,
-    engagement_rate: Math.min(Math.round(engagementRate * 10) / 10, 100), // Cap at 100%
+    engagement_rate: Math.min(Math.round(engagementRate * 10) / 10, 100),
     reply_ratio: Math.round(replyRatio * 10) / 10
   };
 }

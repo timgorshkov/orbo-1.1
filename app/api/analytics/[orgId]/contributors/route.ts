@@ -73,74 +73,87 @@ export async function GET(
       return NextResponse.json({ data: [] });
     }
 
-    // Get last 30 days of activity - NO org_id filter for Telegram!
-    // But for WhatsApp (tg_chat_id = 0) we need org_id filter
+    // SQL-side aggregation: GROUP BY tg_user_id — returns only top contributors
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
+    const startIso = startDate.toISOString();
 
-    // Get Telegram events (without org_id filter for cross-org history)
     const telegramChatIds = chatIds.filter(id => id !== '0');
     const includeWhatsApp = chatIds.includes('0');
-    
-    let allEvents: any[] = [];
-    
-    if (telegramChatIds.length > 0) {
-      const { data: telegramEvents, error: telegramError } = await adminSupabase
-        .from('activity_events')
-        .select('tg_user_id, event_type')
-        .in('tg_chat_id', telegramChatIds)
-        .in('event_type', ['message', 'reaction'])
-        .gte('created_at', startDate.toISOString())
-        .not('tg_user_id', 'is', null);
-      
-      if (telegramError) {
-        logger.error({ error: telegramError.message }, 'Error fetching telegram events');
-      } else {
-        allEvents = [...(telegramEvents || [])];
-      }
-    }
-    
-    if (includeWhatsApp) {
-      const { data: whatsappEvents, error: whatsappError } = await adminSupabase
-        .from('activity_events')
-        .select('tg_user_id, event_type')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', 0)
-        .in('event_type', ['message', 'reaction'])
-        .gte('created_at', startDate.toISOString());
-      
-      if (whatsappError) {
-        logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
-      } else {
-        allEvents = [...allEvents, ...(whatsappEvents || [])];
-      }
+    const numericTgChatIds = telegramChatIds.map(Number).filter(Number.isFinite);
+
+    const SYSTEM_ACCOUNT_IDS = [777000, 136817688, 1087968824];
+    const topN = limit * 2;
+
+    type ContributorRow = { tg_user_id: string; message_count: string; reaction_count: string };
+    const userCounts: Record<number, { message_count: number; reaction_count: number; tg_user_id: number }> = {};
+
+    const queries: Promise<void>[] = [];
+
+    if (numericTgChatIds.length > 0) {
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<ContributorRow>(
+          `SELECT tg_user_id,
+                  COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+                  COUNT(*) FILTER (WHERE event_type = 'reaction') AS reaction_count
+           FROM activity_events
+           WHERE tg_chat_id = ANY($1)
+             AND event_type IN ('message', 'reaction')
+             AND created_at >= $2
+             AND tg_user_id IS NOT NULL
+             AND tg_user_id != ALL($3)
+           GROUP BY tg_user_id
+           ORDER BY COUNT(*) DESC
+           LIMIT $4`,
+          [numericTgChatIds, startIso, SYSTEM_ACCOUNT_IDS, topN]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching telegram contributors');
+        } else {
+          rows?.forEach(r => {
+            const uid = Number(r.tg_user_id);
+            if (!userCounts[uid]) userCounts[uid] = { message_count: 0, reaction_count: 0, tg_user_id: uid };
+            userCounts[uid].message_count += Number(r.message_count) || 0;
+            userCounts[uid].reaction_count += Number(r.reaction_count) || 0;
+          });
+        }
+      })());
     }
 
-    const SYSTEM_ACCOUNT_IDS = new Set([777000, 136817688, 1087968824]);
-    const userCounts: Record<number, { 
-      message_count: number; 
-      reaction_count: number;
-      tg_user_id: number;
-    }> = {};
-    
-    allEvents.forEach(event => {
-      const userId = event.tg_user_id;
-      if (!userId || SYSTEM_ACCOUNT_IDS.has(userId)) return;
-      
-      if (!userCounts[userId]) {
-        userCounts[userId] = { message_count: 0, reaction_count: 0, tg_user_id: userId };
-      }
-      
-      if (event.event_type === 'message') {
-        userCounts[userId].message_count++;
-      } else if (event.event_type === 'reaction') {
-        userCounts[userId].reaction_count++;
-      }
-    });
+    if (includeWhatsApp) {
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<ContributorRow>(
+          `SELECT tg_user_id,
+                  COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+                  COUNT(*) FILTER (WHERE event_type = 'reaction') AS reaction_count
+           FROM activity_events
+           WHERE org_id = $1 AND tg_chat_id = 0
+             AND event_type IN ('message', 'reaction')
+             AND created_at >= $2
+             AND tg_user_id IS NOT NULL
+           GROUP BY tg_user_id
+           ORDER BY COUNT(*) DESC
+           LIMIT $3`,
+          [orgId, startIso, topN]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching whatsapp contributors');
+        } else {
+          rows?.forEach(r => {
+            const uid = Number(r.tg_user_id);
+            if (!userCounts[uid]) userCounts[uid] = { message_count: 0, reaction_count: 0, tg_user_id: uid };
+            userCounts[uid].message_count += Number(r.message_count) || 0;
+            userCounts[uid].reaction_count += Number(r.reaction_count) || 0;
+          });
+        }
+      })());
+    }
+
+    await Promise.all(queries);
 
     const sortedEntries = Object.values(userCounts)
       .sort((a, b) => (b.message_count + b.reaction_count) - (a.message_count + a.reaction_count))
-      .slice(0, limit * 2);
+      .slice(0, topN);
 
     // Enrich ALL top contributors from participants table (single query)
     const tgUserIdsToEnrich = sortedEntries.map(data => data.tg_user_id);

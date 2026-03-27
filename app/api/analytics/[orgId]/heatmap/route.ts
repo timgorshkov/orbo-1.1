@@ -86,52 +86,59 @@ export async function GET(
       return NextResponse.json({ data });
     }
 
-    // Get activity
+    // SQL-side aggregation: GROUP BY day_of_week, hour — returns max 168 rows instead of thousands
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    const startIso = startDate.toISOString();
+    const numericTgChatIds = telegramChatIds.map(Number).filter(Number.isFinite);
 
-    // Fetch Telegram events - NO org_id filter
-    if (telegramChatIds.length > 0) {
-      const { data: telegramEvents, error: telegramError } = await adminSupabase
-        .from('activity_events')
-        .select('created_at')
-        .in('tg_chat_id', telegramChatIds)
-        .eq('event_type', 'message')
-        .gte('created_at', startDate.toISOString());
+    const queries: Promise<void>[] = [];
 
-      if (telegramError) {
-        logger.error({ error: telegramError.message }, 'Error fetching telegram events');
-      } else {
-        telegramEvents?.forEach(event => {
-          const date = new Date(event.created_at);
-          const dayOfWeek = date.getUTCDay(); // 0=Sun
-          const hour = date.getUTCHours();
-          heatmap[`${dayOfWeek}-${hour}`]++;
-        });
-      }
+    if (numericTgChatIds.length > 0) {
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<{ dow: string; hour: string; cnt: string }>(
+          `SELECT EXTRACT(DOW FROM created_at)::int AS dow,
+                  EXTRACT(HOUR FROM created_at)::int AS hour,
+                  COUNT(*) AS cnt
+           FROM activity_events
+           WHERE tg_chat_id = ANY($1) AND event_type = 'message' AND created_at >= $2
+           GROUP BY 1, 2`,
+          [numericTgChatIds, startIso]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching telegram heatmap');
+        } else {
+          rows?.forEach(r => {
+            const key = `${r.dow}-${r.hour}`;
+            heatmap[key] = (heatmap[key] || 0) + (Number(r.cnt) || 0);
+          });
+        }
+      })());
     }
 
-    // Fetch WhatsApp events - WITH org_id filter
     if (includeWhatsApp) {
-      const { data: whatsappEvents, error: whatsappError } = await adminSupabase
-        .from('activity_events')
-        .select('created_at')
-        .eq('org_id', orgId)
-        .eq('tg_chat_id', 0)
-        .eq('event_type', 'message')
-        .gte('created_at', startDate.toISOString());
-
-      if (whatsappError) {
-        logger.error({ error: whatsappError.message }, 'Error fetching whatsapp events');
-      } else {
-        whatsappEvents?.forEach(event => {
-          const date = new Date(event.created_at);
-          const dayOfWeek = date.getUTCDay();
-          const hour = date.getUTCHours();
-          heatmap[`${dayOfWeek}-${hour}`]++;
-        });
-      }
+      queries.push((async () => {
+        const { data: rows, error: err } = await adminSupabase.raw<{ dow: string; hour: string; cnt: string }>(
+          `SELECT EXTRACT(DOW FROM created_at)::int AS dow,
+                  EXTRACT(HOUR FROM created_at)::int AS hour,
+                  COUNT(*) AS cnt
+           FROM activity_events
+           WHERE org_id = $1 AND tg_chat_id = 0 AND event_type = 'message' AND created_at >= $2
+           GROUP BY 1, 2`,
+          [orgId, startIso]
+        );
+        if (err) {
+          logger.error({ error: err.message }, 'Error fetching whatsapp heatmap');
+        } else {
+          rows?.forEach(r => {
+            const key = `${r.dow}-${r.hour}`;
+            heatmap[key] = (heatmap[key] || 0) + (Number(r.cnt) || 0);
+          });
+        }
+      })());
     }
+
+    await Promise.all(queries);
 
     // Convert to array format
     const data: { day_of_week: number; hour_of_day: number; message_count: number }[] = [];
