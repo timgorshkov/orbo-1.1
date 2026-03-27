@@ -85,9 +85,12 @@ export async function GET(request: NextRequest) {
 
         const currentWebhook = webhookInfo.result;
 
-        const needsRestore = 
+        const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+        const hasRecentError = currentWebhook.last_error_date && currentWebhook.last_error_date > oneHourAgo;
+
+        const needsRestore =
           currentWebhook.url !== bot.webhookUrl ||
-          currentWebhook.last_error_date;
+          hasRecentError;
 
         if (!needsRestore) {
           results[bot.name] = { 
@@ -123,12 +126,13 @@ export async function GET(request: NextRequest) {
         }
 
         logger.info({ bot: bot.name }, 'Webhook restored successfully');
-        results[bot.name] = { 
+        results[bot.name] = {
           status: 'restored',
           previous_url: currentWebhook.url,
           new_url: bot.webhookUrl,
-          had_errors: !!currentWebhook.last_error_date,
-          last_error: currentWebhook.last_error_message
+          had_recent_errors: !!hasRecentError,
+          last_error: currentWebhook.last_error_message,
+          last_error_date: currentWebhook.last_error_date
         };
       } catch (err) {
         results[bot.name] = { status: 'error', error: err instanceof Error ? err.message : String(err) };
