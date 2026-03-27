@@ -36,80 +36,77 @@ export class UnisenderGoEmailProvider implements EmailProvider {
       return { success: false, error: 'Unisender Go not configured' };
     }
 
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 2000;
 
-    try {
-      const response = await fetch(`${this.baseUrl}/email/send.json`, {
-        method: 'POST',
-        signal: AbortSignal.timeout(15_000),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-KEY': this.apiKey,
-        },
-        body: JSON.stringify({
-          message: {
-            recipients: [{ email: params.to }],
-            subject: params.subject,
-            body: {
-              html: params.html,
-              plaintext: params.text || this.stripHtml(params.html),
-            },
-            from_email: this.fromEmail,
-            from_name: this.fromName,
-            reply_to: params.replyTo,
-            track_links: 0,
-            track_read: 0,
-            // Теги для аналитики
-            ...(params.tags && { tags: params.tags }),
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(`${this.baseUrl}/email/send.json`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15_000),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': this.apiKey,
           },
-        }),
-      });
+          body: JSON.stringify({
+            message: {
+              recipients: [{ email: params.to }],
+              subject: params.subject,
+              body: {
+                html: params.html,
+                plaintext: params.text || this.stripHtml(params.html),
+              },
+              from_email: this.fromEmail,
+              from_name: this.fromName,
+              reply_to: params.replyTo,
+              track_links: 0,
+              track_read: 0,
+              // Теги для аналитики
+              ...(params.tags && { tags: params.tags }),
+            },
+          }),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (result.status === 'success') {
-        logger.info({ 
-          to: params.to, 
-          job_id: result.job_id 
-        }, 'Email sent via Unisender Go');
-        
-        return { 
-          success: true, 
-          messageId: result.job_id 
-        };
-      } else {
+        if (result.status === 'success') {
+          if (attempt > 1) {
+            logger.info({ to: params.to, job_id: result.job_id, attempt }, 'Email sent via Unisender Go (after retry)');
+          } else {
+            logger.info({ to: params.to, job_id: result.job_id }, 'Email sent via Unisender Go');
+          }
+          return { success: true, messageId: result.job_id };
+        }
+
+        // API-level error — don't retry, it's deterministic
         const errorMsg = result.message || 'Send failed';
         // Code 204 = "No valid recipients" — recipient is suppressed/invalid, not a service error
         const isRecipientRejection = result.code === 204 ||
           (typeof errorMsg === 'string' && errorMsg.toLowerCase().includes('no valid recipients'));
 
         if (isRecipientRejection) {
-          logger.warn({ 
-            to: params.to, 
-            error: errorMsg,
-            code: result.code 
-          }, 'Unisender Go send failed');
+          logger.warn({ to: params.to, error: errorMsg, code: result.code }, 'Unisender Go send failed');
         } else {
-          logger.error({ 
-            to: params.to, 
-            error: errorMsg,
-            code: result.code 
-          }, 'Unisender Go send failed');
+          logger.error({ to: params.to, error: errorMsg, code: result.code }, 'Unisender Go send failed');
         }
-        
-        return { 
-          success: false, 
-          error: errorMsg
-        };
+        return { success: false, error: errorMsg };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (attempt < MAX_ATTEMPTS) {
+          logger.warn({ to: params.to, error: errorMessage, attempt, next_attempt_in_ms: RETRY_DELAY_MS }, 'Unisender Go request failed, retrying');
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
+        }
+
+        logger.error({ to: params.to, error: errorMessage, attempts: MAX_ATTEMPTS }, 'Unisender Go request failed');
+        return { success: false, error: errorMessage };
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error({ 
-        to: params.to, 
-        error: errorMessage 
-      }, 'Unisender Go request failed');
-      
-      return { success: false, error: errorMessage };
     }
+
+    // Unreachable, but TypeScript needs it
+    return { success: false, error: 'Unexpected send loop exit' };
   }
 
   private stripHtml(html: string): string {

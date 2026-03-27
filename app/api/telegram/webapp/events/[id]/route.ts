@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { validateInitData, getEventBotToken } from '@/lib/telegram/webAppAuth';
+import { validateInitData, getEventBotToken, TelegramWebAppUser } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
 
 /**
@@ -20,18 +20,22 @@ export async function GET(
     // Get initData from header (optional for viewing, required for registration)
     const initDataString = request.headers.get('X-Telegram-Init-Data') || '';
     
-    let telegramUser = null;
+    let telegramUser: TelegramWebAppUser | null = null;
     let isValidated = false;
     
-    // Validate initData if provided
+    // Validate initData if provided — try event bot token first, fallback to main bot token
     if (initDataString) {
-      const botToken = getEventBotToken();
-      if (botToken) {
-        const initData = validateInitData(initDataString, botToken);
-        if (initData?.user) {
-          telegramUser = initData.user;
-          isValidated = true;
-        }
+      const eventBotToken = getEventBotToken();
+      const mainBotToken = process.env.TELEGRAM_BOT_TOKEN;
+
+      let initData = eventBotToken ? validateInitData(initDataString, eventBotToken) : null;
+      if (!initData) {
+        initData = mainBotToken ? validateInitData(initDataString, mainBotToken) : null;
+      }
+
+      if (initData?.user) {
+        telegramUser = initData.user;
+        isValidated = true;
       }
     }
     

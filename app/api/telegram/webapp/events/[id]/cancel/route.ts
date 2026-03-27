@@ -17,14 +17,20 @@ export async function POST(
       return NextResponse.json({ error: 'Telegram auth required' }, { status: 401 });
     }
     
-    // Validate Telegram WebApp data
-    const botToken = getEventBotToken();
-    if (!botToken) {
-      logger.error({ event_id: eventId }, 'Event bot token not configured');
+    // Validate Telegram WebApp data — try event bot token first, fallback to main bot token
+    const eventBotToken = getEventBotToken();
+    const mainBotToken = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!eventBotToken && !mainBotToken) {
+      logger.error({ event_id: eventId }, 'No bot token configured for initData validation');
       return NextResponse.json({ error: 'Service unavailable' }, { status: 500 });
     }
-    
-    const initData = validateInitData(initDataString, botToken);
+
+    let initData = eventBotToken ? validateInitData(initDataString, eventBotToken) : null;
+    if (!initData) {
+      initData = mainBotToken ? validateInitData(initDataString, mainBotToken) : null;
+    }
+
     if (!initData?.user) {
       return NextResponse.json({ error: 'Invalid Telegram auth' }, { status: 401 });
     }

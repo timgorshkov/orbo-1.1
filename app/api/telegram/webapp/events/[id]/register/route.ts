@@ -25,13 +25,19 @@ export async function POST(
       return NextResponse.json({ error: 'Требуется авторизация через Telegram' }, { status: 401 });
     }
     
-    const botToken = getEventBotToken();
-    if (!botToken) {
-      logger.error({}, 'TELEGRAM_EVENT_BOT_TOKEN not configured');
+    const eventBotToken = getEventBotToken();
+    const mainBotToken = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!eventBotToken && !mainBotToken) {
+      logger.error({}, 'No bot token configured for initData validation');
       return NextResponse.json({ error: 'Сервис временно недоступен' }, { status: 500 });
     }
-    
-    const initData = validateInitData(initDataString, botToken);
+
+    let initData = eventBotToken ? validateInitData(initDataString, eventBotToken) : null;
+    if (!initData) {
+      initData = mainBotToken ? validateInitData(initDataString, mainBotToken) : null;
+    }
+
     if (!initData?.user) {
       logger.warn({ event_id: eventId }, 'Invalid initData');
       return NextResponse.json({ error: 'Недействительная авторизация' }, { status: 401 });
