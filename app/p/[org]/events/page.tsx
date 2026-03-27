@@ -63,6 +63,19 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     }
   }
 
+  // Build a map of parent events for cover image fallback
+  const parentIds = [...new Set(events.filter((e: any) => e.parent_event_id).map((e: any) => e.parent_event_id))]
+  const parentCovers = new Map<string, string | null>()
+  if (parentIds.length > 0) {
+    const { data: parents } = await adminSupabase
+      .from('events')
+      .select('id, cover_image_url')
+      .in('id', parentIds)
+    for (const p of parents || []) {
+      parentCovers.set(p.id, p.cover_image_url)
+    }
+  }
+
   // Calculate stats for each event
   const eventsWithStats = events.map((event: any) => {
     // Children: registrations stored on parent
@@ -76,8 +89,14 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
       ? Math.max(0, event.capacity - registeredCount)
       : null
 
+    // Children without cover: fall back to parent's cover
+    const coverImageUrl = event.cover_image_url
+      || (event.parent_event_id ? parentCovers.get(event.parent_event_id) : null)
+      || null
+
     return {
       ...event,
+      cover_image_url: coverImageUrl,
       registered_count: registeredCount,
       available_spots: availableSpots
     }

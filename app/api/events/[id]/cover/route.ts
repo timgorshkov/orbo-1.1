@@ -144,6 +144,19 @@ export async function POST(
       )
     }
 
+    // If this is a recurring series parent — propagate cover to all child instances too
+    if (updatedEvent?.is_recurring && !updatedEvent?.parent_event_id) {
+      const { error: childUpdateError } = await supabase
+        .from('events')
+        .update({ cover_image_url: publicUrl })
+        .eq('parent_event_id', eventId)
+      if (childUpdateError) {
+        logger.warn({ error: childUpdateError.message, parent_id: eventId }, 'Failed to propagate cover to child instances')
+      } else {
+        logger.info({ parent_id: eventId }, 'Propagated cover image to child instances')
+      }
+    }
+
     return NextResponse.json({
       success: true,
       cover_image_url: publicUrl,

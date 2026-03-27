@@ -225,8 +225,20 @@ export default async function EventDetailPage({
     } else {
       event = { ...eventBase, event_registrations: [] };
     }
+
+    // For child instances without cover: fall back to parent's cover image
+    if (event && event.parent_event_id && !event.cover_image_url) {
+      const { data: parentEvent } = await adminSupabase
+        .from('events')
+        .select('cover_image_url')
+        .eq('id', event.parent_event_id)
+        .maybeSingle()
+      if (parentEvent?.cover_image_url) {
+        event = { ...event, cover_image_url: parentEvent.cover_image_url }
+      }
+    }
   }
-  
+
   timing.mark('fetch_event_end');
   timing.measure('fetch_event', 'fetch_event_start', 'fetch_event_end');
 
