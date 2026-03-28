@@ -612,76 +612,51 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         )}
       </div>
 
-      {/* Recurring event info block for child instances */}
+      {/* Recurring event info — compact single line */}
       {event.parent_event_id && recurringContext && (
-        <div className="mb-6 rounded-lg border border-violet-200 bg-violet-50 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <RefreshCw className="w-4 h-4 text-violet-600" />
-            <span className="font-medium text-violet-900">Регулярное мероприятие</span>
-            {event.recurrence_rule && (
-              <span className="text-sm text-violet-700">· {formatRecurrenceLabel(event.recurrence_rule)}</span>
-            )}
-          </div>
+        <div className="mb-5 flex items-center gap-2 flex-wrap text-sm">
+          <RefreshCw className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+          <span className="font-medium text-violet-800">Регулярное мероприятие</span>
 
-          {/* Navigation between instances */}
-          <div className="flex items-center gap-2 mb-3">
-            {recurringContext.prevInstance ? (
-              <button
-                onClick={() => window.location.href = `/p/${orgId}/events/${recurringContext.prevInstance!.id}`}
-                className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 hover:underline"
-              >
-                <ChevronLeft className="w-3 h-3" />
-                {new Date(recurringContext.prevInstance.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-              </button>
-            ) : (
-              <span className="text-xs text-violet-400">← первое</span>
-            )}
-            <span className="text-violet-300 mx-1">|</span>
-            {recurringContext.nextInstance ? (
-              <button
-                onClick={() => window.location.href = `/p/${orgId}/events/${recurringContext.nextInstance!.id}`}
-                className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 hover:underline"
-              >
-                {new Date(recurringContext.nextInstance.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            ) : (
-              <span className="text-xs text-violet-400">последнее →</span>
-            )}
-          </div>
-
-          {/* Admin: link to edit the whole series (parent event) */}
-          {showAdminFeatures && (
-            <div className="mb-3 pt-2 border-t border-violet-200">
-              <button
-                onClick={() => window.location.href = `/p/${orgId}/events/${event.parent_event_id}?edit=true&view_parent=1`}
-                className="text-xs text-violet-700 hover:text-violet-900 hover:underline font-medium"
-              >
-                ⚙️ Редактировать всю серию
-              </button>
-            </div>
+          {recurringContext.prevInstance && (
+            <a
+              href={`/p/${orgId}/events/${recurringContext.prevInstance.id}`}
+              className="inline-flex items-center gap-0.5 text-violet-500 hover:text-violet-700 hover:underline"
+            >
+              <ChevronLeft className="w-3 h-3" />
+              {new Date(recurringContext.prevInstance.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+            </a>
           )}
 
-          {/* Upcoming dates */}
           {recurringContext.futureInstances.length > 0 && (
-            <div>
-              <p className="text-xs text-violet-600 mb-1 font-medium">Предстоящие встречи:</p>
-              <div className="flex flex-wrap gap-2">
-                {recurringContext.futureInstances.slice(0, 6).map(inst => (
-                  <button
-                    key={inst.id}
-                    onClick={() => window.location.href = `/p/${orgId}/events/${inst.id}`}
-                    className={`text-xs px-2 py-1 rounded-full border transition-colors ${
-                      inst.id === event.id
-                        ? 'bg-violet-600 text-white border-violet-600'
-                        : 'bg-white text-violet-700 border-violet-200 hover:border-violet-400 hover:bg-violet-100'
-                    }`}
-                  >
-                    {new Date(inst.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <>
+              <span className="text-violet-300 select-none">|</span>
+              {recurringContext.futureInstances.slice(0, 8).map(inst => (
+                <button
+                  key={inst.id}
+                  onClick={() => window.location.href = `/p/${orgId}/events/${inst.id}`}
+                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                    inst.id === event.id
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'text-violet-700 border-violet-200 hover:border-violet-400 hover:bg-violet-50'
+                  }`}
+                >
+                  {new Date(inst.event_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                </button>
+              ))}
+            </>
+          )}
+
+          {showAdminFeatures && (
+            <>
+              <span className="text-violet-300 select-none">·</span>
+              <a
+                href={`/p/${orgId}/events/${event.parent_event_id}?edit=true&view_parent=1`}
+                className="text-xs text-violet-400 hover:text-violet-700 hover:underline"
+              >
+                ⚙ серия
+              </a>
+            </>
           )}
         </div>
       )}
