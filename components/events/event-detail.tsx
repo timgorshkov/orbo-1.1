@@ -52,6 +52,8 @@ type Event = {
   registered_count: number
   available_spots: number | null
   is_user_registered: boolean
+  has_series_registration?: boolean   // child instance: has active parent reg
+  is_instance_cancelled?: boolean     // child instance: opted out of this specific one
   // Recurring events
   is_recurring?: boolean
   parent_event_id?: string | null
@@ -111,6 +113,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
   const [isPending, startTransition] = useTransition()
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [isRegistered, setIsRegistered] = useState(event.is_user_registered)
+  const [isInstanceCancelled, setIsInstanceCancelled] = useState(event.is_instance_cancelled ?? false)
+  const [showCancelScopeDialog, setShowCancelScopeDialog] = useState(false)
   const [userRegistration, setUserRegistration] = useState<UserRegistration | null>(null)
   const [loadingRegistration, setLoadingRegistration] = useState(false)
   const [showNotifyDialog, setShowNotifyDialog] = useState(false)
@@ -230,20 +234,48 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
 
   const handleUnregister = () => {
     setRegistrationError(null)
-    
+    if (event.parent_event_id) {
+      // Recurring child instance — ask scope
+      setShowCancelScopeDialog(true)
+    } else {
+      doCancel('all')
+    }
+  }
+
+  const doCancel = (scope: 'this' | 'all') => {
+    setShowCancelScopeDialog(false)
     startTransition(async () => {
       try {
-        const response = await fetch(`/api/events/${event.id}/register`, {
+        const response = await fetch(`/api/events/${event.id}/register?scope=${scope}`, {
           method: 'DELETE'
         })
-
         const data = await response.json()
-
         if (!response.ok) {
           throw new Error(data.error || 'Не удалось отменить регистрацию')
         }
+        if (scope === 'this') {
+          setIsInstanceCancelled(true)
+          setIsRegistered(false)
+        } else {
+          setIsRegistered(false)
+          setIsInstanceCancelled(false)
+        }
+        router.refresh()
+      } catch (err: any) {
+        setRegistrationError(err.message)
+      }
+    })
+  }
 
-        setIsRegistered(false)
+  const handleReoptIn = () => {
+    setRegistrationError(null)
+    startTransition(async () => {
+      try {
+        const response = await fetch(`/api/events/${event.id}/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'Ошибка')
+        setIsInstanceCancelled(false)
+        setIsRegistered(true)
         router.refresh()
       } catch (err: any) {
         setRegistrationError(err.message)
@@ -704,6 +736,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                         >
                           Войти и зарегистрироваться
                         </a>
+                      </div>
+                    ) : isInstanceCancelled ? (
+                      <div className="text-center py-4">
+                        <div className="text-neutral-500 font-medium mb-2">Вы пропускаете это занятие</div>
+                        <div className="text-sm text-neutral-600 mb-4">Вы зарегистрированы на серию, но не будете на этом занятии</div>
+                        <Button className="w-full" onClick={handleReoptIn} disabled={isPending}>
+                          {isPending ? 'Обновление...' : 'Буду участвовать'}
+                        </Button>
                       </div>
                     ) : isRegistered ? (
                       <>
@@ -1251,6 +1291,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                           Войти и зарегистрироваться
                         </a>
                       </div>
+                    ) : isInstanceCancelled ? (
+                      <div className="text-center py-4">
+                        <div className="text-neutral-500 font-medium mb-2">Вы пропускаете это занятие</div>
+                        <div className="text-sm text-neutral-600 mb-4">Вы зарегистрированы на серию, но не будете на этом занятии</div>
+                        <Button className="w-full" onClick={handleReoptIn} disabled={isPending}>
+                          {isPending ? 'Обновление...' : 'Буду участвовать'}
+                        </Button>
+                      </div>
                     ) : isRegistered ? (
                       <>
                         <div className="text-center py-2">
@@ -1653,6 +1701,44 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             router.refresh()
           }}
         />
+      )}
+
+      {/* Cancel Scope Dialog (recurring events) */}
+      {showCancelScopeDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-2">Отменить регистрацию</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Это регулярное мероприятие. Что именно вы хотите отменить?
+            </p>
+            <div className="space-y-3">
+              <button
+                className="w-full text-left p-4 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors disabled:opacity-50"
+                onClick={() => doCancel('this')}
+                disabled={isPending}
+              >
+                <div className="font-medium text-neutral-900">Только это занятие</div>
+                <div className="text-xs text-neutral-500 mt-0.5">Вы останетесь зарегистрированы на остальные занятия серии</div>
+              </button>
+              <button
+                className="w-full text-left p-4 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 text-red-600"
+                onClick={() => doCancel('all')}
+                disabled={isPending}
+              >
+                <div className="font-medium">Все последующие занятия</div>
+                <div className="text-xs text-red-400 mt-0.5">Полностью отменить регистрацию на серию</div>
+              </button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setShowCancelScopeDialog(false)}
+                disabled={isPending}
+              >
+                Назад
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Event Dialog */}

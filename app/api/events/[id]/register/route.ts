@@ -189,6 +189,38 @@ export async function POST(
       }
     }
 
+    // Re-opt-in: if this is a child instance and the participant previously opted out,
+    // delete the per-instance cancellation record and return success (parent reg still active)
+    if (event.parent_event_id) {
+      const { data: instanceOptOut } = await adminSupabase
+        .from('event_registrations')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('participant_id', participant.id)
+        .eq('status', 'cancelled')
+        .maybeSingle()
+
+      if (instanceOptOut) {
+        // Check that parent registration is still active
+        const { data: parentReg } = await adminSupabase
+          .from('event_registrations')
+          .select('id, status')
+          .eq('event_id', registrationEventId)
+          .eq('participant_id', participant.id)
+          .eq('status', 'registered')
+          .maybeSingle()
+
+        if (parentReg) {
+          // Delete the instance opt-out → participant is back
+          await adminSupabase
+            .from('event_registrations')
+            .update({ status: 'registered' })
+            .eq('id', instanceOptOut.id)
+          return NextResponse.json({ success: true, reactivated: true }, { status: 200 })
+        }
+      }
+    }
+
     // Check if already registered (use admin client to bypass RLS)
     const { data: existingRegistration } = await adminSupabase
       .from('event_registrations')
@@ -373,10 +405,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get scope: 'this' = cancel only this instance, 'all' = cancel full series (default)
+    const { searchParams } = new URL(request.url)
+    const scope = searchParams.get('scope') || 'all'
+
     // Get event details
     const { data: event, error: eventError } = await adminSupabase
       .from('events')
-      .select('org_id')
+      .select('org_id, parent_event_id')
       .eq('id', eventId)
       .single()
 
@@ -427,17 +463,53 @@ export async function DELETE(
       )
     }
 
-    // Cancel registration using admin client
-    const { error: cancelError } = await adminSupabase
-      .from('event_registrations')
-      .update({ status: 'cancelled' })
-      .eq('event_id', eventId)
-      .eq('participant_id', participant.id)
-      .eq('status', 'registered')
+    if (scope === 'this' && event.parent_event_id) {
+      // Cancel only this specific instance — insert/update a per-instance opt-out record
+      const { data: existingInstanceReg } = await adminSupabase
+        .from('event_registrations')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('participant_id', participant.id)
+        .maybeSingle()
 
-    if (cancelError) {
-      logger.error({ error: cancelError.message, event_id: eventId }, 'Error cancelling registration');
-      return NextResponse.json({ error: cancelError.message }, { status: 500 })
+      if (existingInstanceReg) {
+        const { error: updateErr } = await adminSupabase
+          .from('event_registrations')
+          .update({ status: 'cancelled' })
+          .eq('id', existingInstanceReg.id)
+        if (updateErr) {
+          return NextResponse.json({ error: updateErr.message }, { status: 500 })
+        }
+      } else {
+        // Insert a new "opt-out" record for this instance
+        const { error: insertErr } = await adminSupabase
+          .from('event_registrations')
+          .insert({
+            event_id: eventId,
+            participant_id: participant.id,
+            status: 'cancelled',
+            registration_source: 'instance_opt_out',
+            registered_at: new Date().toISOString()
+          })
+        if (insertErr) {
+          logger.error({ error: insertErr.message }, 'Error inserting instance opt-out')
+          return NextResponse.json({ error: insertErr.message }, { status: 500 })
+        }
+      }
+    } else {
+      // Cancel the series (parent) registration or standalone
+      const regEventId = (event as any).parent_event_id || eventId
+      const { error: cancelError } = await adminSupabase
+        .from('event_registrations')
+        .update({ status: 'cancelled' })
+        .eq('event_id', regEventId)
+        .eq('participant_id', participant.id)
+        .eq('status', 'registered')
+
+      if (cancelError) {
+        logger.error({ error: cancelError.message, event_id: eventId }, 'Error cancelling registration');
+        return NextResponse.json({ error: cancelError.message }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ success: true })

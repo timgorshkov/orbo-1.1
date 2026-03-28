@@ -459,16 +459,33 @@ export default async function EventDetailPage({
       (reg.status === 'registered' || reg.status === 'attended')
   )
 
-  if (!isUserRegistered && participant && event.parent_event_id) {
-    // Child instance: check registrations on the parent series
-    const { data: parentRegs } = await adminSupabase
+  let hasSeriesRegistration = false  // has active parent reg (for child instances)
+  let isInstanceCancelled = false    // opted out of THIS instance only
+
+  if (participant && event.parent_event_id) {
+    // Check parent series registration
+    const { data: parentReg } = await adminSupabase
       .from('event_registrations')
-      .select('id, status, participant_id')
+      .select('id, status')
       .eq('event_id', event.parent_event_id)
       .eq('participant_id', participant.id)
       .in('status', ['registered', 'attended'])
       .maybeSingle()
-    isUserRegistered = !!parentRegs
+    hasSeriesRegistration = !!parentReg
+
+    // Check per-instance opt-out
+    if (hasSeriesRegistration) {
+      const { data: instanceOptOut } = await adminSupabase
+        .from('event_registrations')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('participant_id', participant.id)
+        .eq('status', 'cancelled')
+        .maybeSingle()
+      isInstanceCancelled = !!instanceOptOut
+    }
+
+    isUserRegistered = hasSeriesRegistration && !isInstanceCancelled
   }
 
   // Fetch recurring context for child instances
@@ -495,7 +512,9 @@ export default async function EventDetailPage({
     ...event,
     registered_count: registeredCount,
     available_spots: availableSpots,
-    is_user_registered: isUserRegistered || false
+    is_user_registered: isUserRegistered || false,
+    has_series_registration: hasSeriesRegistration,
+    is_instance_cancelled: isInstanceCancelled
   }
 
   // Generate MAX mini-app link if org has a verified MAX account (admin only, for share button)
