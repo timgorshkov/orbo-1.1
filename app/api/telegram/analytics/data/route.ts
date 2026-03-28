@@ -43,41 +43,19 @@ function calculateRiskScore(lastActivity: string | null | undefined, fallback?: 
   return 95
 }
 
-// System accounts and bots to filter out from participant lists
 const BOT_USER_IDS = new Set<number>([
   1087968824,  // Group Anonymous Bot
   777000,      // Telegram Service Notifications
   136817688,   // @Channel_Bot
 ])
 const BOT_USERNAMES = new Set<string>(['groupanonymousbot', 'orbo_community_bot', 'orbocommunitybot', 'channel_bot'])
+const BOT_IDS_ARRAY = Array.from(BOT_USER_IDS)
 
 const normalizeUsername = (username?: string | null) => {
   if (!username) return null
   const trimmed = username.trim()
   if (!trimmed) return null
   return trimmed.startsWith('@') ? trimmed.slice(1).toLowerCase() : trimmed.toLowerCase()
-}
-
-type ParticipantAggregate = {
-  tg_user_id: number
-  username: string | null
-  full_name: string | null
-  message_count: number
-  join_count: number
-  leave_count: number
-  last_activity: string | null
-  activity_score: number | null
-  risk_score: number | null
-  from_membership: boolean
-}
-
-type DailyMetrics = {
-  date: string
-  message_count: number
-  reply_count: number
-  join_count: number
-  leave_count: number
-  dau: number
 }
 
 export async function GET(request: Request) {
@@ -98,466 +76,313 @@ export async function GET(request: Request) {
     const supabase = createAdminServer()
     const numericChatId = Number(chatId)
 
-    const participantsMap = new Map<number, ParticipantAggregate>()
-    const usernameToUserId = new Map<string, number>()
-    const membershipParticipantData = new Map<string, {
-      tg_user_id: number | null; username: string | null; full_name: string | null;
-      photo_url: string | null; last_activity_at: string | null;
+    const activityWindowStart = new Date()
+    activityWindowStart.setDate(activityWindowStart.getDate() - 30)
+    const startIso = activityWindowStart.toISOString()
+
+    // ── Phase 1: Run all independent queries in parallel ──
+
+    type OverallRow = { message_count: string; reply_count: string; join_count: string; leave_count: string }
+    type DailyRow = { date: string; message_count: string; reply_count: string; join_count: string; leave_count: string; dau: string }
+    type HourlyRow = { hour: string; cnt: string }
+    type PerUserRow = { tg_user_id: string; message_count: string; last_activity: string }
+
+    type MemberRow = {
+      id: string; tg_user_id: number | string | null; username: string | null;
+      full_name: string | null; photo_url: string | null; last_activity_at: string | null;
       activity_score: number | null; risk_score: number | null;
-    }>()
-
-    const addOrUpdateParticipant = (
-      tgUserId: number | null,
-      options: {
-        username?: string | null
-        fullName?: string | null
-        lastActivity?: string | null
-        activityScore?: number | null
-        riskScore?: number | null
-        fromMembership?: boolean
-      } = {}
-    ): ParticipantAggregate | null => {
-      if (tgUserId == null || !Number.isFinite(tgUserId)) {
-        return null
-      }
-      if (BOT_USER_IDS.has(tgUserId)) {
-        return null
-      }
-
-      const normalized = normalizeUsername(options.username)
-      if (normalized && BOT_USERNAMES.has(normalized)) {
-        return null
-      }
-
-      let record = participantsMap.get(tgUserId)
-      if (!record) {
-        record = {
-          tg_user_id: tgUserId,
-          username: null,
-          full_name: null,
-          message_count: 0,
-          join_count: 0,
-          leave_count: 0,
-          last_activity: null,
-          activity_score: null,
-          risk_score: null,
-          from_membership: false
-        }
-        participantsMap.set(tgUserId, record)
-      }
-
-      if (options.username && !record.username) {
-        record.username = options.username
-      }
-      if (normalized) {
-        usernameToUserId.set(normalized, tgUserId)
-      }
-
-      if (options.fullName && !record.full_name) {
-        record.full_name = options.fullName
-      }
-
-      record.last_activity = pickLatestTimestamp(record.last_activity, options.lastActivity ?? null)
-      if (options.activityScore != null) {
-        record.activity_score = options.activityScore
-      }
-      if (options.riskScore != null) {
-        record.risk_score = options.riskScore
-      }
-      if (options.fromMembership) {
-        record.from_membership = true
-      }
-
-      return record
     }
 
-    // 1) Загружаем актуальных участников группы
-    try {
-      logger.debug({ chat_id: chatId, numeric_chat_id: numericChatId }, 'Fetching participant_groups');
-      
-      const { data: membershipLinks, error: membershipError } = await supabase
+    const loadMembership = async (): Promise<MemberRow[]> => {
+      const { data: links, error: linksErr } = await supabase
         .from('participant_groups')
         .select('participant_id')
         .eq('tg_group_id', numericChatId)
         .is('left_at', null)
 
-      logger.debug({ 
-        chat_id: chatId, 
-        links_count: membershipLinks?.length || 0, 
-        error: membershipError?.message 
-      }, 'participant_groups query result');
+      if (linksErr || !links?.length) return []
 
-      if (membershipError) {
-        logger.error({ error: membershipError.message, chat_id: chatId }, 'Error fetching participant memberships for analytics');
-      } else if (membershipLinks && membershipLinks.length > 0) {
-        const participantIds = membershipLinks.map(m => m.participant_id);
-        const CHUNK = 500
-        const allMembers: any[] = []
-        for (let c = 0; c < participantIds.length; c += CHUNK) {
-          const chunk = participantIds.slice(c, c + CHUNK)
-          const { data } = await supabase
-            .from('participants')
-            .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
-            .in('id', chunk)
-            .eq('org_id', orgId)          // 🔒 only show participants that belong to this org
-            .is('merged_into', null)       // 🔒 exclude ghost/merged records
-          if (data) allMembers.push(...data)
-        }
-        
-        allMembers.forEach(member => {
-          if (!member) return
-
-          // PostgreSQL bigint may arrive as string — normalize to number
-          const memberTgUserId = member.tg_user_id != null ? Number(member.tg_user_id) : null
-          const safeTgUserId = memberTgUserId != null && Number.isFinite(memberTgUserId) ? memberTgUserId : null
-
-          if (safeTgUserId != null) {
-            addOrUpdateParticipant(safeTgUserId, {
-              username: member.username ?? null,
-              fullName: member.full_name ?? null,
-              lastActivity: member.last_activity_at ?? null,
-              activityScore: member.activity_score ?? null,
-              riskScore: member.risk_score ?? null,
-              fromMembership: true
-            })
-          }
-
-          membershipParticipantData.set(member.id, {
-            tg_user_id: safeTgUserId,
-            username: member.username || null,
-            full_name: member.full_name,
-            photo_url: member.photo_url,
-            last_activity_at: member.last_activity_at,
-            activity_score: member.activity_score,
-            risk_score: member.risk_score
-          })
-        })
+      const pids = links.map((m: any) => m.participant_id)
+      const CHUNK = 500
+      const all: MemberRow[] = []
+      for (let c = 0; c < pids.length; c += CHUNK) {
+        const { data } = await supabase
+          .from('participants')
+          .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
+          .in('id', pids.slice(c, c + CHUNK))
+          .eq('org_id', orgId)
+          .is('merged_into', null)
+        if (data) all.push(...data)
       }
-    } catch (membershipException) {
-      logger.error({ 
-        error: membershipException instanceof Error ? membershipException.message : String(membershipException),
-        stack: membershipException instanceof Error ? membershipException.stack : undefined
-      }, 'Unexpected error loading participant memberships for analytics');
+      return all
     }
 
-    // 2) Загружаем события активности (30 дней)
-    const activityWindowDays = 30
-    const activityWindowStart = new Date()
-    activityWindowStart.setDate(activityWindowStart.getDate() - activityWindowDays)
+    const [members, overallRes, dailyRes, hourlyRes, perUserRes, adminRes] = await Promise.all([
+      loadMembership(),
 
-    const { data: activityEvents, error: activityError } = await supabase
-      .from('activity_events')
-      .select('id, event_type, created_at, tg_user_id, reply_to_message_id')
-      .eq('tg_chat_id', numericChatId)
-      .gte('created_at', activityWindowStart.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(2000)
+      supabase.raw<OverallRow>(
+        `SELECT
+           COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+           COUNT(*) FILTER (WHERE event_type = 'message' AND reply_to_message_id IS NOT NULL) AS reply_count,
+           COUNT(*) FILTER (WHERE event_type = 'join') AS join_count,
+           COUNT(*) FILTER (WHERE event_type = 'leave') AS leave_count
+         FROM activity_events
+         WHERE tg_chat_id = $1 AND created_at >= $2
+           AND tg_user_id IS NOT NULL AND tg_user_id != ALL($3)`,
+        [numericChatId, startIso, BOT_IDS_ARRAY]
+      ),
 
-    logger.debug({ 
-      events_count: activityEvents?.length || 0,
-      numeric_chat_id: numericChatId,
-      error: activityError?.message
-    }, 'Activity events query result');
+      supabase.raw<DailyRow>(
+        `SELECT
+           created_at::date::text AS date,
+           COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+           COUNT(*) FILTER (WHERE event_type = 'message' AND reply_to_message_id IS NOT NULL) AS reply_count,
+           COUNT(*) FILTER (WHERE event_type = 'join') AS join_count,
+           COUNT(*) FILTER (WHERE event_type = 'leave') AS leave_count,
+           COUNT(DISTINCT CASE WHEN event_type = 'message' THEN tg_user_id END) AS dau
+         FROM activity_events
+         WHERE tg_chat_id = $1 AND created_at >= $2
+           AND tg_user_id IS NOT NULL AND tg_user_id != ALL($3)
+         GROUP BY 1 ORDER BY 1 DESC`,
+        [numericChatId, startIso, BOT_IDS_ARRAY]
+      ),
 
-    const processedMessageIds = new Set<string>()
-    const usersByDay: Record<string, Set<number>> = {}
-    const dailyMetrics: Record<string, DailyMetrics> = {}
-    const hourlyActivity: Record<number, number> = {}
+      supabase.raw<HourlyRow>(
+        `SELECT EXTRACT(HOUR FROM created_at)::int AS hour, COUNT(*) AS cnt
+         FROM activity_events
+         WHERE tg_chat_id = $1 AND event_type = 'message' AND created_at >= $2
+           AND tg_user_id IS NOT NULL AND tg_user_id != ALL($3)
+         GROUP BY 1`,
+        [numericChatId, startIso, BOT_IDS_ARRAY]
+      ),
 
-    let messageCount = 0
-    let replyCount = 0
-    let joinCount = 0
-    let leaveCount = 0
+      supabase.raw<PerUserRow>(
+        `SELECT tg_user_id,
+                COUNT(*) FILTER (WHERE event_type = 'message') AS message_count,
+                MAX(created_at) AS last_activity
+         FROM activity_events
+         WHERE tg_chat_id = $1 AND created_at >= $2
+           AND tg_user_id IS NOT NULL AND tg_user_id != ALL($3)
+         GROUP BY tg_user_id`,
+        [numericChatId, startIso, BOT_IDS_ARRAY]
+      ),
 
-    if (activityEvents) {
-      logger.debug({ 
-        first_event_tg_user_id_type: activityEvents[0] ? typeof activityEvents[0].tg_user_id : null
-      }, 'Activity events sample');
-      
-      activityEvents.forEach(event => {
-        let tgUserId: number | null = null
-        if (typeof event.tg_user_id === 'number') {
-          tgUserId = event.tg_user_id
-        } else if (typeof event.tg_user_id === 'string') {
-          tgUserId = parseInt(event.tg_user_id, 10)
-        } else if (typeof event.tg_user_id === 'bigint') {
-          tgUserId = Number(event.tg_user_id)
-        }
+      supabase
+        .from('telegram_group_admins')
+        .select('tg_user_id, is_owner, is_admin, custom_title')
+        .eq('tg_chat_id', numericChatId)
+        .gt('expires_at', new Date().toISOString()),
+    ])
 
-        if (tgUserId == null || BOT_USER_IDS.has(tgUserId)) {
-          return
-        }
+    // ── Phase 2: Build participantsMap ──
 
-        const record = addOrUpdateParticipant(tgUserId, {
-          lastActivity: event.created_at ?? null
-        })
-
-        if (!record) {
-          return
-        }
-
-        const day = new Date(event.created_at ?? Date.now()).toISOString().split('T')[0]
-
-        if (!dailyMetrics[day]) {
-          dailyMetrics[day] = {
-            date: day,
-            message_count: 0,
-            reply_count: 0,
-            join_count: 0,
-            leave_count: 0,
-            dau: 0
-          }
-        }
-
-        if (!usersByDay[day]) {
-          usersByDay[day] = new Set()
-        }
-
-        if (event.event_type === 'message') {
-          const uniqueMessageKey = `${tgUserId}:${event.id ?? event.created_at}`
-          if (processedMessageIds.has(uniqueMessageKey)) {
-            return
-          }
-          processedMessageIds.add(uniqueMessageKey)
-
-          messageCount++
-          dailyMetrics[day].message_count++
-
-          if (event.reply_to_message_id) {
-            replyCount++
-            dailyMetrics[day].reply_count++
-          }
-
-          record.message_count += 1
-          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
-          usersByDay[day].add(tgUserId)
-
-          const hour = new Date(event.created_at ?? Date.now()).getHours()
-          hourlyActivity[hour] = (hourlyActivity[hour] || 0) + 1
-        } else if (event.event_type === 'join') {
-          joinCount++
-          dailyMetrics[day].join_count++
-          record.join_count += 1
-          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
-        } else if (event.event_type === 'leave') {
-          leaveCount++
-          dailyMetrics[day].leave_count++
-          record.leave_count += 1
-          record.last_activity = pickLatestTimestamp(record.last_activity, event.created_at ?? null)
-        }
+    // Per-user activity from SQL aggregation (replaces 2000-row fetch + JS loop)
+    const userActivityMap = new Map<number, { message_count: number; last_activity: string }>()
+    for (const row of (perUserRes.data || [])) {
+      const uid = Number(row.tg_user_id)
+      if (!Number.isFinite(uid) || BOT_USER_IDS.has(uid)) continue
+      userActivityMap.set(uid, {
+        message_count: parseInt(row.message_count || '0'),
+        last_activity: row.last_activity,
       })
     }
 
-    const participantList = Array.from(participantsMap.values()).filter(record => !BOT_USER_IDS.has(record.tg_user_id))
-    
-    logger.debug({ 
+    type ParticipantRecord = {
+      tg_user_id: number; username: string | null; full_name: string | null;
+      message_count: number; last_activity: string | null;
+      activity_score: number | null; risk_score: number | null; from_membership: boolean;
+    }
+    const participantsMap = new Map<number, ParticipantRecord>()
+
+    const membershipPidData = new Map<string, {
+      tg_user_id: number | null; username: string | null; full_name: string | null;
+      photo_url: string | null; last_activity_at: string | null;
+      activity_score: number | null; risk_score: number | null;
+    }>()
+
+    for (const m of members) {
+      const tgUid = m.tg_user_id != null ? Number(m.tg_user_id) : null
+      if (tgUid == null || !Number.isFinite(tgUid) || BOT_USER_IDS.has(tgUid)) continue
+      const norm = normalizeUsername(m.username)
+      if (norm && BOT_USERNAMES.has(norm)) continue
+
+      const act = userActivityMap.get(tgUid)
+      participantsMap.set(tgUid, {
+        tg_user_id: tgUid,
+        username: m.username || null,
+        full_name: m.full_name || null,
+        message_count: act?.message_count || 0,
+        last_activity: pickLatestTimestamp(m.last_activity_at, act?.last_activity || null),
+        activity_score: m.activity_score ?? null,
+        risk_score: m.risk_score ?? null,
+        from_membership: true,
+      })
+
+      membershipPidData.set(m.id, {
+        tg_user_id: tgUid, username: m.username || null, full_name: m.full_name || null,
+        photo_url: m.photo_url || null, last_activity_at: m.last_activity_at || null,
+        activity_score: m.activity_score ?? null, risk_score: m.risk_score ?? null,
+      })
+    }
+
+    // Users discovered only through activity (not in participant_groups)
+    for (const [uid, act] of userActivityMap) {
+      if (participantsMap.has(uid)) continue
+      participantsMap.set(uid, {
+        tg_user_id: uid, username: null, full_name: null,
+        message_count: act.message_count, last_activity: act.last_activity,
+        activity_score: null, risk_score: null, from_membership: false,
+      })
+    }
+
+    const participantList = Array.from(participantsMap.values())
+    const allTgUserIds = participantList.map(p => p.tg_user_id)
+
+    logger.debug({
       participants_count: participantList.length,
-      chat_id: chatId,
-      from_membership_count: participantList.filter(p => p.from_membership).length
+      from_membership: participantList.filter(p => p.from_membership).length,
+      from_activity_only: participantList.filter(p => !p.from_membership).length,
     }, 'Participant list compiled');
 
-    // Получаем все tg_user_id для последующих запросов
-    const allTgUserIds = participantList.map(p => p.tg_user_id)
-    
-    // Запрос информации об админах
-    const { data: adminDataRaw } = await supabase
-      .from('telegram_group_admins')
-      .select('tg_user_id, is_owner, is_admin, custom_title')
-      .eq('tg_chat_id', parseInt(chatId))
-      .gt('expires_at', new Date().toISOString())
+    // ── Phase 3: Enrich participants (participant_id, photo, names) ──
 
-    // Обогащение участников (chunked for large groups)
     const participantIdMap = new Map<number, { id: string; photo_url: string | null }>()
-
     if (allTgUserIds.length > 0) {
       const CHUNK = 500
       for (let c = 0; c < allTgUserIds.length; c += CHUNK) {
-        const chunk = allTgUserIds.slice(c, c + CHUNK)
         const { data: rows, error: enrichErr } = await supabase
           .from('participants')
           .select('id, tg_user_id, username, full_name, photo_url, last_activity_at, activity_score, risk_score')
           .eq('org_id', orgId)
-          .in('tg_user_id', chunk)
+          .in('tg_user_id', allTgUserIds.slice(c, c + CHUNK))
 
         if (enrichErr) {
-          logger.error({ error: enrichErr.message, org_id: orgId }, 'Error fetching participants for analytics enrichment');
+          logger.error({ error: enrichErr.message }, 'Enrichment query error');
           continue
         }
 
-        (rows || []).forEach(row => {
-          if (!row?.tg_user_id) return
-          const numericTgUserId = Number(row.tg_user_id)
-          if (!Number.isFinite(numericTgUserId)) return
-          participantIdMap.set(numericTgUserId, { id: row.id, photo_url: row.photo_url })
+        for (const row of (rows || [])) {
+          if (!row?.tg_user_id) continue
+          const uid = Number(row.tg_user_id)
+          if (!Number.isFinite(uid)) continue
+          participantIdMap.set(uid, { id: row.id, photo_url: row.photo_url })
 
-          const record = participantsMap.get(numericTgUserId)
-          if (!record) return
-
-          if (row.username && !record.username) {
-            record.username = row.username
-            const normalized = normalizeUsername(row.username)
-            if (normalized) {
-              usernameToUserId.set(normalized, record.tg_user_id)
-            }
-          }
-
-          if (row.full_name && !record.full_name) {
-            record.full_name = row.full_name
-          }
-
-          record.last_activity = pickLatestTimestamp(record.last_activity, row.last_activity_at ?? null)
-          if (row.activity_score != null) {
-            record.activity_score = row.activity_score
-          }
-          if (row.risk_score != null) {
-            record.risk_score = row.risk_score
-          }
-        })
+          const rec = participantsMap.get(uid)
+          if (!rec) continue
+          if (row.username && !rec.username) rec.username = row.username
+          if (row.full_name && !rec.full_name) rec.full_name = row.full_name
+          rec.last_activity = pickLatestTimestamp(rec.last_activity, row.last_activity_at ?? null)
+          if (row.activity_score != null) rec.activity_score = row.activity_score
+          if (row.risk_score != null) rec.risk_score = row.risk_score
+        }
       }
     }
 
-    // Обработка результатов запроса админов
+    // ── Phase 4: Compute derived metrics and build response ──
+
+    const ov = overallRes.data?.[0]
+    const messageCount = parseInt(ov?.message_count || '0')
+    const replyCount = parseInt(ov?.reply_count || '0')
+    const joinCount = parseInt(ov?.join_count || '0')
+    const leaveCount = parseInt(ov?.leave_count || '0')
+
+    const dailyRows = dailyRes.data || []
+    const totalDays = dailyRows.length
+    const totalDau = dailyRows.reduce((s, r) => s + parseInt(r.dau || '0'), 0)
+    const avgDau = totalDays > 0 ? Math.round(totalDau / totalDays) : 0
+    const replyRatio = messageCount > 0 ? Math.round((replyCount / messageCount) * 100) : 0
+
+    // Hourly activity / prime time
+    const hourlyActivity: Record<number, number> = {}
+    for (const row of (hourlyRes.data || [])) {
+      hourlyActivity[parseInt(row.hour)] = parseInt(row.cnt || '0')
+    }
+    const hourVals = Object.values(hourlyActivity)
+    const avgHourly = hourVals.length > 0 ? hourVals.reduce((s, v) => s + v, 0) / hourVals.length : 0
+    const primeTime = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      message_count: hourlyActivity[hour] || 0,
+      is_prime_time: (hourlyActivity[hour] || 0) > avgHourly,
+    }))
+
+    // Admin map
     const adminMap = new Map<number, { isOwner: boolean; isAdmin: boolean; customTitle: string | null }>()
-    if (adminDataRaw) {
-      for (const admin of adminDataRaw) {
-        adminMap.set(Number(admin.tg_user_id), {
-          isOwner: admin.is_owner || false,
-          isAdmin: admin.is_admin || false,
-          customTitle: admin.custom_title || null
+    if (adminRes.data) {
+      for (const a of adminRes.data as any[]) {
+        adminMap.set(Number(a.tg_user_id), {
+          isOwner: a.is_owner || false, isAdmin: a.is_admin || false, customTitle: a.custom_title || null,
         })
       }
     }
 
     const membersTotal = participantList.length
-
     const activeThreshold = new Date()
     activeThreshold.setDate(activeThreshold.getDate() - 7)
-
-    const membersActive = participantList.filter(record => {
-      if (record.message_count > 0) return true
-      if (!record.last_activity) return false
-      return new Date(record.last_activity).getTime() >= activeThreshold.getTime()
-    }).length
-
+    const membersActive = participantList.filter(r =>
+      r.message_count > 0 || (r.last_activity && new Date(r.last_activity).getTime() >= activeThreshold.getTime())
+    ).length
     const silentRate = membersTotal > 0 ? Math.round(((membersTotal - membersActive) / membersTotal) * 100) : 0
+    const newcomerActivation = membersTotal > 0 ? Math.round((membersActive / membersTotal) * 100) : 0
 
-    const totalDays = Object.keys(usersByDay).length
-    const totalActiveUsers = Object.values(usersByDay).reduce((sum, set) => sum + set.size, 0)
-    const avgDau = totalDays > 0 ? Math.round(totalActiveUsers / totalDays) : 0
-
-    const replyRatio = messageCount > 0 ? Math.round((replyCount / messageCount) * 100) : 0
-
-    const hourValues = Object.values(hourlyActivity)
-    const avgHourlyMessages = hourValues.length > 0 ? hourValues.reduce((sum, val) => sum + val, 0) / hourValues.length : 0
-    const primeTime = Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      message_count: hourlyActivity[hour] || 0,
-      is_prime_time: (hourlyActivity[hour] || 0) > avgHourlyMessages
-    }))
-
-    const messageCounts = participantList.map(record => record.message_count)
+    // Activity Gini (coefficient of variation)
+    const msgCounts = participantList.map(r => r.message_count)
     let activityGini = 0
-    if (messageCounts.length > 1) {
-      const mean = messageCounts.reduce((sum, value) => sum + value, 0) / messageCounts.length
+    if (msgCounts.length > 1) {
+      const mean = msgCounts.reduce((s, v) => s + v, 0) / msgCounts.length
       if (mean > 0) {
-        const variance = messageCounts.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / messageCounts.length
-        const stdDev = Math.sqrt(variance)
-        activityGini = Math.min(1, stdDev / mean)
+        const variance = msgCounts.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / msgCounts.length
+        activityGini = Math.min(1, Math.sqrt(variance) / mean)
       }
     }
 
+    const maxMsgCount = Math.max(1, ...msgCounts)
+
+    // Top users (top 5 by messages)
     let topUsers = participantList
-      .filter(record => record.message_count > 0)
-      .sort(
-        (a, b) =>
-          b.message_count - a.message_count ||
-          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
-      )
+      .filter(r => r.message_count > 0)
+      .sort((a, b) => b.message_count - a.message_count || new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime())
       .slice(0, 5)
-      .map(record => ({
-        tg_user_id: record.tg_user_id,
-        full_name: record.full_name,
-        username: record.username,
-        message_count: record.message_count,
-        last_activity: record.last_activity || new Date().toISOString()
-      }))
+      .map(r => ({ tg_user_id: r.tg_user_id, full_name: r.full_name, username: r.username, message_count: r.message_count, last_activity: r.last_activity || new Date().toISOString() }))
 
     if (topUsers.length === 0 && participantList.length > 0) {
-      topUsers = participantList
-        .slice()
-        .sort(
-          (a, b) =>
-            b.message_count - a.message_count ||
-            new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime()
-        )
+      topUsers = participantList.slice()
+        .sort((a, b) => b.message_count - a.message_count || new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime())
         .slice(0, 5)
-        .map(record => ({
-          tg_user_id: record.tg_user_id,
-          full_name: record.full_name,
-          username: record.username,
-          message_count: record.message_count,
-          last_activity: record.last_activity || new Date().toISOString()
-        }))
+        .map(r => ({ tg_user_id: r.tg_user_id, full_name: r.full_name, username: r.username, message_count: r.message_count, last_activity: r.last_activity || new Date().toISOString() }))
     }
 
-    const maxMessageCount = Math.max(1, ...participantList.map(record => record.message_count))
-
-    const riskRadar = participantList
-      .slice()
-      .sort(
-        (a, b) =>
-          a.message_count - b.message_count ||
-          new Date(a.last_activity ?? 0).getTime() - new Date(b.last_activity ?? 0).getTime()
-      )
+    // Risk radar (bottom 5 by messages)
+    const riskRadar = participantList.slice()
+      .sort((a, b) => a.message_count - b.message_count || new Date(a.last_activity ?? 0).getTime() - new Date(b.last_activity ?? 0).getTime())
       .slice(0, 5)
-      .map(record => ({
-        tg_user_id: record.tg_user_id,
-        username: record.username,
-        full_name: record.full_name,
-        risk_score: calculateRiskScore(
-          record.last_activity,
-          record.risk_score ?? Math.round(80 - (record.message_count / maxMessageCount) * 50)
-        ),
-        last_activity: record.last_activity || new Date().toISOString(),
-        message_count: record.message_count
+      .map(r => ({
+        tg_user_id: r.tg_user_id, username: r.username, full_name: r.full_name,
+        risk_score: calculateRiskScore(r.last_activity, r.risk_score ?? Math.round(80 - (r.message_count / maxMsgCount) * 50)),
+        last_activity: r.last_activity || new Date().toISOString(), message_count: r.message_count,
       }))
 
-    const newcomerActivation = membersTotal > 0 ? Math.round((membersActive / membersTotal) * 100) : 0
-
-    const participantsResponse = participantList
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime() ||
-          b.message_count - a.message_count
-      )
-      .map(record => {
-        const adminInfo = adminMap.get(record.tg_user_id)
-        const participantInfo = participantIdMap.get(record.tg_user_id)
+    // Participants response
+    const participantsResponse = participantList.slice()
+      .sort((a, b) => new Date(b.last_activity ?? 0).getTime() - new Date(a.last_activity ?? 0).getTime() || b.message_count - a.message_count)
+      .map(r => {
+        const ai = adminMap.get(r.tg_user_id)
+        const pi = participantIdMap.get(r.tg_user_id)
         return {
-          tg_user_id: record.tg_user_id,
-          participant_id: participantInfo?.id || null,
-          username: record.username,
-          full_name: record.full_name,
-          message_count: record.message_count,
-          last_activity: record.last_activity,
-          risk_score: calculateRiskScore(record.last_activity, record.risk_score ?? null),
-          is_owner: adminInfo?.isOwner || false,
-          is_admin: adminInfo?.isAdmin || false,
-          custom_title: adminInfo?.customTitle || null,
-          photo_url: participantInfo?.photo_url || null
+          tg_user_id: r.tg_user_id, participant_id: pi?.id || null,
+          username: r.username, full_name: r.full_name, message_count: r.message_count,
+          last_activity: r.last_activity, risk_score: calculateRiskScore(r.last_activity, r.risk_score ?? null),
+          is_owner: ai?.isOwner || false, is_admin: ai?.isAdmin || false, custom_title: ai?.customTitle || null,
+          photo_url: pi?.photo_url || null,
         }
       })
 
-    // Merge membership participants that are missing from participantsMap
+    // Merge membership-only participants that might be missing from participantsMap
     const includedPids = new Set(participantsResponse.filter(p => p.participant_id).map(p => p.participant_id))
-    const includedTgUserIds = new Set(participantsResponse.filter(p => p.tg_user_id).map(p => p.tg_user_id))
+    const includedUids = new Set(participantsResponse.map(p => p.tg_user_id))
 
-    for (const [pid, data] of membershipParticipantData) {
+    for (const [pid, data] of membershipPidData) {
       if (includedPids.has(pid)) continue
-
-      // Participant might already be in the response by tg_user_id but without participant_id
-      if (data.tg_user_id && includedTgUserIds.has(data.tg_user_id)) {
+      if (data.tg_user_id && includedUids.has(data.tg_user_id)) {
         const existing = participantsResponse.find(p => p.tg_user_id === data.tg_user_id)
         if (existing && !existing.participant_id) {
           existing.participant_id = pid
@@ -565,25 +390,24 @@ export async function GET(request: Request) {
         }
         continue
       }
-
       participantsResponse.push({
-        tg_user_id: data.tg_user_id || 0,
-        participant_id: pid,
-        username: data.username,
-        full_name: data.full_name,
-        message_count: 0,
+        tg_user_id: data.tg_user_id || 0, participant_id: pid,
+        username: data.username, full_name: data.full_name, message_count: 0,
         last_activity: data.last_activity_at,
         risk_score: data.risk_score != null ? calculateRiskScore(data.last_activity_at, data.risk_score) : null,
-        is_owner: false,
-        is_admin: false,
-        custom_title: null,
-        photo_url: data.photo_url
+        is_owner: false, is_admin: false, custom_title: null, photo_url: data.photo_url,
       })
     }
 
-    const dailyMetricsArray = Object.values(dailyMetrics)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 5)
+    // Daily metrics (last 5 days for the summary block)
+    const dailyMetricsArray = dailyRows.slice(0, 5).map(r => ({
+      date: r.date,
+      message_count: parseInt(r.message_count || '0'),
+      reply_count: parseInt(r.reply_count || '0'),
+      join_count: parseInt(r.join_count || '0'),
+      leave_count: parseInt(r.leave_count || '0'),
+      dau: parseInt(r.dau || '0'),
+    }))
 
     return NextResponse.json({
       metrics: {
@@ -600,21 +424,19 @@ export async function GET(request: Request) {
         prime_time: primeTime,
         risk_radar: riskRadar,
         member_count: membersTotal,
-        member_active_count: membersActive
+        member_active_count: membersActive,
       },
       topUsers,
       dailyMetrics: dailyMetricsArray,
-      participants: participantsResponse
+      participants: participantsResponse,
     })
   } catch (error: any) {
-    logger.error({ 
+    logger.error({
       error: error.message || String(error),
       stack: error.stack,
       org_id: orgId,
-      chat_id: chatId
+      chat_id: chatId,
     }, 'Error in analytics API');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
-
-
