@@ -358,21 +358,34 @@ export async function processOnboardingMessages(): Promise<{
           logger.error({ msg_id: msg.id, user_id: msg.user_id, retries: retryCount, error: errMsg }, 'Transient error — max retries reached')
         } else {
           const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString()
-          await supabase
+          const { error: retryUpdateErr } = await supabase
             .from('onboarding_messages')
             .update({ scheduled_at: retryAt, error: `retry ${retryCount}: ${errMsg}`, retry_count: retryCount })
             .eq('id', msg.id)
-          logger.info({ msg_id: msg.id, user_id: msg.user_id, retry: retryCount, retry_at: retryAt }, 'Transient error — scheduled retry')
+          if (retryUpdateErr) {
+            logger.warn({ msg_id: msg.id, error: retryUpdateErr.message }, 'Failed to schedule retry — message stays pending')
+          } else {
+            logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, retry: retryCount, retry_at: retryAt, error: errMsg }, 'Transient error — scheduled retry')
+          }
         }
       } else {
-        await supabase
-          .from('onboarding_messages')
-          .update({ status: 'failed', error: errMsg })
-          .eq('id', msg.id)
-        stats.failed++
-        logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Step send failed')
-        // Cancel remaining chain steps to avoid repeated failures for the same user
-        await cancelRemainingMessages(supabase, msg.user_id, msg.channel, `first step failed: ${errMsg}`)
+        // Unknown error — treat as transient to avoid killing the chain on unexpected provider errors
+        const retryCount = (msg.retry_count || 0) + 1
+        if (retryCount >= MAX_RETRIES) {
+          await supabase
+            .from('onboarding_messages')
+            .update({ status: 'failed', error: `${errMsg} (after ${retryCount} retries)` })
+            .eq('id', msg.id)
+          stats.failed++
+          logger.error({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, retries: retryCount, error: errMsg }, 'Unknown error — max retries reached, marking failed')
+        } else {
+          const retryAt = new Date(Date.now() + RETRY_DELAY_MS).toISOString()
+          await supabase
+            .from('onboarding_messages')
+            .update({ scheduled_at: retryAt, error: `retry ${retryCount} (unknown): ${errMsg}`, retry_count: retryCount })
+            .eq('id', msg.id)
+          logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, retry: retryCount, retry_at: retryAt, error: errMsg }, 'Unknown error — scheduled retry (not classified as permanent)')
+        }
       }
     }
   }

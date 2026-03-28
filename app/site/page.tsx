@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
-import { Header, Footer, Orb, BrowserFrame, AnnouncementBanner } from '@/components/website';
+import { Header, Footer, BrowserFrame, AnnouncementBanner } from '@/components/website';
 import Link from 'next/link';
+
+const Orb = dynamic(() => import('@/components/website/Orb'), { ssr: false });
 
 export const metadata: Metadata = {
   title: 'CRM для групп и сообществ — Telegram и Max',
@@ -149,6 +152,7 @@ export default function HomePage() {
             url="my.orbo.ru/dashboard"
             width={1200}
             height={692}
+            priority
           />
         </div>
       </section>

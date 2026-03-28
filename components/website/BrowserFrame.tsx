@@ -6,9 +6,10 @@ interface BrowserFrameProps {
   url?: string;
   width?: number;
   height?: number;
+  priority?: boolean;
 }
 
-export function BrowserFrame({ src, alt, url = 'my.orbo.ru', width, height }: BrowserFrameProps) {
+export function BrowserFrame({ src, alt, url = 'my.orbo.ru', width, height, priority }: BrowserFrameProps) {
   return (
     <div className="browser-frame">
       <div className="browser-frame__header">
@@ -32,6 +33,7 @@ export function BrowserFrame({ src, alt, url = 'my.orbo.ru', width, height }: Br
           width={width || 1200}
           height={height || 700}
           style={{ width: '100%', height: 'auto' }}
+          priority={priority}
         />
       </div>
     </div>

@@ -60,7 +60,7 @@ export function VKPixel() {
       {/* Initialize dataLayer */}
       <Script
         id="datalayer-init"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: `window.dataLayer = window.dataLayer || [];`,
         }}

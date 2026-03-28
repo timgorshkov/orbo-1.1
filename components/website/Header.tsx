@@ -35,7 +35,6 @@ export function Header({ transparent = true }: HeaderProps) {
             height={40}
             className="website-header__logo-img"
             priority
-            unoptimized
           />
         </Link>
 

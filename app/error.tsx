@@ -9,6 +9,13 @@ function isServerActionMismatchError(error: Error): boolean {
          error.message.includes('older or newer deployment')
 }
 
+// ChunkLoadError — старый JS chunk недоступен после деплоя
+function isChunkLoadError(error: Error): boolean {
+  return error.name === 'ChunkLoadError' ||
+         error.message.includes('Loading chunk') ||
+         error.message.includes('ChunkLoadError')
+}
+
 export default function Error({
   error,
   reset,
@@ -18,16 +25,24 @@ export default function Error({
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const isDeploymentMismatch = isServerActionMismatchError(error);
+  const isChunkError = isChunkLoadError(error);
+  const isDeployRelated = isDeploymentMismatch || isChunkError;
 
   useEffect(() => {
     const logger = createClientLogger('Error');
-    
+
     if (isDeploymentMismatch) {
-      logger.warn({ 
+      logger.warn({
         error: error.message,
         digest: error.digest,
         type: 'deployment_mismatch'
       }, 'Server Action mismatch after deployment');
+    } else if (isChunkError) {
+      logger.warn({
+        error: error.message,
+        digest: error.digest,
+        type: 'chunk_load_error'
+      }, 'Chunk load error after deployment');
     } else {
       logger.error({ 
         error: error.message,
@@ -49,7 +64,7 @@ export default function Error({
         }),
       }).catch(() => {/* silent */});
     }
-  }, [error, isDeploymentMismatch]);
+  }, [error, isDeploymentMismatch, isChunkError]);
 
   const handleReload = () => {
     setIsReloading(true);
@@ -58,7 +73,7 @@ export default function Error({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] p-5">
-      {isDeploymentMismatch ? (
+      {isDeployRelated ? (
         <>
           <div className="text-5xl mb-4">🔄</div>
           <h2 className="text-xl font-semibold mb-2 text-gray-900">
