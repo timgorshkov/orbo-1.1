@@ -81,9 +81,9 @@
 - [Обзор раздела Материалы](./12-materials/overview.md)
 - [Создание контента](./12-materials/create-content.md)
 
-### 13. Мини-приложения
+### 13. Приложения
 
-- [Что такое мини-приложения](./13-mini-apps/overview.md)
+- [Что такое приложения](./13-mini-apps/overview.md)
 - [Создание и публикация](./13-mini-apps/create-app.md)
 
 ### 14. FAQ

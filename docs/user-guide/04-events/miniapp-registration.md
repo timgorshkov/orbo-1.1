@@ -90,7 +90,7 @@ t.me/orbo_event_bot?startapp=e-{ID_события}
 Ссылки на MiniApp совместимы с UTM-параметрами. Добавляйте метки для отслеживания каналов привлечения:
 
 ```
-t.me/orbo_event_bot?startapp=e-{id}?utm_source=telegram&utm_medium=ad&utm_campaign=my_campaign
+t.me/orbo_event_bot?startapp=e-{id}&utm_source=telegram&utm_medium=ad&utm_campaign=my_campaign
 ```
 
 ---
