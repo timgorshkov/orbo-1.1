@@ -82,6 +82,9 @@ export function WebVitals() {
 
   useReportWebVitals((metric) => {
     const { name, value, id, rating } = metric;
+
+    // Discard absurd values from backgrounded/frozen tabs (e.g. INP of 34M ms)
+    if (name === 'INP' && value > 30000) return;
     
     // FCP, LCP, TTFB are page-load metrics — measured once per full page load.
     // On client-side SPA navigation, the browser re-reports the SAME stale value
