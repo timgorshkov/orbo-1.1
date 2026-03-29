@@ -47,7 +47,7 @@
     "clean": "^4.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.3.3",
     "form-data": "^4.0.4",
     "geist": "^1.5.1",
     "grammy": "^1.20.3",
@@ -75,12 +75,12 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "turndown": "^7.2.0",
-    "undici": "^7.22.0",
+    "undici": "^7.24.6",
     "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   },
   "overrides": {
-    "fast-xml-parser": ">=5.3.5",
+    "fast-xml-parser": ">=5.5.9",
     "minimatch": ">=9.0.7",
     "axios": ">=1.13.5"
   },

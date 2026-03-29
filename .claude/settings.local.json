@@ -58,7 +58,11 @@
       "Bash(done)",
       "Bash(find docs/user-guide -type f -name *.md)",
       "Bash(grep -n '\"\"marked\"\"\\\\|\"\"marked\"\"' package.json)",
-      "Bash(curl -sI https://orbo.ru/docs)"
+      "Bash(curl -sI https://orbo.ru/docs)",
+      "Bash(node -e \"const { Marked } = require\\(''marked''\\); const m = new Marked\\({ gfm: true, renderer: { link\\({ href, text }\\) { return ''<a href=\"\"'' + href + ''\"\">'' + text + ''</a>''; } } }\\); console.log\\(m.parse\\(''[test]\\(https://orbo.ru\\) and [internal]\\(/docs\\)''\\)\\);\")",
+      "Bash(node -e \"const { Marked } = require\\(''marked''\\); const m = new Marked\\({ gfm: true, renderer: { link\\(token\\) { console.log\\(''TOKEN:'', JSON.stringify\\(token\\)\\); return ''''; } } }\\); m.parse\\(''[test]\\(https://orbo.ru\\)''\\);\")",
+      "Bash(node -e \"const { Marked } = require\\(''marked''\\); const m = new Marked\\({ gfm: true, renderer: { link\\(href, title, text\\) { console.log\\(''href:'', href, ''title:'', title, ''text:'', text\\); return ''<a>'' + text + ''</a>''; } } }\\); m.parse\\(''[click here]\\(https://orbo.ru\\)''\\);\")",
+      "Bash(node -e \"console.log\\(require\\(''marked/package.json''\\).version\\)\")"
     ]
   }
 }
