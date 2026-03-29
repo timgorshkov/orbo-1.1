@@ -1,34 +1,24 @@
-'use client';
+import { marked } from 'marked';
 
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import Link from 'next/link';
-import type { ComponentPropsWithoutRef } from 'react';
+// Configure marked for safe rendering
+const renderer = new marked.Renderer();
 
-function CustomLink({ href, children, ...props }: ComponentPropsWithoutRef<'a'>) {
+// Open external links in new tab, keep internal links as-is
+renderer.link = ({ href, text }: { href: string; text: string }) => {
   if (href && href.startsWith('/')) {
-    return (
-      <Link href={href} {...props}>
-        {children}
-      </Link>
-    );
+    return `<a href="${href}">${text}</a>`;
   }
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-      {children}
-    </a>
-  );
-}
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+
+marked.use({ renderer, gfm: true, breaks: false });
 
 export function DocsMarkdown({ content }: { content: string }) {
+  const html = marked.parse(content) as string;
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: CustomLink,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <div
+      className="docs-markdown"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
