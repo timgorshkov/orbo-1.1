@@ -408,6 +408,8 @@ export function WelcomeContent({
 
   const getInitialStep = (): WelcomeStep => {
     if (needsEmailVerification) return 'email_verify';
+    // Show telegram_connect step for new non-Telegram users who haven't connected yet
+    if (isNewUser && !isTelegramRegistration && !hasTelegramAccount) return 'telegram_connect';
     if (!initialCompleted) return 'qualification';
     return 'creating';
   };

@@ -51,7 +51,11 @@
       "Bash(/dev/null find:*)",
       "Bash(grep -c '\"\"level\"\":\"\"error\"\"' \"C:/Users/Lenovo/.claude/projects/C--Cursor-WS-orbo-1-1-1-orbo-1-1/de057c76-fd44-4b09-9667-9ad927d7e845/tool-results/b7xnpop6u.txt\")",
       "Bash(grep -c '\"\"level\"\":\"\"warn\"\"' \"C:/Users/Lenovo/.claude/projects/C--Cursor-WS-orbo-1-1-1-orbo-1-1/de057c76-fd44-4b09-9667-9ad927d7e845/tool-results/b7xnpop6u.txt\")",
-      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\tg-app' -name *.tsx -o -name *.ts)"
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1\\\\app\\\\tg-app' -name *.tsx -o -name *.ts)",
+      "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -name *.sql -not -path */migrations/*)",
+      "Bash(for f:*)",
+      "Bash(do grep:*)",
+      "Bash(done)"
     ]
   }
 }

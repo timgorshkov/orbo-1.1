@@ -258,6 +258,7 @@ export async function verifyTelegramAuthCode(params: VerifyCodeParams): Promise<
             id: newUserId,
             email,
             name: fullName,
+            tg_user_id: telegramUserId,
             email_verified: new Date().toISOString(),
           })
           .select()

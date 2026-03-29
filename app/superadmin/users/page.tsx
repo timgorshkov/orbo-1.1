@@ -10,7 +10,7 @@ export default async function SuperadminUsersPage() {
   // Step 1: Fetch ALL users (not just those with memberships)
   const { data: allUsers } = await supabase
     .from('users')
-    .select('id, email, name, email_verified, image, created_at, is_test')
+    .select('id, email, name, email_verified, image, created_at, is_test, tg_user_id')
     .order('created_at', { ascending: false })
   
   if (!allUsers || allUsers.length === 0) {
@@ -164,7 +164,11 @@ export default async function SuperadminUsersPage() {
     const mData = membershipMap.get(user.id)
     const tgAccount = tgAccountMap.get(user.id)
     const tgFromProvider = tgAccountFromProvider.get(user.id)
-    
+
+    // Extract tg_user_id from telegram_XXXXXXX@orbo.temp email (bot-registered users)
+    const tgIdFromEmail = user.email?.match(/^telegram_(\d+)@orbo\.temp$/)?.[1] || null
+    const tgUserIdFromDirectLink = user.tg_user_id ? String(user.tg_user_id) : null
+
     const tgUserIdsForUser = tgAccount ? [tgAccount.telegram_user_id] : []
     const groupsAsAdmin = (groupAdmins || []).filter(ga =>
       tgUserIdsForUser.includes(ga.tg_user_id) && groupsWithBotSet.has(ga.tg_chat_id)
@@ -175,7 +179,7 @@ export default async function SuperadminUsersPage() {
       : (user.name || user.email?.split('@')[0] || 'Не указано')
     
     const telegramUsername = tgAccount?.telegram_username || null
-    const telegramUserId = tgAccount?.telegram_user_id || tgFromProvider?.tg_user_id || null
+    const telegramUserId = tgAccount?.telegram_user_id || tgFromProvider?.tg_user_id || tgUserIdFromDirectLink || tgIdFromEmail || null
     const telegramDisplayName = telegramUsername
       ? `@${telegramUsername}`
       : (tgAccount ? fullName : null)
@@ -203,7 +207,9 @@ export default async function SuperadminUsersPage() {
       full_name: fullName,
       email: email || 'N/A',
       is_test: user.is_test || false,
-      telegram_verified: tgAccount?.is_verified || false,
+      // Users with telegram_XXXXXXX@orbo.temp email or tg_user_id set are verified Telegram users
+      // even if they have no user_telegram_accounts record (bot-registered without org context)
+      telegram_verified: tgAccount?.is_verified || !!tgUserIdFromDirectLink || !!tgIdFromEmail || false,
       telegram_display_name: telegramDisplayName,
       telegram_username: telegramUsername,
       telegram_user_id: telegramUserId,
