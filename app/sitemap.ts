@@ -1,5 +1,6 @@
 import { headers } from 'next/headers'
 import { MetadataRoute } from 'next'
+import { getAllSections } from '@/lib/docs/content'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +20,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://orbo.ru'
   const lastModified = new Date()
 
-  const routes: { path: string; priority: number; changeFrequency: 'weekly' | 'monthly' }[] = [
+  const staticRoutes: { path: string; priority: number; changeFrequency: 'weekly' | 'monthly' }[] = [
     { path: '',                    priority: 1.0, changeFrequency: 'weekly' },
     { path: '/product',            priority: 0.9, changeFrequency: 'monthly' },
     { path: '/events',             priority: 0.9, changeFrequency: 'monthly' },
@@ -32,24 +33,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/demo',               priority: 0.8, changeFrequency: 'monthly' },
     { path: '/partners',           priority: 0.7, changeFrequency: 'monthly' },
     { path: '/docs',               priority: 0.8, changeFrequency: 'weekly' },
-    { path: '/docs/quick-start/events-and-attendance', priority: 0.7, changeFrequency: 'monthly' },
-    { path: '/docs/quick-start/applications-setup', priority: 0.7, changeFrequency: 'monthly' },
-    { path: '/docs/quick-start/participant-base', priority: 0.7, changeFrequency: 'monthly' },
-    { path: '/docs/quick-start/telegram-backup-max', priority: 0.7, changeFrequency: 'monthly' },
-    { path: '/docs/getting-started/registration', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/events/create-event', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/events/miniapp-registration', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/participants-crm/profiles', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/applications/overview', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/max-integration/overview', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/plans/overview', priority: 0.6, changeFrequency: 'monthly' },
-    { path: '/docs/faq/faq', priority: 0.5, changeFrequency: 'monthly' },
     { path: '/whatsapp-migration', priority: 0.6, changeFrequency: 'monthly' },
     { path: '/terms',              priority: 0.3, changeFrequency: 'monthly' },
     { path: '/privacy',            priority: 0.3, changeFrequency: 'monthly' },
   ]
 
-  return routes.map(({ path, priority, changeFrequency }) => ({
+  const docsSections = getAllSections()
+  const docsRoutes = docsSections.flatMap((section) =>
+    section.articles.map((article) => ({
+      path: `/docs/${section.slug}/${article.slug}`,
+      priority: section.slug === 'quick-start' ? 0.7 : 0.6,
+      changeFrequency: 'monthly' as const,
+    }))
+  )
+
+  return [...staticRoutes, ...docsRoutes].map(({ path, priority, changeFrequency }) => ({
     url: `${baseUrl}${path}`,
     lastModified,
     changeFrequency,
