@@ -55,7 +55,10 @@
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -name *.sql -not -path */migrations/*)",
       "Bash(for f:*)",
       "Bash(do grep:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(find docs/user-guide -type f -name *.md)",
+      "Bash(grep -n '\"\"marked\"\"\\\\|\"\"marked\"\"' package.json)",
+      "Bash(curl -sI https://orbo.ru/docs)"
     ]
   }
 }
