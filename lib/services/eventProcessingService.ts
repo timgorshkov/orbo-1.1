@@ -334,6 +334,33 @@ export class EventProcessingService {
   }
 
   /**
+   * Marks a Telegram group as a forum and upserts a topic record.
+   * Called fire-and-forget when we see a message with message_thread_id.
+   */
+  private async syncForumTopic(chatId: number, topicId: number, topicTitle: string | null): Promise<void> {
+    try {
+      // Mark group as forum
+      await this.supabase
+        .from('telegram_groups')
+        .update({ is_forum: true })
+        .filter('tg_chat_id::text', 'eq', String(chatId))
+        .eq('is_forum', false);  // only update if not already marked
+
+      // Upsert topic record
+      if (topicTitle) {
+        await this.supabase
+          .from('telegram_topics')
+          .upsert(
+            { tg_chat_id: chatId, id: topicId, title: topicTitle },
+            { onConflict: 'id' }
+          );
+      }
+    } catch {
+      // Ignore — not critical
+    }
+  }
+
+  /**
    * Обрабатывает обновление от Telegram
    */
   async processUpdate(update: TelegramUpdate): Promise<void> {
@@ -761,6 +788,12 @@ export class EventProcessingService {
 
     const messageThreadId = typeof (message as any)?.message_thread_id === 'number' ? (message as any).message_thread_id : null;
     const threadTitle = this.extractThreadTitle(message);
+
+    // Mark group as forum and upsert topic if this is a forum thread message
+    if ((message.chat as any)?.is_forum && messageThreadId) {
+      // Fire-and-forget — don't block message processing
+      this.syncForumTopic(chatId, messageThreadId, threadTitle).catch(() => {});
+    }
 
     // Skip system Telegram accounts and bots
     if ([777000, 136817688, 1087968824].includes(userId) || message.from.username === 'GroupAnonymousBot' || message.from.is_bot) {

@@ -106,7 +106,7 @@ export async function PATCH(
     }
     
     const body = await request.json();
-    const { title, content, target_groups, scheduled_at, status } = body;
+    const { title, content, target_groups, target_topics, target_max_groups, scheduled_at, status } = body;
     
     const user = await getUnifiedUser();
     
@@ -140,6 +140,8 @@ export async function PATCH(
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (target_groups !== undefined) updateData.target_groups = target_groups;
+    if (target_topics !== undefined) updateData.target_topics = target_topics;
+    if (target_max_groups !== undefined) updateData.target_max_groups = target_max_groups;
     if (scheduled_at !== undefined) updateData.scheduled_at = scheduled_at;
     if (status !== undefined && ['scheduled', 'cancelled'].includes(status)) {
       updateData.status = status;

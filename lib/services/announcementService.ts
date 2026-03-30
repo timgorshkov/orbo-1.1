@@ -13,6 +13,7 @@ interface Announcement {
   content: string;
   target_groups: string[];
   target_max_groups?: string[];
+  target_topics?: Record<string, number>;  // { "<tg_chat_id>": topic_id }
   status: string;
   image_url?: string | null;
   retry_count?: number;
@@ -87,51 +88,55 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
         }, 'Skipped group — org admin lost TG admin rights')
         continue
       }
-      
+
       if (!chatId) {
         results[String(group.tg_chat_id)] = { success: false, error: 'No chat_id' };
         failCount++;
         continue;
       }
-      
+
+      // Resolve forum topic thread ID (if configured for this group)
+      const topicId = announcement.target_topics?.[String(chatId)];
+      const threadOptions = topicId ? { message_thread_id: topicId } : {};
+
       try {
         let messageResult: any;
-        
+
         // Content is stored as Telegram-compatible HTML from the rich editor
         if (announcement.image_url) {
           messageResult = await telegram.sendPhoto(
             chatId,
             announcement.image_url,
-            { caption: announcement.content, parse_mode: 'HTML' }
+            { caption: announcement.content, parse_mode: 'HTML', ...threadOptions }
           );
         } else {
           messageResult = await telegram.sendMessage(
             chatId,
             announcement.content,
-            { parse_mode: 'HTML' }
+            { parse_mode: 'HTML', ...threadOptions }
           );
         }
-        
+
         // Fallback: if HTML parsing failed, retry without parse_mode (plain text)
-        const isParseError = messageResult?.ok === false && 
+        const isParseError = messageResult?.ok === false &&
           messageResult?.description?.includes("can't parse entities");
-        
+
         if (isParseError) {
-          logger.info({ 
-            announcementId: announcement.id, chatId, groupTitle 
+          logger.info({
+            announcementId: announcement.id, chatId, groupTitle
           }, '⚠️ HTML parse error, retrying without parse_mode');
-          
+
           if (announcement.image_url) {
             messageResult = await telegram.sendPhoto(
               chatId,
               announcement.image_url,
-              { caption: announcement.content, parse_mode: undefined }
+              { caption: announcement.content, parse_mode: undefined, ...threadOptions }
             );
           } else {
             messageResult = await telegram.sendMessage(
               chatId,
               announcement.content,
-              { parse_mode: undefined }
+              { parse_mode: undefined, ...threadOptions }
             );
           }
         }

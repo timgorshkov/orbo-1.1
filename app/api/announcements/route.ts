@@ -87,11 +87,12 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { 
-      org_id, 
-      title, 
-      content, 
-      target_groups, 
+    const {
+      org_id,
+      title,
+      content,
+      target_groups,
+      target_topics,
       scheduled_at,
       event_id,
       reminder_type
@@ -149,6 +150,7 @@ export async function POST(request: NextRequest) {
         title,
         content,
         target_groups,
+        target_topics: target_topics || {},
         scheduled_at,
         event_id: event_id || null,
         reminder_type: reminder_type || null,

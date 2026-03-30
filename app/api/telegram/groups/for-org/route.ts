@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       tg_chat_id: g.tg_chat_id,
       title: g.title,
       bot_status: g.bot_status,
+      is_forum: (g as any).is_forum ?? false,
     }))
 
     return NextResponse.json({ groups: simpleGroups })

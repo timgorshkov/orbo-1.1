@@ -43,6 +43,8 @@ interface Announcement {
   title: string;
   content: string;
   target_groups: number[];  // tg_chat_id array
+  target_topics?: Record<string, number>;
+  target_max_groups?: number[];
   scheduled_at: string;
   sent_at: string | null;
   status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
@@ -60,6 +62,13 @@ interface TelegramGroup {
   tg_chat_id: number;
   title: string;
   bot_status?: string;
+  is_forum?: boolean;
+}
+
+interface TelegramTopic {
+  id: number;
+  title: string;
+  tg_chat_id: number;
 }
 
 interface MaxGroup {
@@ -93,8 +102,11 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     content: '',
     target_groups: [] as number[],  // tg_chat_id array
     target_max_groups: [] as number[],
+    target_topics: {} as Record<string, number>,  // { "<tg_chat_id>": topic_id }
     scheduled_at: ''
   });
+  const [groupTopics, setGroupTopics] = useState<Record<string, TelegramTopic[]>>({});  // tg_chat_id → topics
+  const [topicsLoading, setTopicsLoading] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -145,6 +157,23 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       // MAX groups may not be configured
     }
   };
+
+  const fetchTopicsForGroup = async (tgChatId: number) => {
+    const key = String(tgChatId);
+    if (groupTopics[key] !== undefined || topicsLoading[key]) return;
+    setTopicsLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(`/api/telegram/groups/topics?tgChatId=${tgChatId}&orgId=${orgId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGroupTopics(prev => ({ ...prev, [key]: data.topics || [] }));
+      }
+    } catch {
+      setGroupTopics(prev => ({ ...prev, [key]: [] }));
+    } finally {
+      setTopicsLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
   
   // Конвертация UTC в локальный datetime-local формат
   const utcToLocalDatetimeString = (utcString: string) => {
@@ -172,8 +201,11 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       content: '',
       target_groups: groups.map(g => g.tg_chat_id),
       target_max_groups: maxGroups.map(g => g.max_chat_id),
+      target_topics: {},
       scheduled_at: getLocalDatetimeString(1)
     });
+    // Pre-load topics for forum groups
+    groups.filter(g => g.is_forum).forEach(g => fetchTopicsForGroup(g.tg_chat_id));
     setImageFile(null);
     setImagePreview(null);
     setIsDialogOpen(true);
@@ -185,10 +217,13 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       title: announcement.title,
       content: announcement.content,
       target_groups: announcement.target_groups,
-      target_max_groups: (announcement as any).target_max_groups || [],
+      target_max_groups: announcement.target_max_groups || [],
+      target_topics: announcement.target_topics || {},
       // Конвертируем UTC время из БД в локальное для отображения
       scheduled_at: utcToLocalDatetimeString(announcement.scheduled_at)
     });
+    // Pre-load topics for forum groups
+    groups.filter(g => g.is_forum).forEach(g => fetchTopicsForGroup(g.tg_chat_id));
     setImageFile(null);
     setImagePreview(announcement.image_url || null);
     setIsDialogOpen(true);
@@ -814,25 +849,68 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                       />
                       <Label htmlFor="all-groups" className="font-medium">Все Telegram группы</Label>
                     </div>
-                    {groups.map(group => (
-                      <div key={group.tg_chat_id} className="flex items-center gap-2">
-                        <Checkbox
-                          id={String(group.tg_chat_id)}
-                          checked={formData.target_groups.includes(group.tg_chat_id)}
-                          onCheckedChange={(checked) => {
-                            setFormData({
-                              ...formData,
-                              target_groups: checked
-                                ? [...formData.target_groups, group.tg_chat_id]
-                                : formData.target_groups.filter(id => id !== group.tg_chat_id)
-                            });
-                          }}
-                        />
-                        <Label htmlFor={String(group.tg_chat_id)}>
-                          {group.title || 'Без названия'}
-                        </Label>
-                      </div>
-                    ))}
+                    {groups.map(group => {
+                      const key = String(group.tg_chat_id);
+                      const isSelected = formData.target_groups.includes(group.tg_chat_id);
+                      const topics = groupTopics[key];
+                      const isLoadingTopics = topicsLoading[key];
+                      const isForum = group.is_forum;
+                      const selectedTopicId = formData.target_topics[key];
+                      return (
+                        <div key={group.tg_chat_id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={String(group.tg_chat_id)}
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                const newGroups = checked
+                                  ? [...formData.target_groups, group.tg_chat_id]
+                                  : formData.target_groups.filter(id => id !== group.tg_chat_id);
+                                const newTopics = { ...formData.target_topics };
+                                if (!checked) delete newTopics[key];
+                                setFormData({ ...formData, target_groups: newGroups, target_topics: newTopics });
+                                if (checked && isForum) fetchTopicsForGroup(group.tg_chat_id);
+                              }}
+                            />
+                            <Label htmlFor={String(group.tg_chat_id)}>
+                              {group.title || 'Без названия'}
+                              {isForum && <span className="ml-1 text-xs text-indigo-500">(форум)</span>}
+                            </Label>
+                          </div>
+                          {isSelected && isForum && (
+                            <div className="ml-6">
+                              {isLoadingTopics ? (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка тем...
+                                </span>
+                              ) : topics && topics.length > 0 ? (
+                                <select
+                                  className="text-xs border rounded px-2 py-1 w-full max-w-xs bg-white"
+                                  value={selectedTopicId ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const newTopics = { ...formData.target_topics };
+                                    if (val) {
+                                      newTopics[key] = Number(val);
+                                    } else {
+                                      delete newTopics[key];
+                                    }
+                                    setFormData({ ...formData, target_topics: newTopics });
+                                  }}
+                                >
+                                  <option value="">— Общий чат (без темы)</option>
+                                  {topics.map(t => (
+                                    <option key={t.id} value={t.id}>{t.title}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-gray-400">Темы не найдены</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </>
                 )}
               </div>
