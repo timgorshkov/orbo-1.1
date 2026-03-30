@@ -346,13 +346,22 @@ export class EventProcessingService {
         .filter('tg_chat_id::text', 'eq', String(chatId))
         .eq('is_forum', false);  // only update if not already marked
 
-      // Upsert topic record
+      // Always upsert topic record so IDs are auto-discovered from any message.
+      // When title is known (forum_topic_created/edited), update it.
+      // When title is unknown, insert with empty string but don't overwrite existing title.
       if (topicTitle) {
         await this.supabase
           .from('telegram_topics')
           .upsert(
-            { tg_chat_id: chatId, id: topicId, title: topicTitle },
-            { onConflict: 'id' }
+            { tg_chat_id: chatId, id: topicId, title: topicTitle, updated_at: new Date().toISOString() },
+            { onConflict: 'id,tg_chat_id' }
+          );
+      } else {
+        await this.supabase
+          .from('telegram_topics')
+          .upsert(
+            { tg_chat_id: chatId, id: topicId, title: '' },
+            { onConflict: 'id,tg_chat_id', ignoreDuplicates: true }
           );
       }
     } catch {
@@ -789,8 +798,9 @@ export class EventProcessingService {
     const messageThreadId = typeof (message as any)?.message_thread_id === 'number' ? (message as any).message_thread_id : null;
     const threadTitle = this.extractThreadTitle(message);
 
-    // Mark group as forum and upsert topic if this is a forum thread message
-    if ((message.chat as any)?.is_forum && messageThreadId) {
+    // Mark group as forum and upsert topic if this is a forum topic message.
+    // is_topic_message is more reliable than message.chat.is_forum.
+    if ((message as any)?.is_topic_message && messageThreadId) {
       // Fire-and-forget — don't block message processing
       this.syncForumTopic(chatId, messageThreadId, threadTitle).catch(() => {});
     }
