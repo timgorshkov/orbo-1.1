@@ -204,8 +204,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       target_topics: {},
       scheduled_at: getLocalDatetimeString(1)
     });
-    // Pre-load topics for forum groups
-    groups.filter(g => g.is_forum).forEach(g => fetchTopicsForGroup(g.tg_chat_id));
+    // Pre-load topics for all selected groups (show dropdown if topics exist)
+    groups.forEach(g => fetchTopicsForGroup(g.tg_chat_id));
     setImageFile(null);
     setImagePreview(null);
     setIsDialogOpen(true);
@@ -216,14 +216,14 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     setFormData({
       title: announcement.title,
       content: announcement.content,
-      target_groups: announcement.target_groups,
-      target_max_groups: announcement.target_max_groups || [],
-      target_topics: announcement.target_topics || {},
+      target_groups: Array.isArray(announcement.target_groups) ? announcement.target_groups : [],
+      target_max_groups: Array.isArray(announcement.target_max_groups) ? announcement.target_max_groups : [],
+      target_topics: (announcement.target_topics && typeof announcement.target_topics === 'object' && !Array.isArray(announcement.target_topics)) ? announcement.target_topics : {},
       // Конвертируем UTC время из БД в локальное для отображения
       scheduled_at: utcToLocalDatetimeString(announcement.scheduled_at)
     });
-    // Pre-load topics for forum groups
-    groups.filter(g => g.is_forum).forEach(g => fetchTopicsForGroup(g.tg_chat_id));
+    // Pre-load topics for all selected groups
+    groups.forEach(g => fetchTopicsForGroup(g.tg_chat_id));
     setImageFile(null);
     setImagePreview(announcement.image_url || null);
     setIsDialogOpen(true);
@@ -854,7 +854,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                       const isSelected = formData.target_groups.includes(group.tg_chat_id);
                       const topics = groupTopics[key];
                       const isLoadingTopics = topicsLoading[key];
-                      const isForum = group.is_forum;
+                      // Show topic selector if group has topics (or is marked as forum)
+                      const hasTopics = (topics && topics.length > 0) || group.is_forum;
                       const selectedTopicId = formData.target_topics[key];
                       return (
                         <div key={group.tg_chat_id} className="space-y-1">
@@ -869,15 +870,17 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                                 const newTopics = { ...formData.target_topics };
                                 if (!checked) delete newTopics[key];
                                 setFormData({ ...formData, target_groups: newGroups, target_topics: newTopics });
-                                if (checked && isForum) fetchTopicsForGroup(group.tg_chat_id);
+                                if (checked) fetchTopicsForGroup(group.tg_chat_id);
                               }}
                             />
                             <Label htmlFor={String(group.tg_chat_id)}>
                               {group.title || 'Без названия'}
-                              {isForum && <span className="ml-1 text-xs text-indigo-500">(форум)</span>}
+                              {(group.is_forum || (topics && topics.length > 0)) && (
+                                <span className="ml-1 text-xs text-indigo-500">(форум)</span>
+                              )}
                             </Label>
                           </div>
-                          {isSelected && isForum && (
+                          {isSelected && (isLoadingTopics || hasTopics) && (
                             <div className="ml-6">
                               {isLoadingTopics ? (
                                 <span className="text-xs text-gray-400 flex items-center gap-1">

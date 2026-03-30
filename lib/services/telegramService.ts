@@ -76,6 +76,25 @@ export class TelegramService {
   }
 
   /**
+   * Получает список форум-топиков для группы (Bot API: getForumTopics)
+   * Работает только если бот является участником/администратором форум-группы.
+   */
+  async getForumTopics(chatId: number): Promise<Array<{ id: number; name: string }>> {
+    try {
+      const result = await this.callApi('getForumTopics', { chat_id: chatId });
+      if (result?.ok && Array.isArray(result?.result?.topics)) {
+        return result.result.topics.map((t: any) => ({
+          id: t.message_thread_id,
+          name: t.name,
+        }));
+      }
+    } catch {
+      // ignore — might not support forum topics
+    }
+    return [];
+  }
+
+  /**
    * Установка webhook для бота
    */
   async setWebhook(url: string, secretToken: string) {

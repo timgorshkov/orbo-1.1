@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
+import { TelegramService } from '@/lib/services/telegramService'
 import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('TelegramGroupTopicsAPI')
@@ -12,8 +13,10 @@ export const dynamic = 'force-dynamic'
  * GET /api/telegram/groups/topics?tgChatId=<id>&orgId=<orgId>
  *
  * Returns forum topics known for a Telegram group.
- * Primary source: `telegram_topics` table.
- * Fallback: infer from recent `telegram_activity_events` message_thread_id values.
+ * Sources (in order):
+ * 1. telegram_topics table — pre-populated from webhook or backfill
+ * 2. Telegram Bot API getForumTopics — fetched on demand, result cached in DB
+ * 3. activity_events message_thread_id — last resort (no titles)
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -34,52 +37,82 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  try {
-    const db = createAdminServer()
-    const numericChatId = Number(tgChatId)
-    const chatFilter = Number.isFinite(numericChatId) ? numericChatId : tgChatId
+  const db = createAdminServer()
+  const numericChatId = Number(tgChatId)
+  const chatFilter = Number.isFinite(numericChatId) ? numericChatId : tgChatId
 
-    // Primary: telegram_topics table
-    const { data: topicRows, error: topicsError } = await db
+  try {
+    // 1. Load from telegram_topics table
+    const { data: stored } = await db
       .from('telegram_topics')
       .select('id, title, tg_chat_id')
       .eq('tg_chat_id', chatFilter)
-      .order('title', { ascending: true })
+      .order('id', { ascending: true })
 
-    if (!topicsError && topicRows && topicRows.length > 0) {
-      return NextResponse.json({ topics: topicRows })
+    const hasRealTitles = (stored ?? []).some(
+      t => t.title && !t.title.match(/^Тема \d+$/)
+    )
+
+    // 2. Refresh titles from Bot API if we only have generic "Тема N" names
+    if (!hasRealTitles) {
+      try {
+        const telegram = new TelegramService()
+        const liveTopics = await telegram.getForumTopics(Number(tgChatId))
+
+        if (liveTopics.length > 0) {
+          // Upsert real titles
+          await Promise.all(
+            liveTopics.map(t =>
+              db.from('telegram_topics').upsert(
+                { id: t.id, tg_chat_id: Number(tgChatId), title: t.name, updated_at: new Date().toISOString() },
+                { onConflict: 'id,tg_chat_id' }
+              )
+            )
+          )
+
+          // Also mark group as forum
+          await db
+            .from('telegram_groups')
+            .update({ is_forum: true })
+            .filter('tg_chat_id::text', 'eq', String(tgChatId))
+
+          return NextResponse.json({
+            topics: liveTopics.map(t => ({ id: t.id, title: t.name, tg_chat_id: Number(tgChatId) })),
+          })
+        }
+      } catch (botErr: any) {
+        logger.warn({ error: botErr.message, tgChatId }, 'Bot API getForumTopics failed, using cached data')
+      }
     }
 
-    // Fallback: infer from activity events
-    const { data: activityRows, error: activityError } = await db
-      .from('telegram_activity_events')
-      .select('message_thread_id, thread_title, meta')
+    // Return stored topics (may have real or generic titles)
+    if ((stored ?? []).length > 0) {
+      return NextResponse.json({ topics: stored })
+    }
+
+    // 3. Last resort: infer from activity_events
+    const { data: activityRows } = await db
+      .from('activity_events')
+      .select('message_thread_id')
       .eq('tg_chat_id', chatFilter)
       .not('message_thread_id', 'is', null)
+      .gt('message_thread_id', 1)
       .order('created_at', { ascending: false })
       .limit(500)
 
-    if (activityError || !activityRows || activityRows.length === 0) {
+    if (!activityRows || activityRows.length === 0) {
       return NextResponse.json({ topics: [] })
     }
 
-    const topicMap = new Map<string, string>()
-    activityRows.forEach((row: any) => {
-      const meta = row?.meta || {}
-      const threadIdRaw = row?.message_thread_id ?? meta?.message_thread_id ?? null
-      const threadTitle = (row?.thread_title ?? meta?.thread_title)?.toString().trim() || null
-      if (threadIdRaw == null) return
-      const key = String(threadIdRaw)
-      if (!topicMap.has(key)) {
-        topicMap.set(key, threadTitle || `Тема ${key}`)
+    const seen = new Set<number>()
+    const topics = []
+    for (const row of activityRows) {
+      const id = Number(row.message_thread_id)
+      if (!seen.has(id)) {
+        seen.add(id)
+        topics.push({ id, title: `Тема ${id}`, tg_chat_id: Number(tgChatId) })
       }
-    })
-
-    const topics = Array.from(topicMap.entries()).map(([id, title]) => ({
-      id: Number(id),
-      title,
-      tg_chat_id: Number(tgChatId),
-    }))
+    }
 
     return NextResponse.json({ topics })
   } catch (err: any) {
