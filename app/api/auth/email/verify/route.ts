@@ -55,16 +55,32 @@ export async function GET(request: NextRequest) {
     }
 
     if (tokenRow.is_used) {
-      logger.warn({
-        token_prefix: token.substring(0, 8),
-        email: tokenRow.email,
-        used_at: tokenRow.used_at,
-        token_id: tokenRow.id
-      }, 'Token already used — possible bot prefetch or double-click')
-      return NextResponse.redirect(new URL('/signin?error=invalid_token', baseUrl))
+      // If the token was used very recently (< 60s), it's likely a mobile mail client
+      // pre-fetching the link in parallel with the user click. Allow the user through
+      // by rebuilding a session from the existing user record instead of showing an error.
+      const usedAt = tokenRow.used_at ? new Date(tokenRow.used_at).getTime() : 0
+      const secondsSinceUse = (Date.now() - usedAt) / 1000
+      if (secondsSinceUse < 60) {
+        logger.info({
+          token_prefix: token.substring(0, 8),
+          email: tokenRow.email,
+          seconds_since_use: Math.round(secondsSinceUse),
+          token_id: tokenRow.id
+        }, 'Token recently used — likely mail client prefetch, rebuilding session')
+        // Fall through with tokenRow so session gets created below
+      } else {
+        logger.warn({
+          token_prefix: token.substring(0, 8),
+          email: tokenRow.email,
+          used_at: tokenRow.used_at,
+          token_id: tokenRow.id
+        }, 'Token already used — possible bot prefetch or double-click')
+        return NextResponse.redirect(new URL('/signin?error=invalid_token', baseUrl))
+      }
     }
 
     const authToken = tokenRow
+    const alreadyUsed = tokenRow.is_used === true
 
     // 2. Проверяем срок действия
     const expiresAt = new Date(authToken.expires_at)
@@ -84,14 +100,16 @@ export async function GET(request: NextRequest) {
     const email = authToken.email.toLowerCase()
     logger.info({ email, token_id: authToken.id }, 'Valid token, processing auth')
     
-    // 3. Помечаем токен как использованный
-    await supabaseAdmin
-      .from('email_auth_tokens')
-      .update({ 
-        is_used: true, 
-        used_at: new Date().toISOString()
-      })
-      .eq('id', authToken.id)
+    // 3. Помечаем токен как использованный (пропускаем если уже помечен)
+    if (!alreadyUsed) {
+      await supabaseAdmin
+        .from('email_auth_tokens')
+        .update({
+          is_used: true,
+          used_at: new Date().toISOString()
+        })
+        .eq('id', authToken.id)
+    }
     
     // 4. Находим или создаём пользователя в локальной БД
     let { data: user } = await supabaseAdmin

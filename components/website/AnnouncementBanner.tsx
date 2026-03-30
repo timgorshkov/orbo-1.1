@@ -30,23 +30,27 @@ export function AnnouncementBanner({
   // Check localStorage on mount
   useEffect(() => {
     const storageKey = `${STORAGE_KEY}_${id}`;
-    const closedAt = localStorage.getItem(storageKey);
-    
-    if (closedAt) {
-      const closedTime = parseInt(closedAt, 10);
-      const now = Date.now();
-      
-      // If closed less than 24 hours ago, keep hidden
-      if (now - closedTime < HIDE_DURATION_MS) {
-        setIsVisible(false);
-        setIsInitialized(true);
-        return;
+    try {
+      const closedAt = localStorage.getItem(storageKey);
+
+      if (closedAt) {
+        const closedTime = parseInt(closedAt, 10);
+        const now = Date.now();
+
+        // If closed less than 24 hours ago, keep hidden
+        if (now - closedTime < HIDE_DURATION_MS) {
+          setIsVisible(false);
+          setIsInitialized(true);
+          return;
+        }
+
+        // Otherwise, clear old timestamp and show
+        localStorage.removeItem(storageKey);
       }
-      
-      // Otherwise, clear old timestamp and show
-      localStorage.removeItem(storageKey);
+    } catch {
+      // localStorage unavailable (WebView private mode, etc.) — show banner
     }
-    
+
     setIsVisible(true);
     setIsInitialized(true);
   }, [id]);
@@ -77,7 +81,7 @@ export function AnnouncementBanner({
   const handleClose = () => {
     // Save close timestamp to localStorage
     const storageKey = `${STORAGE_KEY}_${id}`;
-    localStorage.setItem(storageKey, Date.now().toString());
+    try { localStorage.setItem(storageKey, Date.now().toString()); } catch { /* ignore */ }
     
     setIsVisible(false);
     onClose?.();

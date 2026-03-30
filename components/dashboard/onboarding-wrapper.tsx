@@ -22,16 +22,16 @@ export default function OnboardingWrapper({
   // Check localStorage for skip preference
   useEffect(() => {
     const skipKey = `orbo_skip_onboarding_${orgId}`
-    if (localStorage.getItem(skipKey) === 'true') {
-      setHidden(true)
-    }
+    try {
+      if (localStorage.getItem(skipKey) === 'true') setHidden(true)
+    } catch { /* localStorage unavailable */ }
   }, [orgId])
 
   if (!isOnboarding || hidden) return null
 
   const handleSkip = () => {
     const skipKey = `orbo_skip_onboarding_${orgId}`
-    localStorage.setItem(skipKey, 'true')
+    try { localStorage.setItem(skipKey, 'true') } catch { /* ignore */ }
     setHidden(true)
   }
 
