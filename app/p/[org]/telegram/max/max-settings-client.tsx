@@ -125,6 +125,11 @@ export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername 
       setError('Укажите MAX User ID')
       return
     }
+    const parsedId = parseInt(maxUserId)
+    if (isNaN(parsedId) || parsedId < 1000000) {
+      setError('MAX User ID должен быть числом от 7 цифр и больше. Узнать его можно, написав боту /start.')
+      return
+    }
     setSaving(true)
     setError(null)
     setSuccess(null)
@@ -139,18 +144,24 @@ export default function MaxSettingsClient({ orgId, botUsername, mainBotUsername 
         if (data.code === 'BOT_BLOCKED') {
           setError(
             <span>
-              Не удалось отправить код. Убедитесь, что вы начали диалог с ботом{' '}
+              Бот не может написать вам первым — вы ещё не открыли с ним диалог.{' '}
               {botUsername ? (
-                <a
-                  href={`https://max.ru/${botUsername}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-red-700 hover:underline font-medium"
-                >
-                  @{botUsername}
-                </a>
-              ) : 'в MAX'}
-              {' '}
+                <>
+                  <a
+                    href={`https://max.ru/${botUsername}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-red-700 hover:underline font-medium"
+                  >
+                    Откройте @{botUsername} в MAX
+                  </a>
+                  {', отправьте '}
+                  <b>/start</b>
+                  {' — там же получите свой User ID — и попробуйте снова.'}
+                </>
+              ) : (
+                <>откройте бота в MAX, отправьте <b>/start</b> и попробуйте снова.</>
+              )}
             </span>
           )
         } else {
