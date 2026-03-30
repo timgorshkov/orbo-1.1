@@ -10,6 +10,7 @@ import { createClientBrowser } from '@/lib/client/supabaseClient'
 import { RemoveGroupButton } from '@/components/telegram-group-actions'
 import { AdminBadge } from '@/components/admin-badge'
 import ImportHistory from '@/components/telegram/import-history'
+import MemberSyncTab from '@/components/telegram/MemberSyncTab'
 import ActivityTimeline from '@/components/analytics/activity-timeline'
 import TopContributors from '@/components/analytics/top-contributors'
 import KeyMetrics from '@/components/analytics/key-metrics'
@@ -702,6 +703,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                 <TabsTrigger value="analytics">Аналитика</TabsTrigger>
                 <TabsTrigger value="members">Участники</TabsTrigger>
                 <TabsTrigger value="import">Импорт истории</TabsTrigger>
+                <TabsTrigger value="member-sync">Подгрузка участников</TabsTrigger>
                 <TabsTrigger value="settings">Настройки</TabsTrigger>
               </TabsList>
 
@@ -811,6 +813,16 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
 
               <TabsContent value="import">
                 <ImportHistory groupId={params.id} orgId={params.org} />
+              </TabsContent>
+
+              <TabsContent value="member-sync">
+                {group && (
+                  <MemberSyncTab
+                    orgId={params.org}
+                    tgChatId={group.tg_chat_id}
+                    groupTitle={group.title || 'группы'}
+                  />
+                )}
               </TabsContent>
 
               <TabsContent value="settings">

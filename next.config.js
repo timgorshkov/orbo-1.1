@@ -13,7 +13,7 @@ const nextConfig = {
   },
   experimental: {
     // Include Hawk.so in standalone build (external package for Node.js)
-    serverComponentsExternalPackages: ['@hawk.so/nodejs'],
+    serverComponentsExternalPackages: ['@hawk.so/nodejs', 'telegram'],
     // Добавьте исключение для директории temp
     outputFileTracingExcludes: {
       '*': ['./temp/**/*'],
