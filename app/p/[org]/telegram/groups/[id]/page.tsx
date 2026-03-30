@@ -11,6 +11,7 @@ import { RemoveGroupButton } from '@/components/telegram-group-actions'
 import { AdminBadge } from '@/components/admin-badge'
 import ImportHistory from '@/components/telegram/import-history'
 import MemberSyncTab from '@/components/telegram/MemberSyncTab'
+import ForumTopicsManager from '@/components/telegram/ForumTopicsManager'
 import ActivityTimeline from '@/components/analytics/activity-timeline'
 import TopContributors from '@/components/analytics/top-contributors'
 import KeyMetrics from '@/components/analytics/key-metrics'
@@ -63,6 +64,7 @@ export default function TelegramGroupPage({ params }: { params: { org: string, i
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [group, setGroup] = useState<any | null>(null)
+  const [isForum, setIsForum] = useState(false)
   const [title, setTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
@@ -139,6 +141,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         }, 'Fetched group data');
 
         setGroup(groupData);
+        setIsForum(!!groupData.is_forum);
         setTitle(groupData.title || '');
         if (groupData.status === 'archived') {
           setAnalyticsError('Группа находилась в архивации. После восстановления необходимо вернуть права администратора боту.');
@@ -906,6 +909,15 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                     )}
                   </CardContent>
                 </Card>
+
+                {group && (
+                  <ForumTopicsManager
+                    orgId={params.org}
+                    tgChatId={group.tg_chat_id}
+                    isForum={isForum}
+                    onForumToggle={setIsForum}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           )}

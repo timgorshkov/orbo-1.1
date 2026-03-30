@@ -10,6 +10,47 @@ const logger = createServiceLogger('TelegramGroupTopicsAPI')
 export const dynamic = 'force-dynamic'
 
 /**
+ * POST /api/telegram/groups/topics
+ * Full replace of topics for a group (upsert all, delete missing).
+ * Body: { orgId, tgChatId, topics: Array<{ id, title }> }
+ */
+export async function POST(request: NextRequest) {
+  const user = await getUnifiedUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const { orgId, tgChatId, topics } = body
+
+  if (!orgId || tgChatId == null || !Array.isArray(topics)) {
+    return NextResponse.json({ error: 'orgId, tgChatId, topics required' }, { status: 400 })
+  }
+
+  const access = await getEffectiveOrgRole(user.id, orgId)
+  if (!access || !['owner', 'admin'].includes(access.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const db = createAdminServer()
+  const numericChatId = Number(tgChatId)
+
+  // Delete all existing topics for this group
+  await db.from('telegram_topics').delete().eq('tg_chat_id', numericChatId)
+
+  // Insert new list
+  if (topics.length > 0) {
+    await db.from('telegram_topics').insert(
+      topics.map((t: any) => ({
+        id: Number(t.id),
+        tg_chat_id: numericChatId,
+        title: String(t.title || '').trim(),
+      }))
+    )
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
+/**
  * GET /api/telegram/groups/topics?tgChatId=<id>&orgId=<orgId>
  *
  * Returns forum topics known for a Telegram group.
@@ -85,36 +126,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Return stored topics (may have real or generic titles)
-    if ((stored ?? []).length > 0) {
-      return NextResponse.json({ topics: stored })
-    }
-
-    // 3. Last resort: infer from activity_events
-    const { data: activityRows } = await db
-      .from('activity_events')
-      .select('message_thread_id')
-      .eq('tg_chat_id', chatFilter)
-      .not('message_thread_id', 'is', null)
-      .gt('message_thread_id', 1)
-      .order('created_at', { ascending: false })
-      .limit(500)
-
-    if (!activityRows || activityRows.length === 0) {
-      return NextResponse.json({ topics: [] })
-    }
-
-    const seen = new Set<number>()
-    const topics = []
-    for (const row of activityRows) {
-      const id = Number(row.message_thread_id)
-      if (!seen.has(id)) {
-        seen.add(id)
-        topics.push({ id, title: `Тема ${id}`, tg_chat_id: Number(tgChatId) })
-      }
-    }
-
-    return NextResponse.json({ topics })
+    // Return stored topics (with real names only)
+    return NextResponse.json({ topics: stored ?? [] })
   } catch (err: any) {
     logger.error({ error: err.message }, 'Error in GET /api/telegram/groups/topics')
     return NextResponse.json({ topics: [] })

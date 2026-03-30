@@ -907,7 +907,17 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                                   ))}
                                 </select>
                               ) : (
-                                <span className="text-xs text-gray-400">Темы не найдены</span>
+                                <span className="text-xs text-gray-400">
+                                  Темы не настроены.{' '}
+                                  <a
+                                    href={`/p/${orgId}/telegram/groups/${group.tg_chat_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline text-indigo-500"
+                                  >
+                                    Добавьте топики в настройках группы
+                                  </a>
+                                </span>
                               )}
                             </div>
                           )}
