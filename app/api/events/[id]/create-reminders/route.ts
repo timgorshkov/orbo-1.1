@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { auth } from '@/auth';
 import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 import { createEventReminders } from '@/lib/services/announcementService';
+import { getOrgAnnouncementDefaults } from '@/lib/services/recurringEventsService';
 import { createAPILogger } from '@/lib/logger';
 
 /**
@@ -45,21 +46,15 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const useMiniAppLink: boolean = body.use_miniapp_link !== false;
 
-    // Get active org Telegram groups
-    const { data: orgGroups } = await db
-      .from('org_telegram_groups')
-      .select('tg_chat_id')
-      .eq('org_id', event.org_id)
-      .eq('status', 'active');
+    // Get default target groups and topics for announcements
+    const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(event.org_id);
 
-    if (!orgGroups || orgGroups.length === 0) {
+    if (targetGroups.length === 0) {
       return NextResponse.json(
         { error: 'Нет подключённых Telegram-групп. Подключите хотя бы одну группу в разделе «Telegram».' },
         { status: 422 }
       );
     }
-
-    const targetGroups = orgGroups.map(g => String(g.tg_chat_id));
 
     // Build event start datetime (Moscow time)
     const dateStr = typeof event.event_date === 'string'
@@ -97,7 +92,8 @@ export async function POST(
       event.location_info,
       targetGroups,
       useMiniAppLink,
-      event.event_type ?? 'offline'
+      event.event_type ?? 'offline',
+      targetTopics
     );
 
     if (reminder24h > now) created.push('за 24 часа');

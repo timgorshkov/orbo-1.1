@@ -309,7 +309,8 @@ export async function createEventReminders(
   eventLocation: string | null,
   targetGroups: string[],
   useMiniAppLink: boolean = true,
-  eventType: 'online' | 'offline' = 'offline'
+  eventType: 'online' | 'offline' = 'offline',
+  targetTopics: Record<string, number> = {}
 ): Promise<void> {
   const supabase = createAdminServer();
   
@@ -357,6 +358,7 @@ export async function createEventReminders(
   content1h += `\n🔗 <a href="${eventUrl}">Подробнее</a>`;
   
   const now = new Date();
+  const topicsPayload = Object.keys(targetTopics).length > 0 ? targetTopics : undefined;
   const announcements: Array<{
     org_id: string;
     title: string;
@@ -364,10 +366,11 @@ export async function createEventReminders(
     event_id: string;
     reminder_type: string;
     target_groups: string[];
+    target_topics?: Record<string, number>;
     scheduled_at: string;
     created_by_name: string;
   }> = [];
-  
+
   // Анонс за 24 часа
   const reminder24h = new Date(eventStartTime.getTime() - 24 * 60 * 60 * 1000);
   if (reminder24h > now) {
@@ -378,11 +381,12 @@ export async function createEventReminders(
       event_id: eventId,
       reminder_type: '24h',
       target_groups: targetGroups,
+      ...(topicsPayload ? { target_topics: topicsPayload } : {}),
       scheduled_at: reminder24h.toISOString(),
       created_by_name: 'автоматически'
     });
   }
-  
+
   // Анонс за 1 час
   const reminder1h = new Date(eventStartTime.getTime() - 60 * 60 * 1000);
   if (reminder1h > now) {
@@ -393,6 +397,7 @@ export async function createEventReminders(
       event_id: eventId,
       reminder_type: '1h',
       target_groups: targetGroups,
+      ...(topicsPayload ? { target_topics: topicsPayload } : {}),
       scheduled_at: reminder1h.toISOString(),
       created_by_name: 'автоматически'
     });

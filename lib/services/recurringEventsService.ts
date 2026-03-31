@@ -276,7 +276,8 @@ export async function rescheduleAnnouncements(
   eventStartTime: Date,
   locationInfo: string | null,
   eventType: string,
-  targetGroups: string[]
+  targetGroups: string[],
+  targetTopics: Record<string, number> = {}
 ): Promise<void> {
   const db = createAdminServer()
 
@@ -300,7 +301,8 @@ export async function rescheduleAnnouncements(
     locationInfo,
     targetGroups,
     true,
-    eventType as 'online' | 'offline'
+    eventType as 'online' | 'offline',
+    targetTopics
   )
 }
 
@@ -389,16 +391,51 @@ export async function getNextInstanceByIndex(
 }
 
 /**
- * Fetches org telegram groups for an org (used when creating announcements).
+ * Fetches announcement defaults for an org (target groups + topics).
+ * If announcement_defaults is configured, uses it; otherwise falls back to all active groups.
  */
-export async function getOrgTargetGroups(orgId: string): Promise<string[]> {
+export async function getOrgAnnouncementDefaults(orgId: string): Promise<{
+  targetGroups: string[];
+  targetTopics: Record<string, number>;
+}> {
   const db = createAdminServer()
 
+  const { data: org } = await db
+    .from('organizations')
+    .select('announcement_defaults')
+    .eq('id', orgId)
+    .single()
+
+  const defaults = org?.announcement_defaults as {
+    target_groups?: number[];
+    target_topics?: Record<string, number>;
+  } | null
+
+  if (defaults?.target_groups && defaults.target_groups.length > 0) {
+    return {
+      targetGroups: defaults.target_groups.map(String),
+      targetTopics: defaults.target_topics ?? {},
+    }
+  }
+
+  // Fallback: all active groups, no topics
   const { data: orgGroups } = await db
     .from('org_telegram_groups')
     .select('tg_chat_id')
     .eq('org_id', orgId)
     .eq('status', 'active')
 
-  return (orgGroups ?? []).map(g => String(g.tg_chat_id))
+  return {
+    targetGroups: (orgGroups ?? []).map(g => String(g.tg_chat_id)),
+    targetTopics: {},
+  }
+}
+
+/**
+ * Fetches org telegram groups for an org (used when creating announcements).
+ * @deprecated Use getOrgAnnouncementDefaults to also get default topics.
+ */
+export async function getOrgTargetGroups(orgId: string): Promise<string[]> {
+  const { targetGroups } = await getOrgAnnouncementDefaults(orgId)
+  return targetGroups
 }

@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Calendar, 
-  List, 
-  Plus, 
-  Send, 
-  Clock, 
-  CheckCircle, 
+import {
+  Calendar,
+  List,
+  Plus,
+  Send,
+  Clock,
+  CheckCircle,
   XCircle,
   AlertCircle,
   ChevronLeft,
@@ -19,7 +19,8 @@ import {
   Upload,
   X,
   ImageIcon,
-  Loader2
+  Loader2,
+  Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -97,6 +98,18 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+
+  // Defaults settings dialog
+  const [isDefaultsDialogOpen, setIsDefaultsDialogOpen] = useState(false);
+  const [defaultsForm, setDefaultsForm] = useState({
+    target_groups: [] as number[],
+    target_topics: {} as Record<string, number>,
+    target_max_groups: [] as number[],
+  });
+  const [isSavingDefaults, setIsSavingDefaults] = useState(false);
+  const [defaultsTopics, setDefaultsTopics] = useState<Record<string, TelegramTopic[]>>({});
+  const [defaultsTopicsLoading, setDefaultsTopicsLoading] = useState<Record<string, boolean>>({});
+
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -158,6 +171,67 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     }
   };
 
+  const fetchDefaults = async () => {
+    try {
+      const res = await fetch(`/api/announcements/defaults?org_id=${orgId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDefaultsForm({
+          target_groups: data.defaults.target_groups ?? [],
+          target_topics: data.defaults.target_topics ?? {},
+          target_max_groups: data.defaults.target_max_groups ?? [],
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchDefaultsTopicsForGroup = async (tgChatId: number) => {
+    const key = String(tgChatId);
+    if (defaultsTopics[key] !== undefined || defaultsTopicsLoading[key]) return;
+    setDefaultsTopicsLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(`/api/telegram/groups/topics?tgChatId=${tgChatId}&orgId=${orgId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDefaultsTopics(prev => ({ ...prev, [key]: data.topics || [] }));
+      }
+    } catch {
+      setDefaultsTopics(prev => ({ ...prev, [key]: [] }));
+    } finally {
+      setDefaultsTopicsLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleOpenDefaults = async () => {
+    await fetchDefaults();
+    // Pre-load topics for all groups
+    groups.forEach(g => fetchDefaultsTopicsForGroup(g.tg_chat_id));
+    setIsDefaultsDialogOpen(true);
+  };
+
+  const handleSaveDefaults = async () => {
+    setIsSavingDefaults(true);
+    try {
+      const res = await fetch('/api/announcements/defaults', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, ...defaultsForm }),
+      });
+      if (res.ok) {
+        setIsDefaultsDialogOpen(false);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Ошибка при сохранении');
+      }
+    } catch {
+      alert('Ошибка при сохранении');
+    } finally {
+      setIsSavingDefaults(false);
+    }
+  };
+
   const fetchTopicsForGroup = async (tgChatId: number) => {
     const key = String(tgChatId);
     if (groupTopics[key] !== undefined || topicsLoading[key]) return;
@@ -194,14 +268,31 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     return utcToLocalDatetimeString(date.toISOString());
   };
   
-  const handleCreateNew = () => {
+  const handleCreateNew = async () => {
     setEditingAnnouncement(null);
+    // Load defaults first, then fall back to all groups if none configured
+    let defaultTargetGroups = groups.map(g => g.tg_chat_id);
+    let defaultTargetTopics: Record<string, number> = {};
+    let defaultTargetMaxGroups = maxGroups.map(g => g.max_chat_id);
+    try {
+      const res = await fetch(`/api/announcements/defaults?org_id=${orgId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.defaults.target_groups?.length > 0) {
+          defaultTargetGroups = data.defaults.target_groups;
+          defaultTargetTopics = data.defaults.target_topics ?? {};
+          defaultTargetMaxGroups = data.defaults.target_max_groups ?? [];
+        }
+      }
+    } catch {
+      // ignore, use fallback
+    }
     setFormData({
       title: '',
       content: '',
-      target_groups: groups.map(g => g.tg_chat_id),
-      target_max_groups: maxGroups.map(g => g.max_chat_id),
-      target_topics: {},
+      target_groups: defaultTargetGroups,
+      target_max_groups: defaultTargetMaxGroups,
+      target_topics: defaultTargetTopics,
       scheduled_at: getLocalDatetimeString(1)
     });
     // Pre-load topics for all selected groups (show dropdown if topics exist)
@@ -425,10 +516,15 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
           <h1 className="text-2xl font-bold">Анонсы</h1>
           <p className="text-gray-500">Управление рассылками в группы</p>
         </div>
-        <Button onClick={handleCreateNew}>
-          <Plus className="w-4 h-4 mr-2" />
-          Создать анонс
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={handleOpenDefaults} title="Настройки по умолчанию">
+            <Settings className="w-4 h-4" />
+          </Button>
+          <Button onClick={handleCreateNew}>
+            <Plus className="w-4 h-4 mr-2" />
+            Создать анонс
+          </Button>
+        </div>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -744,6 +840,166 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
         </TabsContent>
       </Tabs>
       
+      {/* Defaults Settings Dialog */}
+      <Dialog open={isDefaultsDialogOpen} onOpenChange={setIsDefaultsDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Настройки по умолчанию</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-500 -mt-2">
+            Группы и темы, которые будут автоматически выбраны при создании нового анонса и в напоминаниях для событий.
+          </p>
+
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Telegram группы по умолчанию</Label>
+              <div className="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2">
+                {groups.length === 0 ? (
+                  <p className="text-gray-500 text-sm">Нет доступных Telegram групп</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <Checkbox
+                        id="defaults-all-groups"
+                        checked={defaultsForm.target_groups.length === groups.length}
+                        onCheckedChange={(checked) => {
+                          setDefaultsForm({
+                            ...defaultsForm,
+                            target_groups: checked ? groups.map(g => g.tg_chat_id) : [],
+                            target_topics: checked ? defaultsForm.target_topics : {},
+                          });
+                        }}
+                      />
+                      <Label htmlFor="defaults-all-groups" className="font-medium">Все Telegram группы</Label>
+                    </div>
+                    {groups.map(group => {
+                      const key = String(group.tg_chat_id);
+                      const isSelected = defaultsForm.target_groups.includes(group.tg_chat_id);
+                      const topics = defaultsTopics[key];
+                      const isLoadingTopics = defaultsTopicsLoading[key];
+                      const hasTopics = (topics && topics.length > 0) || group.is_forum;
+                      const selectedTopicId = defaultsForm.target_topics[key];
+                      return (
+                        <div key={group.tg_chat_id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`defaults-group-${group.tg_chat_id}`}
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                const newGroups = checked
+                                  ? [...defaultsForm.target_groups, group.tg_chat_id]
+                                  : defaultsForm.target_groups.filter(id => id !== group.tg_chat_id);
+                                const newTopics = { ...defaultsForm.target_topics };
+                                if (!checked) delete newTopics[key];
+                                setDefaultsForm({ ...defaultsForm, target_groups: newGroups, target_topics: newTopics });
+                                if (checked) fetchDefaultsTopicsForGroup(group.tg_chat_id);
+                              }}
+                            />
+                            <Label htmlFor={`defaults-group-${group.tg_chat_id}`}>
+                              {group.title || 'Без названия'}
+                              {(group.is_forum || (topics && topics.length > 0)) && (
+                                <span className="ml-1 text-xs text-indigo-500">(форум)</span>
+                              )}
+                            </Label>
+                          </div>
+                          {isSelected && (isLoadingTopics || hasTopics) && (
+                            <div className="ml-6">
+                              {isLoadingTopics ? (
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" /> Загрузка тем...
+                                </span>
+                              ) : topics && topics.length > 0 ? (
+                                <select
+                                  className="text-xs border rounded px-2 py-1 w-full max-w-xs bg-white"
+                                  value={selectedTopicId ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const newTopics = { ...defaultsForm.target_topics };
+                                    if (val) {
+                                      newTopics[key] = Number(val);
+                                    } else {
+                                      delete newTopics[key];
+                                    }
+                                    setDefaultsForm({ ...defaultsForm, target_topics: newTopics });
+                                  }}
+                                >
+                                  <option value="">— Общий чат (без темы)</option>
+                                  {topics.map(t => (
+                                    <option key={t.id} value={t.id}>{t.title}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-gray-400">
+                                  Темы пока не обнаружены. Они появятся автоматически при активности в группе.
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {maxGroups.length > 0 && (
+              <div>
+                <Label>MAX группы по умолчанию</Label>
+                <div className="mt-2 space-y-2 max-h-32 overflow-y-auto border rounded p-2">
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <Checkbox
+                      id="defaults-all-max-groups"
+                      checked={defaultsForm.target_max_groups.length === maxGroups.length}
+                      onCheckedChange={(checked) => {
+                        setDefaultsForm({
+                          ...defaultsForm,
+                          target_max_groups: checked ? maxGroups.map(g => g.max_chat_id) : [],
+                        });
+                      }}
+                    />
+                    <Label htmlFor="defaults-all-max-groups" className="font-medium">Все MAX группы</Label>
+                  </div>
+                  {maxGroups.map(group => (
+                    <div key={group.max_chat_id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`defaults-max-${group.max_chat_id}`}
+                        checked={defaultsForm.target_max_groups.includes(group.max_chat_id)}
+                        onCheckedChange={(checked) => {
+                          setDefaultsForm({
+                            ...defaultsForm,
+                            target_max_groups: checked
+                              ? [...defaultsForm.target_max_groups, group.max_chat_id]
+                              : defaultsForm.target_max_groups.filter(id => id !== group.max_chat_id),
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`defaults-max-${group.max_chat_id}`}>
+                        {group.title || 'Без названия'} <span className="text-xs text-gray-400">(MAX)</span>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDefaultsDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleSaveDefaults} disabled={isSavingDefaults}>
+              {isSavingDefaults ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Сохранение...
+                </>
+              ) : 'Сохранить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

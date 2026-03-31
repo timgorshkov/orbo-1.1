@@ -3,7 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { rescheduleAnnouncements, getOrgTargetGroups } from '@/lib/services/recurringEventsService'
+import { rescheduleAnnouncements, getOrgAnnouncementDefaults } from '@/lib/services/recurringEventsService'
 
 // GET /api/events/[id] - Get event details
 export async function GET(
@@ -353,7 +353,7 @@ export async function PUT(
 
       // Reschedule announcements for affected future siblings if time/location changed
       if (timeOrLocationChanged) {
-        const targetGroups = await getOrgTargetGroups(existingEvent.org_id)
+        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(existingEvent.org_id)
         if (targetGroups.length > 0) {
           let siblingsQuery = adminSupabase
             .from('events')
@@ -382,7 +382,8 @@ export async function PUT(
                 eventStartTime,
                 locationInfo ?? sibling.location_info,
                 eventType ?? sibling.event_type,
-                targetGroups
+                targetGroups,
+                targetTopics
               )
             }
           }
@@ -393,7 +394,7 @@ export async function PUT(
     // Reschedule announcements for the edited event itself if time/location changed
     if (timeOrLocationChanged) {
       try {
-        const targetGroups = await getOrgTargetGroups(existingEvent.org_id)
+        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(existingEvent.org_id)
         if (targetGroups.length > 0) {
           const dateStr = (eventDate ?? existingEvent.event_date ?? '').split('T')[0]
           const timeStr = (startTime ?? existingEvent.start_time ?? '10:00').substring(0, 5)
@@ -407,7 +408,8 @@ export async function PUT(
               eventStartTime,
               locationInfo ?? existingEvent.location_info,
               eventType ?? existingEvent.event_type,
-              targetGroups
+              targetGroups,
+              targetTopics
             )
           }
         }

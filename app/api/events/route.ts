@@ -4,7 +4,7 @@ import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminActio
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createEventReminders } from '@/lib/services/announcementService'
-import { generateAndScheduleInstances, getNextInstance } from '@/lib/services/recurringEventsService'
+import { generateAndScheduleInstances, getNextInstance, getOrgAnnouncementDefaults } from '@/lib/services/recurringEventsService'
 
 // GET /api/events - List events with filters
 export async function GET(request: NextRequest) {
@@ -341,13 +341,7 @@ export async function POST(request: NextRequest) {
 
     if (event?.id && event.event_date && shouldCreateAnnouncements) {
       try {
-        const { data: orgGroups } = await adminSupabase
-          .from('org_telegram_groups')
-          .select('tg_chat_id')
-          .eq('org_id', orgId)
-          .eq('status', 'active');
-
-        const targetGroups = (orgGroups ?? []).map(g => String(g.tg_chat_id));
+        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(orgId);
 
         if (event.is_recurring && recurrenceRule) {
           // Recurring: generate child instances for the next 4 weeks from first occurrence
@@ -378,7 +372,8 @@ export async function POST(request: NextRequest) {
               event.location_info,
               targetGroups,
               useMiniAppLink,
-              event.event_type ?? 'offline'
+              event.event_type ?? 'offline',
+              targetTopics
             )
             logger.info({ event_id: event.id, targetGroupsCount: targetGroups.length }, 'Event reminders created')
           }
