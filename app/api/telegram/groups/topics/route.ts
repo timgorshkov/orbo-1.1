@@ -94,8 +94,9 @@ export async function GET(request: NextRequest) {
       t => t.title && !t.title.match(/^Тема \d+$/)
     )
 
-    // 2. Refresh titles from Bot API if we only have generic "Тема N" names
-    if (!hasRealTitles) {
+    // 2. Refresh titles from Bot API if we have topics with only generic "Тема N" names.
+    //    Skip if no stored topics at all — avoids 404 errors for non-forum groups.
+    if (!hasRealTitles && stored && stored.length > 0) {
       try {
         const telegram = new TelegramService()
         const liveTopics = await telegram.getForumTopics(Number(tgChatId))

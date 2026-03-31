@@ -1030,6 +1030,8 @@ export class EventProcessingService {
       };
       
       // Check if event already exists (prevent duplicates)
+      // NOTE: no org_id filter — events are stored once per group, not per org.
+      // Multiple orgs sharing a group see the same events via tg_chat_id filter.
       try {
         const { data: existingEvent } = await this.supabase
           .from('activity_events')
@@ -1038,9 +1040,9 @@ export class EventProcessingService {
           .eq('message_id', message.message_id)
           .eq('event_type', 'message')
           .maybeSingle();
-        
+
         let insertedEvent: any = null;
-        
+
         if (existingEvent) {
           insertedEvent = existingEvent;
         } else {
@@ -1050,9 +1052,9 @@ export class EventProcessingService {
               .insert(baseEventData)
               .select('id')
               .single();
-          
+
             if (error) {
-              this.logger.error({ 
+              this.logger.error({
                 org_id: orgId,
                 chat_id: chatId,
                 message_id: message.message_id,

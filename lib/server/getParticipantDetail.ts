@@ -228,20 +228,16 @@ export async function getParticipantDetail(orgId: string, participantId: string)
         logger.debug({ org_id: orgId, tg_user_id: tgUserId }, 'No org chat IDs found, skipping activity load');
       }
       
+      // Events are stored per GROUP (not per org). An org sees events from its linked groups.
+      // Filter by tg_chat_id IN (org's groups) — NOT by org_id on the event,
+      // because the event's org_id is whichever org processed it first.
       let query = supabase
         .from('activity_events')
         .select('id, event_type, created_at, tg_chat_id, meta, message_id, message_thread_id, reply_to_message_id, org_id')
-        .eq('tg_user_id', tgUserId)
-        .eq('org_id', orgId);
-      
-      // Also filter by org's chat IDs for extra safety
+        .eq('tg_user_id', tgUserId);
+
       if (numericChatIds.length > 0) {
         query = query.in('tg_chat_id', numericChatIds);
-        logger.debug({ 
-          chat_count: numericChatIds.length,
-          org_id: orgId,
-          tg_user_id: tgUserId
-        }, 'Filtering activity by org chat IDs');
       } else {
         // No groups in org = no activity to show (safe default)
         query = query.eq('tg_chat_id', -1); // Will match nothing
