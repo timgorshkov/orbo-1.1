@@ -166,7 +166,9 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
             if (text.length > 80) messageText += '...';
           }
           
-          if (event.reply_to_message_id) {
+          // Show reply indicator only for actual replies, not for forum topic messages
+          // (Telegram sets reply_to_message_id on all topic messages pointing to the topic root)
+          if (event.reply_to_message_id && !event.topic_title) {
             replyIndicator = '↩';
           }
 
@@ -188,8 +190,9 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
             groupName = String(event.meta.chat.title);
           }
 
-          // Topic name for forum messages
-          const topicName = event.topic_title || (event.message_thread_id ? `Тема ${event.message_thread_id}` : '');
+          // Topic name — only for real forum topics (resolved from telegram_topics table).
+          // If topic_title is empty, message_thread_id is a reply thread — handled by ↩ indicator.
+          const topicName = event.topic_title || '';
 
           const eventLabel = getEventLabel(event.event_type, reactionEmoji, reactionTargetText);
 

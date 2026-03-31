@@ -879,15 +879,6 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       )}
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                      <Button onClick={refreshGroupInfo} disabled={loading}>
-                        Обновить информацию о группе
-                      </Button>
-                      <p className="text-xs text-neutral-500">
-                        Запросить актуальную информацию о группе из Telegram (название, количество участников)
-                      </p>
-                    </div>
-
                     {error && (
                       <div className="text-red-500 text-sm">{error}</div>
                     )}
@@ -898,25 +889,29 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       </div>
                     )}
 
-                    {group?.id !== undefined && (
-                      <div className="pt-4 border-t border-neutral-200 flex justify-end">
+                    <div className="pt-4 border-t border-neutral-200 flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={refreshGroupInfo} disabled={loading}>
+                        Обновить информацию
+                      </Button>
+                      {group?.id !== undefined && (
                         <RemoveGroupButton
                           groupId={group.id}
                           orgId={params.org}
                           onRemoved={() => router.push(`/p/${params.org}/telegram`)}
                         />
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
                 {group && (
-                  <ForumTopicsManager
-                    orgId={params.org}
-                    tgChatId={group.tg_chat_id}
-                    isForum={isForum}
-                    onForumToggle={setIsForum}
-                  />
+                  <div className="mt-4">
+                    <ForumTopicsManager
+                      orgId={params.org}
+                      tgChatId={group.tg_chat_id}
+                      isForum={isForum}
+                    />
+                  </div>
                 )}
               </TabsContent>
             </Tabs>
