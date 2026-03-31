@@ -489,7 +489,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
             variant="outline"
             onClick={() => router.push(`/p/${orgId}/events/${event.id}`)}
           >
-            Отменить
+            Вернуться
           </Button>
         </div>
         <EventForm 

@@ -190,6 +190,8 @@ export async function PUT(
       telegramGroupLink,
       // Recurring edit scope: 'this' | 'this_and_future' | 'all'
       updateScope = 'this',
+      // Recurrence rule update (parent event only)
+      recurrenceRule,
     } = body
 
     const adminSupabase = createAdminServer()
@@ -292,9 +294,17 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // --- Update recurrence_rule on parent event ---
+    const isRecurringParent = existingEvent.is_recurring && !existingEvent.parent_event_id
+    if (isRecurringParent && recurrenceRule) {
+      await adminSupabase
+        .from('events')
+        .update({ recurrence_rule: recurrenceRule })
+        .eq('id', eventId)
+    }
+
     // --- Recurring event cascade logic ---
     const isChildInstance = !!existingEvent.parent_event_id
-    const isRecurringParent = existingEvent.is_recurring && !existingEvent.parent_event_id
     const timeOrLocationChanged =
       eventDate !== existingEvent.event_date ||
       startTime !== existingEvent.start_time ||

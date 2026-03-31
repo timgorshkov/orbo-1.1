@@ -218,7 +218,8 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
   const [enableQrCheckin, setEnableQrCheckin] = useState(initialEvent?.enable_qr_checkin ?? true)
   const [telegramGroupLink, setTelegramGroupLink] = useState(initialEvent?.telegram_group_link || '')
   
-  // Recurring fields (create mode)
+  // Recurring fields
+  const isParentRecurring = mode === 'edit' && !!initialEvent?.is_recurring && !initialEvent?.parent_event_id
   const [isRecurring, setIsRecurring] = useState(initialEvent?.is_recurring ?? false)
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'weekly' | 'biweekly' | 'monthly'>(
     (initialEvent?.recurrence_rule?.frequency as 'weekly' | 'biweekly' | 'monthly') || 'weekly'
@@ -286,8 +287,8 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
       showParticipantsList,
       enableQrCheckin,
       telegramGroupLink: telegramGroupLink || null,
-      // Recurring (create mode only)
-      ...(mode === 'create' ? {
+      // Recurring (create mode + parent edit)
+      ...((mode === 'create' || isParentRecurring) ? {
         isRecurring,
         recurrenceRule: isRecurring ? {
           frequency: recurrenceFrequency,
@@ -555,8 +556,8 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
             </CardContent>
           </Card>
 
-          {/* Recurring section — create mode only */}
-          {mode === 'create' && (
+          {/* Recurring section — create mode + parent edit */}
+          {(mode === 'create' || isParentRecurring) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -565,21 +566,31 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="isRecurring"
-                    checked={isRecurring}
-                    onChange={(e) => setIsRecurring(e.target.checked)}
-                    className="mr-2 h-4 w-4"
-                  />
-                  <label htmlFor="isRecurring" className="text-sm font-medium">
-                    Регулярное мероприятие
-                  </label>
-                </div>
+                {/* Toggle — only in create mode, parent is always recurring */}
+                {mode === 'create' && (
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="isRecurring"
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                      className="mr-2 h-4 w-4"
+                    />
+                    <label htmlFor="isRecurring" className="text-sm font-medium">
+                      Регулярное мероприятие
+                    </label>
+                  </div>
+                )}
 
                 {isRecurring && (
                   <div className="space-y-4 pt-2 border-t border-neutral-200">
+                    {isParentRecurring && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                        Изменения регулярности повлияют только на новые автосоздаваемые экземпляры.
+                        Уже существующие события в календаре останутся без изменений.
+                      </div>
+                    )}
+
                     {/* Frequency selector */}
                     <div>
                       <label className="text-sm font-medium block mb-2">Частота</label>
@@ -666,7 +677,7 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
 
                     {requiresPayment && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                        ⚠️ Для регулярных мероприятий поддерживается единократная регистрация и оплата за всю серию.
+                        Для регулярных мероприятий поддерживается единократная регистрация и оплата за всю серию.
                         «Разрешить несколько билетов» недоступно.
                       </div>
                     )}
