@@ -102,9 +102,9 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   // Defaults settings dialog
   const [isDefaultsDialogOpen, setIsDefaultsDialogOpen] = useState(false);
   const [defaultsForm, setDefaultsForm] = useState({
-    target_groups: [] as number[],
+    target_groups: [] as string[],
     target_topics: {} as Record<string, number>,
-    target_max_groups: [] as number[],
+    target_max_groups: [] as string[],
   });
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [defaultsTopics, setDefaultsTopics] = useState<Record<string, TelegramTopic[]>>({});
@@ -271,17 +271,19 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
   const handleCreateNew = async () => {
     setEditingAnnouncement(null);
     // Load defaults first, then fall back to all groups if none configured
-    let defaultTargetGroups = groups.map(g => g.tg_chat_id);
+    // tg_chat_id is always a string at runtime (bigint from pg)
+    let defaultTargetGroups = groups.map(g => g.tg_chat_id);  // strings
     let defaultTargetTopics: Record<string, number> = {};
-    let defaultTargetMaxGroups = maxGroups.map(g => g.max_chat_id);
+    let defaultTargetMaxGroups = maxGroups.map(g => g.max_chat_id);  // numbers (max_chat_id may differ)
     try {
       const res = await fetch(`/api/announcements/defaults?org_id=${orgId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.defaults.target_groups?.length > 0) {
-          defaultTargetGroups = data.defaults.target_groups;
+          // Defaults are stored/returned as strings — keep as strings to match tg_chat_id type
+          defaultTargetGroups = data.defaults.target_groups.map(String);
           defaultTargetTopics = data.defaults.target_topics ?? {};
-          defaultTargetMaxGroups = data.defaults.target_max_groups ?? [];
+          defaultTargetMaxGroups = (data.defaults.target_max_groups ?? []).map(Number);
         }
       }
     } catch {
@@ -865,7 +867,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                         onCheckedChange={(checked) => {
                           setDefaultsForm({
                             ...defaultsForm,
-                            target_groups: checked ? groups.map(g => g.tg_chat_id) : [],
+                            target_groups: checked ? groups.map(g => String(g.tg_chat_id)) : [],
                             target_topics: checked ? defaultsForm.target_topics : {},
                           });
                         }}
@@ -874,7 +876,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                     </div>
                     {groups.map(group => {
                       const key = String(group.tg_chat_id);
-                      const isSelected = defaultsForm.target_groups.includes(group.tg_chat_id);
+                      const isSelected = defaultsForm.target_groups.includes(key);
                       const topics = defaultsTopics[key];
                       const isLoadingTopics = defaultsTopicsLoading[key];
                       const hasTopics = (topics && topics.length > 0) || group.is_forum;
@@ -887,8 +889,8 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                               checked={isSelected}
                               onCheckedChange={(checked) => {
                                 const newGroups = checked
-                                  ? [...defaultsForm.target_groups, group.tg_chat_id]
-                                  : defaultsForm.target_groups.filter(id => id !== group.tg_chat_id);
+                                  ? [...defaultsForm.target_groups, key]
+                                  : defaultsForm.target_groups.filter(id => id !== key);
                                 const newTopics = { ...defaultsForm.target_topics };
                                 if (!checked) delete newTopics[key];
                                 setDefaultsForm({ ...defaultsForm, target_groups: newGroups, target_topics: newTopics });
@@ -954,7 +956,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                       onCheckedChange={(checked) => {
                         setDefaultsForm({
                           ...defaultsForm,
-                          target_max_groups: checked ? maxGroups.map(g => g.max_chat_id) : [],
+                          target_max_groups: checked ? maxGroups.map(g => String(g.max_chat_id)) : [],
                         });
                       }}
                     />
@@ -964,13 +966,14 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
                     <div key={group.max_chat_id} className="flex items-center gap-2">
                       <Checkbox
                         id={`defaults-max-${group.max_chat_id}`}
-                        checked={defaultsForm.target_max_groups.includes(group.max_chat_id)}
+                        checked={defaultsForm.target_max_groups.includes(String(group.max_chat_id))}
                         onCheckedChange={(checked) => {
+                          const maxKey = String(group.max_chat_id);
                           setDefaultsForm({
                             ...defaultsForm,
                             target_max_groups: checked
-                              ? [...defaultsForm.target_max_groups, group.max_chat_id]
-                              : defaultsForm.target_max_groups.filter(id => id !== group.max_chat_id),
+                              ? [...defaultsForm.target_max_groups, maxKey]
+                              : defaultsForm.target_max_groups.filter(id => id !== maxKey),
                           });
                         }}
                       />
