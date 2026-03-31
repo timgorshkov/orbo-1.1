@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
         device_type: body.device_type || null,
         user_agent: body.user_agent || null,
         screen_width: body.screen_width || null,
+        partner_code: body.partner_code || null,
       }, { onConflict: 'user_id' })
 
     if (error) {

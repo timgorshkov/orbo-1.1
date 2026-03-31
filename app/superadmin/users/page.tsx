@@ -58,7 +58,7 @@ export default async function SuperadminUsersPage() {
       .in('user_id', userIds),
     supabase
       .from('user_registration_meta')
-      .select('user_id, utm_source, utm_medium, utm_campaign, landing_page, from_page, device_type, referrer_url')
+      .select('user_id, utm_source, utm_medium, utm_campaign, landing_page, from_page, device_type, referrer_url, partner_code')
       .in('user_id', userIds)
   ])
   
@@ -67,11 +67,13 @@ export default async function SuperadminUsersPage() {
   const { data: organizations } = orgIds.length > 0
     ? await supabase.from('organizations').select('id, name').in('id', orgIds)
     : { data: [] }
-  const orgNameMap = new Map((organizations || []).map(o => [o.id, o.name]))
+  type OrgRow = { id: string; name: string | null }
+  const orgNameMap = new Map(((organizations || []) as OrgRow[]).map(o => [o.id, o.name ?? '']))
   
   // Step 4: Build membership map per user
+  type MembershipRow = { user_id: string; role: string; org_id: string }
   const membershipMap = new Map<string, { owner_orgs: { id: string, name: string }[], admin_orgs: { id: string, name: string }[], total_orgs: number }>()
-  for (const m of (memberships || [])) {
+  for (const m of ((memberships || []) as MembershipRow[])) {
     if (!membershipMap.has(m.user_id)) {
       membershipMap.set(m.user_id, { owner_orgs: [], admin_orgs: [], total_orgs: 0 })
     }
@@ -116,7 +118,7 @@ export default async function SuperadminUsersPage() {
     qualificationMap.set(q.user_id, { responses: q.responses, completed_at: q.completed_at })
   })
   
-  const regMetaMap = new Map<string, { utm_source?: string, utm_medium?: string, utm_campaign?: string, landing_page?: string, from_page?: string, device_type?: string, referrer_url?: string }>()
+  const regMetaMap = new Map<string, { utm_source?: string, utm_medium?: string, utm_campaign?: string, landing_page?: string, from_page?: string, device_type?: string, referrer_url?: string, partner_code?: string }>()
   registrationMetaData?.forEach(m => {
     regMetaMap.set(m.user_id, m)
   })
@@ -233,6 +235,7 @@ export default async function SuperadminUsersPage() {
       reg_from_page: regMeta?.from_page || null,
       reg_device_type: regMeta?.device_type || null,
       reg_referrer: regMeta?.referrer_url || null,
+      reg_partner_code: regMeta?.partner_code || null,
     }
   }).sort((a, b) => {
     if (a.is_test !== b.is_test) return a.is_test ? 1 : -1

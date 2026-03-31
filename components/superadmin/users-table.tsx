@@ -90,6 +90,7 @@ type User = {
   reg_from_page: string | null
   reg_device_type: string | null
   reg_referrer: string | null
+  reg_partner_code: string | null
 }
 
 function formatLastLogin(dateStr: string | null): string {
@@ -417,10 +418,11 @@ export default function UsersTable({ users }: { users: User[] }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {user.reg_utm_source || user.reg_landing_page ? (
+                    {user.reg_utm_source || user.reg_landing_page || user.reg_partner_code ? (
                       <div
                         className="flex flex-wrap gap-1 items-center cursor-help"
                         title={[
+                          user.reg_partner_code && `Партнёр: ${user.reg_partner_code}`,
                           user.reg_utm_source && `utm_source: ${user.reg_utm_source}`,
                           user.reg_utm_campaign && `utm_campaign: ${user.reg_utm_campaign}`,
                           user.reg_landing_page && `Лендинг: ${user.reg_landing_page}`,
@@ -429,6 +431,11 @@ export default function UsersTable({ users }: { users: User[] }) {
                           user.reg_referrer && `Referrer: ${user.reg_referrer}`,
                         ].filter(Boolean).join('\n')}
                       >
+                        {user.reg_partner_code && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${user.is_test ? 'bg-gray-200' : 'bg-amber-100 text-amber-800'}`}>
+                            🤝 {user.reg_partner_code}
+                          </span>
+                        )}
                         {user.reg_utm_source && (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-indigo-100 text-indigo-700'}`}>
                             {user.reg_utm_source}
@@ -439,7 +446,7 @@ export default function UsersTable({ users }: { users: User[] }) {
                             {user.reg_device_type === 'mobile' ? '📱' : user.reg_device_type === 'tablet' ? '📱' : '💻'}
                           </span>
                         )}
-                        {user.reg_landing_page && !user.reg_utm_source && (
+                        {user.reg_landing_page && !user.reg_utm_source && !user.reg_partner_code && (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
                             {user.reg_landing_page}
                           </span>

@@ -14,6 +14,7 @@ export interface RegistrationMeta {
   device_type?: string
   user_agent?: string
   screen_width?: number
+  partner_code?: string
 }
 
 function getDeviceType(width: number): string {
@@ -22,13 +23,50 @@ function getDeviceType(width: number): string {
   return 'desktop'
 }
 
+/**
+ * Extracts partner/referral code from URL params.
+ * Priority:
+ * 1. ?via=CODE  — clean referral link
+ * 2. utm_source=revroute + utm_medium=referral → utm_campaign as code (revroute compatibility)
+ */
+function extractPartnerCode(params: URLSearchParams): string | undefined {
+  const via = params.get('via')
+  if (via) return via
+
+  if (
+    params.get('utm_source') === 'revroute' &&
+    params.get('utm_medium') === 'referral'
+  ) {
+    const campaign = params.get('utm_campaign')
+    if (campaign) return campaign
+  }
+
+  return undefined
+}
+
 export function captureRegistrationMeta(): void {
   if (typeof window === 'undefined') return
 
-  const existing = sessionStorage.getItem(STORAGE_KEY)
-  if (existing) return
-
   const params = new URLSearchParams(window.location.search)
+  const partnerCode = extractPartnerCode(params)
+
+  const existing = sessionStorage.getItem(STORAGE_KEY)
+  if (existing) {
+    // If a partner/referral code is present on this page visit, always update it
+    // even if attribution was already captured (partner link may come after first visit)
+    if (partnerCode) {
+      try {
+        const parsed: RegistrationMeta = JSON.parse(existing)
+        if (!parsed.partner_code) {
+          parsed.partner_code = partnerCode
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return
+  }
 
   const meta: RegistrationMeta = {
     utm_source: params.get('utm_source') || undefined,
@@ -42,6 +80,7 @@ export function captureRegistrationMeta(): void {
     device_type: getDeviceType(window.innerWidth),
     user_agent: navigator.userAgent,
     screen_width: window.innerWidth,
+    partner_code: partnerCode,
   }
 
   const cleaned = Object.fromEntries(

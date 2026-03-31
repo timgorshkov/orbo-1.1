@@ -21,6 +21,7 @@ export default async function SuperadminLayout({
   const navItems = [
     { href: '/superadmin/organizations', label: 'Организации' },
     { href: '/superadmin/users', label: 'Пользователи' },
+    { href: '/superadmin/partners', label: 'Партнёры' },
     { href: '/superadmin/onboarding', label: 'Онбординг' },
     { href: '/superadmin/templates', label: 'Шаблоны' },
     { href: '/superadmin/qualification', label: 'Квалификация' },
