@@ -349,20 +349,27 @@ export class EventProcessingService {
       // Always upsert topic record so IDs are auto-discovered from any message.
       // When title is known (forum_topic_created/edited), update it.
       // When title is unknown, insert with empty string but don't overwrite existing title.
+      const topicsToUpsert: { tg_chat_id: number; id: number; title: string; updated_at?: string }[] = [];
+
       if (topicTitle) {
-        await this.supabase
-          .from('telegram_topics')
-          .upsert(
-            { tg_chat_id: chatId, id: topicId, title: topicTitle, updated_at: new Date().toISOString() },
-            { onConflict: 'id,tg_chat_id' }
-          );
+        topicsToUpsert.push({ tg_chat_id: chatId, id: topicId, title: topicTitle, updated_at: new Date().toISOString() });
       } else {
+        topicsToUpsert.push({ tg_chat_id: chatId, id: topicId, title: '' });
+      }
+
+      // Auto-insert General topic (id=1) — it always exists in forum groups
+      if (topicId !== 1) {
+        topicsToUpsert.push({ tg_chat_id: chatId, id: 1, title: 'General' });
+      }
+
+      for (const topic of topicsToUpsert) {
+        const hasTitle = topic.title && topic.updated_at;
         await this.supabase
           .from('telegram_topics')
-          .upsert(
-            { tg_chat_id: chatId, id: topicId, title: '' },
-            { onConflict: 'id,tg_chat_id', ignoreDuplicates: true }
-          );
+          .upsert(topic, {
+            onConflict: 'id,tg_chat_id',
+            ...(hasTitle ? {} : { ignoreDuplicates: true })
+          });
       }
     } catch {
       // Ignore — not critical

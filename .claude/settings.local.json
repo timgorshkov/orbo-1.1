@@ -65,7 +65,9 @@
       "Bash(node -e \"console.log\\(require\\(''marked/package.json''\\).version\\)\")",
       "Bash(find \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/db/migrations\" -name \"*.sql\" -exec grep -l \"participants\" {})",
       "Bash(find \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/db/migrations\" -name \"*.sql\" -exec grep -l \"ALTER TABLE participants\" {})",
-      "Bash(node -e \"const { TelegramClient } = require\\(''telegram''\\); console.log\\(''gramjs ok'', typeof TelegramClient\\)\")"
+      "Bash(node -e \"const { TelegramClient } = require\\(''telegram''\\); console.log\\(''gramjs ok'', typeof TelegramClient\\)\")",
+      "Bash(find '/c/Cursor WS/orbo-1.1.1/orbo-1.1/app/p' -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(while read:*)"
     ]
   }
 }

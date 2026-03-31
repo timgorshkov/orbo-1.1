@@ -28,6 +28,8 @@ export interface ParticipantTimelineEvent {
   tg_chat_id: string | number | null;
   message_id?: number | null;
   message_text?: string | null;
+  message_thread_id?: number | null;
+  topic_title?: string | null;
   reply_to_message_id?: number | null;
   meta: Record<string, any> | null;
 }

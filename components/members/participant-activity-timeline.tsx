@@ -188,6 +188,9 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
             groupName = String(event.meta.chat.title);
           }
 
+          // Topic name for forum messages
+          const topicName = event.topic_title || (event.message_thread_id ? `Тема ${event.message_thread_id}` : '');
+
           const eventLabel = getEventLabel(event.event_type, reactionEmoji, reactionTargetText);
 
           return (
@@ -198,6 +201,9 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
               <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">{formatted}</span>
               {groupName && (
                 <span className="text-xs text-gray-500 flex-shrink-0 max-w-24 truncate">{groupName}</span>
+              )}
+              {topicName && (
+                <span className="text-xs text-indigo-500 flex-shrink-0 max-w-24 truncate">#{topicName}</span>
               )}
               {replyIndicator && (
                 <span className="text-xs text-blue-500 flex-shrink-0">{replyIndicator}</span>

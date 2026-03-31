@@ -230,7 +230,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
       
       let query = supabase
         .from('activity_events')
-        .select('id, event_type, created_at, tg_chat_id, meta, message_id, reply_to_message_id, org_id')
+        .select('id, event_type, created_at, tg_chat_id, meta, message_id, message_thread_id, reply_to_message_id, org_id')
         .eq('tg_user_id', tgUserId)
         .eq('org_id', orgId);
       
@@ -276,9 +276,9 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                 .eq('tg_user_id', tgUserId)
                 .in('tg_chat_id', numericChatIds)
                 .in('message_id', messageEventIds);
-              
+
               if (textsError) {
-                logger.warn({ 
+                logger.warn({
                   error: textsError.message,
                   org_id: orgId,
                   participant_id: participantId
@@ -289,23 +289,46 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                     messageTextsMap.set(`${m.tg_chat_id}_${m.message_id}`, m.message_text);
                   }
                 });
-                logger.debug({ 
-                  message_count: messageTextsMap.size,
-                  org_id: orgId,
-                  participant_id: participantId
-                }, 'Loaded message texts in single batch');
               }
             }
-            
+
+            // Load topic titles for events with message_thread_id
+            const threadChatIds = new Set<string>();
+            activityEvents.forEach(e => {
+              if (e.message_thread_id) {
+                threadChatIds.add(String(e.tg_chat_id));
+              }
+            });
+            let topicTitlesMap = new Map<string, string>();
+            if (threadChatIds.size > 0) {
+              const { data: topics } = await supabase
+                .from('telegram_topics')
+                .select('id, tg_chat_id, title')
+                .in('tg_chat_id', Array.from(threadChatIds).map(Number).filter(n => !Number.isNaN(n)));
+              if (topics) {
+                topics.forEach((t: any) => {
+                  if (t.title) {
+                    topicTitlesMap.set(`${t.tg_chat_id}_${t.id}`, t.title);
+                  }
+                });
+              }
+            }
+
             eventsData = activityEvents.map(event => {
               const eventMeta = event.meta || {};
-              
+
               let messageText: string | null = null;
               if (event.event_type === 'message' && event.message_id) {
                 const messageKey = `${event.tg_chat_id}_${event.message_id}`;
                 messageText = messageTextsMap.get(messageKey) || null;
               }
-              
+
+              const threadId = event.message_thread_id ?? null;
+              let topicTitle: string | null = null;
+              if (threadId) {
+                topicTitle = topicTitlesMap.get(`${event.tg_chat_id}_${threadId}`) || null;
+              }
+
               return {
                 id: event.id,
                 event_type: event.event_type,
@@ -313,6 +336,8 @@ export async function getParticipantDetail(orgId: string, participantId: string)
                 tg_chat_id: String(event.tg_chat_id),
                 message_id: event.message_id ?? null,
                 message_text: messageText,
+                message_thread_id: threadId,
+                topic_title: topicTitle,
                 reply_to_message_id: event.reply_to_message_id ?? null,
                 meta: eventMeta
               };
