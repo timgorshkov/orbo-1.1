@@ -53,6 +53,25 @@ export function captureRegistrationMeta(): void {
   if (typeof window === 'undefined') return
 
   const params = new URLSearchParams(window.location.search)
+
+  // _rm = full meta encoded by UTMLinkEnricher when navigating from orbo.ru to my.orbo.ru.
+  // Takes priority over local browser API values: preserves real external referrer and
+  // the first landing page on orbo.ru instead of recording /signup + orbo.ru as referrer.
+  const rm = params.get('_rm')
+  if (rm) {
+    try {
+      const transferred: RegistrationMeta = JSON.parse(decodeURIComponent(escape(atob(rm))))
+      // Supplement with current device info in case it wasn't captured on orbo.ru
+      if (!transferred.device_type) transferred.device_type = getDeviceType(window.innerWidth)
+      if (!transferred.user_agent)  transferred.user_agent  = navigator.userAgent
+      if (!transferred.screen_width) transferred.screen_width = window.innerWidth
+      storage?.setItem(STORAGE_KEY, JSON.stringify(transferred))
+      return
+    } catch {
+      // malformed _rm — fall through to normal capture
+    }
+  }
+
   const partnerCode = extractPartnerCode(params)
 
   const existing = storage?.getItem(STORAGE_KEY)
