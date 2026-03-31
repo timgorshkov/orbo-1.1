@@ -120,8 +120,46 @@ export async function GET(
     // For onboarding: any linked group counts (even pending)
     const linkedGroupsCount = orgGroupsForCount?.length || 0
 
-    // PARALLEL BLOCK 2: hasSharedEvent, assistBotStarted, org timezone, MAX groups, AI alerts, upcoming events
+    // PARALLEL BLOCK 2: hasSharedEvent, org timezone, MAX groups, AI alerts, upcoming events
+    // assistBotStarted runs separately (external Telegram API call) so it doesn't block DB queries.
     const chatIds = orgGroupsForCount?.map(g => String(g.tg_chat_id)) || []
+
+    // Start assistBotStarted check in background — will be awaited later after DB work is done.
+    // Uses 1.5s timeout so it overlaps with activity/attention-zones queries instead of adding to them.
+    const assistBotPromise: Promise<boolean> = (async () => {
+      if (!telegramAccount) return false;
+      try {
+        let tgUserId: number | null = null;
+        if (telegramAccountResult.data && telegramAccountResult.data.length > 0) {
+          const { data: tgLink } = await adminSupabase
+            .from('user_telegram_accounts')
+            .select('telegram_user_id')
+            .eq('org_id', orgId)
+            .eq('is_verified', true)
+            .limit(1)
+            .single();
+          tgUserId = tgLink?.telegram_user_id || null;
+        }
+        if (!tgUserId && telegramProviderResult.data && telegramProviderResult.data.length > 0) {
+          const ownerUserId = telegramProviderResult.data[0].user_id;
+          const { data: acc } = await adminSupabase
+            .from('accounts')
+            .select('provider_account_id')
+            .eq('user_id', ownerUserId)
+            .eq('provider', 'telegram')
+            .maybeSingle();
+          tgUserId = acc?.provider_account_id ? Number(acc.provider_account_id) : null;
+        }
+        if (!tgUserId) return false;
+        const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+        if (!notifBotToken) return false;
+        const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`, {
+          signal: AbortSignal.timeout(1500)
+        });
+        const chatData = await res.json();
+        return chatData.ok === true;
+      } catch { return false; }
+    })();
 
     const [
       hasSharedEventResult,
@@ -147,41 +185,8 @@ export async function GET(
           .limit(1);
         return (regCount || 0) > 0;
       })(),
-      // assistBotStarted
-      (async () => {
-        if (!telegramAccount) return false;
-        try {
-          let tgUserId: number | null = null;
-          if (telegramAccountResult.data && telegramAccountResult.data.length > 0) {
-            const { data: tgLink } = await adminSupabase
-              .from('user_telegram_accounts')
-              .select('telegram_user_id')
-              .eq('org_id', orgId)
-              .eq('is_verified', true)
-              .limit(1)
-              .single();
-            tgUserId = tgLink?.telegram_user_id || null;
-          }
-          if (!tgUserId && telegramProviderResult.data && telegramProviderResult.data.length > 0) {
-            const ownerUserId = telegramProviderResult.data[0].user_id;
-            const { data: acc } = await adminSupabase
-              .from('accounts')
-              .select('provider_account_id')
-              .eq('user_id', ownerUserId)
-              .eq('provider', 'telegram')
-              .maybeSingle();
-            tgUserId = acc?.provider_account_id ? Number(acc.provider_account_id) : null;
-          }
-          if (!tgUserId) return false;
-          const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
-          if (!notifBotToken) return false;
-          const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`, {
-            signal: AbortSignal.timeout(3000)
-          });
-          const chatData = await res.json();
-          return chatData.ok === true;
-        } catch { return false; }
-      })(),
+      // assistBotStarted — resolved separately after this block to avoid blocking DB queries
+      Promise.resolve(false),
       // org timezone
       adminSupabase
         .from('organizations')
@@ -452,6 +457,21 @@ export async function GET(
         attentionZones.hasMore.churning = Math.max(0, churningParticipants.length - 3)
         attentionZones.hasMore.newcomers = Math.max(0, inactiveNewcomers.length - 3)
       }
+    }
+
+    // Collect assistBotStarted — by now it has been running in parallel with all DB work above.
+    // If it still hasn't resolved (Telegram API is very slow), the 1.5s timeout inside will fire.
+    const assistBotStartedFinal = await assistBotPromise;
+    if (assistBotStartedFinal !== onboardingStatus.assistBotStarted) {
+      onboardingStatus.assistBotStarted = assistBotStartedFinal;
+      onboardingStatus.progress = [
+        true,
+        (eventsCount || 0) > 0,
+        !!telegramAccount,
+        assistBotStartedFinal,
+        hasSharedEvent,
+        linkedGroupsCount > 0
+      ].filter(Boolean).length * (100 / 6);
     }
 
     return NextResponse.json({

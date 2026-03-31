@@ -493,7 +493,7 @@ async function buildUserContext(userId: string): Promise<UserContext> {
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
 
 // Domains used only for sending (no real inboxes) — skip outbound onboarding emails
-const SENDER_ONLY_DOMAINS = ['orbo.ru'];
+const SENDER_ONLY_DOMAINS = ['orbo.ru', 'orbo.temp'];
 
 async function sendEmailStep(ctx: UserContext, stepKey: string): Promise<void> {
   if (!ctx.email) {
