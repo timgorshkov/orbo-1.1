@@ -61,10 +61,13 @@ export function captureRegistrationMeta(): void {
   if (rm) {
     try {
       const transferred: RegistrationMeta = JSON.parse(decodeURIComponent(escape(atob(rm))))
-      // Supplement with current device info in case it wasn't captured on orbo.ru
-      if (!transferred.device_type) transferred.device_type = getDeviceType(window.innerWidth)
-      if (!transferred.user_agent)  transferred.user_agent  = navigator.userAgent
+      // Supplement with data only available at signup time (not on orbo.ru)
+      if (!transferred.device_type)  transferred.device_type  = getDeviceType(window.innerWidth)
+      if (!transferred.user_agent)   transferred.user_agent   = navigator.userAgent
       if (!transferred.screen_width) transferred.screen_width = window.innerWidth
+      // from_page = which CTA button was clicked (?from=main/pricing/etc.) — only in signup URL
+      const fromPage = params.get('from')
+      if (fromPage && !transferred.from_page) transferred.from_page = fromPage
       storage?.setItem(STORAGE_KEY, JSON.stringify(transferred))
       return
     } catch {
