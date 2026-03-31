@@ -164,6 +164,56 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
     
     logger.debug({ channel_id: channelId, chat_id: chatId }, '✅ [CHANNEL] Channel upserted');
 
+    // Migrate org links from placeholder channels with the same username.
+    // Placeholder records are created with a fake tg_chat_id (-100000xxxxxx) when a user
+    // adds a channel by username before the bot has joined. Once the real channel_post arrives
+    // we know the true tg_chat_id and can redirect org bindings to this real record.
+    if (post.chat.username) {
+      try {
+        const { data: placeholders } = await supabase
+          .from('telegram_channels')
+          .select('id, tg_chat_id')
+          .eq('username', post.chat.username.toLowerCase())
+          .neq('id', channelId)
+          .gte('tg_chat_id', -100001000000)   // placeholder range: -100000000000 to -100001000000
+          .lte('tg_chat_id', -100000000000);
+
+        for (const placeholder of placeholders || []) {
+          // Re-link all orgs that were pointing at the placeholder
+          const { data: orgsToMigrate } = await supabase
+            .from('org_telegram_channels')
+            .select('org_id')
+            .eq('channel_id', placeholder.id);
+
+          if (orgsToMigrate && orgsToMigrate.length > 0) {
+            for (const { org_id } of orgsToMigrate) {
+              await supabase
+                .from('org_telegram_channels')
+                .upsert({ org_id, channel_id: channelId }, { onConflict: 'org_id,channel_id' });
+              await supabase
+                .from('org_telegram_channels')
+                .delete()
+                .eq('org_id', org_id)
+                .eq('channel_id', placeholder.id);
+            }
+            logger.info({
+              placeholder_id: placeholder.id,
+              placeholder_tg_chat_id: placeholder.tg_chat_id,
+              real_channel_id: channelId,
+              real_tg_chat_id: chatId,
+              migrated_orgs: orgsToMigrate.length,
+            }, '🔀 [CHANNEL] Migrated org links from placeholder to real channel');
+          }
+
+          // Delete the now-orphaned placeholder
+          await supabase.from('telegram_channels').delete().eq('id', placeholder.id);
+        }
+      } catch (migrateError) {
+        // Non-fatal: log and continue processing the post
+        logger.warn({ error: migrateError, chat_id: chatId }, '⚠️ [CHANNEL] Failed to migrate placeholder channel links');
+      }
+    }
+
     // Upsert post
     logger.debug({
       chat_id: chatId,
