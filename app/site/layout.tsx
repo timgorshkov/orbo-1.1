@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import '@/components/website/website.css';
 import { HelpDeskWidget } from '@/components/support/helpdesk-widget';
 import { RegistrationMetaCapture } from '@/components/analytics/registration-meta-capture';
+import { UTMLinkEnricher } from '@/components/analytics/utm-link-enricher';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://orbo.ru'),
@@ -38,6 +39,7 @@ export default function WebsiteLayout({
     <div className="website-root">
       {children}
       <RegistrationMetaCapture />
+      <UTMLinkEnricher />
       <HelpDeskWidget />
     </div>
   );
