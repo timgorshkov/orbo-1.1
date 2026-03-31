@@ -404,6 +404,8 @@ export function WelcomeContent({
 }: WelcomeContentProps) {
   const router = useRouter();
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const [navigating, setNavigating] = useState(false);
+  const [welcomeError, setWelcomeError] = useState<string | null>(null);
   const [regMeta, setRegMeta] = useState<{ from_page?: string; utm_campaign?: string } | null>(null);
 
   const getInitialStep = (): WelcomeStep => {
@@ -419,6 +421,22 @@ export function WelcomeContent({
   const goalsSent = useRef(false);
   const metaSent = useRef(false);
 
+  // Log welcome step for funnel tracking
+  const logWelcomeEvent = (event: string, extra?: Record<string, unknown>) => {
+    fetch('/api/vitals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'welcome_funnel',
+        event,
+        step,
+        is_new_user: isNewUser,
+        has_orgs: hasOrganizations,
+        ...extra,
+      }),
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     const meta = getRegistrationMeta();
     if (meta) {
@@ -430,6 +448,7 @@ export function WelcomeContent({
     if (goalsSent.current) return;
     goalsSent.current = true;
 
+    logWelcomeEvent('welcome_page_view', { initial_step: getInitialStep() });
     ymGoal('welcome_page_view', undefined, { once: true });
 
     if (isNewUser) {
@@ -441,6 +460,7 @@ export function WelcomeContent({
     }
 
     ymGoal('auth_success', undefined, { once: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -458,42 +478,63 @@ export function WelcomeContent({
   }, []);
 
   async function autoCreateOrgAndRedirect() {
+    if (navigating) return; // prevent double-clicks
+    setNavigating(true);
+    setWelcomeError(null);
+    setStep('creating');
+
+    logWelcomeEvent('auto_create_org_start', { has_orgs: hasOrganizations });
+
     if (hasOrganizations) {
       router.push('/orgs');
       return;
     }
 
     // Fresh server-side check to handle stale hasOrganizations prop
-    // (can happen when two browser sessions hit /welcome before the first org is committed)
     try {
-      const checkRes = await fetch('/api/user/organizations')
+      const checkRes = await fetch('/api/user/organizations', {
+        signal: AbortSignal.timeout(8000),
+      });
       if (checkRes.ok) {
-        const { organizations } = await checkRes.json()
+        const { organizations } = await checkRes.json();
         if (organizations && organizations.length > 0) {
-          router.push('/orgs')
-          return
+          router.push('/orgs');
+          return;
         }
       }
     } catch { /* proceed with creation */ }
 
     setCreatingOrg(true);
-    setStep('creating');
     try {
       const res = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Моё сообщество' }),
+        signal: AbortSignal.timeout(15000),
       });
       const data = await res.json();
       if (res.ok && data.org_id) {
         ymGoal('org_created', { auto: true }, { once: true });
         ymGoal('first_org_created', { auto: true }, { once: true });
+        logWelcomeEvent('org_created', { org_id: data.org_id });
         router.push(`/app/${data.org_id}`);
         return;
       }
-    } catch { /* fall through */ }
+      // API returned error
+      logWelcomeEvent('org_create_error', { status: res.status, error: data.error });
+      setWelcomeError('Не удалось создать пространство. Попробуйте ещё раз.');
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
+      logWelcomeEvent('org_create_error', {
+        error: err instanceof Error ? err.message : String(err),
+        is_timeout: isTimeout,
+      });
+      setWelcomeError(isTimeout
+        ? 'Сервер отвечает медленно. Попробуйте ещё раз.'
+        : 'Произошла ошибка. Попробуйте ещё раз.');
+    }
     setCreatingOrg(false);
-    router.push('/orgs');
+    setNavigating(false);
   }
 
   const handleEmailVerified = () => {
@@ -505,6 +546,7 @@ export function WelcomeContent({
   };
 
   const handleTelegramConnected = () => {
+    logWelcomeEvent('telegram_connected');
     if (!initialCompleted) {
       setStep('qualification');
     } else {
@@ -513,6 +555,7 @@ export function WelcomeContent({
   };
 
   const handleTelegramSkipped = () => {
+    logWelcomeEvent('telegram_skipped');
     ymGoal('telegram_connect_skipped', undefined, { once: true });
     if (!initialCompleted) {
       setStep('qualification');
@@ -522,6 +565,7 @@ export function WelcomeContent({
   };
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
+    logWelcomeEvent('qualification_completed');
     ymGoal('qualification_completed', {
       community_type: responses.community_type,
       pain_points: responses.pain_points,
@@ -530,6 +574,7 @@ export function WelcomeContent({
   };
 
   const handleQualificationSkip = () => {
+    logWelcomeEvent('qualification_skipped');
     ymGoal('qualification_skipped', undefined, { once: true });
     autoCreateOrgAndRedirect();
   };
@@ -538,7 +583,7 @@ export function WelcomeContent({
     return <EmailVerificationStep onVerified={handleEmailVerified} />;
   }
 
-  if (step === 'telegram_connect') {
+  if (step === 'telegram_connect' && !navigating) {
     return (
       <TelegramConnectStep
         onConnected={handleTelegramConnected}
@@ -549,7 +594,7 @@ export function WelcomeContent({
     );
   }
 
-  if (step === 'qualification') {
+  if (step === 'qualification' && !navigating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <QualificationForm
@@ -565,10 +610,30 @@ export function WelcomeContent({
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="text-center space-y-4">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto" />
-        <p className="text-gray-600">
-          {creatingOrg ? 'Создаём пространство...' : 'Подготовка...'}
-        </p>
+        {welcomeError ? (
+          <>
+            <p className="text-red-600 text-sm">{welcomeError}</p>
+            <Button
+              onClick={() => autoCreateOrgAndRedirect()}
+              className="mx-auto"
+            >
+              Попробовать ещё раз
+            </Button>
+            <button
+              onClick={() => { router.push('/orgs'); }}
+              className="text-sm text-gray-500 underline block mx-auto"
+            >
+              Перейти к списку пространств
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto" />
+            <p className="text-gray-600">
+              {creatingOrg ? 'Создаём пространство...' : 'Подготовка...'}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
