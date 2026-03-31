@@ -2,6 +2,11 @@
 
 const STORAGE_KEY = 'orbo_reg_meta'
 
+// localStorage persists across browser sessions (unlike sessionStorage which dies when tab closes).
+// This is intentional: we want partner/UTM attribution to survive multi-day consideration cycles.
+// clearRegistrationMeta() is called after successful registration to avoid stale data.
+const storage = typeof window !== 'undefined' ? window.localStorage : null
+
 export interface RegistrationMeta {
   utm_source?: string
   utm_medium?: string
@@ -50,7 +55,7 @@ export function captureRegistrationMeta(): void {
   const params = new URLSearchParams(window.location.search)
   const partnerCode = extractPartnerCode(params)
 
-  const existing = sessionStorage.getItem(STORAGE_KEY)
+  const existing = storage?.getItem(STORAGE_KEY)
   if (existing) {
     // If a partner/referral code is present on this page visit, always update it
     // even if attribution was already captured (partner link may come after first visit)
@@ -59,7 +64,7 @@ export function captureRegistrationMeta(): void {
         const parsed: RegistrationMeta = JSON.parse(existing)
         if (!parsed.partner_code) {
           parsed.partner_code = partnerCode
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+          storage?.setItem(STORAGE_KEY, JSON.stringify(parsed))
         }
       } catch {
         // ignore parse errors
@@ -88,13 +93,13 @@ export function captureRegistrationMeta(): void {
   )
 
   if (Object.keys(cleaned).length > 0) {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned))
+    storage?.setItem(STORAGE_KEY, JSON.stringify(cleaned))
   }
 }
 
 export function getRegistrationMeta(): RegistrationMeta | null {
   if (typeof window === 'undefined') return null
-  const stored = sessionStorage.getItem(STORAGE_KEY)
+  const stored = storage?.getItem(STORAGE_KEY)
   if (!stored) return null
   try {
     return JSON.parse(stored)
@@ -105,5 +110,5 @@ export function getRegistrationMeta(): RegistrationMeta | null {
 
 export function clearRegistrationMeta(): void {
   if (typeof window === 'undefined') return
-  sessionStorage.removeItem(STORAGE_KEY)
+  storage?.removeItem(STORAGE_KEY)
 }
