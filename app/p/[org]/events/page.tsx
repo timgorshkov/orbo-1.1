@@ -63,6 +63,22 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
     }
   }
 
+  // Per-instance opt-outs: count cancelled registrations on child event IDs
+  const childEventIds = events.filter((e: any) => e.parent_event_id).map((e: any) => e.id)
+  let instanceOptOutsMap = new Map<string, number>();
+
+  if (childEventIds.length > 0) {
+    const { data: optOuts } = await adminSupabase
+      .from('event_registrations')
+      .select('event_id')
+      .in('event_id', childEventIds)
+      .eq('status', 'cancelled');
+
+    for (const opt of optOuts || []) {
+      instanceOptOutsMap.set(opt.event_id, (instanceOptOutsMap.get(opt.event_id) || 0) + 1);
+    }
+  }
+
   // Build a map of parent events for cover image fallback
   const parentIds = [...new Set(events.filter((e: any) => e.parent_event_id).map((e: any) => e.parent_event_id))]
   const parentCovers = new Map<string, string | null>()
@@ -78,12 +94,14 @@ export default async function EventsPage({ params }: { params: Promise<{ org: st
 
   // Calculate stats for each event
   const eventsWithStats = events.map((event: any) => {
-    // Children: registrations stored on parent
+    // Children: registrations stored on parent, minus per-instance opt-outs
     const regEventId = event.parent_event_id || event.id
     const eventRegs = registrationsMap.get(regEventId) || [];
-    const registeredCount = eventRegs.filter(
+    const baseCount = eventRegs.filter(
       (reg: any) => reg.status === 'registered'
     ).length || 0
+    const optOuts = event.parent_event_id ? (instanceOptOutsMap.get(event.id) || 0) : 0
+    const registeredCount = Math.max(0, baseCount - optOuts)
 
     const availableSpots = event.capacity
       ? Math.max(0, event.capacity - registeredCount)

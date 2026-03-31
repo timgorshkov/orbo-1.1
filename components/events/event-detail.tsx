@@ -656,6 +656,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
               >
                 ⚙ серия
               </a>
+              <span className="text-xs text-violet-300" title="Новые экземпляры серии создаются автоматически на 4 недели вперёд">
+                · авто на 4 нед.
+              </span>
             </>
           )}
         </div>
