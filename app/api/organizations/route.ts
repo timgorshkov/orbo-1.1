@@ -180,21 +180,44 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (!existing) {
-          // Fetch Telegram profile info via Bot API (non-critical)
+          // Fetch Telegram profile info via Bot API (try multiple bots)
           let tgUsername = ''
           let tgFirstName = ''
           let tgLastName = ''
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
-          if (botToken) {
+          const botTokens = [
+            process.env.TELEGRAM_BOT_TOKEN,
+            process.env.TELEGRAM_REGISTRATION_BOT_TOKEN,
+            process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN,
+          ].filter(Boolean) as string[]
+
+          for (const token of botTokens) {
             try {
-              const chatRes = await fetch(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${tgUserId}`)
+              const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${tgUserId}`, {
+                signal: AbortSignal.timeout(3000),
+              })
               const chatData = await chatRes.json()
               if (chatData.ok) {
                 tgUsername = chatData.result.username || ''
                 tgFirstName = chatData.result.first_name || ''
                 tgLastName = chatData.result.last_name || ''
+                break
               }
-            } catch { /* non-critical */ }
+            } catch { /* try next bot */ }
+          }
+
+          // Fallback: get username from telegram_auth_codes (always captured by bot)
+          if (!tgUsername) {
+            const { data: authCode } = await supabase
+              .from('telegram_auth_codes')
+              .select('telegram_username, telegram_user_id')
+              .eq('telegram_user_id', tgUserId)
+              .not('telegram_username', 'is', null)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            if (authCode?.telegram_username) {
+              tgUsername = authCode.telegram_username
+            }
           }
 
           await supabase
