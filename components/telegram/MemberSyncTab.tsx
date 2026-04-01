@@ -26,8 +26,7 @@ interface Props {
   groupTitle: string
 }
 
-const SERVICE_ACCOUNT_USERNAME = process.env.NEXT_PUBLIC_TG_SERVICE_ACCOUNT_USERNAME || 'orbo_sync_account'
-const SERVICE_ACCOUNT_TG_ID = '8548248926'
+const SERVICE_ACCOUNT_USERNAME = 'orbo_explorer'
 
 export default function MemberSyncTab({ orgId, tgChatId, groupTitle }: Props) {
   const [configured, setConfigured] = useState<boolean | null>(null)
@@ -134,29 +133,36 @@ export default function MemberSyncTab({ orgId, tgChatId, groupTitle }: Props) {
               Откройте Telegram и перейдите в группу{' '}
               <span className="font-medium">«{groupTitle}»</span>
             </li>
-            <li>
-              Добавьте участника с именем{' '}
-              <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">
-                ID: {SERVICE_ACCOUNT_TG_ID}
-              </span>
-              {' '}или username{' '}
-              <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">
+            <li className="flex flex-wrap items-center gap-1">
+              <span>Добавьте участника</span>
+              <span className="inline-flex items-center gap-1 font-mono bg-gray-100 px-1.5 py-0.5 rounded text-xs">
                 @{SERVICE_ACCOUNT_USERNAME}
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(`@${SERVICE_ACCOUNT_USERNAME}`)}
+                  className="text-gray-400 hover:text-gray-700 transition-colors"
+                  title="Скопировать"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2"/></svg>
+                </button>
               </span>
             </li>
             <li>
               Права администратора <strong>не нужны</strong> — достаточно обычного участника
             </li>
             <li>
-              Вернитесь сюда и нажмите кнопку синхронизации ниже
+              Вернитесь сюда и нажмите кнопку синхронизации
+            </li>
+            <li>
+              После завершения синхронизации аккаунт можно <strong>удалить из группы</strong> — загруженные участники сохранятся
             </li>
           </ol>
 
           <div className="flex items-start gap-2 text-xs text-gray-500 mt-2">
             <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
             <span>
-              Служебный аккаунт используется только для чтения списка участников.
-              Он не пишет в группу и не имеет прав на управление ею.
+              Служебный аккаунт используется только для однократного чтения списка участников.
+              Он не пишет в группу, не имеет прав на управление и может быть удалён после синхронизации.
             </span>
           </div>
         </CardContent>

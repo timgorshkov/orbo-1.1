@@ -1,4 +1,5 @@
-const { TelegramClient, StringSession } = require('telegram');
+const { TelegramClient, sessions } = require('telegram');
+const { StringSession } = sessions;
 const readline = require('readline');
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
