@@ -4,19 +4,11 @@ import { useEffect } from 'react'
 import { getRegistrationMeta } from '@/lib/client/registration-meta'
 
 /**
- * Intercepts clicks on signup links and appends _rm (base64-encoded registration meta)
- * to the URL at click time — not at mount time.
+ * Fallback enricher: appends UTM/partner params to signup links for cases
+ * where cookies are blocked (strict privacy settings, cross-site cookie policies).
  *
- * Why click-time enrichment instead of href patching on mount:
- *   useEffect fires after paint. On slow mobile devices the user can click the link
- *   before the effect runs, or the page may have been loaded from browser cache before
- *   the current deploy, leaving the old JS without this enricher. Click interception
- *   is synchronous and always catches the navigation regardless of when the component mounts.
- *
- * Why _rm instead of individual UTM params:
- *   localStorage is domain-scoped — orbo.ru and my.orbo.ru have separate stores.
- *   Encoding the full meta preserves the real external referrer and first landing page
- *   that would otherwise be lost when crossing to my.orbo.ru.
+ * Primary cross-domain transfer now happens via a .orbo.ru cookie set by
+ * captureRegistrationMeta(). This component is a safety net only.
  */
 export function UTMLinkEnricher() {
   useEffect(() => {
@@ -29,15 +21,21 @@ export function UTMLinkEnricher() {
         if (!url.hostname.endsWith('orbo.ru')) return
 
         const meta = getRegistrationMeta()
-        if (!meta || Object.keys(meta).length === 0) return
+        if (!meta) return
 
-        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(meta))))
-        url.searchParams.set('_rm', encoded)
+        // Only append UTM/partner params — landing_page and referrer transfer via cookie
+        let changed = false
+        if (meta.utm_source && !url.searchParams.has('utm_source'))     { url.searchParams.set('utm_source', meta.utm_source); changed = true }
+        if (meta.utm_medium && !url.searchParams.has('utm_medium'))     { url.searchParams.set('utm_medium', meta.utm_medium); changed = true }
+        if (meta.utm_campaign && !url.searchParams.has('utm_campaign')) { url.searchParams.set('utm_campaign', meta.utm_campaign); changed = true }
+        if (meta.partner_code && !url.searchParams.has('via'))          { url.searchParams.set('via', meta.partner_code); changed = true }
 
-        e.preventDefault()
-        window.location.href = url.toString()
+        if (changed) {
+          e.preventDefault()
+          window.location.href = url.toString()
+        }
       } catch {
-        // ignore — let the original navigation proceed
+        // let the original navigation proceed
       }
     }
 
