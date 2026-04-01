@@ -261,11 +261,12 @@ export async function POST(
 
       // Update announcements consent on participant
       if (announcementsConsent && participant?.id) {
-        await adminSupabase
-          .from('participants')
-          .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
-          .eq('id', participant.id)
-          .catch(() => {})
+        try {
+          await adminSupabase
+            .from('participants')
+            .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+            .eq('id', participant.id)
+        } catch { /* non-critical */ }
       }
 
       // Fetch updated registration separately
@@ -371,20 +372,22 @@ export async function POST(
       )
     }
 
-    // Save consent timestamps (non-blocking)
+    // Save consent timestamps
     if (registrationRow.registration_id && pdConsent) {
-      adminSupabase
-        .from('event_registrations')
-        .update({ pd_consent_at: new Date().toISOString() })
-        .eq('id', registrationRow.registration_id)
-        .then(() => {}).catch(() => {})
+      try {
+        await adminSupabase
+          .from('event_registrations')
+          .update({ pd_consent_at: new Date().toISOString() })
+          .eq('id', registrationRow.registration_id)
+      } catch { /* non-critical */ }
     }
     if (announcementsConsent && participant?.id) {
-      adminSupabase
-        .from('participants')
-        .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
-        .eq('id', participant.id)
-        .then(() => {}).catch(() => {})
+      try {
+        await adminSupabase
+          .from('participants')
+          .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+          .eq('id', participant.id)
+      } catch { /* non-critical */ }
     }
 
     // Map RPC function column names to expected format

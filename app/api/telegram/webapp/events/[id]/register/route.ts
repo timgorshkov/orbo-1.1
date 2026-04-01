@@ -197,14 +197,15 @@ export async function POST(
       
       // Update announcements consent on participant (only if checked, never overwrite existing)
       if (announcementsConsent) {
-        await adminSupabase
-          .from('participants')
-          .update({
-            announcements_consent_granted_at: new Date().toISOString(),
-            announcements_consent_revoked_at: null,
-          })
-          .eq('id', participant.id)
-          .catch(() => {});
+        try {
+          await adminSupabase
+            .from('participants')
+            .update({
+              announcements_consent_granted_at: new Date().toISOString(),
+              announcements_consent_revoked_at: null,
+            })
+            .eq('id', participant.id)
+        } catch { /* non-critical */ }
       }
 
       logger.info({
@@ -276,14 +277,15 @@ export async function POST(
     
     // Update announcements consent on participant (only if checked, never overwrite existing)
     if (announcementsConsent) {
-      await adminSupabase
-        .from('participants')
-        .update({
-          announcements_consent_granted_at: new Date().toISOString(),
-          announcements_consent_revoked_at: null,
-        })
-        .eq('id', participant.id)
-        .catch(() => {});
+      try {
+        await adminSupabase
+          .from('participants')
+          .update({
+            announcements_consent_granted_at: new Date().toISOString(),
+            announcements_consent_revoked_at: null,
+          })
+          .eq('id', participant.id)
+      } catch { /* non-critical */ }
     }
 
     logger.info({
