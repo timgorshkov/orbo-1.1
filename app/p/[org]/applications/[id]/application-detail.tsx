@@ -86,7 +86,7 @@ export default function ApplicationDetail({
   const displayName = participant?.full_name 
     || [userData.first_name, userData.last_name].filter(Boolean).join(' ')
     || userData.username
-    || `User ${application.tg_user_id}`
+    || `User ${application.tg_user_id || application.max_user_id || '?'}`
 
   const username = participant?.username || userData.username
   const photoUrlRaw = participant?.photo_url || userData.photo_url
@@ -394,10 +394,14 @@ export default function ApplicationDetail({
                         {participant?.phone || userData.phone}
                       </div>
                     )}
-                    <div className="flex items-center gap-2 text-neutral-600">
-                      <MessageCircle className="w-4 h-4" />
-                      Telegram ID: {application.tg_user_id}
-                    </div>
+                    {(application.tg_user_id || application.max_user_id) && (
+                      <div className="flex items-center gap-2 text-neutral-600">
+                        <MessageCircle className="w-4 h-4" />
+                        {application.max_user_id && !application.tg_user_id
+                          ? `Max ID: ${application.max_user_id}`
+                          : `Telegram ID: ${application.tg_user_id}`}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Bio */}
