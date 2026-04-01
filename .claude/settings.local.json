@@ -69,7 +69,8 @@
       "Bash(find '/c/Cursor WS/orbo-1.1.1/orbo-1.1/app/p' -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
       "Bash(while read:*)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -type f -name *dashboard*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "WebFetch(domain:orbo.ru)"
     ]
   }
 }
