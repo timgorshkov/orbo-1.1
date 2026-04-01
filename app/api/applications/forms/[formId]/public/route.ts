@@ -35,6 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { searchParams } = new URL(request.url);
     const sourceCode = searchParams.get('source') || searchParams.get('s');
     const tgUserId = searchParams.get('tg_user_id');
+    const maxUserId = searchParams.get('max_user_id');
     
     const supabase = createAdminServer();
     
@@ -75,27 +76,29 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Check if user already has an application for this pipeline
     // Use pipeline_id (not form_id) so we find applications even after form recreation
     let existingApplication = null;
-    if (tgUserId && pipelineId) {
+    const effectiveGetUserId = tgUserId || maxUserId;
+    const isMaxGet = !tgUserId && !!maxUserId;
+
+    if (effectiveGetUserId && pipelineId) {
       // Get all form IDs for this pipeline to find any existing application
       const { data: pipelineForms } = await supabase
         .from('application_forms')
         .select('id')
         .eq('pipeline_id', pipelineId);
-      
+
       const pipelineFormIds = pipelineForms?.map(f => f.id) || [];
-      
+
       if (pipelineFormIds.length > 0) {
-        const { data: appData } = await supabase
+        let appQuery = supabase
           .from('applications')
-          .select(`
-            id,
-            form_id,
-            form_data,
-            created_at,
-            stage_id
-          `)
-          .in('form_id', pipelineFormIds)
-          .eq('tg_user_id', tgUserId)
+          .select('id, form_id, form_data, created_at, stage_id')
+          .in('form_id', pipelineFormIds);
+        if (isMaxGet) {
+          appQuery = appQuery.eq('max_user_id', maxUserId);
+        } else {
+          appQuery = appQuery.eq('tg_user_id', tgUserId);
+        }
+        const { data: appData } = await appQuery
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -211,24 +214,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const {
       tg_user_id,
+      max_user_id,
       tg_user_data,
       form_data,
       source_code,
       utm_data
     } = body;
-    
-    logger.info({ 
-      form_id: formId, 
+
+    // Support both Telegram and Max user IDs
+    const effectiveUserId = tg_user_id || max_user_id;
+    const isMaxUser = !tg_user_id && !!max_user_id;
+
+    logger.info({
+      form_id: formId,
       tg_user_id,
+      max_user_id,
       has_form_data: !!form_data,
       form_data_keys: form_data ? Object.keys(form_data) : [],
       source_code
     }, 'POST application request received');
-    
-    if (!tg_user_id) {
-      logger.warn({ form_id: formId }, 'Missing tg_user_id');
+
+    if (!effectiveUserId) {
+      logger.warn({ form_id: formId }, 'Missing tg_user_id or max_user_id');
       return NextResponse.json(
-        { error: 'tg_user_id is required' },
+        { error: 'tg_user_id or max_user_id is required' },
         { status: 400 }
       );
     }
@@ -252,13 +261,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // This handles the case where forms were recreated for the same pipeline
     let existingApp = null;
     
-    // First try current form_id
-    const { data: directMatch } = await supabase
+    // First try current form_id (search by tg_user_id or max_user_id)
+    let directMatchQuery = supabase
       .from('applications')
       .select('id, form_id, stage_id, updated_at')
-      .eq('form_id', formId)
-      .eq('tg_user_id', tg_user_id)
-      .single();
+      .eq('form_id', formId);
+    if (isMaxUser) {
+      directMatchQuery = directMatchQuery.eq('max_user_id', max_user_id);
+    } else {
+      directMatchQuery = directMatchQuery.eq('tg_user_id', tg_user_id);
+    }
+    const { data: directMatch } = await directMatchQuery.single();
     
     if (directMatch) {
       existingApp = directMatch;
@@ -272,11 +285,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const pipelineFormIds = pipelineForms?.map(f => f.id) || [];
       
       if (pipelineFormIds.length > 0) {
-        const { data: pipelineMatch } = await supabase
+        let pipelineQuery = supabase
           .from('applications')
           .select('id, form_id, stage_id, updated_at')
-          .in('form_id', pipelineFormIds)
-          .eq('tg_user_id', tg_user_id)
+          .in('form_id', pipelineFormIds);
+        if (isMaxUser) {
+          pipelineQuery = pipelineQuery.eq('max_user_id', max_user_id);
+        } else {
+          pipelineQuery = pipelineQuery.eq('tg_user_id', tg_user_id);
+        }
+        const { data: pipelineMatch } = await pipelineQuery
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -381,19 +399,51 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     
     // Create new application
-    logger.info({ form_id: formId, tg_user_id }, 'Creating new application');
-    
+    logger.info({ form_id: formId, tg_user_id, max_user_id }, 'Creating new application');
+
+    // For Max users: find/create participant by max_user_id before RPC
+    // (RPC only supports tg_user_id, not max_user_id)
+    let preCreatedParticipantId: string | null = null;
+    if (isMaxUser) {
+      const { data: existingP } = await supabase
+        .from('participants')
+        .select('id')
+        .eq('org_id', form.org_id)
+        .eq('max_user_id', max_user_id)
+        .is('merged_into', null)
+        .maybeSingle();
+
+      if (existingP) {
+        preCreatedParticipantId = existingP.id;
+      } else {
+        const fullName = [tg_user_data?.first_name, tg_user_data?.last_name].filter(Boolean).join(' ')
+          || tg_user_data?.username || `Max user ${max_user_id}`;
+        const { data: newP } = await supabase
+          .from('participants')
+          .insert({
+            org_id: form.org_id,
+            max_user_id: max_user_id,
+            max_username: tg_user_data?.username || null,
+            full_name: fullName,
+            source: 'max_application',
+          })
+          .select('id')
+          .single();
+        if (newP) preCreatedParticipantId = newP.id;
+      }
+    }
+
     // Add source type to utm_data for tracking
     const enrichedUtmData = {
-      source: 'miniapp',
+      source: isMaxUser ? 'max_miniapp' : 'miniapp',
       ...(utm_data || {})
     };
-    
+
     const { data: applicationId, error: createError } = await supabase
       .rpc('create_application', {
         p_org_id: form.org_id,
         p_form_id: formId,
-        p_tg_user_id: tg_user_id,
+        p_tg_user_id: isMaxUser ? null : tg_user_id,
         p_tg_chat_id: null,
         p_tg_user_data: tg_user_data || {},
         p_form_data: form_data || {},
@@ -403,20 +453,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .single();
     
     if (createError) {
-      logger.error({ 
-        error: createError, 
+      logger.error({
+        error: createError,
         error_code: createError.code,
         error_message: createError.message,
-        form_id: formId 
+        form_id: formId
       }, 'Failed to create application');
       return NextResponse.json({ error: 'Failed to create application' }, { status: 500 });
     }
-    
-    logger.info({ 
-      form_id: formId, 
-      application_id: applicationId, 
+
+    // For Max users: link the pre-created participant and set max_user_id on the application
+    if (isMaxUser && applicationId) {
+      const updateData: Record<string, unknown> = { max_user_id: max_user_id };
+      if (preCreatedParticipantId) updateData.participant_id = preCreatedParticipantId;
+      await supabase.from('applications').update(updateData).eq('id', applicationId).catch(() => {});
+    }
+
+    logger.info({
+      form_id: formId,
+      application_id: applicationId,
       tg_user_id,
-      source: source_code 
+      max_user_id,
+      participant_id: preCreatedParticipantId,
+      source: source_code
     }, 'Application created from MiniApp');
     
     return NextResponse.json({

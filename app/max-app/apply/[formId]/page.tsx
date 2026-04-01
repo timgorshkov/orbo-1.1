@@ -140,7 +140,7 @@ export default function MaxApplyPage() {
     async function fetchForm() {
       try {
         const p = new URLSearchParams();
-        if (maxUser?.id) p.set('tg_user_id', String(maxUser.id));
+        if (maxUser?.id) p.set('max_user_id', String(maxUser.id));
 
         const url = `/api/applications/forms/${formId}/public${p.toString() ? `?${p}` : ''}`;
         const res = await fetch(url);
@@ -206,7 +206,7 @@ export default function MaxApplyPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tg_user_id: maxUser.id,
+          max_user_id: maxUser.id,
           tg_user_data: {
             user_id: maxUser.id,
             username: maxUser.username,
