@@ -20,6 +20,7 @@ type Organization = {
   telegram_username: string | null
   telegram_display_name: string | null
   telegram_user_id: string | null
+  has_max: boolean
   groups_with_bot: number
   participants_count: number
   events_count: number
@@ -167,6 +168,7 @@ export default function OrganizationsTable({
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Название</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email владельца</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Telegram</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700" title="Max подключён">Max</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Групп с ботом">Гр.</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Участников">Уч.</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Событий">Соб.</th>
@@ -180,7 +182,7 @@ export default function OrganizationsTable({
             <tbody className="divide-y">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
                     {showArchived
                       ? 'Нет архивных организаций'
                       : 'Организации не найдены'}
@@ -231,6 +233,7 @@ export default function OrganizationsTable({
                         )
                       ) : '❌ Нет'}
                     </td>
+                    <td className="px-4 py-3 text-sm text-center">{org.has_max ? '✅' : <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3 text-sm text-right">{org.groups_with_bot}</td>
                     <td className="px-4 py-3 text-sm text-right">{org.participants_count}</td>
                     <td className="px-4 py-3 text-sm text-right">{org.events_count}</td>

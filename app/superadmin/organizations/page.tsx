@@ -33,12 +33,14 @@ export default async function SuperadminOrganizationsPage() {
     { data: events },
     { data: memberships },
     { data: telegramAccounts },
+    { data: maxAccounts },
   ] = await Promise.all([
     supabase.from('org_telegram_groups').select('org_id, tg_chat_id').in('org_id', orgIds),
     supabase.from('participants').select('id, org_id').in('org_id', orgIds),
     supabase.from('events').select('id, org_id').in('org_id', orgIds),
     supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
     supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name, telegram_user_id').in('org_id', orgIds),
+    supabase.from('user_max_accounts').select('org_id').in('org_id', orgIds),
   ])
   
   // Получаем telegram_groups для подсчёта bot_status
@@ -155,6 +157,8 @@ export default async function SuperadminOrganizationsPage() {
     }
   }
   
+  const maxOrgIds = new Set((maxAccounts || []).map(a => a.org_id))
+
   // Форматируем данные
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
@@ -174,6 +178,7 @@ export default async function SuperadminOrganizationsPage() {
       telegram_username: telegram.telegram_username,
       telegram_display_name: telegram.telegram_display_name,
       telegram_user_id: telegram.telegram_user_id,
+      has_max: maxOrgIds.has(org.id),
       groups_with_bot: groups.withBot,
       participants_count: participantsMap.get(org.id) || 0,
       events_count: eventsMap.get(org.id) || 0,
