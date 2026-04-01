@@ -62,6 +62,14 @@ export default function MaxEventPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consentSettings, setConsentSettings] = useState<{
+    collect_pd_consent: boolean;
+    collect_announcements_consent: boolean;
+    has_privacy_policy: boolean;
+    privacy_policy_url: string | null;
+  } | null>(null);
+  const [pdConsentChecked, setPdConsentChecked] = useState(false);
+  const [announcementsConsentChecked, setAnnouncementsConsentChecked] = useState(false);
   const [maxUser, setMaxUser] = useState<{ id: number; first_name: string; last_name?: string; username?: string } | null>(null);
   const [webAppReady, setWebAppReady] = useState(false);
 
@@ -173,6 +181,7 @@ export default function MaxEventPage() {
 
         setEvent(data.event);
         setFields(data.fields || []);
+        if (data.consentSettings) setConsentSettings(data.consentSettings);
         setIsRegistered(data.isRegistered || false);
         setPaymentStatus(data.paymentStatus || null);
         setQrToken(data.userRegistration?.qr_token || null);
@@ -219,6 +228,12 @@ export default function MaxEventPage() {
   // Handle registration
   const handleRegister = useCallback(async () => {
     if (!event) return;
+
+    if (consentSettings?.collect_pd_consent && !pdConsentChecked) {
+      setError('Необходимо дать согласие на обработку персональных данных');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -227,7 +242,11 @@ export default function MaxEventPage() {
       const response = await fetch(`/api/max/webapp/events/${eventId}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Max-Init-Data': initData },
-        body: JSON.stringify({ registration_data: formData }),
+        body: JSON.stringify({
+          registration_data: formData,
+          pd_consent: consentSettings?.collect_pd_consent ? pdConsentChecked : undefined,
+          announcements_consent: consentSettings?.collect_announcements_consent ? announcementsConsentChecked : undefined,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Registration failed');
@@ -246,7 +265,7 @@ export default function MaxEventPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [event, eventId, formData]);
+  }, [event, eventId, formData, consentSettings, pdConsentChecked, announcementsConsentChecked]);
 
   const validateForm = (): boolean => {
     const missing = fields
@@ -546,6 +565,37 @@ export default function MaxEventPage() {
                 )}
               </div>
             ))}
+
+            {/* Consent checkboxes */}
+            {consentSettings?.collect_pd_consent && (
+              <label className="flex items-start gap-3 pt-2">
+                <input type="checkbox" checked={pdConsentChecked}
+                  onChange={e => setPdConsentChecked(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 accent-blue-600 flex-shrink-0" />
+                <span className="text-xs text-gray-600 leading-relaxed">
+                  Даю согласие на обработку персональных данных для регистрации, участия
+                  в мероприятии, получения организационных уведомлений в соответствии
+                  с{' '}
+                  {consentSettings.privacy_policy_url ? (
+                    <a href={consentSettings.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                      Политикой обработки ПД
+                    </a>
+                  ) : 'Политикой обработки ПД'}.
+                  <span className="text-red-500 ml-1">*</span>
+                </span>
+              </label>
+            )}
+            {consentSettings?.collect_announcements_consent && (
+              <label className="flex items-start gap-3 pt-1">
+                <input type="checkbox" checked={announcementsConsentChecked}
+                  onChange={e => setAnnouncementsConsentChecked(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 accent-blue-600 flex-shrink-0" />
+                <span className="text-xs text-gray-600 leading-relaxed">
+                  Согласен получать по e-mail, в Max или Telegram анонсы будущих
+                  мероприятий, новости и предложения активностей.
+                </span>
+              </label>
+            )}
           </div>
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
@@ -553,7 +603,7 @@ export default function MaxEventPage() {
         </div>
 
         <div className="flex-shrink-0 p-4 border-t border-gray-100 bg-white">
-          <button onClick={handleFormSubmit} disabled={isSubmitting}
+          <button onClick={handleFormSubmit} disabled={isSubmitting || (consentSettings?.collect_pd_consent && !pdConsentChecked)}
             className="w-full py-4 bg-blue-500 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             {isSubmitting ? (<><Loader2 className="w-5 h-5 animate-spin" />Регистрация...</>) : 'Зарегистрироваться'}
           </button>

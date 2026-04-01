@@ -40,6 +40,8 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const registrationData = body.registration_data || {};
     const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5);
+    const pdConsent = body.pd_consent === true;
+    const announcementsConsent = body.announcements_consent === true;
 
     // Get event
     const { data: event, error: eventError } = await adminSupabase
@@ -144,16 +146,19 @@ export async function POST(
         return NextResponse.json({ success: true, message: 'Вы уже зарегистрированы', registration: existingRegistration });
       }
 
+      const reactivateData: Record<string, unknown> = {
+        status: 'registered',
+        registered_at: new Date().toISOString(),
+        registration_data: registrationData,
+        quantity,
+        registration_source: 'max_miniapp',
+        messenger_type: 'max',
+      };
+      if (pdConsent) reactivateData.pd_consent_at = new Date().toISOString();
+
       const { data: updatedReg, error: updateError } = await adminSupabase
         .from('event_registrations')
-        .update({
-          status: 'registered',
-          registered_at: new Date().toISOString(),
-          registration_data: registrationData,
-          quantity,
-          registration_source: 'max_miniapp',
-          messenger_type: 'max',
-        })
+        .update(reactivateData)
         .eq('id', existingRegistration.id)
         .select('id, qr_token, payment_status')
         .single();
@@ -163,7 +168,13 @@ export async function POST(
         return NextResponse.json({ error: 'Ошибка регистрации' }, { status: 500 });
       }
 
-      logger.info({ event_id: eventId, participant_id: participant.id, max_user_id: maxUser.id }, '✅ Registration reactivated via MAX MiniApp');
+      if (announcementsConsent) {
+        await adminSupabase.from('participants')
+          .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+          .eq('id', participant.id).catch(() => {});
+      }
+
+      logger.info({ event_id: eventId, participant_id: participant.id, max_user_id: maxUser.id, pd_consent: pdConsent, announcements_consent: announcementsConsent }, '✅ Registration reactivated via MAX MiniApp');
       return NextResponse.json({
         success: true,
         message: 'Регистрация восстановлена',
@@ -196,9 +207,11 @@ export async function POST(
     let paymentStatus = null;
 
     if (registrationRow?.registration_id) {
+      const regUpdate: Record<string, unknown> = { registration_source: 'max_miniapp', messenger_type: 'max' };
+      if (pdConsent) regUpdate.pd_consent_at = new Date().toISOString();
       const { data: updatedReg } = await adminSupabase
         .from('event_registrations')
-        .update({ registration_source: 'max_miniapp', messenger_type: 'max' })
+        .update(regUpdate)
         .eq('id', registrationRow.registration_id)
         .select('qr_token, payment_status')
         .single();
@@ -209,9 +222,16 @@ export async function POST(
       }
     }
 
+    if (announcementsConsent && participant?.id) {
+      await adminSupabase.from('participants')
+        .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+        .eq('id', participant.id).catch(() => {});
+    }
+
     logger.info({
       event_id: eventId, participant_id: participant.id,
       max_user_id: maxUser.id, username: maxUser.username, qr_token: qrToken,
+      pd_consent: pdConsent, announcements_consent: announcementsConsent,
     }, '✅ New registration via MAX MiniApp');
 
     return NextResponse.json({

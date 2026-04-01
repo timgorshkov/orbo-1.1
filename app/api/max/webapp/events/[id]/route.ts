@@ -58,9 +58,16 @@ export async function GET(
 
     const { data: orgData } = await adminSupabase
       .from('organizations')
-      .select('name')
+      .select('name, collect_pd_consent, collect_announcements_consent, privacy_policy_html')
       .eq('id', eventData.org_id)
       .single();
+
+    const consentSettings = {
+      collect_pd_consent: orgData?.collect_pd_consent || false,
+      collect_announcements_consent: orgData?.collect_announcements_consent || false,
+      has_privacy_policy: !!orgData?.privacy_policy_html,
+      privacy_policy_url: orgData?.privacy_policy_html ? `/privacy-policy/${eventData.org_id}` : null,
+    };
 
     if (eventData.status !== 'published') {
       return NextResponse.json({ error: 'Событие недоступно' }, { status: 400 });
@@ -165,6 +172,7 @@ export async function GET(
         enable_qr_checkin: eventData.enable_qr_checkin,
       },
       fields: fields || [],
+      consentSettings,
       isRegistered,
       isValidated,
       paymentStatus,

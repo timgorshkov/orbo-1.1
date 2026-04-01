@@ -26,7 +26,7 @@ export default async function PrivacyPolicyPage({
       </h1>
       <div className="text-sm text-gray-500 mb-6">{org.name}</div>
       <div
-        className="prose prose-sm max-w-none text-gray-800"
+        className="prose prose-sm max-w-none text-gray-800 whitespace-pre-line [&_p]:mb-3 [&_br]:block"
         dangerouslySetInnerHTML={{ __html: org.privacy_policy_html }}
       />
     </div>

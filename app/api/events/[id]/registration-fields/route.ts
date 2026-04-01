@@ -69,9 +69,23 @@ export async function GET(
       options: field.options || null
     }))
 
-    return NextResponse.json({ fields: mappedFields })
+    // Fetch org consent settings
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('collect_pd_consent, collect_announcements_consent, privacy_policy_html')
+      .eq('id', event.org_id)
+      .single()
+
+    const consentSettings = {
+      collect_pd_consent: orgData?.collect_pd_consent || false,
+      collect_announcements_consent: orgData?.collect_announcements_consent || false,
+      has_privacy_policy: !!orgData?.privacy_policy_html,
+      privacy_policy_url: orgData?.privacy_policy_html ? `/privacy-policy/${event.org_id}` : null,
+    }
+
+    return NextResponse.json({ fields: mappedFields, consentSettings })
   } catch (error: any) {
-    logger.error({ 
+    logger.error({
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in GET /api/events/[id]/registration-fields');

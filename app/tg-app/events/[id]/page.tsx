@@ -311,7 +311,7 @@ export default function TelegramEventPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [event, eventId, formData]);
+  }, [event, eventId, formData, consentSettings, pdConsentChecked, announcementsConsentChecked]);
 
   // Validate required fields
   const validateForm = (): boolean => {

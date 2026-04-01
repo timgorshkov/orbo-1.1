@@ -75,6 +75,14 @@ export default function EventRegistrationForm({
   const [error, setError] = useState<string | null>(null)
   // Step 1: registration fields, Step 2: payment (only for paid events)
   const [step, setStep] = useState<1 | 2>(1)
+  const [consentSettings, setConsentSettings] = useState<{
+    collect_pd_consent: boolean
+    collect_announcements_consent: boolean
+    has_privacy_policy: boolean
+    privacy_policy_url: string | null
+  } | null>(null)
+  const [pdConsentChecked, setPdConsentChecked] = useState(false)
+  const [announcementsConsentChecked, setAnnouncementsConsentChecked] = useState(false)
 
   // Load registration fields
   useEffect(() => {
@@ -93,6 +101,7 @@ export default function EventRegistrationForm({
         
         const loadedFields = (data.fields || []) as RegistrationField[]
         setFields(loadedFields.sort((a, b) => a.field_order - b.field_order))
+        if (data.consentSettings) setConsentSettings(data.consentSettings)
         
         // Pre-fill form data from participant profile
         const prefillData: Record<string, any> = {}
@@ -142,6 +151,8 @@ export default function EventRegistrationForm({
       setQuantity(1)
       setError(null)
       setStep(1)
+      setPdConsentChecked(false)
+      setAnnouncementsConsentChecked(false)
     }
   }, [open])
 
@@ -167,6 +178,11 @@ export default function EventRegistrationForm({
       return
     }
 
+    if (consentSettings?.collect_pd_consent && !pdConsentChecked) {
+      setError('Необходимо дать согласие на обработку персональных данных')
+      return
+    }
+
     // If paid event - go to step 2
     if (requiresPayment) {
       setStep(2)
@@ -187,8 +203,9 @@ export default function EventRegistrationForm({
           body: JSON.stringify({
             registration_data: formData,
             quantity: quantity,
-            // If user confirms payment, mark as pending confirmation
-            payment_confirmed: confirmPayment
+            payment_confirmed: confirmPayment,
+            pd_consent: consentSettings?.collect_pd_consent ? pdConsentChecked : undefined,
+            announcements_consent: consentSettings?.collect_announcements_consent ? announcementsConsentChecked : undefined,
           })
         })
 
@@ -382,6 +399,43 @@ export default function EventRegistrationForm({
                 </div>
               )}
 
+              {/* Consent checkboxes */}
+              {consentSettings?.collect_pd_consent && (
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={pdConsentChecked}
+                    onChange={(e) => setPdConsentChecked(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-blue-600 flex-shrink-0"
+                  />
+                  <span className="text-xs text-gray-600 leading-relaxed">
+                    Даю согласие на обработку персональных данных для регистрации, участия
+                    в мероприятии, получения организационных уведомлений в соответствии
+                    с{' '}
+                    {consentSettings.privacy_policy_url ? (
+                      <a href={consentSettings.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                        Политикой обработки ПД
+                      </a>
+                    ) : 'Политикой обработки ПД'}.
+                    <span className="text-red-500 ml-1">*</span>
+                  </span>
+                </label>
+              )}
+              {consentSettings?.collect_announcements_consent && (
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={announcementsConsentChecked}
+                    onChange={(e) => setAnnouncementsConsentChecked(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 accent-blue-600 flex-shrink-0"
+                  />
+                  <span className="text-xs text-gray-600 leading-relaxed">
+                    Согласен получать по e-mail, в Max или Telegram анонсы будущих
+                    мероприятий, новости и предложения активностей.
+                  </span>
+                </label>
+              )}
+
               {error && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
                   {error}
@@ -399,7 +453,7 @@ export default function EventRegistrationForm({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending}
+                  disabled={isPending || (consentSettings?.collect_pd_consent && !pdConsentChecked)}
                   className="flex-1"
                 >
                   {requiresPayment ? 'Далее →' : (isPending ? 'Регистрация...' : 'Зарегистрироваться')}

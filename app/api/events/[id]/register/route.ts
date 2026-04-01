@@ -46,6 +46,8 @@ export async function POST(
     const body = await request.json().catch(() => ({}))
     const registrationData = body.registration_data || {}
     const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5) // Clamp between 1 and 5
+    const pdConsent = body.pd_consent === true
+    const announcementsConsent = body.announcements_consent === true
 
     // Check capacity (always against the registration event — parent for recurring)
     if (event.capacity) {
@@ -239,19 +241,31 @@ export async function POST(
       
       // Reactivate cancelled registration using admin client
       // Don't use .select() to avoid RLS policy checks
+      const reactivateData: Record<string, unknown> = {
+        status: 'registered',
+        registered_at: new Date().toISOString(),
+        registration_data: registrationData,
+        quantity: quantity,
+      }
+      if (pdConsent) reactivateData.pd_consent_at = new Date().toISOString()
+
       const { error: updateError } = await adminSupabase
         .from('event_registrations')
-        .update({ 
-          status: 'registered',
-          registered_at: new Date().toISOString(),
-          registration_data: registrationData,
-          quantity: quantity
-        })
+        .update(reactivateData)
         .eq('id', existingRegistration.id)
 
       if (updateError) {
         logger.error({ error: updateError.message, registration_id: existingRegistration.id }, 'Error updating registration');
         return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+
+      // Update announcements consent on participant
+      if (announcementsConsent && participant?.id) {
+        await adminSupabase
+          .from('participants')
+          .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+          .eq('id', participant.id)
+          .catch(() => {})
       }
 
       // Fetch updated registration separately
@@ -355,6 +369,22 @@ export async function POST(
         { error: 'Registration failed - no data returned' },
         { status: 500 }
       )
+    }
+
+    // Save consent timestamps (non-blocking)
+    if (registrationRow.registration_id && pdConsent) {
+      adminSupabase
+        .from('event_registrations')
+        .update({ pd_consent_at: new Date().toISOString() })
+        .eq('id', registrationRow.registration_id)
+        .then(() => {}).catch(() => {})
+    }
+    if (announcementsConsent && participant?.id) {
+      adminSupabase
+        .from('participants')
+        .update({ announcements_consent_granted_at: new Date().toISOString(), announcements_consent_revoked_at: null })
+        .eq('id', participant.id)
+        .then(() => {}).catch(() => {})
     }
 
     // Map RPC function column names to expected format
