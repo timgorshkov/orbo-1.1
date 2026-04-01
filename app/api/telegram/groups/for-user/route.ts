@@ -341,9 +341,9 @@ export async function GET(request: Request) {
           }
 
           if (mappings.length === 0) {
-            // Legacy fallback removed: telegram_groups.org_id was removed in migration 071
-            // All org-group mappings should be in org_telegram_groups table
-            logger.warn({}, 'No org mappings found for these groups. They need to be added to organizations via org_telegram_groups.');
+            // Expected state: user has groups but hasn't linked them to an org yet.
+            // Will appear as availableGroups in the response for the user to add.
+            logger.debug({}, 'No org mappings found — groups available for linking');
           }
         } catch (mappingError: any) {
           if (mappingError?.code === '42P01') {
@@ -405,17 +405,17 @@ export async function GET(request: Request) {
             }
             
             if (telegramService) {
-              // Sequential with delay to avoid Telegram 429 rate limiting
               const processOneChat = async (chatId: number) => {
                 try {
                   const result = await telegramService!.getChatMembersCount(chatId);
                   if (result?.ok && typeof result.result === 'number') {
                     memberCountsMap.set(String(chatId), result.result);
 
-                    await supabaseService
+                    supabaseService
                       .from('telegram_groups')
                       .update({ member_count: result.result })
-                      .filter('tg_chat_id::text', 'eq', String(chatId));
+                      .filter('tg_chat_id::text', 'eq', String(chatId))
+                      .then(() => {}).catch(() => {}); // fire-and-forget DB update
                   } else if (!result?.ok) {
                     const desc = (result?.description || '').toLowerCase();
                     const errCode = result?.error_code;
@@ -436,13 +436,12 @@ export async function GET(request: Request) {
                 }
               };
 
-              // Process sequentially with 150ms delay to avoid Telegram 429 rate limiting
-              const deadline = Date.now() + 5000;
-              for (const chatId of allChatIdsForCount) {
-                if (Date.now() >= deadline) break;
-                await processOneChat(chatId);
-                if (allChatIdsForCount.length > 1) await new Promise(r => setTimeout(r, 50));
-              }
+              // Run all member count requests in parallel with a 3-second overall deadline.
+              // Individual calls are limited to 8s by callApi's AbortSignal, but the race
+              // ensures we never block the response for more than 3s total.
+              const allDone = Promise.all(allChatIdsForCount.map(processOneChat));
+              const deadline = new Promise<void>(resolve => setTimeout(resolve, 3000));
+              await Promise.race([allDone, deadline]);
             }
             
             // Fallback: если Telegram API не вернул данные, используем participant_groups

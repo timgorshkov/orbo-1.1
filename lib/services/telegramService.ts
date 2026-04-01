@@ -452,6 +452,7 @@ async getChatMember(chatId: number, userId: number) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(params),
+        signal: AbortSignal.timeout(8000),
       });
 
       const responseData = await response.json();
