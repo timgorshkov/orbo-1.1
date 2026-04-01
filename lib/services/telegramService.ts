@@ -515,7 +515,8 @@ async getChatMember(chatId: number, userId: number) {
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
       const isTransient = errorMessage.includes('fetch failed') ||
-        errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT');
+        errorMessage.includes('ECONNRESET') || errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('aborted due to timeout') || errorMessage.includes('TimeoutError');
 
       if (isTransient && attempt < MAX_RETRIES - 1) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)));

@@ -114,19 +114,24 @@ export async function processChannelPost(post: TelegramMessage): Promise<{ succe
       hasMedia = true;
     }
     
-    // Get subscriber count (if bot is admin)
+    // Get subscriber count in background (non-blocking — don't slow down webhook)
     let subscriberCount: number | null = null;
-    try {
-      const telegramService = new TelegramService('main');
-      const memberCountResponse = await telegramService.getChatMembersCount(chatId);
-      if (memberCountResponse.ok && memberCountResponse.result) {
-        subscriberCount = memberCountResponse.result;
-        logger.debug({ chat_id: chatId, subscriber_count: subscriberCount }, '👥 [CHANNEL] Got subscriber count');
+    const subscriberCountPromise = (async () => {
+      try {
+        const telegramService = new TelegramService('main');
+        const memberCountResponse = await telegramService.getChatMembersCount(chatId);
+        if (memberCountResponse.ok && memberCountResponse.result) {
+          subscriberCount = memberCountResponse.result;
+          logger.debug({ chat_id: chatId, subscriber_count: subscriberCount }, '👥 [CHANNEL] Got subscriber count');
+        }
+      } catch {
+        // Non-critical — subscriber count will be updated on next post
       }
-    } catch (error) {
-      logger.warn({ error, chat_id: chatId }, '⚠️ [CHANNEL] Failed to get subscriber count (bot may not be admin)');
-    }
+    })();
     
+    // Wait for subscriber count with 2s deadline (non-blocking if Telegram is slow)
+    await Promise.race([subscriberCountPromise, new Promise(r => setTimeout(r, 2000))]);
+
     // Upsert channel first
     logger.debug({
       chat_id: chatId,
