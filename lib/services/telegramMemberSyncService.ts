@@ -146,7 +146,7 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
     // Resolve the Telegram entity (handles both basic groups and supergroups)
     const entity = await client.getInputEntity(BigInt(tgChatId)).catch(() => null)
     if (!entity) {
-      return markFailed(`Could not resolve entity for chat ${tgChatId}. Make sure the service account is a member of this group.`)
+      return markFailed('SERVICE_NOT_IN_GROUP')
     }
 
     // Fetch participants using pagination

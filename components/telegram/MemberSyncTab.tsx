@@ -28,6 +28,19 @@ interface Props {
 
 const SERVICE_ACCOUNT_USERNAME = 'orbo_explorer'
 
+function formatJobError(error: string): string {
+  if (error === 'SERVICE_NOT_IN_GROUP' || error.includes('Could not resolve entity') || error.includes('CHANNEL_INVALID')) {
+    return `Служебный аккаунт @${SERVICE_ACCOUNT_USERNAME} не найден в группе. Убедитесь, что вы добавили именно @${SERVICE_ACCOUNT_USERNAME} (имя аккаунта может обновляться) и попробуйте снова.`
+  }
+  if (error.includes('CHAT_ADMIN_REQUIRED')) {
+    return 'Для этой группы требуются права администратора у служебного аккаунта. Назначьте его админом без дополнительных прав.'
+  }
+  if (error.includes('not configured')) {
+    return 'Служебный аккаунт не подключён к платформе. Обратитесь к администратору Orbo.'
+  }
+  return error
+}
+
 export default function MemberSyncTab({ orgId, tgChatId, groupTitle }: Props) {
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [job, setJob] = useState<SyncJob | null>(null)
@@ -245,7 +258,7 @@ export default function MemberSyncTab({ orgId, tgChatId, groupTitle }: Props) {
 
               {/* Error detail */}
               {job.status === 'failed' && job.error && (
-                <p className="text-xs text-red-600 bg-red-50 rounded p-2">{job.error}</p>
+                <p className="text-xs text-red-600 bg-red-50 rounded p-2">{formatJobError(job.error)}</p>
               )}
 
               {/* Timestamps */}
