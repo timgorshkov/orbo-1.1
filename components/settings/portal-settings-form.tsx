@@ -21,6 +21,9 @@ interface PortalSettings {
   portal_cover_url: string | null
   public_description: string | null
   telegram_group_link: string | null
+  collect_pd_consent: boolean
+  collect_announcements_consent: boolean
+  privacy_policy_html: string | null
 }
 
 interface Props {
@@ -330,6 +333,49 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
             Поддерживается форматирование: жирный, курсив, ссылки.
             Оставьте пустым, чтобы блок не отображался.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Сбор согласий */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Сбор согласий</CardTitle>
+          <p className="text-sm text-neutral-500 mt-1">
+            При включении в форме регистрации на событие будут отображаться чекбоксы
+            для сбора согласий от участников.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ToggleRow
+            label="Согласие на обработку ПД"
+            description="Обязательный чекбокс в форме регистрации. Без него участник не сможет зарегистрироваться."
+            checked={settings.collect_pd_consent}
+            onChange={set('collect_pd_consent')}
+            disabled={!isOwner}
+          />
+          <ToggleRow
+            label="Согласие на получение анонсов"
+            description="Необязательный чекбокс. Статус сохраняется в профиле участника, а не привязан к событию."
+            checked={settings.collect_announcements_consent}
+            onChange={set('collect_announcements_consent')}
+            disabled={!isOwner}
+          />
+
+          {settings.collect_pd_consent && (
+            <div className="pt-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Политика обработки персональных данных
+              </label>
+              <p className="text-xs text-neutral-500 mb-2">
+                Текст будет доступен по ссылке из чекбокса согласия. Обязателен при включённом сборе согласий.
+              </p>
+              <TelegramRichEditor
+                value={settings.privacy_policy_html || ''}
+                onChange={(html) => set('privacy_policy_html')(html || null)}
+                placeholder="Введите текст политики обработки персональных данных..."
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

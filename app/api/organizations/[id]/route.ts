@@ -106,9 +106,12 @@ export async function PATCH(
       'portal_show_members',
       'portal_show_materials',
       'portal_show_apps',
+      'collect_pd_consent',
+      'collect_announcements_consent',
     ] as const
     const hasPortalFields = portalBoolFields.some((f) => body[f] !== undefined) ||
       body.portal_welcome_html !== undefined ||
+      body.privacy_policy_html !== undefined ||
       body.public_description !== undefined ||
       body.telegram_group_link !== undefined
 
@@ -126,6 +129,9 @@ export async function PATCH(
       }
       if (body.portal_welcome_html !== undefined) {
         updateData.portal_welcome_html = body.portal_welcome_html || null
+      }
+      if (body.privacy_policy_html !== undefined) {
+        updateData.privacy_policy_html = body.privacy_policy_html || null
       }
       if (body.public_description !== undefined) {
         updateData.public_description = body.public_description?.trim() || null

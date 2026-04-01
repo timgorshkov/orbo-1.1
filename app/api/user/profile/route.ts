@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       const [{ data: participant }, { data: orgData }] = await Promise.all([
         adminSupabaseP
           .from('participants')
-          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, email_verified_at, created_at')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, email_verified_at, created_at, announcements_consent_granted_at, announcements_consent_revoked_at')
           .eq('id', participantId)
           .is('merged_into', null)
           .maybeSingle(),
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
         // Get owner's participant profile
         const { data: ownerParticipant } = await adminSupabase
           .from('participants')
-          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, announcements_consent_granted_at, announcements_consent_revoked_at')
           .eq('org_id', orgId)
           .eq('user_id', ownerMembership.user_id)
           .is('merged_into', null)
@@ -273,7 +273,7 @@ export async function GET(request: NextRequest) {
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, announcements_consent_granted_at, announcements_consent_revoked_at')
         .eq('org_id', orgId)
         .eq('tg_user_id', telegramAccount.telegram_user_id)
         .is('merged_into', null)
@@ -307,7 +307,7 @@ export async function GET(request: NextRequest) {
       
       const { data: participantData, error: participantError } = await adminSupabase
         .from('participants')
-        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+        .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, announcements_consent_granted_at, announcements_consent_revoked_at')
         .eq('org_id', orgId)
         .eq('user_id', user.id)
         .is('merged_into', null)
@@ -355,7 +355,7 @@ export async function GET(request: NextRequest) {
             source: telegramAccount ? 'telegram_admin' : 'manual',
             participant_status: 'participant' // Valid enum values: participant, event_attendee, candidate, excluded
           })
-          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at')
+          .select('id, full_name, first_name, last_name, username, bio, photo_url, email, phone, custom_attributes, tg_user_id, participant_status, source, last_activity_at, announcements_consent_granted_at, announcements_consent_revoked_at')
           .single();
         
         if (createError) {

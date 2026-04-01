@@ -49,6 +49,8 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const registrationData = body.registration_data || {};
     const quantity = Math.min(Math.max(parseInt(body.quantity) || 1, 1), 5);
+    const pdConsent = body.pd_consent === true;
+    const announcementsConsent = body.announcements_consent === true;
     
     // Get event details
     const { data: event, error: eventError } = await adminSupabase
@@ -173,15 +175,17 @@ export async function POST(
       }
       
       // Reactivate cancelled registration
+      const reactivateData: Record<string, unknown> = {
+        status: 'registered',
+        registered_at: new Date().toISOString(),
+        registration_data: registrationData,
+        quantity,
+        registration_source: 'telegram_miniapp',
+      };
+      if (pdConsent) reactivateData.pd_consent_at = new Date().toISOString();
       const { data: updatedReg, error: updateError } = await adminSupabase
         .from('event_registrations')
-        .update({
-          status: 'registered',
-          registered_at: new Date().toISOString(),
-          registration_data: registrationData,
-          quantity,
-          registration_source: 'telegram_miniapp',
-        })
+        .update(reactivateData)
         .eq('id', existingRegistration.id)
         .select('id, qr_token, payment_status')
         .single();
@@ -191,14 +195,28 @@ export async function POST(
         return NextResponse.json({ error: 'Ошибка регистрации' }, { status: 500 });
       }
       
-      logger.info({ 
-        event_id: eventId, 
+      // Update announcements consent on participant (only if checked, never overwrite existing)
+      if (announcementsConsent) {
+        await adminSupabase
+          .from('participants')
+          .update({
+            announcements_consent_granted_at: new Date().toISOString(),
+            announcements_consent_revoked_at: null,
+          })
+          .eq('id', participant.id)
+          .catch(() => {});
+      }
+
+      logger.info({
+        event_id: eventId,
         participant_id: participant.id,
         telegram_user_id: telegramUser.id,
-        qr_token: updatedReg?.qr_token
+        qr_token: updatedReg?.qr_token,
+        pd_consent: pdConsent,
+        announcements_consent: announcementsConsent,
       }, '✅ Registration reactivated via MiniApp');
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         success: true,
         message: 'Регистрация восстановлена',
         registration: {
@@ -241,9 +259,11 @@ export async function POST(
     let paymentStatus = null;
     
     if (registrationRow?.registration_id) {
+      const regUpdateData: Record<string, unknown> = { registration_source: 'telegram_miniapp' };
+      if (pdConsent) regUpdateData.pd_consent_at = new Date().toISOString();
       const { data: updatedReg } = await adminSupabase
         .from('event_registrations')
-        .update({ registration_source: 'telegram_miniapp' })
+        .update(regUpdateData)
         .eq('id', registrationRow.registration_id)
         .select('qr_token, payment_status')
         .single();
@@ -254,12 +274,26 @@ export async function POST(
       }
     }
     
-    logger.info({ 
-      event_id: eventId, 
+    // Update announcements consent on participant (only if checked, never overwrite existing)
+    if (announcementsConsent) {
+      await adminSupabase
+        .from('participants')
+        .update({
+          announcements_consent_granted_at: new Date().toISOString(),
+          announcements_consent_revoked_at: null,
+        })
+        .eq('id', participant.id)
+        .catch(() => {});
+    }
+
+    logger.info({
+      event_id: eventId,
       participant_id: participant.id,
       telegram_user_id: telegramUser.id,
       username: telegramUser.username,
-      qr_token: qrToken
+      qr_token: qrToken,
+      pd_consent: pdConsent,
+      announcements_consent: announcementsConsent,
     }, '✅ New registration via MiniApp');
     
     return NextResponse.json({ 

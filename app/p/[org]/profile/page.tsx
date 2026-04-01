@@ -61,6 +61,8 @@ type ProfileData = {
     participant_status: string
     source: string | null
     last_activity_at: string | null
+    announcements_consent_granted_at: string | null
+    announcements_consent_revoked_at: string | null
   } | null
   organization: {
     id: string
@@ -80,6 +82,7 @@ export default function ProfilePage() {
   // Editing state
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [revokingConsent, setRevokingConsent] = useState(false)
   const [editForm, setEditForm] = useState({
     full_name: '',
     bio: '',
@@ -274,6 +277,26 @@ export default function ProfilePage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleRevokeAnnouncementsConsent = async () => {
+    if (!profile?.participant?.id) return
+    setRevokingConsent(true)
+    try {
+      const res = await fetch(`/api/user/profile/revoke-announcements-consent?orgId=${org}`, {
+        method: 'POST',
+      })
+      if (res.ok) {
+        setProfile(prev => prev ? {
+          ...prev,
+          participant: prev.participant ? {
+            ...prev.participant,
+            announcements_consent_revoked_at: new Date().toISOString(),
+          } : null,
+        } : null)
+      }
+    } catch { /* ignore */ }
+    setRevokingConsent(false)
   }
 
   const handleLogout = async () => {
@@ -1039,6 +1062,32 @@ export default function ProfilePage() {
                           <span className="text-gray-600">Телефон:</span>
                           <span className="font-medium text-gray-900">{profile.participant.phone}</span>
                         </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Announcements consent */}
+                {profile.participant?.announcements_consent_granted_at && (
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Согласия</h3>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <span className="text-gray-600">Согласие на анонсы и рассылки: </span>
+                        {profile.participant.announcements_consent_revoked_at ? (
+                          <span className="text-orange-600 font-medium">Отозвано</span>
+                        ) : (
+                          <span className="text-green-600 font-medium">Действует</span>
+                        )}
+                      </div>
+                      {!profile.participant.announcements_consent_revoked_at && (
+                        <button
+                          onClick={handleRevokeAnnouncementsConsent}
+                          disabled={revokingConsent}
+                          className="text-xs text-red-600 hover:text-red-700 underline disabled:opacity-50"
+                        >
+                          {revokingConsent ? 'Отзыв...' : 'Отозвать согласие'}
+                        </button>
                       )}
                     </div>
                   </div>
