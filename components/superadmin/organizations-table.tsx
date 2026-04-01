@@ -46,6 +46,82 @@ function formatDate(dateStr: string): string {
   })
 }
 
+const BOT_MESSAGE_TEMPLATE = `Привет! 👋
+
+Я из команды Orbo. Вижу, что вы недавно зарегистрировались — отлично!
+
+Хотел лично написать, чтобы помочь с запуском. Если есть вопросы по настройке или хотите провести демо — отвечайте сюда или напишите мне напрямую: @orbo_support
+
+С уважением, команда Orbo`
+
+function SendBotMessageModal({ telegramUserId, displayName, onClose }: {
+  telegramUserId: string
+  displayName: string
+  onClose: () => void
+}) {
+  const [message, setMessage] = useState(BOT_MESSAGE_TEMPLATE)
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const handleSend = async () => {
+    setSending(true)
+    setResult(null)
+    try {
+      const res = await fetch('/api/superadmin/send-telegram-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramUserId, message })
+      })
+      const data = await res.json()
+      setResult(res.ok
+        ? { ok: true, text: `Сообщение отправлено (через ${data.bot_type || 'бот'})` }
+        : { ok: false, text: data.error || 'Ошибка отправки' })
+    } catch {
+      setResult({ ok: false, text: 'Сетевая ошибка' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b">
+          <h3 className="font-semibold text-gray-900">Написать от имени бота</h3>
+          <p className="text-sm text-gray-500 mt-1">{displayName} · ID: {telegramUserId}</p>
+        </div>
+        <div className="p-5 space-y-3">
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            rows={10}
+            className="w-full border rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-300"
+            placeholder="Текст сообщения (поддерживается Markdown)"
+          />
+          <p className="text-xs text-gray-400">Поддерживается Markdown: *жирный*, _курсив_, `код`</p>
+          {result && (
+            <div className={`text-sm px-3 py-2 rounded-lg ${result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {result.text}
+            </div>
+          )}
+        </div>
+        <div className="p-5 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            Закрыть
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !message.trim() || result?.ok === true}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {sending ? 'Отправка...' : 'Отправить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type FilterMode = 'all' | 'with_participants' | 'active_2d'
 
 export default function OrganizationsTable({
@@ -57,6 +133,7 @@ export default function OrganizationsTable({
   const [filterMode, setFilterMode] = useState<FilterMode>('all')
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{ id: string; name: string; action: 'archive' | 'unarchive' } | null>(null)
+  const [sendMessage, setSendMessage] = useState<{ telegramUserId: string; displayName: string } | null>(null)
 
   const now = Date.now()
   const twoDaysAgo = now - 2 * 24 * 60 * 60 * 1000
@@ -216,15 +293,19 @@ export default function OrganizationsTable({
                             <span className="inline-flex items-center gap-1.5">
                               ✅ {org.telegram_display_name || 'Верифицирован'}
                               {org.telegram_user_id && (
-                                <a
-                                  href={`https://t.me/orbo_notification_bot?start=sa_${org.telegram_user_id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                                  title="Написать через бот"
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSendMessage({
+                                      telegramUserId: org.telegram_user_id!,
+                                      displayName: org.telegram_display_name || org.name,
+                                    })
+                                  }}
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer"
+                                  title="Написать от имени бота"
                                 >
                                   ✉️ бот
-                                </a>
+                                </button>
                               )}
                             </span>
                           )
@@ -352,6 +433,14 @@ export default function OrganizationsTable({
             </div>
           </div>
         </div>
+      )}
+
+      {sendMessage && (
+        <SendBotMessageModal
+          telegramUserId={sendMessage.telegramUserId}
+          displayName={sendMessage.displayName}
+          onClose={() => setSendMessage(null)}
+        />
       )}
     </div>
   )

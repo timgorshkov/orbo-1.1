@@ -177,12 +177,11 @@ function SendBotMessageModal({
         body: JSON.stringify({
           telegramUserId: user.telegram_user_id,
           message,
-          botType: 'notifications'
         })
       })
       const data = await res.json()
       if (res.ok) {
-        setResult({ ok: true, text: 'Сообщение отправлено!' })
+        setResult({ ok: true, text: `Сообщение отправлено (через ${data.bot_type || 'бот'})` })
       } else {
         setResult({ ok: false, text: data.error || 'Ошибка отправки' })
       }
