@@ -509,30 +509,14 @@ export default function EventRegistrationForm({
                 </div>
               )}
 
-              <div className="flex flex-col gap-3 pt-4">
-                <Button
-                  onClick={() => submitRegistration(true)}
-                  disabled={isPending}
-                  className="w-full"
-                >
-                  {isPending ? 'Регистрация...' : '✓ Подтвердить оплату'}
-                </Button>
-                <Button
-                  variant="outline"
+              <div className="flex flex-col items-center gap-3 pt-4">
+                <button
                   onClick={() => submitRegistration(false)}
                   disabled={isPending}
-                  className="w-full"
+                  className="text-sm text-neutral-400 hover:text-neutral-600 transition-colors disabled:opacity-50"
                 >
-                  Пропустить (оплачу позже)
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep(1)}
-                  disabled={isPending}
-                  className="w-full text-neutral-500"
-                >
-                  ← Назад
-                </Button>
+                  {isPending ? 'Регистрация...' : 'Завершить регистрацию без оплаты'}
+                </button>
               </div>
             </div>
           )}
