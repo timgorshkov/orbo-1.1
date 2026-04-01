@@ -74,6 +74,10 @@ export default async function SuperadminOrganizationsPage() {
     eventsMap.set(e.org_id, (eventsMap.get(e.org_id) || 0) + 1)
   }
   
+  // Build user_id → name map for fallback display names
+  const userNameMap = new Map<string, string>()
+  // Will be populated after ownerUsers is loaded — for now collect from telegramAccounts user_ids
+
   // Создаём маппинг telegram для организаций (по owner/admin)
   const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null, telegram_display_name: string | null, telegram_user_id: string | null }>()
   for (const ta of telegramAccounts || []) {
@@ -185,7 +189,7 @@ export default async function SuperadminOrganizationsPage() {
       has_telegram: telegram.has_telegram,
       telegram_verified: telegram.telegram_verified,
       telegram_username: telegram.telegram_username,
-      telegram_display_name: telegram.telegram_display_name,
+      telegram_display_name: telegram.telegram_display_name || ownerInfo.name,
       telegram_user_id: telegram.telegram_user_id,
       has_max: maxOrgIds.has(org.id),
       groups_with_bot: groups.withBot,

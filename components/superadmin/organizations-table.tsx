@@ -298,7 +298,7 @@ export default function OrganizationsTable({
                             </a>
                           ) : (
                             <span className="inline-flex items-center gap-1.5">
-                              ✅ {org.telegram_display_name || 'Верифицирован'}
+                              ✅ {org.telegram_display_name || ''}
                               {org.telegram_user_id && (
                                 <button
                                   onClick={(e) => {
