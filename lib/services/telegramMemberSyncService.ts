@@ -20,8 +20,8 @@ import { createServiceLogger } from '@/lib/logger'
 
 const logger = createServiceLogger('TelegramMemberSync')
 
-// System accounts that Telegram injects into every group — skip them
-const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824, 93372553])
+// System accounts that Telegram injects into every group + our service account — skip them
+const SYSTEM_TG_IDS = new Set([777000, 136817688, 1087968824, 93372553, 8586374728])
 
 // ── Client singleton ──────────────────────────────────────────────────────────
 
@@ -229,38 +229,53 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
         const username = user.username ?? null
 
         try {
-          // Upsert participant
-          const { data: participant } = await db
+          // Check if participant already exists
+          const { data: existing } = await db
             .from('participants')
-            .upsert({
-              org_id: orgId,
-              tg_user_id: tgUserId,
-              username,
-              full_name: fullName,
-              tg_first_name: user.firstName ?? null,
-              tg_last_name: user.lastName ?? null,
-              source: 'service_account_sync',
-              status: 'active',
-              participant_status: 'participant',
-            }, { onConflict: 'org_id,tg_user_id' })
             .select('id')
-            .single()
+            .eq('org_id', orgId)
+            .eq('tg_user_id', tgUserId)
+            .is('merged_into', null)
+            .maybeSingle()
 
-          if (participant) {
-            // Upsert participant_groups link
-            const { error: pgError } = await db
-              .from('participant_groups')
-              .upsert({
-                participant_id: participant.id,
-                tg_group_id: tgChatId,
+          let participantId: string
+
+          if (existing) {
+            participantId = existing.id
+            // Update name/username if changed
+            await db
+              .from('participants')
+              .update({ username, full_name: fullName, tg_first_name: user.firstName ?? null, tg_last_name: user.lastName ?? null })
+              .eq('id', participantId)
+          } else {
+            const { data: newP } = await db
+              .from('participants')
+              .insert({
                 org_id: orgId,
-                joined_at: new Date().toISOString(),
-              }, { onConflict: 'participant_id,tg_group_id' })
+                tg_user_id: tgUserId,
+                username,
+                full_name: fullName,
+                tg_first_name: user.firstName ?? null,
+                tg_last_name: user.lastName ?? null,
+                source: 'service_account_sync',
+                participant_status: 'participant',
+              })
+              .select('id')
+              .single()
 
-            if (!pgError) {
-              newCount++ // Simplification: count all upserted as "processed"
-            }
+            if (!newP) { syncedCount++; continue }
+            participantId = newP.id
+            newCount++
           }
+
+          // Upsert participant_groups link
+          await db
+            .from('participant_groups')
+            .upsert({
+              participant_id: participantId,
+              tg_group_id: tgChatId,
+              joined_at: new Date().toISOString(),
+            }, { onConflict: 'participant_id,tg_group_id' })
 
           syncedCount++
         } catch (upsertErr: any) {
