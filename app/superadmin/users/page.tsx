@@ -247,9 +247,9 @@ export default async function SuperadminUsersPage() {
     }
   }).sort((a, b) => {
     if (a.is_test !== b.is_test) return a.is_test ? 1 : -1
-    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
-    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
-    return dateB - dateA
+    const actA = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : 0
+    const actB = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : 0
+    return actB - actA
   })
   
   const withOrgs = formattedUsers.filter(u => u.status === 'active').length

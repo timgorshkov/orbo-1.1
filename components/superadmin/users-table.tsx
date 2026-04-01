@@ -410,17 +410,17 @@ export default function UsersTable({ users }: { users: User[] }) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {user.reg_utm_source || user.reg_landing_page || user.reg_partner_code ? (
+                    {user.reg_utm_source || user.reg_utm_campaign || user.reg_landing_page || user.reg_partner_code || user.reg_referrer ? (
                       <div
                         className="flex flex-wrap gap-1 items-center cursor-help"
                         title={[
                           user.reg_partner_code && `Партнёр: ${user.reg_partner_code}`,
-                          user.reg_utm_source && `utm_source: ${user.reg_utm_source}`,
                           user.reg_utm_campaign && `utm_campaign: ${user.reg_utm_campaign}`,
+                          user.reg_utm_source && `utm_source: ${user.reg_utm_source}`,
+                          user.reg_referrer && `Referrer: ${user.reg_referrer}`,
                           user.reg_landing_page && `Лендинг: ${user.reg_landing_page}`,
                           user.reg_from_page && `Страница CTA: ${user.reg_from_page}`,
                           user.reg_device_type && `Устройство: ${user.reg_device_type}`,
-                          user.reg_referrer && `Referrer: ${user.reg_referrer}`,
                         ].filter(Boolean).join('\n')}
                       >
                         {user.reg_partner_code && (
@@ -428,19 +428,29 @@ export default function UsersTable({ users }: { users: User[] }) {
                             🤝 {user.reg_partner_code}
                           </span>
                         )}
-                        {user.reg_utm_source && (
+                        {user.reg_utm_campaign && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-purple-100 text-purple-700'}`}>
+                            {user.reg_utm_campaign}
+                          </span>
+                        )}
+                        {user.reg_utm_source && !user.reg_utm_campaign && (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-indigo-100 text-indigo-700'}`}>
                             {user.reg_utm_source}
+                          </span>
+                        )}
+                        {user.reg_referrer && !user.reg_partner_code && !user.reg_utm_campaign && !user.reg_utm_source && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-sky-100 text-sky-700'} truncate max-w-[120px]`} title={user.reg_referrer}>
+                            {(() => { try { return new URL(user.reg_referrer).hostname } catch { return user.reg_referrer } })()}
+                          </span>
+                        )}
+                        {user.reg_landing_page && !user.reg_partner_code && !user.reg_utm_campaign && !user.reg_utm_source && !user.reg_referrer && (
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
+                            {user.reg_landing_page}
                           </span>
                         )}
                         {user.reg_device_type && (
                           <span className={`px-1 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
                             {user.reg_device_type === 'mobile' ? '📱' : user.reg_device_type === 'tablet' ? '📱' : '💻'}
-                          </span>
-                        )}
-                        {user.reg_landing_page && !user.reg_utm_source && !user.reg_partner_code && (
-                          <span className={`px-1.5 py-0.5 rounded text-xs ${user.is_test ? 'bg-gray-200' : 'bg-gray-100 text-gray-600'}`}>
-                            {user.reg_landing_page}
                           </span>
                         )}
                       </div>

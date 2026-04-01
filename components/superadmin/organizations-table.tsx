@@ -25,6 +25,12 @@ type Organization = {
   participants_count: number
   events_count: number
   last_activity: string | null
+  reg_utm_campaign: string | null
+  reg_utm_source: string | null
+  reg_referrer: string | null
+  reg_landing_page: string | null
+  reg_device_type: string | null
+  reg_partner_code: string | null
 }
 
 interface OrganizationsTableProps {
@@ -249,6 +255,7 @@ export default function OrganizationsTable({
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Групп с ботом">Гр.</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Участников">Уч.</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Событий">Соб.</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Источник</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Активность</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                   {showArchived ? 'Архивирована' : 'Создана'}
@@ -259,7 +266,7 @@ export default function OrganizationsTable({
             <tbody className="divide-y">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     {showArchived
                       ? 'Нет архивных организаций'
                       : 'Организации не найдены'}
@@ -318,6 +325,45 @@ export default function OrganizationsTable({
                     <td className="px-4 py-3 text-sm text-right">{org.groups_with_bot}</td>
                     <td className="px-4 py-3 text-sm text-right">{org.participants_count}</td>
                     <td className="px-4 py-3 text-sm text-right">{org.events_count}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {org.reg_utm_campaign || org.reg_utm_source || org.reg_referrer || org.reg_landing_page || org.reg_partner_code ? (
+                        <div
+                          className="flex flex-wrap gap-1 items-center cursor-help"
+                          title={[
+                            org.reg_partner_code && `Партнёр: ${org.reg_partner_code}`,
+                            org.reg_utm_campaign && `utm_campaign: ${org.reg_utm_campaign}`,
+                            org.reg_utm_source && `utm_source: ${org.reg_utm_source}`,
+                            org.reg_referrer && `Referrer: ${org.reg_referrer}`,
+                            org.reg_landing_page && `Лендинг: ${org.reg_landing_page}`,
+                          ].filter(Boolean).join('\n')}
+                        >
+                          {org.reg_partner_code && (
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">🤝 {org.reg_partner_code}</span>
+                          )}
+                          {org.reg_utm_campaign && !org.reg_partner_code && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">{org.reg_utm_campaign}</span>
+                          )}
+                          {org.reg_utm_source && !org.reg_utm_campaign && !org.reg_partner_code && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700">{org.reg_utm_source}</span>
+                          )}
+                          {org.reg_referrer && !org.reg_partner_code && !org.reg_utm_campaign && !org.reg_utm_source && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-sky-100 text-sky-700 truncate max-w-[100px]" title={org.reg_referrer}>
+                              {(() => { try { return new URL(org.reg_referrer).hostname } catch { return org.reg_referrer } })()}
+                            </span>
+                          )}
+                          {org.reg_landing_page && !org.reg_partner_code && !org.reg_utm_campaign && !org.reg_utm_source && !org.reg_referrer && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{org.reg_landing_page}</span>
+                          )}
+                          {org.reg_device_type && (
+                            <span className="px-1 py-0.5 rounded text-xs bg-gray-100 text-gray-600">
+                              {org.reg_device_type === 'mobile' ? '📱' : org.reg_device_type === 'tablet' ? '📱' : '💻'}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {org.last_activity ? formatDate(org.last_activity) : '—'}
                     </td>

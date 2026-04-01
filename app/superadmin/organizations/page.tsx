@@ -107,7 +107,7 @@ export default async function SuperadminOrganizationsPage() {
   ))
   
   // Получаем email и имена из нескольких источников
-  const [{ data: ownerUsers }, { data: ownerAccounts }, { data: ownerTelegramAccounts }] = await Promise.all([
+  const [{ data: ownerUsers }, { data: ownerAccounts }, { data: ownerTelegramAccounts }, { data: ownerRegMeta }] = await Promise.all([
     ownerUserIds.length > 0
       ? supabase.from('users').select('id, email, name').in('id', ownerUserIds)
       : Promise.resolve({ data: [] }),
@@ -116,6 +116,9 @@ export default async function SuperadminOrganizationsPage() {
       : Promise.resolve({ data: [] }),
     ownerUserIds.length > 0
       ? supabase.from('user_telegram_accounts').select('user_id, telegram_first_name, telegram_last_name, telegram_username').in('user_id', ownerUserIds)
+      : Promise.resolve({ data: [] }),
+    ownerUserIds.length > 0
+      ? supabase.from('user_registration_meta').select('user_id, utm_source, utm_campaign, landing_page, referrer_url, device_type, partner_code').in('user_id', ownerUserIds)
       : Promise.resolve({ data: [] })
   ])
   
@@ -137,23 +140,28 @@ export default async function SuperadminOrganizationsPage() {
     }
   }
 
-  const orgOwnerMap = new Map<string, { email: string | null, name: string | null }>()
+  const ownerRegMetaMap = new Map<string, typeof ownerRegMeta extends (infer T)[] | null ? T : never>()
+  for (const m of ownerRegMeta || []) {
+    if (!ownerRegMetaMap.has(m.user_id)) ownerRegMetaMap.set(m.user_id, m)
+  }
+
+  const orgOwnerMap = new Map<string, { email: string | null, name: string | null, user_id: string }>()
   for (const membership of memberships || []) {
     if (membership.role === 'owner' && !orgOwnerMap.has(membership.org_id)) {
       const ownerUser = ownerUsers?.find(u => u.id === membership.user_id)
       const ownerAccount = ownerAccounts?.find(a => a.user_id === membership.user_id && a.provider === 'email')
       const ownerTelegram = ownerTgMerged.get(membership.user_id)
-      
+
       // Email: только реальные email
       const email = ownerUser?.email || ownerAccount?.provider_account_id || null
-      
+
       // Имя: users.name -> telegram name -> telegram_username
-      const telegramName = ownerTelegram 
-        ? [ownerTelegram.first_name, ownerTelegram.last_name].filter(Boolean).join(' ') 
+      const telegramName = ownerTelegram
+        ? [ownerTelegram.first_name, ownerTelegram.last_name].filter(Boolean).join(' ')
         : null
       const name = ownerUser?.name || telegramName || (ownerTelegram?.username ? `@${ownerTelegram.username}` : null)
-      
-      orgOwnerMap.set(membership.org_id, { email, name })
+
+      orgOwnerMap.set(membership.org_id, { email, name, user_id: membership.user_id })
     }
   }
   
@@ -163,7 +171,8 @@ export default async function SuperadminOrganizationsPage() {
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
     const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null, telegram_display_name: null, telegram_user_id: null }
-    const ownerInfo = orgOwnerMap.get(org.id) || { email: null, name: null }
+    const ownerInfo = orgOwnerMap.get(org.id) || { email: null, name: null, user_id: '' }
+    const regMeta = ownerInfo.user_id ? ownerRegMetaMap.get(ownerInfo.user_id) : null
     
     return {
       id: org.id,
@@ -183,6 +192,12 @@ export default async function SuperadminOrganizationsPage() {
       participants_count: participantsMap.get(org.id) || 0,
       events_count: eventsMap.get(org.id) || 0,
       last_activity: org.last_admin_visit_at || null,
+      reg_utm_campaign: regMeta?.utm_campaign || null,
+      reg_utm_source: regMeta?.utm_source || null,
+      reg_referrer: regMeta?.referrer_url || null,
+      reg_landing_page: regMeta?.landing_page || null,
+      reg_device_type: regMeta?.device_type || null,
+      reg_partner_code: regMeta?.partner_code || null,
     }
   })
   
