@@ -59,7 +59,7 @@ const STATUS_LABELS: Record<string, { label: string, className: string }> = {
   incomplete_onboarding: { label: 'Не завершил', className: 'bg-gray-100 text-gray-600' },
 }
 
-type FilterTab = 'all' | 'with_orgs' | 'without_orgs'
+type FilterTab = 'all' | 'with_orgs' | 'without_orgs' | 'with_telegram'
 
 type User = {
   user_id: string
@@ -137,19 +137,9 @@ function TelegramLink({ user, onSendMessage }: { user: User; onSendMessage?: (us
     const displayName = user.telegram_display_name || user.full_name
     const hasName = displayName && displayName !== 'Не указано'
     return (
-      <span className="inline-flex items-center gap-1.5 flex-wrap" title={`Telegram ID: ${user.telegram_user_id} (username не задан)`}>
+      <span className="inline-flex items-center gap-1.5 flex-wrap" title={`Telegram ID: ${user.telegram_user_id}`}>
         {user.telegram_verified && '✅ '}
         {hasName && <span className={user.is_test ? '' : 'text-gray-900'}>{displayName}</span>}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            navigator.clipboard.writeText(String(user.telegram_user_id))
-          }}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors cursor-pointer"
-          title="Копировать Telegram ID"
-        >
-          ID:{user.telegram_user_id}
-        </button>
         {onSendMessage && (
           <button
             onClick={(e) => { e.stopPropagation(); onSendMessage(user) }}
@@ -266,7 +256,8 @@ export default function UsersTable({ users }: { users: User[] }) {
     
     const matchesTab = tab === 'all' ||
       (tab === 'with_orgs' && u.status === 'active') ||
-      (tab === 'without_orgs' && u.status !== 'active')
+      (tab === 'without_orgs' && u.status !== 'active') ||
+      (tab === 'with_telegram' && !!u.telegram_user_id)
     
     return matchesSearch && matchesTab
   })
@@ -291,6 +282,7 @@ export default function UsersTable({ users }: { users: User[] }) {
     all: users.length,
     with_orgs: users.filter(u => u.status === 'active').length,
     without_orgs: users.filter(u => u.status !== 'active').length,
+    with_telegram: users.filter(u => !!u.telegram_user_id).length,
   }
   
   return (
@@ -307,6 +299,7 @@ export default function UsersTable({ users }: { users: User[] }) {
             ['all', 'Все'],
             ['with_orgs', 'С орг.'],
             ['without_orgs', 'Без орг.'],
+            ['with_telegram', 'С контактом'],
           ] as [FilterTab, string][]).map(([key, label]) => (
             <button
               key={key}

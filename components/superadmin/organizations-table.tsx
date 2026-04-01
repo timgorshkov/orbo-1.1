@@ -19,6 +19,7 @@ type Organization = {
   telegram_verified: boolean
   telegram_username: string | null
   telegram_display_name: string | null
+  telegram_user_id: string | null
   groups_with_bot: number
   participants_count: number
   events_count: number
@@ -37,7 +38,11 @@ function formatDate(dateStr: string): string {
   if (isToday) {
     return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
   }
-  return date.toLocaleDateString('ru-RU')
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  })
 }
 
 type FilterMode = 'all' | 'with_participants' | 'active_2d'
@@ -162,9 +167,9 @@ export default function OrganizationsTable({
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Название</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email владельца</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Telegram</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">С ботом</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">Участников</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">События</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Групп с ботом">Гр.</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Участников">Уч.</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700" title="Событий">Соб.</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Активность</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                   {showArchived ? 'Архивирована' : 'Создана'}
@@ -206,8 +211,19 @@ export default function OrganizationsTable({
                               ✅ @{org.telegram_username}
                             </a>
                           ) : (
-                            <span title="Username не задан">
+                            <span className="inline-flex items-center gap-1.5">
                               ✅ {org.telegram_display_name || 'Верифицирован'}
+                              {org.telegram_user_id && (
+                                <a
+                                  href={`https://t.me/orbo_notification_bot?start=sa_${org.telegram_user_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                  title="Написать через бот"
+                                >
+                                  ✉️ бот
+                                </a>
+                              )}
                             </span>
                           )
                         ) : (

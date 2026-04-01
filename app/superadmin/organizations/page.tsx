@@ -38,7 +38,7 @@ export default async function SuperadminOrganizationsPage() {
     supabase.from('participants').select('id, org_id').in('org_id', orgIds),
     supabase.from('events').select('id, org_id').in('org_id', orgIds),
     supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
-    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name').in('org_id', orgIds),
+    supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name, telegram_user_id').in('org_id', orgIds),
   ])
   
   // Получаем telegram_groups для подсчёта bot_status
@@ -73,7 +73,7 @@ export default async function SuperadminOrganizationsPage() {
   }
   
   // Создаём маппинг telegram для организаций (по owner/admin)
-  const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null, telegram_display_name: string | null }>()
+  const telegramMap = new Map<string, { has_telegram: boolean, telegram_verified: boolean, telegram_username: string | null, telegram_display_name: string | null, telegram_user_id: string | null }>()
   for (const ta of telegramAccounts || []) {
     const isOwnerOrAdmin = memberships?.some(m => m.org_id === ta.org_id && m.user_id === ta.user_id)
     if (!isOwnerOrAdmin) continue
@@ -85,6 +85,7 @@ export default async function SuperadminOrganizationsPage() {
         telegram_verified: ta.is_verified || false,
         telegram_username: ta.telegram_username || null,
         telegram_display_name: displayName,
+        telegram_user_id: ta.telegram_user_id || null,
       })
     } else {
       // Merge: prefer entry with more data
@@ -93,6 +94,7 @@ export default async function SuperadminOrganizationsPage() {
         telegram_verified: ta.is_verified || existing.telegram_verified,
         telegram_username: ta.telegram_username || existing.telegram_username,
         telegram_display_name: displayName || existing.telegram_display_name,
+        telegram_user_id: ta.telegram_user_id || existing.telegram_user_id,
       })
     }
   }
@@ -156,7 +158,7 @@ export default async function SuperadminOrganizationsPage() {
   // Форматируем данные
   const formattedOrgs = organizations.map(org => {
     const groups = groupsMap.get(org.id) || { count: 0, withBot: 0 }
-    const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null, telegram_display_name: null }
+    const telegram = telegramMap.get(org.id) || { has_telegram: false, telegram_verified: false, telegram_username: null, telegram_display_name: null, telegram_user_id: null }
     const ownerInfo = orgOwnerMap.get(org.id) || { email: null, name: null }
     
     return {
@@ -171,6 +173,7 @@ export default async function SuperadminOrganizationsPage() {
       telegram_verified: telegram.telegram_verified,
       telegram_username: telegram.telegram_username,
       telegram_display_name: telegram.telegram_display_name,
+      telegram_user_id: telegram.telegram_user_id,
       groups_with_bot: groups.withBot,
       participants_count: participantsMap.get(org.id) || 0,
       events_count: eventsMap.get(org.id) || 0,

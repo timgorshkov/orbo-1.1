@@ -65,7 +65,7 @@ export default async function SuperadminUsersPage() {
   // Step 3: Build org names map
   const orgIds = Array.from(new Set((memberships || []).map(m => m.org_id)))
   const { data: organizations } = orgIds.length > 0
-    ? await supabase.from('organizations').select('id, name').in('id', orgIds)
+    ? await supabase.from('organizations').select('id, name, last_admin_visit_at').in('id', orgIds)
     : { data: [] }
   type OrgRow = { id: string; name: string | null }
   const orgNameMap = new Map(((organizations || []) as OrgRow[]).map(o => [o.id, o.name ?? '']))
@@ -187,7 +187,15 @@ export default async function SuperadminUsersPage() {
       : (tgAccount ? fullName : null)
     
     const email = user.email || accountEmailMap.get(user.id) || null
-    const lastLogin = lastLoginMap.get(user.id) || accountActivityMap.get(user.id) || user.created_at || null
+    // Last product activity: use the latest last_admin_visit_at across user's orgs
+    const userOrgIds = (memberships || []).filter(m => m.user_id === user.id).map(m => m.org_id)
+    const lastAdminVisit = userOrgIds.reduce<string | null>((latest, oid) => {
+      const org = organizations?.find(o => o.id === oid)
+      if (!org?.last_admin_visit_at) return latest
+      if (!latest || new Date(org.last_admin_visit_at) > new Date(latest)) return org.last_admin_visit_at
+      return latest
+    }, null)
+    const lastLogin = lastAdminVisit || lastLoginMap.get(user.id) || accountActivityMap.get(user.id) || user.created_at || null
     const qualification = qualificationMap.get(user.id)
     const painPoints = qualification?.responses?.pain_points || []
     
