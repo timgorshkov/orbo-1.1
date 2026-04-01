@@ -13,7 +13,8 @@
  *   TG_SERVICE_SESSION     – generated once via scripts/setup-tg-session.ts
  */
 
-import { TelegramClient, StringSession, Api } from 'telegram'
+import { TelegramClient, sessions, Api } from 'telegram'
+const { StringSession } = sessions
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 

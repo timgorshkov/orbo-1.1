@@ -14,7 +14,8 @@
  */
 
 import * as readline from 'readline'
-import { TelegramClient, StringSession } from 'telegram'
+import { TelegramClient, sessions } from 'telegram'
+const { StringSession } = sessions
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 const ask = (q: string): Promise<string> => new Promise(r => rl.question(q, r))
