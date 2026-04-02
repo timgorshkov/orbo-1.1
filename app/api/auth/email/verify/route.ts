@@ -55,12 +55,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (tokenRow.is_used) {
-      // If the token was used very recently (< 60s), it's likely a mobile mail client
-      // pre-fetching the link in parallel with the user click. Allow the user through
-      // by rebuilding a session from the existing user record instead of showing an error.
+      // Grace period: allow reuse if token was consumed recently.
+      // Covers mail client / corporate security scanner prefetch (SafeLinks, Barracuda,
+      // Proofpoint) that consume the token before the real user clicks.
+      const GRACE_PERIOD_SECONDS = 300 // 5 minutes
       const usedAt = tokenRow.used_at ? new Date(tokenRow.used_at).getTime() : 0
       const secondsSinceUse = (Date.now() - usedAt) / 1000
-      if (secondsSinceUse < 60) {
+      if (secondsSinceUse < GRACE_PERIOD_SECONDS) {
         logger.info({
           token_prefix: token.substring(0, 8),
           email: tokenRow.email,

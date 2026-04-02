@@ -13,18 +13,25 @@ import { Copy, Check, ExternalLink, CheckCircle2 } from 'lucide-react'
 const REGISTRATION_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_REGISTRATION_BOT_USERNAME || 'orbo_start_bot'
 
 const POLL_INTERVAL_MS = 2500
-const MAX_POLL_ATTEMPTS = 72
+const CODE_TTL_SECONDS = 600 // 10 minutes — must match server
 
 function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; inviteToken?: string | null }) {
   const [code, setCode] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'linked' | 'error'>('loading')
   const [copied, setCopied] = useState(false)
   const [botCopied, setBotCopied] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState(CODE_TTL_SECONDS)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pollCount = useRef(0)
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const expiresAtRef = useRef<number>(0)
   const router = useRouter()
 
-  useEffect(() => {
+  const generateCode = () => {
+    setStatus('loading')
+    setCode(null)
+    if (pollTimer.current) clearTimeout(pollTimer.current)
+    if (countdownTimer.current) clearInterval(countdownTimer.current)
+
     fetch('/api/auth/telegram-code/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -35,20 +42,42 @@ function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; 
         if (data.code) {
           setCode(data.code)
           setStatus('ready')
+          expiresAtRef.current = Date.now() + CODE_TTL_SECONDS * 1000
+          setSecondsLeft(CODE_TTL_SECONDS)
           startPolling(data.code)
+          startCountdown()
         } else {
           setStatus('error')
         }
       })
       .catch(() => setStatus('error'))
-    return () => { if (pollTimer.current) clearTimeout(pollTimer.current) }
+  }
+
+  useEffect(() => {
+    generateCode()
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current)
+      if (countdownTimer.current) clearInterval(countdownTimer.current)
+    }
   }, [])
 
+  const startCountdown = () => {
+    if (countdownTimer.current) clearInterval(countdownTimer.current)
+    countdownTimer.current = setInterval(() => {
+      const left = Math.max(0, Math.round((expiresAtRef.current - Date.now()) / 1000))
+      setSecondsLeft(left)
+      if (left <= 0) {
+        if (countdownTimer.current) clearInterval(countdownTimer.current)
+        // Auto-regenerate code
+        generateCode()
+      }
+    }, 1000)
+  }
+
   const startPolling = (codeValue: string) => {
-    pollCount.current = 0
     const tick = async () => {
-      pollCount.current++
-      if (pollCount.current > MAX_POLL_ATTEMPTS) return
+      // Stop polling if code expired (generateCode will restart with new code)
+      if (Date.now() >= expiresAtRef.current) return
       try {
         const res = await fetch(`/api/auth/telegram-code/status?code=${codeValue}`)
         if (res.ok) {
@@ -56,8 +85,6 @@ function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; 
           if (data.linked) {
             setStatus('linked')
             ymGoal('telegram_signin_linked', undefined, { once: true })
-            // Auto-redirect: create NextAuth session directly in this browser tab.
-            // The /auth/telegram route marks the code as used and signs the user in.
             const dest = inviteToken ? `/invite/${inviteToken}` : '/orgs'
             router.push(`/auth/telegram?code=${codeValue}&redirect=${encodeURIComponent(dest)}`)
             return
@@ -124,6 +151,11 @@ function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; 
       <p className="text-xs text-blue-600 text-center">
         Бот отправит ссылку для входа в Telegram
       </p>
+      {status === 'ready' && secondsLeft > 0 && (
+        <p className="text-[10px] text-blue-300 text-center tabular-nums">
+          {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
+        </p>
+      )}
       {code && (
         <div className="text-center pt-1">
           <a href={deepLink} target="_blank" rel="noopener noreferrer"
@@ -176,9 +208,9 @@ function ErrorHandler({ onError, onExpiredWithEmail, onInviteToken }: {
       'user_error': 'Ошибка пользователя. Попробуйте позже.',
       'session_error': 'Ошибка создания сессии. Попробуйте позже.',
       'verification_failed': 'Ошибка верификации. Попробуйте позже.',
-      'expired_code': 'Ссылка устарела. Откройте бот и нажмите /start заново.',
-      'invalid_code': 'Недействительный код. Откройте бот и нажмите /start заново.',
-      'code_already_used': 'Ссылка уже была использована. Запросите новую через бот.',
+      'expired_code': 'Код устарел. Вернитесь на страницу входа — новый код создастся автоматически.',
+      'invalid_code': 'Недействительный код. Вернитесь на страницу входа и попробуйте снова.',
+      'code_already_used': 'Код уже был использован. Вернитесь на страницу входа для получения нового.',
       'user_not_found': 'Аккаунт не найден. Зарегистрируйтесь на сайте.',
       'missing_code': 'Отсутствует код авторизации.',
       'query_error': 'Ошибка при проверке кода. Попробуйте позже.',

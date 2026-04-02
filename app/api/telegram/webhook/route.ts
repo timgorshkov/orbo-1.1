@@ -438,20 +438,47 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
               .eq('title', chatTitle)
               .neq('tg_chat_id', String(memberChatId))
               .is('migrated_to', null);
-            
+
             if (sameNameGroups && sameNameGroups.length > 0) {
-              logger.warn({
-                new_chat_id: memberChatId,
-                new_title: chatTitle,
-                existing_groups: sameNameGroups.map(g => ({
-                  id: g.id,
-                  tg_chat_id: g.tg_chat_id,
-                  bot_status: g.bot_status
-                })),
-                potential_migration: sameNameGroups.some(g => 
-                  String(memberChatId).startsWith('-100') && !String(g.tg_chat_id).startsWith('-100')
-                )
-              }, 'Bot added to group with same title as existing - potential duplicate');
+              const isSupergroup = String(memberChatId).startsWith('-100');
+              // Auto-merge: new supergroup + old basic group with same title, no parallel activity
+              const basicOld = sameNameGroups.find(g =>
+                isSupergroup && !String(g.tg_chat_id).startsWith('-100')
+              );
+
+              if (basicOld) {
+                logger.info({
+                  old_chat_id: basicOld.tg_chat_id,
+                  new_chat_id: memberChatId,
+                  title: chatTitle,
+                }, 'Auto-merging basic group into supergroup (same title)');
+
+                try {
+                  const { data: migrationResult, error: migrationError } = await supabaseServiceRole
+                    .rpc('migrate_telegram_chat_id', {
+                      old_chat_id: Number(basicOld.tg_chat_id),
+                      new_chat_id: Number(memberChatId)
+                    });
+
+                  if (migrationError) {
+                    logger.error({ error: migrationError.message, old_chat_id: basicOld.tg_chat_id, new_chat_id: memberChatId }, 'Auto-merge migration failed');
+                  } else {
+                    logger.info({ result: migrationResult, old_chat_id: basicOld.tg_chat_id, new_chat_id: memberChatId }, 'Auto-merge migration completed');
+                  }
+                } catch (mergeErr) {
+                  logger.error({ error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr) }, 'Auto-merge exception');
+                }
+              } else {
+                logger.warn({
+                  new_chat_id: memberChatId,
+                  new_title: chatTitle,
+                  existing_groups: sameNameGroups.map(g => ({
+                    id: g.id,
+                    tg_chat_id: g.tg_chat_id,
+                    bot_status: g.bot_status
+                  })),
+                }, 'Bot added to group with same title as existing - potential duplicate (no auto-merge: both supergroups or both basic)');
+              }
             }
           } else if (existingGroup.bot_status !== botStatus) {
             logger.info({
