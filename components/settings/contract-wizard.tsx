@@ -42,6 +42,40 @@ interface ContractResult {
   contract_date: string
 }
 
+// --- Валидация ---
+
+type ValidationRule = { check: (v: string) => boolean; hint: string }
+
+const digitsOnly = (v: string) => v.replace(/\D/g, '')
+
+const VALIDATORS: Record<string, ValidationRule> = {
+  full_name: { check: v => v.trim().split(/\s+/).length >= 2, hint: 'Укажите минимум имя и фамилию' },
+  email: { check: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), hint: 'Некорректный e-mail' },
+  phone: { check: v => digitsOnly(v).length >= 10, hint: 'Минимум 10 цифр' },
+  inn_individual: { check: v => digitsOnly(v).length === 12, hint: 'ИНН физлица — 12 цифр' },
+  inn_legal: { check: v => { const d = digitsOnly(v).length; return d === 10 || d === 12 }, hint: 'ИНН юрлица — 10 цифр, ИП — 12 цифр' },
+  passport_series_number: { check: v => digitsOnly(v).length === 10, hint: 'Серия (4 цифры) + номер (6 цифр)' },
+  passport_issued_by: { check: v => v.trim().length >= 10, hint: 'Слишком короткое значение' },
+  registration_address: { check: v => v.trim().length >= 10, hint: 'Слишком короткий адрес' },
+  org_name: { check: v => v.trim().length >= 5, hint: 'Слишком короткое наименование' },
+  kpp: { check: v => !v.trim() || digitsOnly(v).length === 9, hint: 'КПП — 9 цифр (необязательно для ИП)' },
+  ogrn: { check: v => { const d = digitsOnly(v).length; return d === 13 || d === 15 }, hint: 'ОГРН — 13 цифр, ОГРНИП — 15 цифр' },
+  legal_address: { check: v => v.trim().length >= 10, hint: 'Слишком короткий адрес' },
+  signatory_name: { check: v => v.trim().split(/\s+/).length >= 2, hint: 'Укажите минимум имя и фамилию' },
+  signatory_position: { check: v => v.trim().length >= 3, hint: 'Слишком короткое значение' },
+  bik: { check: v => digitsOnly(v).length === 9, hint: 'БИК — 9 цифр' },
+  bank_name: { check: v => v.trim().length >= 3, hint: 'Слишком короткое название' },
+  correspondent_account: { check: v => digitsOnly(v).length === 20, hint: 'Корр. счёт — 20 цифр' },
+  settlement_account: { check: v => digitsOnly(v).length === 20, hint: 'Расч. счёт — 20 цифр' },
+}
+
+function validate(field: string, value: string): string | null {
+  const rule = VALIDATORS[field]
+  if (!rule) return null
+  if (!value.trim()) return null // пустое обрабатывается через required
+  return rule.check(value) ? null : rule.hint
+}
+
 const INITIAL_CP: CounterpartyData = {
   type: null,
   full_name: '', inn: '', email: '', phone: '',
@@ -68,6 +102,7 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
   const [uploadingPhoto, setUploadingPhoto] = useState<1 | 2 | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [showValidation, setShowValidation] = useState(false)
+  const [showBankValidation, setShowBankValidation] = useState(false)
 
   const updateCp = (field: string, value: string) => setCp(prev => ({ ...prev, [field]: value }))
   const updateBank = (field: string, value: string) => setBank(prev => ({ ...prev, [field]: value }))
@@ -151,11 +186,57 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
     }
   }
 
-  const canProceedStep3 = cp.type === 'individual'
-    ? !!(cp.full_name && cp.inn && cp.email && cp.phone && cp.passport_series_number && cp.passport_issued_by && cp.passport_issue_date && cp.registration_address)
-    : !!(cp.org_name && cp.inn && cp.ogrn && cp.legal_address && cp.signatory_name && cp.signatory_position && cp.email && cp.phone)
+  const getStep3Errors = (): string[] => {
+    const errors: string[] = []
+    const req = (field: string, value: string, validatorKey?: string) => {
+      if (!value.trim()) errors.push(field)
+      else if (validatorKey) {
+        const err = validate(validatorKey, value)
+        if (err) errors.push(field)
+      }
+    }
+    if (cp.type === 'individual') {
+      req('full_name', cp.full_name, 'full_name')
+      req('email', cp.email, 'email')
+      req('phone', cp.phone, 'phone')
+      req('inn', cp.inn, 'inn_individual')
+      req('passport_series_number', cp.passport_series_number, 'passport_series_number')
+      req('passport_issue_date', cp.passport_issue_date)
+      req('passport_issued_by', cp.passport_issued_by, 'passport_issued_by')
+      req('registration_address', cp.registration_address, 'registration_address')
+    } else {
+      req('org_name', cp.org_name, 'org_name')
+      req('inn', cp.inn, 'inn_legal')
+      // КПП необязательно для ИП, но если заполнено — проверяем формат
+      if (cp.kpp.trim() && validate('kpp', cp.kpp)) errors.push('kpp')
+      req('ogrn', cp.ogrn, 'ogrn')
+      req('legal_address', cp.legal_address, 'legal_address')
+      req('signatory_name', cp.signatory_name, 'signatory_name')
+      req('signatory_position', cp.signatory_position, 'signatory_position')
+      req('email', cp.email, 'email')
+      req('phone', cp.phone, 'phone')
+    }
+    return errors
+  }
 
-  const canProceedStep4 = !!(bank.bik && bank.bank_name && bank.correspondent_account && bank.settlement_account)
+  const getStep4Errors = (): string[] => {
+    const errors: string[] = []
+    const req = (field: string, value: string, validatorKey?: string) => {
+      if (!value.trim()) errors.push(field)
+      else if (validatorKey) {
+        const err = validate(validatorKey, value)
+        if (err) errors.push(field)
+      }
+    }
+    req('bik', bank.bik, 'bik')
+    req('bank_name', bank.bank_name, 'bank_name')
+    req('correspondent_account', bank.correspondent_account, 'correspondent_account')
+    req('settlement_account', bank.settlement_account, 'settlement_account')
+    return errors
+  }
+
+  const canProceedStep3 = getStep3Errors().length === 0
+  const canProceedStep4 = getStep4Errors().length === 0
 
   return (
     <div className="space-y-6">
@@ -238,18 +319,18 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
 
           {cp.type === 'individual' ? (
             <div className="space-y-3">
-              <Field label="ФИО (как в паспорте)" value={cp.full_name} onChange={v => updateCp('full_name', v)} required showValidation={showValidation} />
+              <Field label="ФИО (как в паспорте)" value={cp.full_name} onChange={v => updateCp('full_name', v)} required showValidation={showValidation} validatorKey="full_name" />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="E-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} />
-                <Field label="Телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} />
+                <Field label="E-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} validatorKey="email" />
+                <Field label="Телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} validatorKey="phone" />
               </div>
-              <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} placeholder="12 цифр" required showValidation={showValidation} />
+              <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} placeholder="12 цифр" required showValidation={showValidation} validatorKey="inn_individual" />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Серия и номер паспорта" value={cp.passport_series_number} onChange={v => updateCp('passport_series_number', v)} placeholder="0000 000000" required showValidation={showValidation} />
+                <Field label="Серия и номер паспорта" value={cp.passport_series_number} onChange={v => updateCp('passport_series_number', v)} placeholder="0000 000000" required showValidation={showValidation} validatorKey="passport_series_number" />
                 <Field label="Дата выдачи" type="date" value={cp.passport_issue_date} onChange={v => updateCp('passport_issue_date', v)} required showValidation={showValidation} />
               </div>
-              <Field label="Кем выдан паспорт" value={cp.passport_issued_by} onChange={v => updateCp('passport_issued_by', v)} required showValidation={showValidation} />
-              <Field label="Адрес регистрации" value={cp.registration_address} onChange={v => updateCp('registration_address', v)} required showValidation={showValidation} />
+              <Field label="Кем выдан паспорт" value={cp.passport_issued_by} onChange={v => updateCp('passport_issued_by', v)} required showValidation={showValidation} validatorKey="passport_issued_by" />
+              <Field label="Адрес регистрации" value={cp.registration_address} onChange={v => updateCp('registration_address', v)} required showValidation={showValidation} validatorKey="registration_address" />
               <div className="grid grid-cols-2 gap-3">
                 <PhotoUpload label="Фото паспорта (разворот)" url={cp.passport_photo_1_url} uploading={uploadingPhoto === 1}
                   onUpload={f => handlePhotoUpload(1, f)} />
@@ -259,16 +340,16 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
             </div>
           ) : (
             <div className="space-y-3">
-              <Field label="Полное наименование организации (с ОПФ)" value={cp.org_name} onChange={v => updateCp('org_name', v)} placeholder='ООО "Название" или ИП Фамилия И.О.' required showValidation={showValidation} />
+              <Field label="Полное наименование организации (с ОПФ)" value={cp.org_name} onChange={v => updateCp('org_name', v)} placeholder='ООО "Название" или ИП Фамилия И.О.' required showValidation={showValidation} validatorKey="org_name" />
               <div className="grid grid-cols-3 gap-3">
-                <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} required showValidation={showValidation} />
-                <Field label="КПП" value={cp.kpp} onChange={v => updateCp('kpp', v)} placeholder="Для ИП не требуется" />
-                <Field label="ОГРН / ОГРНИП" value={cp.ogrn} onChange={v => updateCp('ogrn', v)} required showValidation={showValidation} />
+                <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} required showValidation={showValidation} validatorKey="inn_legal" />
+                <Field label="КПП" value={cp.kpp} onChange={v => updateCp('kpp', v)} placeholder="Для ИП не требуется" showValidation={showValidation} validatorKey="kpp" />
+                <Field label="ОГРН / ОГРНИП" value={cp.ogrn} onChange={v => updateCp('ogrn', v)} required showValidation={showValidation} validatorKey="ogrn" />
               </div>
-              <Field label="Юридический адрес" value={cp.legal_address} onChange={v => updateCp('legal_address', v)} required showValidation={showValidation} />
+              <Field label="Юридический адрес" value={cp.legal_address} onChange={v => updateCp('legal_address', v)} required showValidation={showValidation} validatorKey="legal_address" />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="ФИО подписывающего лица" value={cp.signatory_name} onChange={v => updateCp('signatory_name', v)} required showValidation={showValidation} />
-                <Field label="Должность" value={cp.signatory_position} onChange={v => updateCp('signatory_position', v)} placeholder="Генеральный директор" required showValidation={showValidation} />
+                <Field label="ФИО подписывающего лица" value={cp.signatory_name} onChange={v => updateCp('signatory_name', v)} required showValidation={showValidation} validatorKey="signatory_name" />
+                <Field label="Должность" value={cp.signatory_position} onChange={v => updateCp('signatory_position', v)} placeholder="Генеральный директор" required showValidation={showValidation} validatorKey="signatory_position" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ставка НДС</label>
@@ -284,8 +365,8 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Контактный e-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} />
-                <Field label="Контактный телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} />
+                <Field label="Контактный e-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} validatorKey="email" />
+                <Field label="Контактный телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} validatorKey="phone" />
               </div>
             </div>
           )}
@@ -317,12 +398,12 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
           <h3 className="text-lg font-semibold">Банковские реквизиты</h3>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="БИК" value={bank.bik} onChange={v => updateBank('bik', v)} placeholder="9 цифр" required />
-              <Field label="Наименование банка" value={bank.bank_name} onChange={v => updateBank('bank_name', v)} required />
+              <Field label="БИК" value={bank.bik} onChange={v => updateBank('bik', v)} placeholder="9 цифр" required showValidation={showBankValidation} validatorKey="bik" />
+              <Field label="Наименование банка" value={bank.bank_name} onChange={v => updateBank('bank_name', v)} required showValidation={showBankValidation} validatorKey="bank_name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Корреспондентский счёт" value={bank.correspondent_account} onChange={v => updateBank('correspondent_account', v)} placeholder="20 цифр" required />
-              <Field label="Расчётный счёт" value={bank.settlement_account} onChange={v => updateBank('settlement_account', v)} placeholder="20 цифр" required />
+              <Field label="Корреспондентский счёт" value={bank.correspondent_account} onChange={v => updateBank('correspondent_account', v)} placeholder="20 цифр" required showValidation={showBankValidation} validatorKey="correspondent_account" />
+              <Field label="Расчётный счёт" value={bank.settlement_account} onChange={v => updateBank('settlement_account', v)} placeholder="20 цифр" required showValidation={showBankValidation} validatorKey="settlement_account" />
             </div>
             <Field label="Назначение платежа (комментарий)" value={bank.transfer_comment} onChange={v => updateBank('transfer_comment', v)} />
           </div>
@@ -331,11 +412,17 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
             <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-200">{error}</div>
           )}
 
+          {showBankValidation && !canProceedStep4 && (
+            <div className="p-3 rounded-lg bg-amber-50 text-amber-700 text-sm border border-amber-200">
+              Проверьте корректность банковских реквизитов
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2">
             <button onClick={() => setStep(3)} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
               <ArrowLeft className="w-3 h-3" /> Назад
             </button>
-            <Button onClick={submitContract} disabled={!canProceedStep4 || saving}>
+            <Button onClick={() => { setShowBankValidation(true); if (canProceedStep4) submitContract() }} disabled={saving}>
               {saving ? 'Сохранение...' : 'Сохранить и продолжить'}
             </Button>
           </div>
@@ -384,12 +471,15 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
 // Helper components
 
 function Field({
-  label, value, onChange, type = 'text', placeholder, required, showValidation
+  label, value, onChange, type = 'text', placeholder, required, showValidation, validatorKey
 }: {
   label: string; value: string; onChange: (v: string) => void
   type?: string; placeholder?: string; required?: boolean; showValidation?: boolean
+  validatorKey?: string
 }) {
-  const hasError = showValidation && required && !value.trim()
+  const isEmpty = required && !value.trim()
+  const formatError = validatorKey && value.trim() ? validate(validatorKey, value) : null
+  const hasError = showValidation && (isEmpty || !!formatError)
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -402,6 +492,9 @@ function Field({
         placeholder={placeholder}
         className={`h-9 ${hasError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
       />
+      {showValidation && formatError && (
+        <p className="text-xs text-red-500 mt-0.5">{formatError}</p>
+      )}
     </div>
   )
 }

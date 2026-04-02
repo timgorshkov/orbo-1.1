@@ -145,6 +145,29 @@ export default function ContractContent() {
         </div>
       </div>
 
+      {/* Confirmation block for pending contracts */}
+      {contract.status === 'filled_by_client' && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 space-y-3">
+          <h4 className="text-sm font-semibold text-blue-800">Подтверждение расчётного счёта</h4>
+          <p className="text-sm text-blue-700">
+            Для активации договора необходимо подтвердить расчётный счёт одним из двух способов:
+          </p>
+          <ol className="text-sm text-blue-700 list-decimal list-inside space-y-2">
+            <li>
+              <strong>Банковский перевод 200 ₽</strong> с указанного расчётного счёта по реквизитам
+              в счёте на оплату.
+            </li>
+            <li>
+              <strong>Подписанное заявление</strong> — оригинал подписанного заявления о присоединении к оферте.
+            </li>
+          </ol>
+          <p className="text-xs text-blue-500">
+            После подтверждения мы активируем ваш договор. По вопросам:{' '}
+            <a href="mailto:sales@orbo.ru" className="underline">sales@orbo.ru</a>
+          </p>
+        </div>
+      )}
+
       {/* Hint */}
       <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 text-xs text-gray-500">
         Для изменения реквизитов напишите на{' '}
