@@ -13,10 +13,11 @@ export default async function SuperadminGroupsPage() {
   
   // ✅ ОПТИМИЗАЦИЯ: Получаем все данные ПАРАЛЛЕЛЬНО вместо N+1 запросов
   const [groupsResult, orgLinksResult, lastActivitiesResult, organizationsResult] = await Promise.all([
-    // 1. Все группы
+    // 1. Все активные группы (без мигрированных дублей)
     supabase
       .from('telegram_groups')
       .select('id, title, tg_chat_id, bot_status, last_sync_at, member_count')
+      .is('migrated_to', null)
       .order('id', { ascending: false }),
     
     // 2. Все связи с организациями

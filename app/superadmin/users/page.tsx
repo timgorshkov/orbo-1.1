@@ -149,7 +149,7 @@ export default async function SuperadminUsersPage() {
     : { data: [] }
   const chatIds = Array.from(new Set((groupAdmins || []).map(ga => ga.tg_chat_id).filter(Boolean)))
   const { data: groups } = chatIds.length > 0
-    ? await supabase.from('telegram_groups').select('tg_chat_id, bot_status').in('tg_chat_id', chatIds).eq('bot_status', 'connected')
+    ? await supabase.from('telegram_groups').select('tg_chat_id, bot_status').in('tg_chat_id', chatIds).eq('bot_status', 'connected').is('migrated_to', null)
     : { data: [] }
   const groupsWithBotSet = new Set((groups || []).map(g => g.tg_chat_id))
   

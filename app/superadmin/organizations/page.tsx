@@ -45,8 +45,8 @@ export default async function SuperadminOrganizationsPage() {
   
   // Получаем telegram_groups для подсчёта bot_status
   const chatIds = Array.from(new Set(orgGroups?.map(g => g.tg_chat_id) || []))
-  const { data: telegramGroups } = chatIds.length > 0 
-    ? await supabase.from('telegram_groups').select('id, tg_chat_id, bot_status').in('tg_chat_id', chatIds)
+  const { data: telegramGroups } = chatIds.length > 0
+    ? await supabase.from('telegram_groups').select('id, tg_chat_id, bot_status').in('tg_chat_id', chatIds).is('migrated_to', null)
     : { data: [] }
   
   // Создаём маппинги
