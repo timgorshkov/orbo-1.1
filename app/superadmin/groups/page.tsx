@@ -13,11 +13,12 @@ export default async function SuperadminGroupsPage() {
   
   // ✅ ОПТИМИЗАЦИЯ: Получаем все данные ПАРАЛЛЕЛЬНО вместо N+1 запросов
   const [groupsResult, orgLinksResult, lastActivitiesResult, organizationsResult] = await Promise.all([
-    // 1. Все активные группы (без мигрированных дублей)
+    // 1. Все активные группы (без мигрированных дублей и личных чатов)
     supabase
       .from('telegram_groups')
       .select('id, title, tg_chat_id, bot_status, last_sync_at, member_count')
       .is('migrated_to', null)
+      .like('tg_chat_id', '-%')
       .order('id', { ascending: false }),
     
     // 2. Все связи с организациями
@@ -25,13 +26,14 @@ export default async function SuperadminGroupsPage() {
       .from('org_telegram_groups')
       .select('tg_chat_id, org_id'),
     
-    // 3. Последняя активность по группам (агрегат через RPC или просто последние события)
-    supabase
-      .from('activity_events')
-      .select('tg_chat_id, created_at')
-      .not('tg_chat_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(500), // Последние 500 событий для расчёта last_activity
+    // 3. Последняя активность по группам (агрегат)
+    supabase.raw(
+      `SELECT tg_chat_id, MAX(created_at) as last_activity_at
+       FROM activity_events
+       WHERE tg_chat_id IS NOT NULL
+       GROUP BY tg_chat_id`,
+      []
+    ),
       
     // 4. Все организации для отображения названий
     supabase
@@ -67,11 +69,10 @@ export default async function SuperadminGroupsPage() {
   })
   
   const lastActivityByGroup = new Map<number, string>()
-  lastActivities.forEach(activity => {
+  lastActivities.forEach((activity: any) => {
     const chatId = Number(activity.tg_chat_id)
-    // Сохраняем только первую (самую свежую) запись для каждой группы
-    if (!lastActivityByGroup.has(chatId)) {
-      lastActivityByGroup.set(chatId, activity.created_at)
+    if (activity.last_activity_at) {
+      lastActivityByGroup.set(chatId, activity.last_activity_at)
     }
   })
   
