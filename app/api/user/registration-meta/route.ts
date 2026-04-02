@@ -14,6 +14,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const supabase = createAdminServer()
 
+    // Verify user exists before writing meta (JWT may contain stale/ghost user id)
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', session.user.id)
+      .single()
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     const { error } = await supabase
       .from('user_registration_meta')
       .upsert({

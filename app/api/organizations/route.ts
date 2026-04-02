@@ -32,6 +32,21 @@ export async function POST(req: NextRequest) {
     
     const user = { id: session.user.id, email: session.user.email };
 
+    // Verify user exists in DB (JWT may contain stale/ghost user id)
+    const { data: dbUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single()
+
+    if (!dbUser) {
+      logger.warn({ user_id: user.id }, 'Ghost user attempted to create organization — user not found in DB')
+      return NextResponse.json(
+        { error: 'User not found. Please sign in again.' },
+        { status: 401 }
+      )
+    }
+
     // Idempotency: if this is the auto-created "Моё сообщество" org and the user
     // already owns one created in the last 10 minutes, return it instead of creating a duplicate.
     // This prevents duplicate orgs when two browser sessions hit /welcome simultaneously.
