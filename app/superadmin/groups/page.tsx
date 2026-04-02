@@ -18,7 +18,7 @@ export default async function SuperadminGroupsPage() {
       .from('telegram_groups')
       .select('id, title, tg_chat_id, bot_status, last_sync_at, member_count')
       .is('migrated_to', null)
-      .like('tg_chat_id', '-%')
+      .lt('tg_chat_id', 0)
       .order('id', { ascending: false }),
     
     // 2. Все связи с организациями
