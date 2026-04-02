@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     const magicLink = `${APP_URL}/api/participant-auth/email?token=${authToken.token}&redirect=/p/${orgId}`
 
     const { subject, html } = buildParticipantMagicLinkEmail({ org, magicLink })
-    await sendEmail({ to: email, subject, html })
+    await sendEmail({ to: email, subject, html, replyTo: '' })
 
     logger.info({ participant_id: participant.id, org_id: orgId }, 'Magic link sent')
 

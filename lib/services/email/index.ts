@@ -98,7 +98,7 @@ export function getEmailProvider(): EmailProvider {
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const provider = getEmailProvider();
-  
+
   if (!provider.isConfigured()) {
     // В production логируем предупреждение
     const logger = createServiceLogger('Email');
@@ -107,8 +107,14 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     }
     return { success: false, error: 'Email provider not configured' };
   }
-  
-  return provider.send(params);
+
+  // Default replyTo for all emails unless explicitly set or suppressed with empty string
+  const paramsWithReplyTo = {
+    ...params,
+    replyTo: params.replyTo !== undefined ? params.replyTo || undefined : 'sales@orbo.ru',
+  };
+
+  return provider.send(paramsWithReplyTo);
 }
 
 // ============================================

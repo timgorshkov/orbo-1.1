@@ -70,7 +70,8 @@
       "Bash(while read:*)",
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -type f -name *dashboard*)",
       "Bash(npx next:*)",
-      "WebFetch(domain:orbo.ru)"
+      "WebFetch(domain:orbo.ru)",
+      "Bash(docker exec orbo_postgres psql -U orbo -d orbo -t -A -c ':*)"
     ]
   }
 }

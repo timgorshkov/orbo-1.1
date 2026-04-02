@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
       to: normalizedEmail,
       subject: 'Подтвердите email в Orbo',
       html: getEmailUpdateTemplate(magicLink, normalizedEmail),
+      replyTo: '',
       tags: ['auth', 'email-update'],
     })
 

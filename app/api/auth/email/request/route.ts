@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       to: normalizedEmail,
       subject: 'Вход в Orbo',
       html: getMagicLinkEmailTemplate(magicLink, normalizedEmail),
+      replyTo: '',
       tags: ['auth', 'magic-link']
     })
     
