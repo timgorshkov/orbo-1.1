@@ -2,7 +2,6 @@ import { requireSuperadmin } from '@/lib/server/superadminGuard'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import GroupsTable from '@/components/superadmin/groups-table'
 import { createServiceLogger } from '@/lib/logger'
-import { TelegramService } from '@/lib/services/telegramService'
 
 const logger = createServiceLogger('SuperadminGroups');
 
@@ -76,43 +75,9 @@ export default async function SuperadminGroupsPage() {
     }
   })
   
-  // Получаем количество участников из Telegram API для групп с подключенным ботом
-  const memberCountsMap = new Map<number, number>()
-  const connectedGroups = groups.filter(g => g.bot_status === 'connected')
-  
-  if (connectedGroups.length > 0) {
-    try {
-      const telegramService = new TelegramService('main')
-      
-      // Делаем запросы параллельно с таймаутом
-      const countPromises = connectedGroups.map(async (group) => {
-        try {
-          const chatId = Number(group.tg_chat_id)
-          const result = await telegramService.getChatMembersCount(chatId)
-          if (result?.ok && typeof result.result === 'number') {
-            memberCountsMap.set(chatId, result.result)
-            
-            // Обновляем member_count в БД для кэширования
-            await supabase
-              .from('telegram_groups')
-              .update({ member_count: result.result })
-              .eq('id', group.id)
-          }
-        } catch (e) {
-          // Ignore individual chat errors
-        }
-      })
-      
-      // Ждём все запросы с таймаутом 10 секунд
-      await Promise.race([
-        Promise.all(countPromises),
-        new Promise(resolve => setTimeout(resolve, 10000))
-      ])
-    } catch (e) {
-      logger.warn({ error: e }, 'Error getting member counts from Telegram')
-    }
-  }
-  
+  // member_count берётся из БД (обновляется кроном update-group-metrics каждые 5 мин)
+  // Не дёргаем Telegram API при рендере — это вызывает rate limit (429) при 60+ группах
+
   // Форматируем данные
   const formattedGroups = groups.map(group => {
     const chatId = Number(group.tg_chat_id)
@@ -127,7 +92,7 @@ export default async function SuperadminGroupsPage() {
       created_at: group.last_sync_at || null,
       has_bot: group.bot_status === 'connected' || group.bot_status === 'pending',
       has_admin_rights: group.bot_status === 'connected',
-      participants_count: memberCountsMap.get(chatId) || group.member_count || 0,
+      participants_count: group.member_count || 0,
       organizations_count: orgIds.length,
       organization_names: orgNames,
       last_activity_at: lastActivityByGroup.get(chatId) || null
