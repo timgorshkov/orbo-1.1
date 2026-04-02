@@ -407,11 +407,12 @@ export function WelcomeContent({
   const [navigating, setNavigating] = useState(false);
   const [welcomeError, setWelcomeError] = useState<string | null>(null);
   const [regMeta, setRegMeta] = useState<{ from_page?: string; utm_campaign?: string } | null>(null);
+  // Telegram connect is now a dismissible dialog shown after org creation, not a blocking step
+  const [showTelegramDialog, setShowTelegramDialog] = useState(false);
+  const shouldOfferTelegram = isNewUser && !isTelegramRegistration && !hasTelegramAccount;
 
   const getInitialStep = (): WelcomeStep => {
     if (needsEmailVerification) return 'email_verify';
-    // Show telegram_connect step for new non-Telegram users who haven't connected yet
-    if (isNewUser && !isTelegramRegistration && !hasTelegramAccount) return 'telegram_connect';
     if (!initialCompleted) return 'qualification';
     return 'creating';
   };
@@ -517,6 +518,12 @@ export function WelcomeContent({
         ymGoal('org_created', { auto: true }, { once: true });
         ymGoal('first_org_created', { auto: true }, { once: true });
         logWelcomeEvent('org_created', { org_id: data.org_id });
+        // Show Telegram connect dialog if user hasn't connected yet
+        if (shouldOfferTelegram) {
+          setCreatingOrg(false);
+          setShowTelegramDialog(true);
+          return;
+        }
         router.push(`/app/${data.org_id}`);
         return;
       }
@@ -547,21 +554,16 @@ export function WelcomeContent({
 
   const handleTelegramConnected = () => {
     logWelcomeEvent('telegram_connected');
-    if (!initialCompleted) {
-      setStep('qualification');
-    } else {
-      autoCreateOrgAndRedirect();
-    }
+    setShowTelegramDialog(false);
+    // Continue to org — already created or redirect to it
+    router.push('/orgs');
   };
 
   const handleTelegramSkipped = () => {
     logWelcomeEvent('telegram_skipped');
     ymGoal('telegram_connect_skipped', undefined, { once: true });
-    if (!initialCompleted) {
-      setStep('qualification');
-    } else {
-      autoCreateOrgAndRedirect();
-    }
+    setShowTelegramDialog(false);
+    router.push('/orgs');
   };
 
   const handleQualificationComplete = (responses: Record<string, unknown>) => {
@@ -583,17 +585,6 @@ export function WelcomeContent({
     return <EmailVerificationStep onVerified={handleEmailVerified} />;
   }
 
-  if (step === 'telegram_connect' && !navigating) {
-    return (
-      <TelegramConnectStep
-        onConnected={handleTelegramConnected}
-        onSkip={handleTelegramSkipped}
-        fromPage={regMeta?.from_page}
-        utmCampaign={regMeta?.utm_campaign}
-      />
-    );
-  }
-
   if (step === 'qualification' && !navigating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -604,6 +595,18 @@ export function WelcomeContent({
           showSkip={true}
         />
       </div>
+    );
+  }
+
+  // Telegram connect dialog (shown after org creation, dismissible)
+  if (showTelegramDialog) {
+    return (
+      <TelegramConnectStep
+        onConnected={handleTelegramConnected}
+        onSkip={handleTelegramSkipped}
+        fromPage={regMeta?.from_page}
+        utmCampaign={regMeta?.utm_campaign}
+      />
     );
   }
 
