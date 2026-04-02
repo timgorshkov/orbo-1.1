@@ -36,6 +36,12 @@ const PaymentsSettingsContent = dynamic(() => import('@/components/settings/paym
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
+// Dynamic import for contract page (it's a client component)
+const ContractContent = dynamic(() => import('@/components/settings/contract-content'), {
+  ssr: false,
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
 const supabaseAdmin = createAdminServer();
 
 export default async function OrganizationSettingsPage({ 
@@ -227,6 +233,21 @@ export default async function OrganizationSettingsPage({
               orgId={orgId}
               initialDefaultPaymentLink={organization.default_payment_link ?? null}
             />
+          </div>
+        )
+        break
+      }
+
+      case 'contract': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Договор</h2>
+              <p className="text-gray-600 mt-1">
+                Заключите лицензионный договор и укажите реквизиты
+              </p>
+            </div>
+            <ContractContent />
           </div>
         )
         break

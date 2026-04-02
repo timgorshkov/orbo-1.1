@@ -27,6 +27,7 @@ export default async function SuperadminLayout({
     { href: '/superadmin/qualification', label: 'Квалификация' },
     { href: '/superadmin/audit-log', label: 'Audit' },
     { href: '/superadmin/billing', label: 'Биллинг' },
+    { href: '/superadmin/contracts', label: 'Договоры' },
     { href: '/superadmin/public-apps', label: 'Каталог' },
     { href: '/superadmin/telegram', label: 'Telegram' },
     { href: '/superadmin/errors', label: 'Errors' },

@@ -195,6 +195,32 @@ export async function uploadParticipantPhoto(
 }
 
 /**
+ * Загружает фото паспорта контрагента
+ */
+export async function uploadPassportPhoto(
+  counterpartyId: string,
+  photoIndex: 1 | 2,
+  file: Buffer | Blob,
+  contentType: string
+): Promise<{ url: string; error: Error | null }> {
+  const storage = createStorage();
+  const ext = contentType.split('/')[1] || 'jpg';
+  const path = `passport-photos/${counterpartyId}-${photoIndex}.${ext}`;
+
+  const { data, error } = await storage.upload(BUCKET_MATERIALS, path, file, {
+    contentType,
+    upsert: true
+  });
+
+  if (error) {
+    return { url: '', error: new Error(error.message) };
+  }
+
+  const url = storage.getPublicUrl(BUCKET_MATERIALS, path);
+  return { url, error: null };
+}
+
+/**
  * Удаляет файл по URL (извлекает bucket и path из URL)
  */
 export async function deleteFileByUrl(url: string): Promise<{ error: Error | null }> {
