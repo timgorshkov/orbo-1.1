@@ -204,10 +204,12 @@ export async function uploadPassportPhoto(
   contentType: string
 ): Promise<{ url: string; error: Error | null }> {
   const storage = createStorage();
+  const bucket = getBucket(BUCKET_MATERIALS);
   const ext = contentType.split('/')[1] || 'jpg';
-  const path = `passport-photos/${counterpartyId}-${photoIndex}.${ext}`;
+  const localPath = `passport-photos/${counterpartyId}-${photoIndex}.${ext}`;
+  const storagePath = getStoragePath(BUCKET_MATERIALS, localPath);
 
-  const { data, error } = await storage.upload(BUCKET_MATERIALS, path, file, {
+  const { data, error } = await storage.upload(bucket, storagePath, file, {
     contentType,
     upsert: true
   });
@@ -216,7 +218,7 @@ export async function uploadPassportPhoto(
     return { url: '', error: new Error(error.message) };
   }
 
-  const url = storage.getPublicUrl(BUCKET_MATERIALS, path);
+  const url = storage.getPublicUrl(bucket, storagePath);
   return { url, error: null };
 }
 

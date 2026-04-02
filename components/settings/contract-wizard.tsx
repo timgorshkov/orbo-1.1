@@ -66,14 +66,16 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState<1 | 2 | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [showValidation, setShowValidation] = useState(false)
 
   const updateCp = (field: string, value: string) => setCp(prev => ({ ...prev, [field]: value }))
   const updateBank = (field: string, value: string) => setBank(prev => ({ ...prev, [field]: value }))
 
   const handlePhotoUpload = async (photoIndex: 1 | 2, file: File) => {
     setUploadingPhoto(photoIndex)
+    setPhotoError(null)
     try {
-      // Use a temporary ID for upload — will be re-uploaded with real ID after counterparty creation
       const formData = new FormData()
       formData.append('file', file)
       formData.append('counterpartyId', `temp-${orgId}`)
@@ -83,7 +85,12 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
       if (res.ok) {
         const data = await res.json()
         updateCp(photoIndex === 1 ? 'passport_photo_1_url' : 'passport_photo_2_url', data.url)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setPhotoError(data.error || 'Не удалось загрузить фото')
       }
+    } catch {
+      setPhotoError('Ошибка сети при загрузке фото')
     } finally {
       setUploadingPhoto(null)
     }
@@ -231,18 +238,18 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
 
           {cp.type === 'individual' ? (
             <div className="space-y-3">
-              <Field label="ФИО (как в паспорте)" value={cp.full_name} onChange={v => updateCp('full_name', v)} required />
+              <Field label="ФИО (как в паспорте)" value={cp.full_name} onChange={v => updateCp('full_name', v)} required showValidation={showValidation} />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="E-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required />
-                <Field label="Телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required />
+                <Field label="E-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} />
+                <Field label="Телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} />
               </div>
-              <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} placeholder="12 цифр" required />
+              <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} placeholder="12 цифр" required showValidation={showValidation} />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Серия и номер паспорта" value={cp.passport_series_number} onChange={v => updateCp('passport_series_number', v)} placeholder="0000 000000" required />
-                <Field label="Дата выдачи" type="date" value={cp.passport_issue_date} onChange={v => updateCp('passport_issue_date', v)} required />
+                <Field label="Серия и номер паспорта" value={cp.passport_series_number} onChange={v => updateCp('passport_series_number', v)} placeholder="0000 000000" required showValidation={showValidation} />
+                <Field label="Дата выдачи" type="date" value={cp.passport_issue_date} onChange={v => updateCp('passport_issue_date', v)} required showValidation={showValidation} />
               </div>
-              <Field label="Кем выдан паспорт" value={cp.passport_issued_by} onChange={v => updateCp('passport_issued_by', v)} required />
-              <Field label="Адрес регистрации" value={cp.registration_address} onChange={v => updateCp('registration_address', v)} required />
+              <Field label="Кем выдан паспорт" value={cp.passport_issued_by} onChange={v => updateCp('passport_issued_by', v)} required showValidation={showValidation} />
+              <Field label="Адрес регистрации" value={cp.registration_address} onChange={v => updateCp('registration_address', v)} required showValidation={showValidation} />
               <div className="grid grid-cols-2 gap-3">
                 <PhotoUpload label="Фото паспорта (разворот)" url={cp.passport_photo_1_url} uploading={uploadingPhoto === 1}
                   onUpload={f => handlePhotoUpload(1, f)} />
@@ -252,16 +259,16 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
             </div>
           ) : (
             <div className="space-y-3">
-              <Field label="Полное наименование организации (с ОПФ)" value={cp.org_name} onChange={v => updateCp('org_name', v)} placeholder='ООО "Название" или ИП Фамилия И.О.' required />
+              <Field label="Полное наименование организации (с ОПФ)" value={cp.org_name} onChange={v => updateCp('org_name', v)} placeholder='ООО "Название" или ИП Фамилия И.О.' required showValidation={showValidation} />
               <div className="grid grid-cols-3 gap-3">
-                <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} required />
+                <Field label="ИНН" value={cp.inn} onChange={v => updateCp('inn', v)} required showValidation={showValidation} />
                 <Field label="КПП" value={cp.kpp} onChange={v => updateCp('kpp', v)} placeholder="Для ИП не требуется" />
-                <Field label="ОГРН / ОГРНИП" value={cp.ogrn} onChange={v => updateCp('ogrn', v)} required />
+                <Field label="ОГРН / ОГРНИП" value={cp.ogrn} onChange={v => updateCp('ogrn', v)} required showValidation={showValidation} />
               </div>
-              <Field label="Юридический адрес" value={cp.legal_address} onChange={v => updateCp('legal_address', v)} required />
+              <Field label="Юридический адрес" value={cp.legal_address} onChange={v => updateCp('legal_address', v)} required showValidation={showValidation} />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="ФИО подписывающего лица" value={cp.signatory_name} onChange={v => updateCp('signatory_name', v)} required />
-                <Field label="Должность" value={cp.signatory_position} onChange={v => updateCp('signatory_position', v)} placeholder="Генеральный директор" required />
+                <Field label="ФИО подписывающего лица" value={cp.signatory_name} onChange={v => updateCp('signatory_name', v)} required showValidation={showValidation} />
+                <Field label="Должность" value={cp.signatory_position} onChange={v => updateCp('signatory_position', v)} placeholder="Генеральный директор" required showValidation={showValidation} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ставка НДС</label>
@@ -277,17 +284,27 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Контактный e-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required />
-                <Field label="Контактный телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required />
+                <Field label="Контактный e-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} />
+                <Field label="Контактный телефон" value={cp.phone} onChange={v => updateCp('phone', v)} placeholder="+7..." required showValidation={showValidation} />
               </div>
             </div>
           )}
 
+          {photoError && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-200">{photoError}</div>
+          )}
+
+          {showValidation && !canProceedStep3 && (
+            <div className="p-3 rounded-lg bg-amber-50 text-amber-700 text-sm border border-amber-200">
+              Заполните все обязательные поля, отмеченные <span className="text-red-400">*</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2">
-            <button onClick={() => setStep(2)} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+            <button onClick={() => { setStep(2); setShowValidation(false) }} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
               <ArrowLeft className="w-3 h-3" /> Назад
             </button>
-            <Button onClick={() => setStep(4)} disabled={!canProceedStep3}>
+            <Button onClick={() => { setShowValidation(true); if (canProceedStep3) { setShowValidation(false); setStep(4) } }}>
               Далее <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -367,11 +384,12 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
 // Helper components
 
 function Field({
-  label, value, onChange, type = 'text', placeholder, required
+  label, value, onChange, type = 'text', placeholder, required, showValidation
 }: {
   label: string; value: string; onChange: (v: string) => void
-  type?: string; placeholder?: string; required?: boolean
+  type?: string; placeholder?: string; required?: boolean; showValidation?: boolean
 }) {
+  const hasError = showValidation && required && !value.trim()
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -382,27 +400,34 @@ function Field({
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-9"
+        className={`h-9 ${hasError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
       />
     </div>
   )
 }
 
 function PhotoUpload({
-  label, url, uploading, onUpload
+  label, url, uploading, onUpload, onReplace
 }: {
-  label: string; url: string; uploading: boolean; onUpload: (f: File) => void
+  label: string; url: string; uploading: boolean; onUpload: (f: File) => void; onReplace?: () => void
 }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       {url ? (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-green-600">Загружено</span>
-          <button onClick={() => {}} className="text-xs text-blue-600 hover:underline">Заменить</button>
+        <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+          <Check className="w-4 h-4 text-green-600" />
+          <span className="text-xs text-green-700 flex-1">Файл загружен</span>
+          <label className="text-xs text-blue-600 hover:underline cursor-pointer">
+            Заменить
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f) }} />
+          </label>
         </div>
       ) : (
-        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+        <label className={`flex items-center gap-2 px-3 py-2 border border-dashed rounded-lg transition-colors ${
+          uploading ? 'border-blue-300 bg-blue-50' : 'border-gray-300 cursor-pointer hover:border-blue-400 hover:bg-blue-50'
+        }`}>
           <Upload className="w-4 h-4 text-gray-400" />
           <span className="text-xs text-gray-500">{uploading ? 'Загрузка...' : 'Выбрать файл'}</span>
           <input type="file" accept="image/*" className="hidden" disabled={uploading}
