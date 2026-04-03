@@ -597,7 +597,7 @@ export function WelcomeContent({
     return <EmailVerificationStep onVerified={handleEmailVerified} />;
   }
 
-  if (step === 'qualification' && !navigating) {
+  if (step === 'qualification' && !navigatingRef.current) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <QualificationForm
