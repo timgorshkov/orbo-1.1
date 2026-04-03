@@ -17,9 +17,10 @@ export function Footer() {
           <Link href="/docs">Документация</Link>
           <Link href="/terms">Условия использования</Link>
           <Link href="/privacy">Политика конфиденциальности</Link>
+          <Link href="/requisites">Реквизиты</Link>
         </nav>
         <p className="website-footer__copy">
-          © {currentYear} Команда Orbo
+          © {currentYear} ООО «ОРБО»
         </p>
       </div>
     </footer>
