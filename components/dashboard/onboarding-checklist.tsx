@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 
 interface OnboardingStatus {
   hasTelegramAccount: boolean
+  hasCustomOrgName: boolean
   hasGroups: boolean
   hasEvents: boolean
   hasSharedEvent: boolean
@@ -27,6 +28,14 @@ export default function OnboardingChecklist({ orgId, status }: OnboardingCheckli
       completed: status.hasTelegramAccount,
       link: `/p/${orgId}/telegram/account`,
       action: 'Привязать'
+    },
+    {
+      id: 'org_name',
+      label: 'Настройте название сообщества',
+      description: 'Задайте имя, которое будет видеть аудитория и участники',
+      completed: status.hasCustomOrgName,
+      link: `/app/${orgId}/settings`,
+      action: 'Настроить'
     },
     {
       id: 'groups',

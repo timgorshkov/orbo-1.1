@@ -36,7 +36,8 @@ export async function GET(
       orgGroupsForCountResult,
       materialsCountResult,
       eventsCountResult,
-      totalParticipantsResult
+      totalParticipantsResult,
+      orgNameResult
     ] = await Promise.all([
       // Check if ANY owner/admin of this org has a verified telegram account
       adminSupabase
@@ -104,7 +105,12 @@ export async function GET(
         .from('participants')
         .select('*', { count: 'exact', head: true })
         .eq('org_id', orgId)
-        .neq('source', 'bot')
+        .neq('source', 'bot'),
+      adminSupabase
+        .from('organizations')
+        .select('name')
+        .eq('id', orgId)
+        .single()
     ])
 
     const telegramAccount = (telegramAccountResult.data && telegramAccountResult.data.length > 0)
@@ -113,6 +119,8 @@ export async function GET(
     const materialsCount = materialsCountResult.count
     const eventsCount = eventsCountResult.count
     const totalParticipants = totalParticipantsResult.count
+    const orgName = orgNameResult.data?.name || ''
+    const hasCustomOrgName = !!orgName && orgName !== 'Моё сообщество'
     
     const connectedGroupsCount = orgGroupsForCount?.filter(
       (item: any) => item.telegram_groups?.bot_status === 'connected'
@@ -269,18 +277,20 @@ export async function GET(
 
     const onboardingStatus = {
       hasTelegramAccount: !!telegramAccount,
+      hasCustomOrgName,
       hasGroups: linkedGroupsCount > 0,
       hasEvents: (eventsCount || 0) > 0,
       hasSharedEvent,
       assistBotStarted,
       progress: [
         true,
+        hasCustomOrgName,
         (eventsCount || 0) > 0,
         !!telegramAccount,
         assistBotStarted,
         hasSharedEvent,
         linkedGroupsCount > 0
-      ].filter(Boolean).length * (100 / 6)
+      ].filter(Boolean).length * (100 / 7)
     }
 
     const isOnboarding = onboardingStatus.progress < 60
@@ -466,12 +476,13 @@ export async function GET(
       onboardingStatus.assistBotStarted = assistBotStartedFinal;
       onboardingStatus.progress = [
         true,
+        hasCustomOrgName,
         (eventsCount || 0) > 0,
         !!telegramAccount,
         assistBotStartedFinal,
         hasSharedEvent,
         linkedGroupsCount > 0
-      ].filter(Boolean).length * (100 / 6);
+      ].filter(Boolean).length * (100 / 7);
     }
 
     return NextResponse.json({
