@@ -450,6 +450,7 @@ async getChatMember(chatId: number, userId: number) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Connection': 'close',
         },
         body: JSON.stringify(params),
         signal: AbortSignal.timeout(8000),

@@ -47,6 +47,8 @@ export class UnisenderGoEmailProvider implements EmailProvider {
           headers: {
             'Content-Type': 'application/json',
             'X-API-KEY': this.apiKey,
+            // Отключаем keep-alive чтобы undici не держал стухшие соединения
+            'Connection': 'close',
           },
           body: JSON.stringify({
             message: {
