@@ -539,9 +539,9 @@ ${recentMessages.map((m) => {
     let errorDetails: any = {};
     
     if (error instanceof Error) {
-      if (error.message.includes('ECONNREFUSED') || error.message.includes('ETIMEDOUT')) {
+      if (error.message === 'Connection error.' || error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ETIMEDOUT')) {
         errorType = 'network_error';
-        errorDetails.hint = 'Check if OPENAI_PROXY_URL is set correctly';
+        errorDetails.hint = 'OpenAI proxy may be unavailable — check OPENAI_PROXY_URL';
       } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
         errorType = 'auth_error';
         errorDetails.hint = 'Check if OPENAI_API_KEY is valid';

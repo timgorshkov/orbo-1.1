@@ -295,12 +295,17 @@ ${messages.map((m, i) => `[${i}] ${m.author_name}: ${m.text.slice(0, 300)}${m.te
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     const is429 = errMsg.includes('429') || errMsg.toLowerCase().includes('quota');
+    const isNetworkError = errMsg === 'Connection error.' || errMsg.includes('fetch failed') || errMsg.includes('ECONNREFUSED') || errMsg.includes('ETIMEDOUT');
     logger.error({
       error: errMsg,
       stack: error instanceof Error ? error.stack : undefined,
       rule_id: ruleId,
-      org_id: orgId
-    }, '❌ [AI-ANALYSIS] Negativity analysis failed');
+      org_id: orgId,
+      is_network_error: isNetworkError,
+      ...(isNetworkError && { hint: 'OpenAI proxy may be unavailable — check OPENAI_PROXY_URL' }),
+    }, isNetworkError
+      ? '❌ [AI-ANALYSIS] Negativity analysis failed — proxy/network error'
+      : '❌ [AI-ANALYSIS] Negativity analysis failed');
     if (is429) {
       await logErrorToDatabase({
         level: 'error',
@@ -459,12 +464,18 @@ ${messages.map((m, i) => `[${i}] ${m.author_name} (${new Date(m.created_at).toLo
 
     return { questions, tokens_used: totalTokens, cost_usd: costUsd };
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const isNetworkError = errMsg === 'Connection error.' || errMsg.includes('fetch failed') || errMsg.includes('ECONNREFUSED') || errMsg.includes('ETIMEDOUT');
     logger.error({
-      error: error instanceof Error ? error.message : String(error),
+      error: errMsg,
       stack: error instanceof Error ? error.stack : undefined,
       rule_id: ruleId,
-      org_id: orgId
-    }, '❌ [AI-ANALYSIS] Questions analysis failed');
+      org_id: orgId,
+      is_network_error: isNetworkError,
+      ...(isNetworkError && { hint: 'OpenAI proxy may be unavailable — check OPENAI_PROXY_URL' }),
+    }, isNetworkError
+      ? '❌ [AI-ANALYSIS] Questions analysis failed — proxy/network error'
+      : '❌ [AI-ANALYSIS] Questions analysis failed');
     return { questions: [], tokens_used: 0, cost_usd: 0 };
   }
 }
