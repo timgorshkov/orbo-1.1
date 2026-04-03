@@ -404,7 +404,7 @@ export function WelcomeContent({
 }: WelcomeContentProps) {
   const router = useRouter();
   const [creatingOrg, setCreatingOrg] = useState(false);
-  const [navigating, setNavigating] = useState(false);
+  const navigatingRef = useRef(false); // useRef для синхронного guard (useState асинхронен)
   const [welcomeError, setWelcomeError] = useState<string | null>(null);
   const [regMeta, setRegMeta] = useState<{ from_page?: string; utm_campaign?: string } | null>(null);
   // Telegram connect is now a dismissible dialog shown after org creation, not a blocking step
@@ -489,8 +489,8 @@ export function WelcomeContent({
   }, []);
 
   async function autoCreateOrgAndRedirect() {
-    if (navigating) return; // prevent double-clicks
-    setNavigating(true);
+    if (navigatingRef.current) return; // prevent double-clicks (useRef = синхронно)
+    navigatingRef.current = true;
     setWelcomeError(null);
     setStep('creating');
 
@@ -553,7 +553,7 @@ export function WelcomeContent({
         : 'Произошла ошибка. Попробуйте ещё раз.');
     }
     setCreatingOrg(false);
-    setNavigating(false);
+    navigatingRef.current = false;
   }
 
   const handleEmailVerified = () => {

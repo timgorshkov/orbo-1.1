@@ -151,11 +151,46 @@ export async function POST(req: NextRequest) {
       )
     }
     
-    logger.info({ 
+    logger.info({
       org_id: org.id,
       user_id: user.id,
       org_name: name
     }, 'Organization created successfully');
+
+    // Race condition cleanup: if two concurrent requests both passed the idempotency check
+    // (TOCTOU), there may be a duplicate "Моё сообщество" org created in the last 30s.
+    // Delete the just-created one and return the older existing one.
+    if (name.trim() === 'Моё сообщество') {
+      const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString()
+      const { data: recentMemberships } = await supabase
+        .from('memberships')
+        .select('org_id, created_at')
+        .eq('user_id', user.id)
+        .eq('role', 'owner')
+        .gte('created_at', thirtySecAgo)
+
+      if (recentMemberships && recentMemberships.length > 1) {
+        const recentOrgIds = recentMemberships.map((m: any) => m.org_id)
+        const { data: dupes } = await supabase
+          .from('organizations')
+          .select('id, created_at')
+          .in('id', recentOrgIds)
+          .eq('name', 'Моё сообщество')
+          .order('created_at', { ascending: true })
+
+        if (dupes && dupes.length > 1) {
+          const oldest = dupes[0]
+          const toDelete = dupes.slice(1).map((d: any) => d.id).filter((id: string) => id !== oldest.id)
+          if (toDelete.includes(org.id)) {
+            // The org we just created is a duplicate — clean it up
+            await supabase.from('memberships').delete().eq('org_id', org.id).eq('user_id', user.id)
+            await supabase.from('organizations').delete().eq('id', org.id)
+            logger.warn({ user_id: user.id, duplicate_org_id: org.id, kept_org_id: oldest.id }, 'Race condition detected: deleted duplicate "Моё сообщество", returning existing org')
+            return NextResponse.json({ org_id: oldest.id, existed: true })
+          }
+        }
+      }
+    }
 
     // Auto-link Telegram account when org is created.
     // Covers two cases:
