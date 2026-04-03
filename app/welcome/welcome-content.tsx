@@ -478,6 +478,16 @@ export function WelcomeContent({
     }
   }, []);
 
+  // Если квалификация уже пройдена, но нет активных организаций —
+  // сразу создаём организацию без показа квалификационной формы.
+  // Без этого эффекта step='creating' показывает вечный спиннер без действия.
+  useEffect(() => {
+    if (getInitialStep() === 'creating') {
+      autoCreateOrgAndRedirect();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function autoCreateOrgAndRedirect() {
     if (navigating) return; // prevent double-clicks
     setNavigating(true);
@@ -529,13 +539,15 @@ export function WelcomeContent({
       }
       // API returned error
       logWelcomeEvent('org_create_error', { status: res.status, error: data.error });
+      fetch('/api/vitals', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'welcome_org_create_failed', status: res.status, error: data.error }) }).catch(() => {});
       setWelcomeError('Не удалось создать пространство. Попробуйте ещё раз.');
     } catch (err) {
       const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
-      logWelcomeEvent('org_create_error', {
-        error: err instanceof Error ? err.message : String(err),
-        is_timeout: isTimeout,
-      });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logWelcomeEvent('org_create_error', { error: errMsg, is_timeout: isTimeout });
+      fetch('/api/vitals', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'welcome_org_create_exception', error: errMsg, is_timeout: isTimeout }) }).catch(() => {});
       setWelcomeError(isTimeout
         ? 'Сервер отвечает медленно. Попробуйте ещё раз.'
         : 'Произошла ошибка. Попробуйте ещё раз.');

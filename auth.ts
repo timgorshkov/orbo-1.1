@@ -85,14 +85,27 @@ if (hasYandexCredentials) {
     userinfo: {
       url: 'https://login.yandex.ru/info',
       async request({ tokens }: { tokens: any }) {
-        const response = await fetch('https://login.yandex.ru/info?format=json', {
-          headers: {
-            Authorization: `OAuth ${tokens.access_token}`,
-          },
-        })
+        logger.info({}, 'Fetching Yandex userinfo')
+        let response: Response
+        try {
+          response = await fetch('https://login.yandex.ru/info?format=json', {
+            headers: {
+              Authorization: `OAuth ${tokens.access_token}`,
+              // Отключаем keep-alive чтобы не использовать протухшие соединения из пула
+              'Connection': 'close',
+            },
+            signal: AbortSignal.timeout(10_000),
+          })
+        } catch (err) {
+          logger.error({ error: err instanceof Error ? err.message : String(err) }, 'Yandex userinfo fetch failed — network error')
+          throw err
+        }
+        if (!response.ok) {
+          logger.error({ status: response.status }, 'Yandex userinfo returned non-OK status')
+          throw new Error(`Yandex userinfo failed: ${response.status}`)
+        }
         const data = await response.json()
-        // Логируем в info чтобы видеть в production
-        logger.info({ 
+        logger.info({
           yandex_login: data.login,
           has_default_email: !!data.default_email,
           default_email: data.default_email,

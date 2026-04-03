@@ -100,17 +100,22 @@ export async function POST(request: NextRequest) {
     })
     
     if (!emailResult.success) {
-      logger.error({ 
-        error: emailResult.error, 
-        email: normalizedEmail 
-      }, 'Failed to send magic link email')
-      
+      const isNetworkError = emailResult.error === 'fetch failed' || emailResult.error?.includes('fetch failed')
+      logger.error({
+        error: emailResult.error,
+        is_network_error: isNetworkError,
+        email: normalizedEmail,
+        provider: 'unisender_go',
+      }, isNetworkError
+        ? 'Magic link email failed — Unisender network error (possible stale connection pool)'
+        : 'Failed to send magic link email')
+
       // Удаляем токен если email не отправился
       await supabaseAdmin
         .from('email_auth_tokens')
         .delete()
         .eq('token', token)
-      
+
       return NextResponse.json(
         { error: 'Не удалось отправить письмо. Попробуйте позже.' },
         { status: 500 }
