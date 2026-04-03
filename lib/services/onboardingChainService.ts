@@ -139,6 +139,23 @@ export async function scheduleOnboardingChain(
 }
 
 // ---------------------------------------------------------------------------
+// Email validation helper
+// ---------------------------------------------------------------------------
+
+const FAKE_EMAIL_DOMAINS = ['telegram.user', 'orbo.ru', 'test.com', 'test.ru', 'example.com', 'example.org']
+
+function isRealEmail(email: string | null): boolean {
+  if (!email) return false
+  const lower = email.toLowerCase().trim()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower)) return false
+  const [local, domain] = lower.split('@')
+  if (FAKE_EMAIL_DOMAINS.some(d => domain === d)) return false
+  // Local part that is literally "test" or "test" + digits
+  if (/^test\d*$/.test(local)) return false
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // Error classification & retry config
 // ---------------------------------------------------------------------------
 
@@ -347,6 +364,25 @@ export async function processOnboardingMessages(): Promise<{
         logger.warn({ msg_id: msg.id, user_id: msg.user_id, step: msg.step_key, channel: msg.channel, error: errMsg }, 'Permanent delivery error — cancelling remaining messages')
 
         await cancelRemainingMessages(supabase, msg.user_id, msg.channel, errMsg)
+
+        // Fallback: если TG-цепочка сломалась и у пользователя есть настоящий email —
+        // запускаем email-цепочку, если она ещё не существует
+        if (isTgPermanent && isRealEmail(ctx.email)) {
+          const { count: emailChainCount } = await supabase
+            .from('onboarding_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', msg.user_id)
+            .eq('channel', 'email')
+
+          if (!emailChainCount || emailChainCount === 0) {
+            await scheduleOnboardingChain(msg.user_id, 'email').catch((e) => {
+              logger.error({ user_id: msg.user_id, error: String(e) }, 'Failed to schedule email fallback after TG permanent failure')
+            })
+            logger.info({ user_id: msg.user_id, email: ctx.email, tg_error: errMsg }, 'Scheduled email fallback after TG permanent failure')
+          } else {
+            logger.info({ user_id: msg.user_id, email_chain_count: emailChainCount }, 'Email chain already exists, skipping TG fallback')
+          }
+        }
       } else if (isTransient) {
         const retryCount = (msg.retry_count || 0) + 1
         if (retryCount >= MAX_RETRIES) {
