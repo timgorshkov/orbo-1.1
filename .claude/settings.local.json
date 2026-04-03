@@ -71,7 +71,8 @@
       "Bash(find 'C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1' -type f -name *dashboard*)",
       "Bash(npx next:*)",
       "WebFetch(domain:orbo.ru)",
-      "Bash(docker exec orbo_postgres psql -U orbo -d orbo -t -A -c ':*)"
+      "Bash(docker exec orbo_postgres psql -U orbo -d orbo -t -A -c ':*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); r=d['workflow_runs'][0]; print\\(f'Run {r[\\\\\"id\\\\\"]}: {r[\\\\\"status\\\\\"]} / {r[\\\\\"conclusion\\\\\"]} — {r[\\\\\"name\\\\\"]}'\\)\")"
     ]
   }
 }
