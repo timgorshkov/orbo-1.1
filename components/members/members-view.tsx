@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { Search, LayoutGrid, Table as TableIcon, Filter, FileJson, Loader2, ChevronDown, FileSpreadsheet } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { Button } from '../ui/button'
 import MemberCard from './member-card'
 import MembersTable from './members-table'
@@ -313,20 +313,30 @@ export default function MembersView({
     }
   })
 
-  const handleExportAll = (format: 'xlsx' | 'json') => {
+  const handleExportAll = async (format: 'xlsx' | 'json') => {
     const date = new Date().toISOString().split('T')[0]
 
     if (format === 'xlsx') {
       const rows = buildExportRows()
-      const ws = XLSX.utils.json_to_sheet(rows)
-      // Auto-width for columns
-      const colWidths = Object.keys(rows[0] || {}).map((key) => ({
-        wch: Math.max(key.length, ...rows.map((r) => String((r as any)[key] || '').length).slice(0, 100)) + 2,
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet('Участники')
+      const keys = Object.keys(rows[0] || {})
+      ws.columns = keys.map((key) => ({
+        header: key,
+        key,
+        width: Math.max(key.length, ...rows.slice(0, 100).map((r) => String((r as any)[key] || '').length)) + 2,
       }))
-      ws['!cols'] = colWidths
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Участники')
-      XLSX.writeFile(wb, `participants_${date}.xlsx`)
+      for (const row of rows) ws.addRow(row)
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `participants_${date}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } else if (format === 'json') {
       const rows = buildExportRows()
       const jsonContent = JSON.stringify(rows, null, 2)

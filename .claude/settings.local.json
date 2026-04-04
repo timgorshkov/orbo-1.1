@@ -72,7 +72,13 @@
       "Bash(npx next:*)",
       "WebFetch(domain:orbo.ru)",
       "Bash(docker exec orbo_postgres psql -U orbo -d orbo -t -A -c ':*)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); r=d['workflow_runs'][0]; print\\(f'Run {r[\\\\\"id\\\\\"]}: {r[\\\\\"status\\\\\"]} / {r[\\\\\"conclusion\\\\\"]} — {r[\\\\\"name\\\\\"]}'\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); r=d['workflow_runs'][0]; print\\(f'Run {r[\\\\\"id\\\\\"]}: {r[\\\\\"status\\\\\"]} / {r[\\\\\"conclusion\\\\\"]} — {r[\\\\\"name\\\\\"]}'\\)\")",
+      "Bash(npm audit:*)",
+      "Bash(npm outdated:*)",
+      "Bash(npm ls:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f'{k}: {v[\\\\\"severity\\\\\"]} - {v[\\\\\"title\\\\\"]}'\\) for k,v in d.get\\('vulnerabilities',{}\\).items\\(\\)]\")",
+      "Bash(npm update:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }
