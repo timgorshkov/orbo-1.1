@@ -265,12 +265,25 @@ export async function POST(
       const importedChatId = String(parsingResult.chatId);
       const expectedChatIdAbs = Math.abs(Number(expectedChatId));
       const importedChatIdAbs = Math.abs(Number(importedChatId));
-      
+
+      // Telegram Desktop exports use raw supergroup ID (e.g. 2037416113),
+      // while Bot API stores it with -100 prefix (e.g. -1002037416113).
+      // Strip the -100 prefix for comparison.
+      const stripTgPrefix = (id: number) => {
+        const abs = Math.abs(id);
+        const str = String(abs);
+        return str.startsWith('100') && str.length > 10 ? Number(str.slice(3)) : abs;
+      };
+      const expectedStripped = stripTgPrefix(Number(expectedChatId));
+      const importedStripped = stripTgPrefix(Number(importedChatId));
+
       // Также проверяем название группы для дополнительной безопасности
       const expectedGroupName = (group as any).title?.toLowerCase().trim();
       const importedGroupName = parsingResult.stats.chatName?.toLowerCase().trim();
-      
-      const chatIdMatches = expectedChatIdAbs === importedChatIdAbs || expectedChatId === importedChatId;
+
+      const chatIdMatches = expectedChatIdAbs === importedChatIdAbs
+        || expectedChatId === importedChatId
+        || expectedStripped === importedStripped;
       const nameMatches = expectedGroupName && importedGroupName && expectedGroupName === importedGroupName;
       
       if (!chatIdMatches && !nameMatches) {
