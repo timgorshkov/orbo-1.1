@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button'
 import { CheckGroupsForm } from '../components/check-groups-form'
 import { createClientLogger } from '@/lib/logger'
 
-export default function CheckGroupsPage({ params }: { params: { org: string } }) {
+export default function CheckGroupsPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = use(params);
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [userId, setUserId] = useState<string | null>(null);
-  const clientLogger = createClientLogger('CheckGroupsPage', { orgId: params.org });
+  const clientLogger = createClientLogger('CheckGroupsPage', { orgId: org });
 
   // Add useEffect to load user info
   useEffect(() => {
@@ -54,7 +55,7 @@ export default function CheckGroupsPage({ params }: { params: { org: string } })
             </p>
           </div>
           
-          <CheckGroupsForm orgId={params.org} userId={userId || ''} />
+          <CheckGroupsForm orgId={org} userId={userId || ''} />
         </CardContent>
       </Card>
     </div>

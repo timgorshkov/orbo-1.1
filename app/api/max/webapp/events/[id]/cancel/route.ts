@@ -9,10 +9,10 @@ import { createAPILogger } from '@/lib/logger';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/max/webapp/events/[id]/cancel' });
-  const eventId = params.id;
+  const { id: eventId } = await params;
 
   try {
     const adminSupabase = createAdminServer();

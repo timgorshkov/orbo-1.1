@@ -5,7 +5,7 @@ import { DocsMarkdown } from '@/components/website/DocsMarkdown';
 import type { Metadata } from 'next';
 
 interface PageProps {
-  params: { slug: string[] };
+  params: Promise<{ slug: string[] }>;
 }
 
 export function generateStaticParams() {
@@ -14,8 +14,9 @@ export function generateStaticParams() {
   }));
 }
 
-export function generateMetadata({ params }: PageProps): Metadata {
-  const fullSlug = params.slug.join('/');
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const fullSlug = slug.join('/');
   const result = getArticleByFullSlug(fullSlug);
   if (!result) return { title: 'Не найдено' };
 
@@ -25,8 +26,9 @@ export function generateMetadata({ params }: PageProps): Metadata {
   };
 }
 
-export default function DocsArticlePage({ params }: PageProps) {
-  const fullSlug = params.slug.join('/');
+export default async function DocsArticlePage({ params }: PageProps) {
+  const { slug } = await params;
+  const fullSlug = slug.join('/');
   const result = getArticleByFullSlug(fullSlug);
 
   if (!result) {

@@ -10,16 +10,17 @@ import { createServiceLogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
 
-export default async function TelegramAnalyticsPage({ params }: { params: { org: string } }) {
-  const logger = createServiceLogger('TelegramAnalyticsPage', { orgId: params.org });
+export default async function TelegramAnalyticsPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params
+  const logger = createServiceLogger('TelegramAnalyticsPage', { orgId: org });
   try {
-    const { supabase: userSupabase, user } = await requireOrgAccess(params.org)
+    const { supabase: userSupabase, user } = await requireOrgAccess(org)
     
     // PostgreSQL admin client for all DB operations
     const supabase = createAdminServer()
     
     // Получаем список групп организации
-    const groups = await getOrgTelegramGroups(params.org)
+    const groups = await getOrgTelegramGroups(org)
     
     if (!groups || groups.length === 0) {
       return (
@@ -28,7 +29,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
             <h1 className="text-2xl font-semibold">Telegram</h1>
           </div>
           
-          <TabsLayout orgId={params.org}>
+          <TabsLayout orgId={org}>
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center py-8">
@@ -104,7 +105,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
       groupAnalytics[chatId] = { member_count: 0, member_active_count: 0 }
 
       try {
-        const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/telegram/analytics/data?orgId=${params.org}&chatId=${chatId}`
+        const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/telegram/analytics/data?orgId=${org}&chatId=${chatId}`
         const analyticsResponse = await fetch(apiUrl, { cache: 'no-store' })
         if (analyticsResponse.ok) {
           const analyticsPayload = await analyticsResponse.json()
@@ -131,7 +132,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
           <h1 className="text-2xl font-semibold">Telegram</h1>
         </div>
         
-        <TabsLayout orgId={params.org}>
+        <TabsLayout orgId={org}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <Card>
             <CardHeader className="pb-2">
@@ -271,7 +272,7 @@ export default async function TelegramAnalyticsPage({ params }: { params: { org:
                 
                 <div className="mt-4">
                   <Link 
-                    href={`/app/${params.org}/telegram/groups/${group.id}`} 
+                    href={`/app/${org}/telegram/groups/${group.id}`} 
                     className="text-sm text-blue-600 hover:underline"
                   >
                     Управление группой →

@@ -7,11 +7,11 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth';
 // GET /api/apps/[appId] - Get app details (PUBLIC - no auth required)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     // Use admin client for public read access (no RLS restrictions)
@@ -73,11 +73,11 @@ export async function GET(
 // PATCH /api/apps/[appId] - Update app (admins only)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     const adminSupabase = createAdminServer();
@@ -182,11 +182,11 @@ export async function PATCH(
 // DELETE /api/apps/[appId] - Delete app (owners only)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     const adminSupabase = createAdminServer();

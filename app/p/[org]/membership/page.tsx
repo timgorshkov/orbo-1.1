@@ -6,8 +6,8 @@ import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-export default async function MembershipPage({ params }: { params: { org: string } }) {
-  const orgId = params.org
+export default async function MembershipPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org: orgId } = await params;
 
   try {
     await requireOrgAccess(orgId, ['owner', 'admin'])

@@ -5,10 +5,10 @@ import { createAPILogger } from '@/lib/logger';
 // GET /api/organizations/[id]/public - Public organization info
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: orgId } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/public' });
-  const orgId = params.id;
   try {
     const adminSupabase = createAdminServer();
 

@@ -7,21 +7,20 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Project uses custom eslint.config.mjs (flat config), skip next lint during build
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Expose server-side env vars to the client (for Telegram bot username)
   env: {
     NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME: process.env.TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot',
   },
-  experimental: {
-    // Include Hawk.so in standalone build (external package for Node.js)
-    serverComponentsExternalPackages: ['@hawk.so/nodejs', 'telegram'],
-    // Добавьте исключение для директории temp
-    outputFileTracingExcludes: {
-      '*': ['./temp/**/*'],
-    },
-    // Ensure pino and hawk are traced
-    outputFileTracingIncludes: {
-      '/api/**/*': ['./node_modules/@hawk.so/**/*', './node_modules/pino/**/*'],
-    },
+  serverExternalPackages: ['@hawk.so/nodejs', 'telegram'],
+  outputFileTracingExcludes: {
+    '*': ['./temp/**/*'],
+  },
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./node_modules/@hawk.so/**/*', './node_modules/pino/**/*'],
   },
   // Allow external images from storage providers
   images: {

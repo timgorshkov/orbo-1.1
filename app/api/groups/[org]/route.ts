@@ -6,9 +6,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { org: string } }
+  { params }: { params: Promise<{ org: string }> }
 ) {
-  const { org } = params
+  const { org } = await params
 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(org)) {
     return NextResponse.json({ error: 'Invalid org id' }, { status: 400 })

@@ -14,31 +14,26 @@ import { createServiceLogger } from '@/lib/logger'
 
 // Dynamic import for tags page (it's a client component)
 const TagsManagementContent = dynamic(() => import('@/components/settings/tags-management-content'), {
-  ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
 // Dynamic import for notifications page (it's a client component)
 const NotificationRulesContent = dynamic(() => import('@/components/settings/notification-rules-content'), {
-  ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
 // Dynamic import for billing page (it's a client component)
 const BillingContent = dynamic(() => import('@/components/settings/billing-content'), {
-  ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
 // Dynamic import for payments settings page (it's a client component)
 const PaymentsSettingsContent = dynamic(() => import('@/components/settings/payments-settings-content'), {
-  ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
 // Dynamic import for contract page (it's a client component)
 const ContractContent = dynamic(() => import('@/components/settings/contract-content'), {
-  ssr: false,
   loading: () => <div className="p-6">Загрузка...</div>
 })
 

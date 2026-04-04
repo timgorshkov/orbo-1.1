@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -59,8 +59,9 @@ type GroupMetrics = {
   }>;
 }
 
-export default function TelegramGroupPage({ params }: { params: { org: string, id: string } }) {
-  const logger = createClientLogger('TelegramGroupPage', { org: params.org, group_id: params.id });
+export default function TelegramGroupPage({ params }: { params: Promise<{ org: string, id: string }> }) {
+  const { org, id } = use(params);
+  const logger = createClientLogger('TelegramGroupPage', { org, group_id: id });
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [group, setGroup] = useState<any | null>(null)
@@ -115,15 +116,15 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     const fetchGroup = async () => {
       setLoading(true)
       try {
-        logger.debug({ group_id: params.id, org: params.org }, 'Fetching group');
+        logger.debug({ group_id: id, org: org }, 'Fetching group');
 
-        if (!params.id) {
+        if (!id) {
           setError('Не указан ID группы. Пожалуйста, вернитесь на страницу списка групп и выберите группу.');
           setLoading(false);
           return;
         }
 
-        const res = await fetch(`/api/telegram/groups/detail?orgId=${encodeURIComponent(params.org)}&groupId=${encodeURIComponent(params.id)}`);
+        const res = await fetch(`/api/telegram/groups/detail?orgId=${encodeURIComponent(org)}&groupId=${encodeURIComponent(id)}`);
         const data = await res.json();
 
         if (!res.ok || !data.group) {
@@ -153,8 +154,8 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         logger.error({
           error: e.message,
           stack: e.stack,
-          group_id: params.id,
-          org: params.org
+          group_id: id,
+          org: org
         }, 'Error fetching group');
         setError('Произошла ошибка при загрузке данных: ' + (e.message || e));
       } finally {
@@ -163,7 +164,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     };
 
     fetchGroup();
-  }, [params.id, params.org]);
+  }, [id, org]);
 
   // Выносим функцию fetchAnalytics за пределы useEffect, чтобы её можно было вызывать из кнопки
   const fetchAnalytics = async () => {
@@ -178,12 +179,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         logger.debug({ 
           group_id: group.id,
           tg_chat_id: group.tg_chat_id,
-          org: params.org
+          org: org
         }, 'Fetching analytics for group');
         
         // Используем более надежный подход с обработкой ошибок для каждого запроса
         // Создаем API запрос для получения данных через сервисную роль на сервере
-        const apiUrl = `/api/telegram/analytics/data?orgId=${params.org}&groupId=${group.id}&chatId=${group.tg_chat_id}`;
+        const apiUrl = `/api/telegram/analytics/data?orgId=${org}&groupId=${group.id}&chatId=${group.tg_chat_id}`;
         logger.debug({ api_url: apiUrl }, 'Fetching analytics from API');
         
         try {
@@ -200,7 +201,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
             logger.error({
               error: analyticsData.error,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Analytics API error');
             setAnalyticsError('Ошибка при загрузке аналитики: ' + analyticsData.error);
             setLoadingAnalytics(false);
@@ -273,7 +274,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
             error: apiError.message,
             stack: apiError.stack,
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Error fetching from analytics API, using fallback');
           // Продолжаем с клиентским запросом как запасной вариант
         }
@@ -284,7 +285,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         logger.debug({
           group_id: group.id,
           tg_chat_id: group.tg_chat_id,
-          org_id: params.org,
+          org_id: org,
           title: group.title
         }, 'Group data for analytics (fallback)');
         
@@ -306,7 +307,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         const { data: timezonedMetrics, error: tzError } = await supabase.rpc(
           'get_metrics_in_timezone',
           {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id,
             days_ago: 7,
             timezone_name: 'Europe/Moscow'
@@ -329,7 +330,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         
         try {
           const { data: silentRateData, error: silentRateError } = await supabase.rpc('get_silent_rate', {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id
           })
           
@@ -338,7 +339,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               error: silentRateError.message,
               error_code: silentRateError.code,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Error fetching silent_rate');
           }
           
@@ -349,13 +350,13 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           logger.error({
             error: e instanceof Error ? e.message : String(e),
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Silent rate error');
         }
         
         try {
           const { data: newcomerData, error: newcomerError } = await supabase.rpc('get_newcomer_activation', {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id
           })
           
@@ -364,7 +365,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               error: newcomerError.message,
               error_code: newcomerError.code,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Error fetching newcomer_activation');
           }
           
@@ -375,13 +376,13 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           logger.error({
             error: e instanceof Error ? e.message : String(e),
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Newcomer activation error');
         }
         
         try {
           const { data: primeTimeData, error: primeTimeError } = await supabase.rpc('get_prime_time', {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id
           })
           
@@ -390,7 +391,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               error: primeTimeError.message,
               error_code: primeTimeError.code,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Error fetching prime_time');
           }
           
@@ -401,13 +402,13 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           logger.error({
             error: e instanceof Error ? e.message : String(e),
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Prime time error');
         }
         
         try {
           const { data: giniData, error: giniError } = await supabase.rpc('get_activity_gini', {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id
           })
           
@@ -416,7 +417,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               error: giniError.message,
               error_code: giniError.code,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Error fetching activity_gini');
           }
           
@@ -427,13 +428,13 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           logger.error({
             error: e instanceof Error ? e.message : String(e),
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Activity gini error');
         }
         
         try {
           const { data: riskData, error: riskError } = await supabase.rpc('get_risk_radar', {
-            org_id_param: params.org,
+            org_id_param: org,
             tg_chat_id_param: group.tg_chat_id
           })
           
@@ -442,7 +443,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               error: riskError.message,
               error_code: riskError.code,
               group_id: group.id,
-              org: params.org
+              org: org
             }, 'Error fetching risk_radar');
           }
           
@@ -453,7 +454,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           logger.error({
             error: e instanceof Error ? e.message : String(e),
             group_id: group.id,
-            org: params.org
+            org: org
           }, 'Risk radar error');
         }
         
@@ -615,7 +616,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           error: e instanceof Error ? e.message : String(e),
           stack: e instanceof Error ? e.stack : undefined,
           group_id: group.id,
-          org: params.org
+          org: org
         }, 'Error fetching analytics');
         setAnalyticsError('Ошибка при загрузке аналитики: ' + (e instanceof Error ? e.message : String(e)))
       } finally {
@@ -624,12 +625,12 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
     }
     
     // Удалено дублирование вызова fetchAnalytics
-  // Вызываем fetchAnalytics при изменении group или params.org
+  // Вызываем fetchAnalytics при изменении group или org
   useEffect(() => {
     if (group) {
       fetchAnalytics();
     }
-  }, [group, params.org]);
+  }, [group, org]);
 
   const refreshGroupInfo = async () => {
     setLoading(true)
@@ -640,8 +641,8 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          orgId: params.org,
-          groupId: params.id
+          orgId: org,
+          groupId: id
         }),
       })
 
@@ -655,7 +656,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
       const { data, error } = await supabase
         .from('telegram_groups')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', id)
         .single()
 
       if (!error && data) {
@@ -668,8 +669,8 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
       logger.error({
         error: e.message,
         stack: e.stack,
-        group_id: params.id,
-        org: params.org
+        group_id: id,
+        org: org
       }, 'Error refreshing group');
       setError(e.message || 'Произошла ошибка при обновлении')
     } finally {
@@ -683,7 +684,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
         <h1 className="text-2xl font-semibold">
           {group?.title || 'Telegram группа'}
         </h1>
-        <Button variant="outline" onClick={() => router.push(`/p/${params.org}/telegram`)}>
+        <Button variant="outline" onClick={() => router.push(`/p/${org}/telegram`)}>
           Назад
         </Button>
       </div>
@@ -715,14 +716,14 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                   <div className="space-y-6">
                     {/* Activity Timeline + Heatmap */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <ActivityTimeline orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
-                      <ActivityHeatmap orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
+                      <ActivityTimeline orgId={org} tgChatId={group.tg_chat_id.toString()} days={30} />
+                      <ActivityHeatmap orgId={org} tgChatId={group.tg_chat_id.toString()} days={30} />
                     </div>
 
                     {/* Top Contributors + Key Metrics */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <TopContributors orgId={params.org} tgChatId={group.tg_chat_id.toString()} limit={10} />
-                      <KeyMetrics orgId={params.org} tgChatId={group.tg_chat_id.toString()} periodDays={14} />
+                      <TopContributors orgId={org} tgChatId={group.tg_chat_id.toString()} limit={10} />
+                      <KeyMetrics orgId={org} tgChatId={group.tg_chat_id.toString()} periodDays={14} />
                     </div>
                   </div>
                 ) : (
@@ -761,7 +762,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                               const displayName = participant.full_name || (participant.username ? `@${participant.username}` : participant.tg_user_id ? `ID: ${participant.tg_user_id}` : 'Неизвестный пользователь');
                               const handleRowClick = () => {
                                 if (participant.participant_id) {
-                                  router.push(`/p/${params.org}/members/${participant.participant_id}`);
+                                  router.push(`/p/${org}/members/${participant.participant_id}`);
                                 }
                               };
                               return (
@@ -815,13 +816,13 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
               </TabsContent>
 
               <TabsContent value="import">
-                <ImportHistory groupId={params.id} orgId={params.org} />
+                <ImportHistory groupId={id} orgId={org} />
               </TabsContent>
 
               <TabsContent value="member-sync">
                 {group && (
                   <MemberSyncTab
-                    orgId={params.org}
+                    orgId={org}
                     tgChatId={group.tg_chat_id}
                     groupTitle={group.title || 'группы'}
                   />
@@ -896,8 +897,8 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                       {group?.id !== undefined && (
                         <RemoveGroupButton
                           groupId={group.id}
-                          orgId={params.org}
-                          onRemoved={() => router.push(`/p/${params.org}/telegram`)}
+                          orgId={org}
+                          onRemoved={() => router.push(`/p/${org}/telegram`)}
                         />
                       )}
                     </div>
@@ -907,7 +908,7 @@ const [topUsers, setTopUsers] = useState<Array<{ tg_user_id: number; full_name: 
                 {group && (
                   <div className="mt-4">
                     <ForumTopicsManager
-                      orgId={params.org}
+                      orgId={org}
                       tgChatId={group.tg_chat_id}
                       isForum={isForum}
                     />

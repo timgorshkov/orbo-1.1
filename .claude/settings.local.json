@@ -78,7 +78,10 @@
       "Bash(npm ls:*)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f'{k}: {v[\\\\\"severity\\\\\"]} - {v[\\\\\"title\\\\\"]}'\\) for k,v in d.get\\('vulnerabilities',{}\\).items\\(\\)]\")",
       "Bash(npm update:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(python3 -c ':*)",
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('next:', pkg.dependencies?.next || pkg.devDependencies?.next\\); console.log\\('eslint-config-next:', pkg.dependencies?.['eslint-config-next'] || pkg.devDependencies?.['eslint-config-next']\\);\")",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

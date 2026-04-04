@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,8 +22,9 @@ type TelegramGroup = {
   // verification_status removed in migration 080
 }
 
-export default function AvailableGroupsPage({ params }: { params: { org: string } }) {
-  const logger = createClientLogger('AvailableGroupsPage', { org: params.org });
+export default function AvailableGroupsPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = use(params);
+  const logger = createClientLogger('AvailableGroupsPage', { org });
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [availableGroups, setAvailableGroups] = useState<TelegramGroup[]>([])
@@ -43,14 +44,14 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     // ✅ ОПТИМИЗАЦИЯ: Обновляем права админа в ФОНЕ, не блокируя загрузку страницы
     async function updateAdminRightsInBackground() {
       try {
-        logger.debug({ org: params.org }, 'Updating admin rights in background');
+        logger.debug({ org: org }, 'Updating admin rights in background');
         const updateRes = await fetch('/api/telegram/groups/update-admin-rights', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            orgId: params.org
+            orgId: org
           }),
           signal: AbortSignal.timeout(30000) // 30 секунд таймаут для фоновой операции
         });
@@ -59,18 +60,18 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           const updateData = await updateRes.json();
           logger.debug({
             updated_count: updateData.updatedGroups?.length || 0,
-            org: params.org
+            org: org
           }, 'Updated admin rights for groups');
         } else {
           logger.error({ 
             status: updateRes.status,
-            org: params.org
+            org: org
           }, 'Failed to update admin rights');
         }
       } catch (e) {
         logger.error({ 
           error: e instanceof Error ? e.message : String(e),
-          org: params.org
+          org: org
         }, 'Error updating admin rights');
       }
     }
@@ -86,10 +87,10 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       try {
         const timestamp = new Date().getTime()
         logger.info({ 
-          org: params.org,
+          org: org,
           attempt: attempts
         }, 'Fetching available groups');
-        const res = await fetch(`/api/telegram/groups/for-user?orgId=${params.org}&includeExisting=true&skipAutoAssign=true&t=${timestamp}`, {
+        const res = await fetch(`/api/telegram/groups/for-user?orgId=${org}&includeExisting=true&skipAutoAssign=true&t=${timestamp}`, {
           // Увеличиваем таймаут для запроса - Supabase медленный
           signal: AbortSignal.timeout(20000) // 20 секунд таймаут
         })
@@ -101,7 +102,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           logger.error({ 
             status: res.status,
             status_text: res.statusText,
-            org: params.org
+            org: org
           }, 'API response error');
           
           // Пытаемся получить текст ошибки из ответа
@@ -116,12 +117,12 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
             }
             logger.error({ 
               error_data: errorData,
-              org: params.org
+              org: org
             }, 'API error details');
           } catch (jsonError) {
             logger.error({ 
               error: jsonError instanceof Error ? jsonError.message : String(jsonError),
-              org: params.org
+              org: org
             }, 'Failed to parse error response');
           }
           
@@ -134,18 +135,18 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         if (!isMounted) return;
         
         logger.debug({ 
-          org: params.org,
+          org: org,
           has_groups: !!data.availableGroups
         }, 'API response received');
         
         if (data.availableGroups) {
           setAvailableGroups(data.availableGroups)
           logger.debug({ 
-            org: params.org,
+            org: org,
             group_count: data.availableGroups.length
           }, 'Loaded available groups');
         } else {
-          logger.debug({ org: params.org }, 'No available groups in response');
+          logger.debug({ org: org }, 'No available groups in response');
           setAvailableGroups([])
         }
       } catch (e: any) {
@@ -168,7 +169,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
           error_name: e.name,
           is_timeout: isTimeout,
           attempt: attempts,
-          org: params.org
+          org: org
         }, 'Error fetching available groups');
         setError(errorMessage)
       } finally {
@@ -189,7 +190,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     return () => {
       isMounted = false;
     }
-  }, [params.org])
+  }, [org])
   
   const addGroupToOrg = async (groupId: string) => {
     setAddingGroup(groupId)
@@ -197,7 +198,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
     
     try {
       logger.info({ 
-        org: params.org,
+        org: org,
         group_id: groupId
       }, 'Adding group to org');
       const res = await fetch('/api/telegram/groups/add-to-org', {
@@ -207,13 +208,13 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         },
         body: JSON.stringify({
           groupId,
-          orgId: params.org
+          orgId: org
         })
       })
       
       const data = await res.json()
       logger.debug({ 
-        org: params.org,
+        org: org,
         group_id: groupId,
         suggest_import: data.suggestImport
       }, 'Add group response');
@@ -223,7 +224,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
       }
       
       logger.info({ 
-        org: params.org,
+        org: org,
         group_id: groupId
       }, 'Successfully added group, refreshing page');
       
@@ -243,14 +244,14 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         // Показываем сообщение об успехе и перенаправляем
         alert('Группа успешно добавлена в организацию!')
         setTimeout(() => {
-          router.push(`/app/${params.org}/telegram`)
+          router.push(`/app/${org}/telegram`)
         }, 500)
       }
     } catch (e: any) {
       logger.error({ 
         error: e.message,
         stack: e.stack,
-        org: params.org,
+        org: org,
         group_id: groupId
       }, 'Error adding group to organization');
       setError(e.message || 'Failed to add group to organization')
@@ -265,7 +266,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
         <h1 className="text-2xl font-semibold">
           Доступные Telegram группы
         </h1>
-        <Button variant="outline" onClick={() => router.push(`/app/${params.org}/telegram`)}>
+        <Button variant="outline" onClick={() => router.push(`/app/${org}/telegram`)}>
           Назад к Telegram
         </Button>
       </div>
@@ -432,12 +433,12 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
             <div className="mt-4">
               <ImportHistory
                 groupId={addedGroupId}
-                orgId={params.org}
+                orgId={org}
                 simplified={true}
                 onImportSuccess={() => {
                   setShowImportDialog(false)
                   setTimeout(() => {
-                    router.push(`/app/${params.org}/telegram`)
+                    router.push(`/app/${org}/telegram`)
                   }, 500)
                 }}
               />
@@ -450,7 +451,7 @@ export default function AvailableGroupsPage({ params }: { params: { org: string 
               onClick={() => {
                 setShowImportDialog(false)
                 setTimeout(() => {
-                  router.push(`/app/${params.org}/telegram`)
+                  router.push(`/app/${org}/telegram`)
                 }, 300)
               }}
             >

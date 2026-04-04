@@ -8,11 +8,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   const logger = createAPILogger(request, { endpoint: '/api/telegram/groups/[orgId]' });
   try {
-    const orgId = params.orgId;
+    const { orgId } = await params;
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing orgId parameter' }, { status: 400 });
@@ -52,7 +52,7 @@ export async function GET(
     logger.error({ 
       error: error.message || String(error),
       stack: error.stack,
-      org_id: params.orgId
+      org_id: orgId
     }, 'Error in telegram groups GET');
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }

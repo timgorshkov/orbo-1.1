@@ -53,10 +53,23 @@ if (PROXY_URL) {
   }
 }
 
-// OpenAI клиент с прокси только для своих запросов
-export const openai = new OpenAI({
-  apiKey: API_KEY,
-  ...(proxyFetch && { fetch: proxyFetch }),
+// Lazy-initialized OpenAI client (avoids crash during build when OPENAI_API_KEY is not set)
+let _openai: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: API_KEY || 'placeholder-key-for-build',
+      ...(proxyFetch && { fetch: proxyFetch }),
+    });
+  }
+  return _openai;
+}
+
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, prop) {
+    return (getOpenAI() as any)[prop];
+  },
 });
 
 export default openai;

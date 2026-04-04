@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
  * - orbo.ru: allows all public pages, references sitemap
  * - my.orbo.ru: disallows all (app is private)
  */
-export default function robots(): MetadataRoute.Robots {
-  const headersList = headers()
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const headersList = await headers()
   const host = headersList.get('host') || headersList.get('x-forwarded-host') || ''
   const hostname = host.split(':')[0]
 

@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClientLogger } from '@/lib/logger'
 
-export default function SetupTelegramPage({ params }: { params: { org: string } }) {
+export default function SetupTelegramPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = use(params);
   const [telegramId, setTelegramId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
-  const clientLogger = createClientLogger('SetupTelegramPage', { orgId: params.org })
+  const clientLogger = createClientLogger('SetupTelegramPage', { orgId: org })
   
   const saveTelegramId = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,7 +26,7 @@ export default function SetupTelegramPage({ params }: { params: { org: string } 
       })
       
       if (response.ok) {
-        router.push(`/app/${params.org}/telegram/check-groups`)
+        router.push(`/app/${org}/telegram/check-groups`)
       }
     } catch (error: any) {
       clientLogger.error({ error: error?.message }, 'Error saving Telegram ID')

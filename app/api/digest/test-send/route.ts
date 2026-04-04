@@ -6,6 +6,8 @@
  * Body: { orgId }
  */
 
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { generateWeeklyDigest } from '@/lib/services/weeklyDigestService';

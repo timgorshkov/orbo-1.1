@@ -9,11 +9,11 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function EventShortUrlPage({ params }: PageProps) {
-  const { id: eventId } = params;
+  const { id: eventId } = await params;
   
   // Validate eventId format (UUID)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

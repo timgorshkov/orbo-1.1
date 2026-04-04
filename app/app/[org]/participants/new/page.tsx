@@ -2,8 +2,10 @@ import AppShell from '@/components/app-shell';
 import { notFound } from 'next/navigation';
 import { NewParticipantForm } from './form';
 
-export default async function NewParticipantPage({ params }: { params: { org: string } }) {
-  if (!params?.org) {
+export default async function NewParticipantPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params
+
+  if (!org) {
     notFound();
   }
 
@@ -17,7 +19,7 @@ export default async function NewParticipantPage({ params }: { params: { org: st
           </p>
         </div>
 
-        <NewParticipantForm orgId={params.org} />
+        <NewParticipantForm orgId={org} />
       </div>
     </div>
   );

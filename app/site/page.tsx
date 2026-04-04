@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { Users, Building2, Calendar, BarChart3, Bell, UserCircle } from 'lucide-react';
 import { Header, Footer, BrowserFrame, AnnouncementBanner } from '@/components/website';
 import Link from 'next/link';
-
-const Orb = dynamic(() => import('@/components/website/Orb'), { ssr: false });
+import Orb from '@/components/website/OrbLazy';
 
 export const metadata: Metadata = {
   title: 'CRM для групп и сообществ — Telegram и Max',

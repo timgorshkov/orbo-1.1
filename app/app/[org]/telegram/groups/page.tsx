@@ -16,16 +16,17 @@ type TelegramGroup = {
   last_activity_at?: string | null;
 };
 
-export default async function TelegramGroupsListPage({ params }: { params: { org: string } }) {
-  const logger = createServiceLogger('TelegramGroupsListPage', { orgId: params.org });
+export default async function TelegramGroupsListPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params
+  const logger = createServiceLogger('TelegramGroupsListPage', { orgId: org });
   try {
-    const { supabase } = await requireOrgAccess(params.org);
+    const { supabase } = await requireOrgAccess(org);
 
     // Получаем список подключенных групп через org_telegram_groups
     const { data: orgGroupLinks, error: linksError } = await supabase
       .from('org_telegram_groups')
       .select('tg_chat_id')
-      .eq('org_id', params.org);
+      .eq('org_id', org);
 
     let groups: TelegramGroup[] | null = null;
 
@@ -57,7 +58,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
           <h1 className="text-2xl font-semibold">Telegram Группы</h1>
         </div>
 
-        <TabsLayout orgId={params.org}>
+        <TabsLayout orgId={org}>
           <div className="grid gap-6">
             {/* Активные группы */}
             {activeGroups.length > 0 && (
@@ -65,7 +66,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Активные группы ({activeGroups.length})</CardTitle>
                   <Link
-                    href={`/app/${params.org}/telegram/available-groups`}
+                    href={`/app/${org}/telegram/available-groups`}
                     className="text-sm text-blue-600 hover:underline"
                   >
                     Добавить группу
@@ -110,7 +111,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
 
                           <div className="ml-4">
                             <Link
-                              href={`/app/${params.org}/telegram/groups/${group.id}`}
+                              href={`/app/${org}/telegram/groups/${group.id}`}
                               className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
                             >
                               Управление
@@ -150,7 +151,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
                             </div>
                           </div>
                           <Link
-                            href={`/app/${params.org}/telegram/groups/${group.id}`}
+                            href={`/app/${org}/telegram/groups/${group.id}`}
                             className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium border border-neutral-300 hover:bg-neutral-50"
                           >
                             Управление
@@ -179,7 +180,7 @@ export default async function TelegramGroupsListPage({ params }: { params: { org
                     Добавьте вашу первую Telegram группу для начала работы
                   </p>
                   <Link
-                    href={`/app/${params.org}/telegram`}
+                    href={`/app/${org}/telegram`}
                     className="inline-flex items-center justify-center rounded-xl px-6 py-3 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
                   >
                     Подключить группу

@@ -9,15 +9,17 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default function SubscriptionDetailPage({ 
-  params 
-}: { 
-  params: { org: string; id: string } 
+export default async function SubscriptionDetailPage({
+  params
+}: {
+  params: Promise<{ org: string; id: string }>
 }) {
+  const { org, id } = await params
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-6">
-        <Link href={`/${params.org}/subscriptions`}>
+        <Link href={`/${org}/subscriptions`}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Назад к подпискам
@@ -28,18 +30,18 @@ export default function SubscriptionDetailPage({
       <div className="space-y-6">
         {/* Subscription Details */}
         <Suspense fallback={<LoadingCard title="Детали подписки" />}>
-          <SubscriptionDetail orgId={params.org} subscriptionId={params.id} />
+          <SubscriptionDetail orgId={org} subscriptionId={id} />
         </Suspense>
 
         {/* Payments */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">История платежей</h2>
-            <RecordPaymentButton orgId={params.org} subscriptionId={params.id} />
+            <RecordPaymentButton orgId={org} subscriptionId={id} />
           </div>
 
           <Suspense fallback={<LoadingCard title="Платежи" />}>
-            <PaymentsTable orgId={params.org} subscriptionId={params.id} />
+            <PaymentsTable orgId={org} subscriptionId={id} />
           </Suspense>
         </div>
       </div>

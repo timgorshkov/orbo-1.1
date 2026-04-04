@@ -21,11 +21,11 @@ import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminActio
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { channelId: string } }
+  { params }: { params: Promise<{ channelId: string }> }
 ) {
   const logger = createAPILogger(request);
   const startTime = Date.now();
-  const { channelId } = params;
+  const { channelId } = await params;
   
   try {
     const user = await getUnifiedUser();

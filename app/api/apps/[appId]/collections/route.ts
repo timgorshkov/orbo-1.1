@@ -5,11 +5,11 @@ import { createAPILogger } from '@/lib/logger';
 // GET /api/apps/[appId]/collections - Get collections for app (PUBLIC)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     // Use admin client for public read access (no RLS restrictions)

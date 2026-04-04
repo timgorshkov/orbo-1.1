@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
  * Sitemap for orbo.ru (public website)
  * Only generated for the website domain — my.orbo.ru returns empty.
  */
-export default function sitemap(): MetadataRoute.Sitemap {
-  const headersList = headers()
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const headersList = await headers()
   const host = headersList.get('host') || headersList.get('x-forwarded-host') || ''
   const hostname = host.split(':')[0]
 

@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
   const logger = createAPILogger(req, { endpoint: '/api/analytics/[orgId]/contributors' });
-  const orgId = params.orgId;
+  const { orgId } = await params;
   try {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '10');

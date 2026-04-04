@@ -7,11 +7,11 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 // POST /api/events/[id]/register - Register for event
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
   try {
-    const eventId = params.id
     const adminSupabase = createAdminServer()
 
     // Check authentication via unified auth
@@ -425,10 +425,10 @@ export async function POST(
 // DELETE /api/events/[id]/register - Unregister from event
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/events/[id]/register' });
-  const eventId = params.id;
   try {
     const adminSupabase = createAdminServer()
 

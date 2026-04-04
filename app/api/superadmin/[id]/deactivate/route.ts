@@ -8,8 +8,9 @@ import { createAPILogger } from '@/lib/logger'
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const logger = createAPILogger(req, { endpoint: '/api/superadmin/[id]/deactivate' });
   try {
     // Проверяем права
@@ -17,31 +18,31 @@ export async function POST(
     if (!isAdmin) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-    
+
     const supabase = await createClientServer()
-    
+
     // Деактивируем (используем user_id, а не id)
     const { error } = await supabase
       .from('superadmins')
       .update({ is_active: false })
-      .eq('user_id', params.id)
-    
+      .eq('user_id', id)
+
     if (error) {
-      logger.error({ 
+      logger.error({
         error: error.message,
-        user_id: params.id
+        user_id: id
       }, 'Error deactivating superadmin');
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
-    
-    logger.info({ user_id: params.id }, 'Superadmin deactivated');
+
+    logger.info({ user_id: id }, 'Superadmin deactivated');
     return NextResponse.json({ success: true })
-    
+
   } catch (error) {
-    logger.error({ 
+    logger.error({
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      user_id: params.id
+      user_id: id
     }, 'Error in superadmin deactivate');
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }

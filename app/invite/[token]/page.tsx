@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,7 +21,8 @@ interface InvitationData {
   }
 }
 
-export default function InvitePage({ params }: { params: { token: string } }) {
+export default function InvitePage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [accepting, setAccepting] = useState(false)
@@ -35,11 +36,11 @@ export default function InvitePage({ params }: { params: { token: string } }) {
 
   useEffect(() => {
     fetchInvitation()
-  }, [params.token])
+  }, [token])
 
   const fetchInvitation = async () => {
     try {
-      const res = await fetch(`/api/invite/${params.token}`)
+      const res = await fetch(`/api/invite/${token}`)
       const data = await res.json()
 
       if (!res.ok) {
@@ -85,7 +86,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
     setError(null)
 
     try {
-      const res = await fetch(`/api/invite/${params.token}/accept`, {
+      const res = await fetch(`/api/invite/${token}/accept`, {
         method: 'POST'
       })
       const data = await res.json()
@@ -109,16 +110,16 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   }
 
   const goToLogin = () => {
-    sessionStorage.setItem('pendingInviteToken', params.token)
-    router.push(`/signin?invite=${params.token}`)
+    sessionStorage.setItem('pendingInviteToken', token)
+    router.push(`/signin?invite=${token}`)
   }
 
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
-      sessionStorage.setItem('pendingInviteToken', params.token)
-      window.location.href = `/signin?invite=${params.token}`
+      sessionStorage.setItem('pendingInviteToken', token)
+      window.location.href = `/signin?invite=${token}`
     } catch (err) {
       setLoggingOut(false)
       setError('Ошибка выхода из аккаунта')

@@ -9,11 +9,11 @@ const BUCKET_NAME = 'app-files';
 // POST /api/apps/[appId]/upload - Upload file (image/video/document)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     const supabaseAdmin = createAdminServer();
@@ -163,11 +163,11 @@ export async function POST(
 // DELETE /api/apps/[appId]/upload - Delete file
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { appId: string } }
+  { params }: { params: Promise<{ appId: string }> }
 ) {
   const startTime = Date.now();
   const logger = createAPILogger(request);
-  const { appId } = params;
+  const { appId } = await params;
   
   try {
     const supabaseAdmin = createAdminServer();

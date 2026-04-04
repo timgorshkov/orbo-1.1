@@ -4,7 +4,9 @@ import EventForm from '@/components/events/event-form'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 
-export default async function NewEventPage({ params }: { params: { org: string } }) {
+export default async function NewEventPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params
+
   // Check authentication via unified auth (supports both Supabase and NextAuth)
   const user = await getUnifiedUser()
   if (!user) {
@@ -12,14 +14,14 @@ export default async function NewEventPage({ params }: { params: { org: string }
   }
 
   // Require admin access
-  await requireOrgAccess(params.org, ['owner', 'admin'])
+  await requireOrgAccess(org, ['owner', 'admin'])
 
   // Load org's default payment link to pre-fill in the event form
   const db = createAdminServer()
-  const { data: org } = await db
+  const { data: orgData } = await db
     .from('organizations')
     .select('default_payment_link')
-    .eq('id', params.org)
+    .eq('id', org)
     .single()
 
   return (
@@ -29,9 +31,9 @@ export default async function NewEventPage({ params }: { params: { org: string }
       </div>
 
       <EventForm
-        orgId={params.org}
+        orgId={org}
         mode="create"
-        defaultPaymentLink={org?.default_payment_link ?? null}
+        defaultPaymentLink={orgData?.default_payment_link ?? null}
       />
     </div>
   )

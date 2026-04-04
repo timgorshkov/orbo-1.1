@@ -8,23 +8,24 @@ import ActivityHeatmap from '@/components/analytics/activity-heatmap'
 import { createServiceLogger } from '@/lib/logger'
 
 interface PageProps {
-  params: {
+  params: Promise<{
     org: string;
     id: string;
-  };
+  }>;
 }
 
 export default async function GroupAnalyticsPage({ params }: PageProps) {
-  const logger = createServiceLogger('GroupAnalyticsPage', { orgId: params.org, groupId: params.id });
+  const { org, id } = await params;
+  const logger = createServiceLogger('GroupAnalyticsPage', { orgId: org, groupId: id });
   try {
-    await requireOrgAccess(params.org);
+    await requireOrgAccess(org);
     const supabase = await createClientServer();
 
     // Fetch group info
     const { data: group, error } = await supabase
       .from('telegram_groups')
       .select('id, title, tg_chat_id')
-      .eq('tg_chat_id', params.id)
+      .eq('tg_chat_id', id)
       .single();
 
     if (error || !group) {
@@ -36,7 +37,7 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
     const { data: mapping } = await supabase
       .from('org_telegram_groups')
       .select('org_id')
-      .eq('org_id', params.org)
+      .eq('org_id', org)
       .eq('tg_chat_id', group.tg_chat_id)
       .maybeSingle();
 
@@ -57,14 +58,14 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
         <div className="space-y-6">
           {/* Activity Timeline + Heatmap */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ActivityTimeline orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
-            <ActivityHeatmap orgId={params.org} tgChatId={group.tg_chat_id.toString()} days={30} />
+            <ActivityTimeline orgId={org} tgChatId={group.tg_chat_id.toString()} days={30} />
+            <ActivityHeatmap orgId={org} tgChatId={group.tg_chat_id.toString()} days={30} />
           </div>
 
           {/* Top Contributors + Key Metrics */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TopContributors orgId={params.org} tgChatId={group.tg_chat_id.toString()} limit={10} />
-            <KeyMetrics orgId={params.org} tgChatId={group.tg_chat_id.toString()} periodDays={14} />
+            <TopContributors orgId={org} tgChatId={group.tg_chat_id.toString()} limit={10} />
+            <KeyMetrics orgId={org} tgChatId={group.tg_chat_id.toString()} periodDays={14} />
           </div>
         </div>
       </div>

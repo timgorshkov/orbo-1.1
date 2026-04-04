@@ -5,10 +5,11 @@ import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest, { params }: { params: { org: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/materials/tree' });
   const { searchParams } = new URL(request.url);
-  const orgId = searchParams.get('orgId') ?? params.org;
+  const orgId = searchParams.get('orgId') ?? org;
 
   if (!orgId) {
     return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
@@ -29,10 +30,11 @@ export async function GET(request: NextRequest, { params }: { params: { org: str
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { org: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ org: string }> }) {
+  const { org } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/materials/tree' });
   const body = await request.json();
-  const orgId = body.orgId ?? params.org;
+  const orgId = body.orgId ?? org;
   if (!orgId) {
     return NextResponse.json({ error: 'Missing orgId' }, { status: 400 });
   }

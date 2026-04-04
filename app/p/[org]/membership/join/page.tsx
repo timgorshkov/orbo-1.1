@@ -4,8 +4,8 @@ import { MembershipLandingContent } from '@/components/memberships/membership-la
 
 export const dynamic = 'force-dynamic'
 
-export default async function MembershipJoinPage({ params }: { params: { org: string } }) {
-  const orgId = params.org
+export default async function MembershipJoinPage({ params }: { params: Promise<{ org: string }> }) {
+  const { org: orgId } = await params;
   const supabase = createAdminServer()
 
   const { data: org } = await supabase

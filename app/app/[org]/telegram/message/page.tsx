@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import AppShell from '@/components/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,8 @@ type TelegramTopicOption = {
   title: string
 }
 
-export default function SendMessagePage({ params }: { params: { org: string } }) {
+export default function SendMessagePage({ params }: { params: Promise<{ org: string }> }) {
+  const { org } = use(params);
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -62,13 +63,13 @@ export default function SendMessagePage({ params }: { params: { org: string } })
             .order('created_at', { ascending: false })
             .limit(200)
 
-          const logger = createClientLogger('SendMessagePage', { org: params.org });
+          const logger = createClientLogger('SendMessagePage', { org: org });
           if (activityError) {
             if (activityError.code !== '42P01') {
               logger.error({
                 error: activityError.message,
                 error_code: activityError.code,
-                org: params.org,
+                org: org,
                 group_id: selectedGroup
               }, 'Error inferring topics from activity events');
             }
@@ -104,11 +105,11 @@ export default function SendMessagePage({ params }: { params: { org: string } })
 
           return { topics, generalEntry, onlyGeneral }
         } catch (activityException) {
-          const logger = createClientLogger('SendMessagePage', { org: params.org });
+          const logger = createClientLogger('SendMessagePage', { org: org });
           logger.error({
             error: activityException instanceof Error ? activityException.message : String(activityException),
             stack: activityException instanceof Error ? activityException.stack : undefined,
-            org: params.org,
+            org: org,
             group_id: selectedGroup
           }, 'Unexpected error inferring topics from activity events');
           return { topics: [] as TelegramTopicOption[], generalEntry: null as TelegramTopicOption | null, onlyGeneral: false }
@@ -117,13 +118,13 @@ export default function SendMessagePage({ params }: { params: { org: string } })
 
       const activityFallback = await inferFromActivityEvents()
 
-      const logger = createClientLogger('SendMessagePage', { org: params.org });
+      const logger = createClientLogger('SendMessagePage', { org: org });
       if (error) {
         if (error.code !== 'PGRST205' && error.code !== '42P01' && error.code !== 'PGRST202') {
           logger.error({
             error: error.message,
             error_code: error.code,
-            org: params.org,
+            org: org,
             group_id: selectedGroup
           }, 'Error loading telegram topics');
         }
@@ -189,11 +190,11 @@ export default function SendMessagePage({ params }: { params: { org: string } })
       setTopics(topicOptions)
       setSelectedTopic(topicOptions[0]?.id ?? '')
     } catch (topicsException) {
-      const logger = createClientLogger('SendMessagePage', { org: params.org });
+      const logger = createClientLogger('SendMessagePage', { org: org });
       logger.error({
         error: topicsException instanceof Error ? topicsException.message : String(topicsException),
         stack: topicsException instanceof Error ? topicsException.stack : undefined,
-        org: params.org,
+        org: org,
         group_id: selectedGroup
       }, 'Unexpected error loading telegram topics');
       setTopics([])
@@ -210,7 +211,7 @@ export default function SendMessagePage({ params }: { params: { org: string } })
       let normalized: TelegramGroupOption[] = []
 
       try {
-        const response = await fetch(`/api/telegram/groups/for-user?orgId=${encodeURIComponent(params.org)}&includeExisting=true`, {
+        const response = await fetch(`/api/telegram/groups/for-user?orgId=${encodeURIComponent(org)}&includeExisting=true`, {
           cache: 'no-store'
         })
 
@@ -226,11 +227,11 @@ export default function SendMessagePage({ params }: { params: { org: string } })
           title: group.title ?? null
         }))
       } catch (apiError) {
-        const logger = createClientLogger('SendMessagePage', { org: params.org });
+        const logger = createClientLogger('SendMessagePage', { org: org });
         logger.error({
           error: apiError instanceof Error ? apiError.message : String(apiError),
           stack: apiError instanceof Error ? apiError.stack : undefined,
-          org: params.org
+          org: org
         }, 'Error loading telegram groups for messaging');
         normalized = []
       }
@@ -256,7 +257,7 @@ export default function SendMessagePage({ params }: { params: { org: string } })
     return () => {
       ignore = true
     }
-  }, [params.org, searchParams])
+  }, [org, searchParams])
 
   const handleSelectGroup = (value: string) => {
     setSelectedGroup(value)
@@ -281,7 +282,7 @@ export default function SendMessagePage({ params }: { params: { org: string } })
     try {
       const chatIdNumeric = Number(selectedGroup)
       const payload: Record<string, any> = {
-        orgId: params.org,
+        orgId: org,
         chatId: Number.isFinite(chatIdNumeric) ? chatIdNumeric : selectedGroup,
         message
       }
@@ -391,7 +392,7 @@ export default function SendMessagePage({ params }: { params: { org: string } })
           <div className="flex justify-between">
             <Button
               variant="outline"
-              onClick={() => router.push(`/app/${params.org}/telegram`)}
+              onClick={() => router.push(`/app/${org}/telegram`)}
             >
               Назад
             </Button>

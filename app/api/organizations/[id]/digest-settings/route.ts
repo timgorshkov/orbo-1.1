@@ -12,10 +12,10 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: orgId } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
-  const orgId = params.id;
   try {
     const adminSupabase = createAdminServer();
 
@@ -76,10 +76,10 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: orgId } = await params;
   const logger = createAPILogger(request, { endpoint: '/api/organizations/[id]/digest-settings' });
-  const orgId = params.id;
   try {
     const adminSupabase = createAdminServer();
     const body = await request.json();
