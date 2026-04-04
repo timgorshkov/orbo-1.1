@@ -8,7 +8,7 @@ import { VKPixel } from '@/components/analytics/VKPixel';
 
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
-  display: 'swap',
+  display: 'fallback',
   variable: '--font-inter',
 });
 

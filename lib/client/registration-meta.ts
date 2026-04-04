@@ -7,7 +7,10 @@ const COOKIE_NAME = 'orbo_reg_meta'
 const COOKIE_DOMAIN = '.orbo.ru'
 const COOKIE_MAX_AGE = 86400 * 30 // 30 days
 
-const storage = typeof window !== 'undefined' ? window.localStorage : null
+const storage: Storage | null = (() => {
+  try { return typeof window !== 'undefined' ? window.localStorage : null }
+  catch { return null }
+})()
 
 export interface RegistrationMeta {
   utm_source?: string
