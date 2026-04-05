@@ -469,6 +469,19 @@ async getChatMember(chatId: number, userId: number) {
         }, '📥 [TG-API] Telegram API response received');
       }
 
+      // Handle 429 Too Many Requests with automatic retry
+      if (responseData.error_code === 429 && attempt < MAX_RETRIES - 1) {
+        const retryAfter = (responseData.parameters?.retry_after || 5) + 1;
+        logger.warn({
+          bot_type: this.botType,
+          method,
+          retry_after: retryAfter,
+          attempt: attempt + 1
+        }, '⏳ [TG-API] Rate limited (429), waiting before retry');
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        continue;
+      }
+
       if (!response.ok || !responseData.ok) {
         // Check if this is an expected/normal error (don't log as ERROR)
         const isExpectedError =

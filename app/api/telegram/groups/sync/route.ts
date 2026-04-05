@@ -10,6 +10,8 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function POST(request: Request) {
   const logger = createAPILogger(request, { endpoint: 'telegram/groups/sync' });
   
@@ -119,22 +121,28 @@ export async function POST(request: Request) {
       // Проверяем права администратора пользователя в каждой группе
       const availableGroups = [];
       
-      for (const group of allGroups) {
+      for (let i = 0; i < allGroups.length; i++) {
+        const group = allGroups[i];
         const chatId = group.tg_chat_id;
         logger.debug({ chat_id: chatId, title: group.title }, 'Checking admin rights');
-        
+
+        // Rate limit: pause between groups to avoid Telegram 429
+        if (i > 0) {
+          await sleep(350);
+        }
+
         try {
-          // Получаем информацию о чате
+          // Получаем информацию о чате (callApi handles 429 retry internally)
           const chatDetails = await telegramService.getChat(chatId);
-          
+
           if (!chatDetails.ok) {
-            logger.error({ chat_id: chatId }, 'Failed to get chat details');
+            logger.warn({ chat_id: chatId, error_code: chatDetails.error_code }, 'Failed to get chat details');
             continue;
           }
-          
+
           // Проверяем админские права пользователя в группе
           const adminInfo = await telegramService.getChatMember(chatId, activeAccount.telegram_user_id);
-          
+
           if (!adminInfo.ok) {
             logger.debug({ chat_id: chatId, error: adminInfo.description }, 'Failed to get admin info (not an admin or bot lacks access)');
             continue;
