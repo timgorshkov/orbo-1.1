@@ -48,6 +48,26 @@ export default function RequisitesPage() {
                     <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap', verticalAlign: 'top' }}>Генеральный директор</td>
                     <td style={{ padding: '8px 0' }}>Горшков Тимофей Юрьевич</td>
                   </tr>
+                  <tr>
+                    <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap' }}>Расчётный счёт</td>
+                    <td style={{ padding: '8px 0' }}>40702810110002081803</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap' }}>Банк</td>
+                    <td style={{ padding: '8px 0' }}>АО «ТБанк»</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap' }}>ИНН банка</td>
+                    <td style={{ padding: '8px 0' }}>7710140679</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap' }}>БИК банка</td>
+                    <td style={{ padding: '8px 0' }}>044525974</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 16px 8px 0', color: '#6b7280', whiteSpace: 'nowrap' }}>Корр. счёт банка</td>
+                    <td style={{ padding: '8px 0' }}>30101810145250000974</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
