@@ -1241,6 +1241,35 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
 }
 
 // Announcement Card Component
+/** Переводит ошибки Telegram API и внутренние ошибки в понятные сообщения */
+function formatSendError(error: string): string {
+  if (error.includes('Access revoked') || error.includes('no org admin is TG group admin')) {
+    return 'Права отозваны: ни один админ организации не является админом Telegram-группы. Добавьте бота или админа обратно в группу.';
+  }
+  if (error.includes('bot was kicked') || error.includes('Forbidden: bot was blocked')) {
+    return 'Бот был удалён из группы. Добавьте бота обратно.';
+  }
+  if (error.includes('chat not found') || error.includes('CHAT_NOT_FOUND')) {
+    return 'Группа не найдена. Возможно, она была удалена.';
+  }
+  if (error.includes('not enough rights') || error.includes('CHAT_ADMIN_REQUIRED') || error.includes('need administrator rights')) {
+    return 'Боту не хватает прав для отправки сообщений в группу.';
+  }
+  if (error.includes('TOPIC_CLOSED') || error.includes('TOPIC_DELETED')) {
+    return 'Тема (топик) закрыта или удалена.';
+  }
+  if (error.includes("can't parse entities")) {
+    return 'Ошибка форматирования сообщения. Проверьте HTML-разметку.';
+  }
+  if (error.includes('Too Many Requests') || error.includes('FLOOD_WAIT')) {
+    return 'Слишком частые запросы. Будет повторная попытка.';
+  }
+  if (error.includes('Forbidden')) {
+    return 'Бот заблокирован или не имеет доступа к группе.';
+  }
+  return error;
+}
+
 function AnnouncementCard({
   announcement,
   groups,
@@ -1309,6 +1338,19 @@ function AnnouncementCard({
                   <span className="text-indigo-600" title="Также будет отправлено личным сообщением зарегистрированным участникам">+ ЛС участникам</span>
                 )}
               </div>
+              {(announcement.status === 'failed' || announcement.status === 'sent') && announcement.send_results && (() => {
+                const failedEntries = Object.entries(announcement.send_results).filter(([, r]) => !r.success);
+                if (failedEntries.length === 0) return null;
+                const firstError = failedEntries[0][1].error;
+                return (
+                  <div className="text-xs text-red-600 mt-0.5 truncate" title={failedEntries.map(([chatId, r]) => {
+                    const g = groups.find(g => String(g.tg_chat_id) === chatId);
+                    return `${g?.title || chatId}: ${r.error}`;
+                  }).join('\n')}>
+                    {formatSendError(firstError || 'Неизвестная ошибка')}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {announcement.status === 'scheduled' && (
@@ -1359,17 +1401,37 @@ function AnnouncementCard({
                 <span>Автор: {announcement.created_by_name}</span>
               )}
             </div>
-            {showResults && announcement.send_results && Object.keys(announcement.send_results).length > 0 && (
-              <div className="mt-2 text-xs">
-                <span className="text-green-600">
-                  ✓ {Object.values(announcement.send_results).filter(r => r.success).length}
-                </span>
-                {' / '}
-                <span className="text-red-600">
-                  ✗ {Object.values(announcement.send_results).filter(r => !r.success).length}
-                </span>
-              </div>
-            )}
+            {showResults && announcement.send_results && Object.keys(announcement.send_results).length > 0 && (() => {
+              const results = announcement.send_results;
+              const successCount = Object.values(results).filter(r => r.success).length;
+              const failedEntries = Object.entries(results).filter(([, r]) => !r.success);
+              return (
+                <div className="mt-2 text-xs space-y-1">
+                  <div>
+                    <span className="text-green-600">✓ {successCount}</span>
+                    {failedEntries.length > 0 && (
+                      <>
+                        {' / '}
+                        <span className="text-red-600">✗ {failedEntries.length}</span>
+                      </>
+                    )}
+                  </div>
+                  {failedEntries.length > 0 && (
+                    <div className="bg-red-50 border border-red-100 rounded p-2 space-y-1">
+                      {failedEntries.map(([chatId, result]) => {
+                        const group = groups.find(g => String(g.tg_chat_id) === chatId);
+                        return (
+                          <div key={chatId} className="text-red-700">
+                            <span className="font-medium">{group?.title || `Группа ${chatId}`}:</span>{' '}
+                            {formatSendError(result.error || 'Неизвестная ошибка')}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {announcement.status === 'scheduled' && (

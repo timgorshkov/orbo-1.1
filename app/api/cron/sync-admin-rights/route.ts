@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем уникальные org_ids и tg_chat_ids
-    const orgIds = Array.from(new Set(orgGroupLinks?.map(link => link.org_id) || []));
-    const chatIds = Array.from(new Set(orgGroupLinks?.map(link => link.tg_chat_id) || []));
+    const orgIds: string[] = Array.from(new Set(orgGroupLinks?.map((link: any) => link.org_id as string) || []));
+    const chatIds: string[] = Array.from(new Set(orgGroupLinks?.map((link: any) => String(link.tg_chat_id)) || []));
 
     // Получаем организации и группы параллельно
     const [orgsResult, groupsResult] = await Promise.all([
@@ -47,12 +47,13 @@ export async function GET(request: NextRequest) {
       adminSupabase.from('telegram_groups').select('tg_chat_id, title, bot_status').in('tg_chat_id', chatIds)
     ]);
 
-    const orgsMap = new Map(orgsResult.data?.map(o => [o.id, o]) || []);
-    const groupsMap = new Map(groupsResult.data?.map(g => [g.tg_chat_id, g]) || []);
+    const orgsMap = new Map<string, any>(orgsResult.data?.map((o: any) => [o.id, o]) || []);
+    // Normalize tg_chat_id to string for consistent Map lookups (bigint can be number or string)
+    const groupsMap = new Map<string, any>(groupsResult.data?.map((g: any) => [String(g.tg_chat_id), g]) || []);
 
     // Группируем связи по org_id
-    const orgGroupsMap = new Map<string, typeof orgGroupLinks>();
-    orgGroupLinks?.forEach(link => {
+    const orgGroupsMap = new Map<string, any[]>();
+    orgGroupLinks?.forEach((link: any) => {
       if (!orgGroupsMap.has(link.org_id)) {
         orgGroupsMap.set(link.org_id, []);
       }
@@ -68,42 +69,27 @@ export async function GET(request: NextRequest) {
         name: org?.name || 'Unknown',
         org_telegram_groups: links.map(link => ({
           tg_chat_id: link.tg_chat_id,
-          telegram_groups: groupsMap.get(link.tg_chat_id) || null
+          telegram_groups: groupsMap.get(String(link.tg_chat_id)) || null
         }))
       };
     }).filter(org => org.org_telegram_groups.length > 0);
 
     logger.info({ orgs_count: orgs.length }, 'Found organizations with Telegram groups');
 
-    const results = [];
+    const results: any[] = [];
     const telegramService = createTelegramService('main');
 
     for (const org of orgs || []) {
       logger.debug({ org_id: org.id, org_name: org.name }, 'Processing org');
       
-      // Получаем все активные группы организации (пропускаем неактивные и требующие миграции)
-      const { data: groups, error: groupsError } = await adminSupabase
-        .from('org_telegram_groups')
-        .select(`
-          tg_chat_id,
-          telegram_groups (
-            tg_chat_id,
-            title,
-            bot_status
-          )
-        `)
-        .eq('org_id', org.id);
-
-      if (groupsError) {
-        logger.error({ org_id: org.id, error: groupsError.message }, 'Error fetching groups for org');
-        continue;
-      }
+      // Получаем все активные группы организации
+      const orgLinks = org.org_telegram_groups || [];
 
       let updatedGroups = 0;
 
-      for (const groupBinding of groups || []) {
+      for (const groupBinding of orgLinks) {
         const chatId = groupBinding.tg_chat_id;
-        const groupData = groupBinding.telegram_groups as any;
+        const groupData = groupsMap.get(String(chatId));
         const groupTitle = groupData?.title || chatId;
         const botStatus = groupData?.bot_status;
 
@@ -374,9 +360,10 @@ export async function GET(request: NextRequest) {
 
       // Check each group: if no org admin has TG admin rights, mark as access_revoked
       let revokedCount = 0;
-      for (const groupBinding of groups || []) {
+      for (const groupBinding of orgLinks) {
         const chatId = groupBinding.tg_chat_id;
-        const groupBotStatus = (groupBinding.telegram_groups as any)?.bot_status;
+        const grpData = groupsMap.get(String(chatId));
+        const groupBotStatus = grpData?.bot_status;
         if (groupBotStatus === 'inactive' || groupBotStatus === 'migration_needed') continue;
         try {
           const hasAccess = await verifyOrgGroupAccess(org.id, chatId);
@@ -411,7 +398,7 @@ export async function GET(request: NextRequest) {
         org_id: org.id,
         org_name: org.name,
         updated_groups: updatedGroups,
-        total_groups: groups?.length || 0,
+        total_groups: orgLinks.length,
         revoked_groups: revokedCount,
       });
     }
