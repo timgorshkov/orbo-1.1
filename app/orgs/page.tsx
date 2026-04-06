@@ -5,6 +5,7 @@ import { createServiceLogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { LogoutButton } from '@/components/auth/logout-button'
 import { isSuperadmin } from '@/lib/server/superadminGuard'
+import { isPartner } from '@/lib/server/partnerGuard'
 import { OrgsPageTracker } from '@/components/analytics/OrgsPageTracker'
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,7 @@ export default async function OrganizationsPage() {
   const adminSupabase = createAdminServer();
 
   // ⚡ ОПТИМИЗАЦИЯ: Выполняем все начальные запросы параллельно
-  const [qualificationResult, membershipsResult, telegramAccountsResult, userIsSuperadmin] = await Promise.all([
+  const [qualificationResult, membershipsResult, telegramAccountsResult, userIsSuperadmin, userIsPartner] = await Promise.all([
     // Проверяем квалификацию
     adminSupabase
       .from('user_qualification_responses')
@@ -56,7 +57,10 @@ export default async function OrganizationsPage() {
       .eq('user_id', user.id),
     
     // Проверяем суперадмина
-    isSuperadmin()
+    isSuperadmin(),
+
+    // Проверяем партнёра
+    isPartner()
   ]);
 
   const { data: qualification } = qualificationResult;
@@ -236,7 +240,23 @@ export default async function OrganizationsPage() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         {/* Analytics tracker for empty state */}
         <OrgsPageTracker organizationsCount={0} hasAdminOrgs={false} />
-        
+
+        {userIsPartner && (
+          <div className="w-full max-w-md mb-4">
+            <Link
+              href="/partner"
+              className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 transition-all hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 font-bold">P</div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-emerald-900">Партнёрский кабинет</h3>
+                <p className="text-xs text-emerald-700">Управляйте рефералами и отслеживайте вознаграждения</p>
+              </div>
+              <span className="text-emerald-400">→</span>
+            </Link>
+          </div>
+        )}
+
         <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-lg">
           <h1 className="mb-4 text-2xl font-bold text-gray-900">
             Добро пожаловать!
@@ -326,6 +346,21 @@ export default async function OrganizationsPage() {
       />
       
       <div className="mx-auto max-w-3xl px-4">
+        {/* Партнёрский кабинет */}
+        {userIsPartner && (
+          <Link
+            href="/partner"
+            className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 transition-all hover:border-emerald-300 hover:shadow-md"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 font-bold">P</div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-emerald-900">Партнёрский кабинет</h3>
+              <p className="text-xs text-emerald-700">Управляйте рефералами и отслеживайте вознаграждения</p>
+            </div>
+            <span className="text-emerald-400">→</span>
+          </Link>
+        )}
+
         <h1 className="mb-2 text-3xl font-bold text-gray-900">
           Выберите пространство
         </h1>
@@ -442,9 +477,17 @@ export default async function OrganizationsPage() {
               {user.email}
             </p>
             <div className="flex items-center gap-4">
+              {userIsPartner && (
+                <Link
+                  href="/partner"
+                  className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  Партнёрам
+                </Link>
+              )}
               {userIsSuperadmin && (
-                <Link 
-                  href="/superadmin" 
+                <Link
+                  href="/superadmin"
                   className="text-sm text-purple-600 hover:text-purple-700 font-medium"
                 >
                   ⚙️ Суперадминка

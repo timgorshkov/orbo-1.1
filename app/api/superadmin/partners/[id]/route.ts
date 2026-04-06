@@ -13,7 +13,7 @@ export async function PATCH(
   const { id } = await params
 
   const body = await request.json()
-  const { name, contact, code, notes, is_active } = body
+  const { name, email, contact, code, notes, is_active } = body
 
   if (code && !/^[a-zA-Z0-9_-]{2,32}$/.test(code)) {
     return NextResponse.json(
@@ -24,6 +24,7 @@ export async function PATCH(
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (name !== undefined) update.name = name
+  if (email !== undefined) update.email = email || null
   if (contact !== undefined) update.contact = contact || null
   if (code !== undefined) update.code = code
   if (notes !== undefined) update.notes = notes || null

@@ -19,6 +19,7 @@ import { Plus, Download, Edit, Link2 } from 'lucide-react'
 interface Partner {
   id: string
   name: string
+  email: string | null
   contact: string | null
   code: string
   notes: string | null
@@ -47,17 +48,17 @@ export default function PartnersClient({ initialPartners }: { initialPartners: P
   const [isSaving, setIsSaving] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
-  const [form, setForm] = useState({ name: '', contact: '', code: '', notes: '' })
+  const [form, setForm] = useState({ name: '', email: '', contact: '', code: '', notes: '' })
 
   const openCreate = () => {
     setEditingPartner(null)
-    setForm({ name: '', contact: '', code: '', notes: '' })
+    setForm({ name: '', email: '', contact: '', code: '', notes: '' })
     setIsDialogOpen(true)
   }
 
   const openEdit = (p: Partner) => {
     setEditingPartner(p)
-    setForm({ name: p.name, contact: p.contact ?? '', code: p.code, notes: p.notes ?? '' })
+    setForm({ name: p.name, email: p.email ?? '', contact: p.contact ?? '', code: p.code, notes: p.notes ?? '' })
     setIsDialogOpen(true)
   }
 
@@ -138,6 +139,7 @@ export default function PartnersClient({ initialPartners }: { initialPartners: P
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Название</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Код</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Контакт</th>
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Зарегистрировалось</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Реферальная ссылка</th>
@@ -148,7 +150,7 @@ export default function PartnersClient({ initialPartners }: { initialPartners: P
             <tbody className="divide-y">
               {partners.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-sm">
                     Партнёры ещё не добавлены
                   </td>
                 </tr>
@@ -163,6 +165,9 @@ export default function PartnersClient({ initialPartners }: { initialPartners: P
                   </td>
                   <td className="px-4 py-3 text-sm font-mono">
                     <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{partner.code}</code>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {partner.email || <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {partner.contact || <span className="text-gray-400">—</span>}
@@ -254,6 +259,19 @@ export default function PartnersClient({ initialPartners }: { initialPartners: P
               <p className="text-xs text-gray-400 mt-1">
                 Латиница, цифры, дефисы, подчёркивания (2–32 символа).
                 Ссылка: <code className="bg-gray-100 px-1 rounded">{SITE_URL}/pricing?via={form.code || 'КОД'}</code>
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="p-email">Email (для доступа в кабинет)</Label>
+              <Input
+                id="p-email"
+                type="email"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="partner@example.com"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Пользователь с этим email получит доступ к партнёрскому кабинету
               </p>
             </div>
             <div>

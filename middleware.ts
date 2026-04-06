@@ -180,7 +180,7 @@ export async function middleware(request: NextRequest) {
   const isAuthenticated = hasAuthSession(request)
 
   // Если пользователь не авторизован и пытается получить доступ к защищенному маршруту
-  if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
+  if (!isAuthenticated && (pathname.startsWith('/app') || pathname.startsWith('/superadmin') || pathname.startsWith('/partner') || pathname.startsWith('/orgs') || pathname.startsWith('/welcome'))) {
     logger.debug({ pathname }, 'Unauthenticated access, redirecting to signin')
     
     // Перенаправляем на страницу входа (используем публичный URL для Docker)

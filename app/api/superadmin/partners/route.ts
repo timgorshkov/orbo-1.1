@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   await requireSuperadmin()
 
   const body = await request.json()
-  const { name, contact, code, notes } = body
+  const { name, email, contact, code, notes } = body
 
   if (!name || !code) {
     return NextResponse.json({ error: 'name and code are required' }, { status: 400 })
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   const db = createAdminServer()
   const { data, error } = await db
     .from('partners')
-    .insert({ name, contact: contact || null, code, notes: notes || null })
+    .insert({ name, email: email || null, contact: contact || null, code, notes: notes || null })
 
   if (error) {
     if (error.message?.includes('unique') || error.code === '23505') {
