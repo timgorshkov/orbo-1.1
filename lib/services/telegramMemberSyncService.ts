@@ -122,6 +122,17 @@ export async function getLatestSyncJob(orgId: string, tgChatId: number) {
   return data
 }
 
+// ── Search queries for alphabet-based participant fetching ────────────────────
+// Telegram API limits channels.GetParticipants to ~10,000 results per filter/query.
+// To fetch >10k members we iterate over single-character search prefixes:
+// each letter gets its own 10k cap, and we deduplicate by user ID.
+const SEARCH_QUERIES = [
+  '', // empty query first — covers up to 10k most recent members
+  ...'абвгдежзиклмнопрстуфхцчшщэюя'.split(''),
+  ...'abcdefghijklmnopqrstuvwxyz'.split(''),
+  ...'0123456789'.split(''),
+]
+
 // ── Core: process the sync job ────────────────────────────────────────────────
 
 async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
@@ -149,155 +160,172 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
       return markFailed('SERVICE_NOT_IN_GROUP')
     }
 
-    // Fetch participants using pagination
     const PAGE_SIZE = 200
-    let offset = 0
     let totalCount = 0
     let syncedCount = 0
     let newCount = 0
-    let hasMore = true
 
-    while (hasMore) {
-      let participants: Api.TypeUser[] = []
-      let fetchedCount = 0
+    // Set of already-seen user IDs to deduplicate across search queries
+    const seenUserIds = new Set<number>()
 
-      try {
-        // For supergroups and channels
-        const result = await client.invoke(
-          new Api.channels.GetParticipants({
-            channel: entity as Api.TypeInputChannel,
-            filter: new Api.ChannelParticipantsSearch({ q: '' }),
-            offset,
-            limit: PAGE_SIZE,
-            hash: BigInt(0),
-          })
-        ) as Api.channels.ChannelParticipants
+    // Try basic group API first if supergroup fails on first attempt
+    let isBasicGroup = false
 
-        totalCount = result.count
-        participants = result.users as Api.TypeUser[]
-        fetchedCount = result.participants.length
+    for (const searchQuery of SEARCH_QUERIES) {
+      if (isBasicGroup) break // basic groups return all at once, no need for alphabet iteration
 
-        // Update total on first page
-        if (offset === 0) {
-          await db
-            .from('telegram_member_sync_jobs')
-            .update({ total_members: totalCount })
-            .eq('id', jobId)
-        }
-      } catch (err: any) {
-        if (err.errorMessage === 'CHAT_INVALID' || err.errorMessage === 'CHANNEL_INVALID') {
-          // Try basic group API
-          try {
-            const fullChat = await client.invoke(
-              new Api.messages.GetFullChat({ chatId: Math.abs(tgChatId) })
-            ) as Api.messages.ChatFull
+      let offset = 0
+      let hasMore = true
 
-            const fullChatInfo = fullChat.fullChat as Api.ChatFull
-            const chatParticipants = (fullChatInfo as any).participants as Api.ChatParticipants
-            participants = fullChat.users as Api.TypeUser[]
-            fetchedCount = participants.length
-            totalCount = participants.length
-            hasMore = false // Basic groups return everything at once
+      while (hasMore) {
+        let participants: Api.TypeUser[] = []
+        let fetchedCount = 0
 
-            if (offset === 0) {
+        try {
+          const result = await client.invoke(
+            new Api.channels.GetParticipants({
+              channel: entity as Api.TypeInputChannel,
+              filter: new Api.ChannelParticipantsSearch({ q: searchQuery }),
+              offset,
+              limit: PAGE_SIZE,
+              hash: BigInt(0),
+            })
+          ) as Api.channels.ChannelParticipants
+
+          // Use server-reported total (same for all queries)
+          if (result.count > totalCount) {
+            totalCount = result.count
+            await db
+              .from('telegram_member_sync_jobs')
+              .update({ total_members: totalCount })
+              .eq('id', jobId)
+          }
+
+          participants = result.users as Api.TypeUser[]
+          fetchedCount = result.participants.length
+        } catch (err: any) {
+          if (err.errorMessage === 'CHAT_INVALID' || err.errorMessage === 'CHANNEL_INVALID') {
+            // Try basic group API (returns all members at once)
+            try {
+              const fullChat = await client.invoke(
+                new Api.messages.GetFullChat({ chatId: Math.abs(tgChatId) })
+              ) as Api.messages.ChatFull
+
+              participants = fullChat.users as Api.TypeUser[]
+              fetchedCount = participants.length
+              totalCount = participants.length
+              isBasicGroup = true
+              hasMore = false
+
               await db
                 .from('telegram_member_sync_jobs')
                 .update({ total_members: totalCount })
                 .eq('id', jobId)
+            } catch (innerErr: any) {
+              return markFailed(`Cannot read group members: ${innerErr.errorMessage || innerErr.message}`)
             }
-          } catch (innerErr: any) {
-            return markFailed(`Cannot read group members: ${innerErr.errorMessage || innerErr.message}`)
-          }
-        } else if (err.errorMessage?.includes('FLOOD_WAIT')) {
-          const waitSec = parseInt(err.errorMessage.replace('FLOOD_WAIT_', '')) || 30
-          logger.warn({ job_id: jobId, wait_sec: waitSec }, 'FloodWait, pausing')
-          await new Promise(r => setTimeout(r, waitSec * 1000))
-          continue
-        } else {
-          return markFailed(`MTProto error: ${err.errorMessage || err.message}`)
-        }
-      }
-
-      // Upsert each user into participants
-      for (const user of participants) {
-        if (!(user instanceof Api.User)) continue
-        const tgUserId = Number(user.id)
-        if (SYSTEM_TG_IDS.has(tgUserId)) continue
-        if (user.bot) continue // skip bots
-
-        const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${tgUserId}`
-        const username = user.username ?? null
-
-        try {
-          // Check if participant already exists
-          const { data: existing } = await db
-            .from('participants')
-            .select('id')
-            .eq('org_id', orgId)
-            .eq('tg_user_id', tgUserId)
-            .is('merged_into', null)
-            .maybeSingle()
-
-          let participantId: string
-
-          if (existing) {
-            participantId = existing.id
-            // Update name/username if changed
-            await db
-              .from('participants')
-              .update({ username, full_name: fullName, tg_first_name: user.firstName ?? null, tg_last_name: user.lastName ?? null })
-              .eq('id', participantId)
+          } else if (err.errorMessage?.includes('FLOOD_WAIT')) {
+            const waitSec = parseInt(err.errorMessage.replace('FLOOD_WAIT_', '')) || 30
+            logger.warn({ job_id: jobId, wait_sec: waitSec, query: searchQuery }, 'FloodWait, pausing')
+            await new Promise(r => setTimeout(r, waitSec * 1000))
+            continue
           } else {
-            const { data: newP } = await db
-              .from('participants')
-              .insert({
-                org_id: orgId,
-                tg_user_id: tgUserId,
-                username,
-                full_name: fullName,
-                tg_first_name: user.firstName ?? null,
-                tg_last_name: user.lastName ?? null,
-                source: 'service_account_sync',
-                participant_status: 'participant',
-              })
-              .select('id')
-              .single()
-
-            if (!newP) { syncedCount++; continue }
-            participantId = newP.id
-            newCount++
+            return markFailed(`MTProto error: ${err.errorMessage || err.message}`)
           }
-
-          // Upsert participant_groups link
-          await db
-            .from('participant_groups')
-            .upsert({
-              participant_id: participantId,
-              tg_group_id: tgChatId,
-              joined_at: new Date().toISOString(),
-            }, { onConflict: 'participant_id,tg_group_id' })
-
-          syncedCount++
-        } catch (upsertErr: any) {
-          logger.warn({ tg_user_id: tgUserId, error: upsertErr.message }, 'Failed to upsert participant')
         }
+
+        // Upsert each user into participants
+        for (const user of participants) {
+          if (!(user instanceof Api.User)) continue
+          const tgUserId = Number(user.id)
+          if (SYSTEM_TG_IDS.has(tgUserId)) continue
+          if (user.bot) continue
+          if (seenUserIds.has(tgUserId)) continue // deduplicate across queries
+
+          seenUserIds.add(tgUserId)
+
+          const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || `User ${tgUserId}`
+          const username = user.username ?? null
+
+          try {
+            const { data: existing } = await db
+              .from('participants')
+              .select('id')
+              .eq('org_id', orgId)
+              .eq('tg_user_id', tgUserId)
+              .is('merged_into', null)
+              .maybeSingle()
+
+            let participantId: string
+
+            if (existing) {
+              participantId = existing.id
+              await db
+                .from('participants')
+                .update({ username, full_name: fullName, tg_first_name: user.firstName ?? null, tg_last_name: user.lastName ?? null })
+                .eq('id', participantId)
+            } else {
+              const { data: newP } = await db
+                .from('participants')
+                .insert({
+                  org_id: orgId,
+                  tg_user_id: tgUserId,
+                  username,
+                  full_name: fullName,
+                  tg_first_name: user.firstName ?? null,
+                  tg_last_name: user.lastName ?? null,
+                  source: 'service_account_sync',
+                  participant_status: 'participant',
+                })
+                .select('id')
+                .single()
+
+              if (!newP) { syncedCount++; continue }
+              participantId = newP.id
+              newCount++
+            }
+
+            await db
+              .from('participant_groups')
+              .upsert({
+                participant_id: participantId,
+                tg_group_id: tgChatId,
+                joined_at: new Date().toISOString(),
+              }, { onConflict: 'participant_id,tg_group_id' })
+
+            syncedCount++
+          } catch (upsertErr: any) {
+            logger.warn({ tg_user_id: tgUserId, error: upsertErr.message }, 'Failed to upsert participant')
+          }
+        }
+
+        // Update progress
+        await db
+          .from('telegram_member_sync_jobs')
+          .update({ synced_members: syncedCount, new_members: newCount })
+          .eq('id', jobId)
+
+        offset += fetchedCount
+
+        if (fetchedCount < PAGE_SIZE || !hasMore) {
+          hasMore = false
+        }
+
+        // Small pause between pages to avoid flood
+        if (hasMore) await new Promise(r => setTimeout(r, 500))
       }
 
-      // Update progress
-      await db
-        .from('telegram_member_sync_jobs')
-        .update({ synced_members: syncedCount, new_members: newCount })
-        .eq('id', jobId)
-
-      offset += fetchedCount
-
-      if (fetchedCount < PAGE_SIZE || !hasMore) {
-        hasMore = false
-      }
-
-      // Small pause between pages to avoid flood
-      if (hasMore) await new Promise(r => setTimeout(r, 500))
+      // Small pause between search queries
+      if (!isBasicGroup) await new Promise(r => setTimeout(r, 300))
     }
+
+    logger.info({
+      job_id: jobId,
+      synced: syncedCount,
+      new_members: newCount,
+      total_unique_fetched: seenUserIds.size,
+      total_reported: totalCount
+    }, 'Sync job completed')
 
     await db
       .from('telegram_member_sync_jobs')
@@ -309,8 +337,6 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
         completed_at: new Date().toISOString(),
       })
       .eq('id', jobId)
-
-    logger.info({ job_id: jobId, synced: syncedCount, new_members: newCount }, 'Sync job completed')
   } catch (err: any) {
     markFailed(err.message || 'Unknown error')
   }
