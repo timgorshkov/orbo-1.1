@@ -137,6 +137,32 @@ export async function POST(request: NextRequest) {
         .eq('id', userId)
     }
 
+    // --- Save registration meta (server-side, since MiniApp bypasses web capture) ---
+    const userAgent = request.headers.get('user-agent') || null
+    const screenWidth = (() => {
+      // Telegram WebView user-agents don't carry screen info, but we can detect mobile
+      if (!userAgent) return null
+      const isMobile = /mobile|android|iphone/i.test(userAgent)
+      return isMobile ? 375 : null
+    })()
+    const deviceType = userAgent
+      ? (/mobile|android|iphone/i.test(userAgent) ? 'mobile' : 'desktop')
+      : null
+
+    await supabaseAdmin
+      .from('user_registration_meta')
+      .upsert({
+        user_id: userId,
+        utm_source: 'telegram_miniapp',
+        utm_medium: 'bot',
+        utm_campaign: campaignRef || null,
+        landing_page: 'telegram_miniapp',
+        device_type: deviceType,
+        user_agent: userAgent,
+        screen_width: screenWidth,
+        partner_code: campaignRef || null,
+      }, { onConflict: 'user_id' })
+
     // --- Send email verification ---
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours

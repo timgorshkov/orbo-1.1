@@ -475,7 +475,26 @@ export function WelcomeContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(meta),
       }).then(() => clearRegistrationMeta()).catch(() => {});
+    } else if (isNewUser && !isTelegramRegistration) {
+      // Fallback: no client-side meta captured (e.g. direct navigation, blocked cookies).
+      // Send at least the current page context so the registration isn't completely blank.
+      const fallbackMeta: Record<string, string | number | undefined> = {
+        landing_page: window.location.pathname,
+        device_type: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+        user_agent: navigator.userAgent,
+        screen_width: window.innerWidth,
+      };
+      // Pick up referrer if available
+      if (document.referrer) {
+        fallbackMeta.referrer_url = document.referrer;
+      }
+      fetch('/api/user/registration-meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fallbackMeta),
+      }).catch(() => {});
     }
+    // Telegram MiniApp registrations already have server-side meta — no fallback needed.
   }, []);
 
   // Если квалификация уже пройдена, но нет активных организаций —
