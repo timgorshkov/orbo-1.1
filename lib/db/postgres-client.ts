@@ -657,7 +657,7 @@ class PostgresQueryBuilder<T = any> implements QueryBuilder<T> {
           .join(', ');
         
         sql = `INSERT INTO "${this.tableName}" (${columnNames}) VALUES ${valueStrings}`;
-        if (this.upsertOptions.ignoreDuplicates) {
+        if (this.upsertOptions.ignoreDuplicates || !updateSet) {
           sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO NOTHING`;
         } else {
           sql += ` ON CONFLICT (${conflictColumnsFormatted}) DO UPDATE SET ${updateSet}`;

@@ -360,14 +360,26 @@ export const authConfig: NextAuthConfig = {
   // Явная настройка cookies для production
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === 'production' 
-        ? '__Secure-authjs.session-token' 
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-authjs.session-token'
         : 'authjs.session-token',
       options: {
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
+      },
+    },
+    pkceCodeVerifier: {
+      name: process.env.NODE_ENV === 'production'
+        ? '__Secure-authjs.pkce.code_verifier'
+        : 'authjs.pkce.code_verifier',
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 900, // 15 минут — достаточно для завершения OAuth флоу
       },
     },
   },
