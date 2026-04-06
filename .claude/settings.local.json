@@ -81,7 +81,8 @@
       "Bash(npm uninstall:*)",
       "Bash(python3 -c ':*)",
       "Bash(node -e \"const pkg = require\\('./package.json'\\); console.log\\('next:', pkg.dependencies?.next || pkg.devDependencies?.next\\); console.log\\('eslint-config-next:', pkg.dependencies?.['eslint-config-next'] || pkg.devDependencies?.['eslint-config-next']\\);\")",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(find ./app/app/[org]/events -name \"*.tsx\")"
     ]
   }
 }

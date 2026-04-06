@@ -773,6 +773,31 @@ export async function confirmPayment(
     })
     .eq('id', data.membership_id)
 
+  // Record in org account ledger
+  if (data.org_id && data.amount && parseFloat(data.amount) > 0) {
+    try {
+      const { recordMembershipPayment } = await import('@/lib/services/orgAccountService')
+
+      // Get participant_id from membership
+      const { data: membership } = await supabase
+        .from('participant_memberships')
+        .select('participant_id')
+        .eq('id', data.membership_id)
+        .single()
+
+      await recordMembershipPayment({
+        orgId: data.org_id,
+        membershipPaymentId: paymentId,
+        participantId: membership?.participant_id || undefined,
+        amount: parseFloat(data.amount),
+        confirmedBy,
+      })
+    } catch (ledgerError: any) {
+      // Don't fail the whole confirmation if ledger recording fails
+      logger.error({ payment_id: paymentId, error: ledgerError.message }, 'Failed to record membership payment in ledger')
+    }
+  }
+
   return true
 }
 

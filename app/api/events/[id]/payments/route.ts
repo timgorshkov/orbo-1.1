@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { createAPILogger } from '@/lib/logger';
+import { recordEventPayment } from '@/lib/services/orgAccountService';
 
 export const dynamic = 'force-dynamic';
 
@@ -206,17 +207,40 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Update registration
-    const { error: updateError } = await supabase
+    const { data: updatedReg, error: updateError } = await supabase
       .from('event_registrations')
       .update(updateData)
-      .eq('id', registration_id);
+      .eq('id', registration_id)
+      .select('id, participant_id, price, paid_amount, payment_status, payment_method')
+      .single();
 
     if (updateError) {
       logger.error({ error: updateError.message, registration_id }, 'Failed to update payment');
       return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 });
     }
 
-    logger.info({ 
+    // Record in org account ledger when payment is confirmed as paid
+    if (payment_status === 'paid' && updatedReg && orgId) {
+      const paymentAmount = updatedReg.paid_amount || updatedReg.price;
+      if (paymentAmount && paymentAmount > 0) {
+        try {
+          await recordEventPayment({
+            orgId,
+            eventId,
+            eventRegistrationId: registration_id,
+            participantId: updatedReg.participant_id,
+            amount: parseFloat(paymentAmount),
+            paymentGateway: updatedReg.payment_method || 'manual',
+            confirmedBy: user.id,
+          });
+        } catch (ledgerError: any) {
+          // Don't fail the whole request if ledger recording fails
+          logger.error({ error: ledgerError.message, registration_id }, 'Failed to record event payment in ledger');
+        }
+      }
+    }
+
+    logger.info({
       registration_id,
       event_id: eventId,
       updated_fields: Object.keys(updateData)
