@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser, type ParsedJsonAuthor } from '@/lib/services/telegramJsonParser';
 import { logErrorToDatabase } from '@/lib/logErrorToDatabase';
 import { createAPILogger } from '@/lib/logger';
@@ -209,9 +208,16 @@ export async function POST(
 
     // Определяем формат файла
     const isJson = file.name.endsWith('.json') || file.type === 'application/json';
-    const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
-    
-    if (!isJson && !isHtml) {
+    const isHtml = file.name.endsWith('.html') || file.name.endsWith('.htm') || file.type === 'text/html';
+
+    if (isHtml) {
+      return NextResponse.json({
+        error: 'HTML format not supported',
+        message: 'Формат HTML не поддерживается. HTML-экспорт не содержит Telegram ID участников, из-за чего сообщения невозможно привязать к профилям. Пожалуйста, экспортируйте историю в формате JSON из Telegram Desktop (⋮ → Export chat history → Format: Машиночитаемый JSON).',
+      }, { status: 400 });
+    }
+
+    if (!isJson) {
       await logErrorToDatabase({
         level: 'warn',
         message: `Invalid file type for Telegram import: ${file.type}`,
@@ -226,27 +232,46 @@ export async function POST(
       })
       return NextResponse.json({
         error: 'Invalid file type',
-        message: 'Пожалуйста, загрузите JSON или HTML файл экспорта Telegram',
-        hint: 'Рекомендуется JSON формат - он содержит Telegram User ID для точного сопоставления участников'
+        message: 'Неподдерживаемый формат файла. Пожалуйста, загрузите JSON файл экспорта из Telegram Desktop.',
       }, { status: 400 });
     }
 
     // Читаем содержимое файла
     const fileContent = await file.text();
 
-    logger.info({ 
+    // Валидация содержимого: проверяем, что это действительно JSON, а не переименованный HTML
+    const trimmedContent = fileContent.trimStart();
+    if (trimmedContent.startsWith('<!') || trimmedContent.startsWith('<html') || trimmedContent.startsWith('<HTML')) {
+      return NextResponse.json({
+        error: 'HTML content detected',
+        message: 'Файл содержит HTML, а не JSON. Формат HTML не поддерживается — он не содержит Telegram ID участников. Пожалуйста, экспортируйте историю заново в формате JSON из Telegram Desktop (⋮ → Export chat history → Format: Машиночитаемый JSON).',
+      }, { status: 400 });
+    }
+
+    // Проверяем, что содержимое является валидным JSON
+    let parsedJson: any;
+    try {
+      parsedJson = JSON.parse(fileContent);
+    } catch {
+      return NextResponse.json({
+        error: 'Invalid JSON',
+        message: 'Файл повреждён или не является корректным JSON. Убедитесь, что вы загружаете файл result.json из экспорта Telegram Desktop.',
+      }, { status: 400 });
+    }
+
+    logger.info({
       file_name: file.name,
       file_size: file.size,
-      format: isJson ? 'JSON' : 'HTML',
+      format: 'JSON',
       group_id: groupId,
       org_id: orgId
     }, 'Parsing Telegram history');
 
     let parsingResult: any;
     let authors: Array<{ name: string; userId?: number; username?: string; messageCount: number; firstMessageDate: Date; lastMessageDate: Date }>;
-    
-    if (isJson) {
-      // ⭐ Parse JSON (preferred format with user_id)
+
+    {
+      // ⭐ Parse JSON (with user_id for exact participant matching)
       const validation = TelegramJsonParser.validate(fileContent);
       if (!validation.valid) {
         return NextResponse.json({
@@ -322,32 +347,11 @@ export async function POST(
         }, 'Chat name matches but ID differs');
       }
       
-      logger.info({ 
+      logger.info({
         total_messages: parsingResult.stats.totalMessages,
         unique_authors: parsingResult.stats.uniqueAuthors,
         format: 'JSON'
       }, 'Parsed Telegram history (JSON format with user IDs)');
-    } else {
-      // Parse HTML (legacy format without user_id)
-      const validation = TelegramHistoryParser.validate(fileContent);
-      if (!validation.valid) {
-        return NextResponse.json({
-          error: 'Invalid Telegram HTML export',
-          message: validation.error,
-          hint: 'Попробуйте использовать JSON формат для лучшего сопоставления участников'
-        }, { status: 400 });
-      }
-
-      parsingResult = TelegramHistoryParser.parse(fileContent);
-      authors = Array.from(parsingResult.authors.values());
-      
-      // ⚠️ HTML format doesn't include chat_id, so we can't validate it matches the group
-      // This is less secure than JSON format, but allowed for backward compatibility
-      logger.warn({ 
-        total_messages: parsingResult.stats.totalMessages,
-        unique_authors: parsingResult.stats.uniqueAuthors,
-        format: 'HTML'
-      }, 'Parsed Telegram history (HTML format - no user IDs, no chat_id validation)');
     }
 
     // Получаем существующих участников организации (не только этой группы!)
@@ -415,10 +419,9 @@ export async function POST(
         author,
         existingParticipants || [],
         messageCountMap,
-        isJson // ⭐ Pass format flag to enable user_id matching
+        true // JSON format always has user_id for matching
       );
-      // ⭐ Добавляем userId для JSON формата
-      if (isJson && author.userId) {
+      if (author.userId) {
         match.importUserId = author.userId;
       }
       matches.push(match);

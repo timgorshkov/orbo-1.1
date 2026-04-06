@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { TelegramHistoryParser } from '@/lib/services/telegramHistoryParser';
 import { TelegramJsonParser } from '@/lib/services/telegramJsonParser';
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction';
 import { createAPILogger } from '@/lib/logger';
@@ -180,46 +179,55 @@ export async function POST(
     }
 
     const isJson = file.name.endsWith('.json') || file.type === 'application/json';
-    const isHtml = file.name.endsWith('.html') || file.type === 'text/html';
-    
-    if (!isJson && !isHtml) {
+    const isHtml = file.name.endsWith('.html') || file.name.endsWith('.htm') || file.type === 'text/html';
+
+    if (isHtml) {
+      return NextResponse.json({
+        error: 'HTML format not supported',
+        message: 'Формат HTML не поддерживается. Пожалуйста, экспортируйте историю в формате JSON из Telegram Desktop.',
+      }, { status: 400 });
+    }
+
+    if (!isJson) {
       return NextResponse.json({
         error: 'Invalid file type',
-        message: 'Пожалуйста, загрузите JSON или HTML файл экспорта Telegram'
+        message: 'Неподдерживаемый формат файла. Пожалуйста, загрузите JSON файл экспорта из Telegram Desktop.',
       }, { status: 400 });
     }
 
     const fileContent = await file.text();
-    let parsingResult: any;
-    let authors: Map<string, any>;
-    
-    if (isJson) {
-      const validation = TelegramJsonParser.validate(fileContent);
-      if (!validation.valid) {
-        return NextResponse.json({ error: validation.error }, { status: 400 });
-      }
-      parsingResult = TelegramJsonParser.parse(fileContent);
-      authors = parsingResult.authors;
-      logger.info({ 
-        format: 'json',
-        total_messages: parsingResult.stats.totalMessages,
-        decisions_count: decisions.length,
-        group_id: groupId
-      }, 'Importing from JSON');
-    } else {
-      const validation = TelegramHistoryParser.validate(fileContent);
-      if (!validation.valid) {
-        return NextResponse.json({ error: validation.error }, { status: 400 });
-      }
-      parsingResult = TelegramHistoryParser.parse(fileContent);
-      authors = parsingResult.authors;
-      logger.info({ 
-        format: 'html',
-        total_messages: parsingResult.stats.totalMessages,
-        decisions_count: decisions.length,
-        group_id: groupId
-      }, 'Importing from HTML');
+
+    // Валидация содержимого
+    const trimmedContent = fileContent.trimStart();
+    if (trimmedContent.startsWith('<!') || trimmedContent.startsWith('<html') || trimmedContent.startsWith('<HTML')) {
+      return NextResponse.json({
+        error: 'HTML content detected',
+        message: 'Файл содержит HTML, а не JSON. Пожалуйста, экспортируйте историю в формате JSON из Telegram Desktop.',
+      }, { status: 400 });
     }
+
+    try {
+      JSON.parse(fileContent);
+    } catch {
+      return NextResponse.json({
+        error: 'Invalid JSON',
+        message: 'Файл повреждён или не является корректным JSON.',
+      }, { status: 400 });
+    }
+
+    const validation = TelegramJsonParser.validate(fileContent);
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+
+    const parsingResult = TelegramJsonParser.parse(fileContent);
+    const authors = parsingResult.authors;
+    logger.info({
+      format: 'json',
+      total_messages: parsingResult.stats.totalMessages,
+      decisions_count: decisions.length,
+      group_id: groupId
+    }, 'Importing from JSON');
 
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('telegram_import_batches')
@@ -373,7 +381,7 @@ export async function POST(
 
         const result = await processBatch(
           supabaseAdmin, messageBatch, participantMap,
-          orgId!, group.tg_chat_id, batchId, isJson,
+          orgId!, group.tg_chat_id, batchId,
           existingMessageIdSet, logger
         );
 
@@ -432,7 +440,7 @@ export async function POST(
           filename: file.name,
           imported_messages: importedCount,
           new_participants: newParticipantsCount,
-          format: isJson ? 'json' : 'html'
+          format: 'json'
         }
       });
 
@@ -496,7 +504,6 @@ async function processBatch(
   orgId: string,
   tgChatId: number,
   batchId: string,
-  isJson: boolean,
   existingMessageIdSet: Set<number>,
   logger: ReturnType<typeof createAPILogger>
 ): Promise<{
@@ -555,7 +562,7 @@ async function processBatch(
         reply_to_message_id: (msg as any).replyToMessageId || null,
         has_media: false,
         created_at: createdAt,
-        import_source: 'html_import',
+        import_source: 'json_import',
         import_batch_id: batchId,
         meta: {
           user: { name: sanitizeForJson(msg.authorName), username: sanitizeForJson(msg.authorUsername), tg_user_id: tgUserId },
@@ -563,7 +570,7 @@ async function processBatch(
             id: messageId, thread_id: null, reply_to_id: (msg as any).replyToMessageId || null,
             text_preview: textPreview, text_length: msg.text?.length || 0, has_media: false, media_type: null
           },
-          source: { type: 'import', format: isJson ? 'json' : 'html', batch_id: batchId }
+          source: { type: 'import', format: 'json', batch_id: batchId }
         }
       },
       fullText: msg.text ? sanitizeForJson(msg.text) : null,

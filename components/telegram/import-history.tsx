@@ -139,14 +139,18 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
       if (rejection?.errors?.some(e => e.code === 'file-too-large')) {
         setError(`Файл слишком большой (${(rejection.file.size / 1024 / 1024).toFixed(0)}MB). Максимальный размер — 150MB.`);
       } else if (rejection?.errors?.some(e => e.code === 'file-invalid-type')) {
-        setError('Неподдерживаемый формат файла. Принимаются .json и .html файлы экспорта из Telegram.');
+        const fileName = rejection?.file?.name || '';
+        if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
+          setError('Формат HTML не поддерживается. Пожалуйста, экспортируйте историю в формате JSON из Telegram Desktop (⋮ → Export chat history → Format: JSON).');
+        } else {
+          setError('Неподдерживаемый формат файла. Принимается только .json файл экспорта из Telegram Desktop.');
+        }
       } else {
         setError('Не удалось загрузить файл. Проверьте формат и размер.');
       }
     },
     accept: {
       'application/json': ['.json'],
-      'text/html': ['.html'],
     },
     maxSize: 150 * 1024 * 1024, // 150MB for large group histories
     multiple: false,
@@ -280,18 +284,12 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Alert className="bg-green-50 border-green-200">
-                <AlertDescription className="text-sm text-green-800">
-                  ✅ <strong>Рекомендуем JSON формат:</strong> содержит ID участников для точной идентификации!
-                </AlertDescription>
-              </Alert>
-
               <div>
-                <h3 className="font-semibold mb-2 text-green-700">📱 JSON (рекомендуется)</h3>
+                <h3 className="font-semibold mb-2">📱 Экспорт из Telegram Desktop</h3>
                 <ol className="list-decimal list-inside space-y-2 text-sm ml-4">
                   <li>Откройте группу в <strong>Telegram Desktop</strong></li>
                   <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
-                  <li>Выберите формат: <strong>JSON</strong> ✨</li>
+                  <li>Выберите формат: <strong>Машиночитаемый JSON</strong></li>
                   <li className="text-amber-600 font-medium">
                     ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
                   </li>
@@ -300,18 +298,9 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                 </ol>
               </div>
 
-              <div className="pt-2 border-t">
-                <h3 className="font-semibold mb-2 text-neutral-600">📄 HTML (запасной вариант)</h3>
-                <p className="text-sm text-neutral-600 ml-4">
-                  Если JSON недоступен, можно использовать HTML формат. 
-                  Выполните те же шаги, но выберите <strong>HTML</strong> вместо JSON.
-                  Загрузите файл <code className="bg-neutral-100 px-2 py-1 rounded">messages.html</code>.
-                </p>
-              </div>
-              
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertDescription className="text-sm text-blue-800">
-                  💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB. 
+                  💡 <strong>Совет:</strong> Telegram автоматически разбивает большие экспорты на файлы &lt; 1MB.
                   Если получилось несколько файлов, загружайте их по одному. Система автоматически пропустит дубликаты.
                 </AlertDescription>
               </Alert>
@@ -333,7 +322,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                 <ol className="list-decimal list-inside space-y-1.5 text-sm ml-4">
                   <li>Откройте группу в <strong>Telegram Desktop</strong></li>
                   <li>Нажмите <strong>⋮</strong> (три точки) → <strong>Export chat history</strong></li>
-                  <li>Выберите формат: <strong>JSON</strong></li>
+                  <li>Выберите формат: <strong>Машиночитаемый JSON</strong></li>
                   <li className="text-amber-600 font-medium">
                     ⚠️ Снимите галочки с медиа (фото, видео, файлы). Достаточно только текстовых сообщений!
                   </li>
@@ -352,7 +341,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
           <CardHeader>
             <CardTitle>Загрузить файл истории</CardTitle>
             <CardDescription>
-              Макс. размер: 150MB{simplified ? '.' : '. Поддерживаются JSON и HTML файлы экспорта из Telegram.'}
+              Макс. размер: 150MB. Принимается JSON файл экспорта из Telegram Desktop.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -382,7 +371,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                       Перетащите файл экспорта сюда или нажмите для выбора
                     </p>
                     <p className="text-sm text-neutral-500">
-                      Принимаются файлы формата .json (рекомендуется) или .html размером до 150MB
+                      Принимаются файлы формата .json размером до 150MB
                     </p>
                   </>
                 )}
