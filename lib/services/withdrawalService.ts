@@ -568,15 +568,17 @@ export async function generateWithdrawalAct(withdrawalId: string): Promise<strin
   const html = buildActHtml(withdrawal)
 
   // Upload to S3
-  const { createStorage } = await import('@/lib/storage')
+  const { createStorage, getBucket, getStoragePath } = await import('@/lib/storage')
   const storage = createStorage()
-  const filePath = `withdrawals/${withdrawal.org_id}/${withdrawal.act_number.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
+  const localPath = `withdrawals/${withdrawal.org_id}/${withdrawal.act_number.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
+  const bucket = getBucket('documents')
+  const storagePath = getStoragePath('documents', localPath)
 
-  await storage.upload('documents', filePath, Buffer.from(html, 'utf-8'), {
+  await storage.upload(bucket, storagePath, Buffer.from(html, 'utf-8'), {
     contentType: 'text/html; charset=utf-8',
   })
 
-  const url = storage.getPublicUrl('documents', filePath)
+  const url = storage.getPublicUrl(bucket, storagePath)
 
   // Save URL
   await db

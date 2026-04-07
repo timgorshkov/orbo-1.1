@@ -166,10 +166,8 @@ function VerificationBlock({ contractId, invoiceUrl: initialUrl }: { contractId:
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Auto-generate invoice if not yet generated
+  // Auto-generate invoice on first render
   useEffect(() => {
-    if (invoiceUrl) return
-
     setGenerating(true)
     fetch(`/api/contracts/${contractId}`, {
       method: 'POST',

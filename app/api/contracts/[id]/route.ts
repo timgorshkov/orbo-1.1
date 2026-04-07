@@ -57,11 +57,6 @@ export async function POST(
     const body = await request.json()
 
     if (body.action === 'generate-invoice') {
-      // If invoice already exists, return it
-      if (contract.invoice_url) {
-        return NextResponse.json({ url: contract.invoice_url })
-      }
-
       const url = await generateVerificationInvoice(id)
       return NextResponse.json({ url })
     }

@@ -525,15 +525,17 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
 </html>`
 
   // Upload to S3
-  const { createStorage } = await import('@/lib/storage')
+  const { createStorage, getBucket, getStoragePath } = await import('@/lib/storage')
   const storage = createStorage()
-  const filePath = `invoices/${contract.org_id}/invoice_${invoiceNumber.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
+  const localPath = `invoices/${contract.org_id}/invoice_${invoiceNumber.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
+  const bucket = getBucket('documents')
+  const storagePath = getStoragePath('documents', localPath)
 
-  await storage.upload('documents', filePath, Buffer.from(html, 'utf-8'), {
+  await storage.upload(bucket, storagePath, Buffer.from(html, 'utf-8'), {
     contentType: 'text/html; charset=utf-8',
   })
 
-  const url = storage.getPublicUrl('documents', filePath)
+  const url = storage.getPublicUrl(bucket, storagePath)
 
   // Save invoice URL to contract metadata (we'll store in the contracts table)
   const db = createAdminServer()
