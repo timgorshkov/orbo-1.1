@@ -1,6 +1,7 @@
 'use client'
 
-import { Crown, Check, ExternalLink, CreditCard } from 'lucide-react'
+import { useState } from 'react'
+import { Crown, Check, ExternalLink, CreditCard, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -38,9 +39,39 @@ interface Org {
 interface MembershipLandingContentProps {
   org: Org
   plans: Plan[]
+  /** If true, org has active Orbo contract — use /p/[org]/pay flow */
+  hasOrboPayments?: boolean
 }
 
-export function MembershipLandingContent({ org, plans }: MembershipLandingContentProps) {
+export function MembershipLandingContent({ org, plans, hasOrboPayments = false }: MembershipLandingContentProps) {
+  const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleOrboSubscribe = async (plan: Plan) => {
+    setSubscribingPlanId(plan.id)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/memberships/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId: plan.id, orgId: org.id }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Не удалось оформить подписку')
+      }
+
+      // Redirect to payment page
+      window.location.href = `/p/${org.id}/pay?type=membership&paymentId=${data.paymentId}&returnPath=/p/${org.id}/membership/join`
+    } catch (e: any) {
+      setError(e.message)
+      setSubscribingPlanId(null)
+    }
+  }
+
   if (plans.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center px-4">
@@ -68,6 +99,12 @@ export function MembershipLandingContent({ org, plans }: MembershipLandingConten
           {org.description && <p className="text-gray-600 max-w-md mx-auto">{org.description}</p>}
           <p className="text-emerald-700 font-medium mt-3">Станьте участником клуба</p>
         </div>
+
+        {error && (
+          <div className="max-w-md mx-auto mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 text-center">
+            {error}
+          </div>
+        )}
 
         {/* Plans */}
         <div className={`grid gap-6 ${plans.length === 1 ? 'max-w-md mx-auto' : plans.length === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
@@ -120,7 +157,26 @@ export function MembershipLandingContent({ org, plans }: MembershipLandingConten
                   </div>
                 </div>
 
-                {plan.payment_link ? (
+                {/* Payment button: Orbo payments > external link > disabled */}
+                {hasOrboPayments && plan.price ? (
+                  <button
+                    onClick={() => handleOrboSubscribe(plan)}
+                    disabled={subscribingPlanId === plan.id}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition disabled:opacity-50"
+                  >
+                    {subscribingPlanId === plan.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Переход к оплате...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Оплатить
+                      </>
+                    )}
+                  </button>
+                ) : plan.payment_link ? (
                   <a
                     href={plan.payment_link}
                     target="_blank"

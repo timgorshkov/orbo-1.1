@@ -24,10 +24,18 @@ export default async function MembershipJoinPage({ params }: { params: Promise<{
     .eq('is_public', true)
     .order('sort_order', { ascending: true })
 
+  // Check if org has active Orbo payments (verified/signed contract)
+  const { data: contracts } = await supabase.raw(
+    `SELECT id FROM contracts WHERE org_id = $1 AND status IN ('verified', 'signed') LIMIT 1`,
+    [orgId]
+  )
+  const hasOrboPayments = contracts && contracts.length > 0
+
   return (
     <MembershipLandingContent
       org={org}
       plans={plans || []}
+      hasOrboPayments={hasOrboPayments}
     />
   )
 }

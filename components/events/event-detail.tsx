@@ -167,6 +167,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
       })
   }, [event.id, isRegistered])
 
+  // Check if org has active Orbo payments (contract verified/signed)
+  const [hasOrboPayments, setHasOrboPayments] = useState(false)
+  useEffect(() => {
+    if (!event.requires_payment) return
+    fetch(`/api/contracts?orgId=${orgId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.contract && (data.contract.status === 'verified' || data.contract.status === 'signed')) {
+          setHasOrboPayments(true)
+        }
+      })
+      .catch(() => {})
+  }, [orgId, event.requires_payment])
+
   // Load participant profile for pre-filling registration form
   useEffect(() => {
     if (!showRegistrationForm) return
@@ -1638,12 +1652,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
       <EventRegistrationForm
         eventId={event.id}
         eventTitle={event.title}
+        orgId={orgId}
         requiresPayment={event.requires_payment || false}
         defaultPrice={event.default_price}
         currency={event.currency || 'RUB'}
         allowMultipleTickets={event.allow_multiple_tickets || false}
         paymentLink={event.payment_link}
         paymentInstructions={event.payment_instructions}
+        hasOrboPayments={hasOrboPayments}
         open={showRegistrationForm}
         onOpenChange={setShowRegistrationForm}
         onSuccess={handleRegistrationSuccess}

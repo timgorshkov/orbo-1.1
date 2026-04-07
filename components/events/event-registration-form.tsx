@@ -41,12 +41,15 @@ interface ParticipantProfile {
 interface EventRegistrationFormProps {
   eventId: string
   eventTitle: string
+  orgId: string
   requiresPayment?: boolean
   defaultPrice?: number | null
   currency?: string
   allowMultipleTickets?: boolean
   paymentLink?: string | null
   paymentInstructions?: string | null
+  /** If true, org has active Orbo contract — redirect to /p/[org]/pay */
+  hasOrboPayments?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
@@ -56,12 +59,14 @@ interface EventRegistrationFormProps {
 export default function EventRegistrationForm({
   eventId,
   eventTitle,
+  orgId,
   requiresPayment = false,
   defaultPrice,
   currency = 'RUB',
   allowMultipleTickets = false,
   paymentLink,
   paymentInstructions,
+  hasOrboPayments = false,
   open,
   onOpenChange,
   onSuccess,
@@ -183,7 +188,13 @@ export default function EventRegistrationForm({
       return
     }
 
-    // If paid event - go to step 2
+    // If paid event with Orbo payments — submit and redirect to pay page
+    if (requiresPayment && hasOrboPayments) {
+      submitRegistration()
+      return
+    }
+
+    // If paid event with external payment — go to step 2
     if (requiresPayment) {
       setStep(2)
       return
@@ -213,6 +224,12 @@ export default function EventRegistrationForm({
 
         if (!response.ok) {
           throw new Error(data.error || 'Не удалось зарегистрироваться')
+        }
+
+        // If Orbo payments active and event is paid — redirect to payment page
+        if (requiresPayment && hasOrboPayments && data.registration?.id) {
+          window.location.href = `/p/${orgId}/pay?type=event&registrationId=${data.registration.id}`
+          return
         }
 
         // Success!
@@ -456,7 +473,7 @@ export default function EventRegistrationForm({
                   disabled={isPending || (consentSettings?.collect_pd_consent && !pdConsentChecked)}
                   className="flex-1"
                 >
-                  {requiresPayment ? 'Далее →' : (isPending ? 'Регистрация...' : 'Зарегистрироваться')}
+                  {isPending ? 'Регистрация...' : requiresPayment && hasOrboPayments ? 'Зарегистрироваться и оплатить' : requiresPayment ? 'Далее →' : 'Зарегистрироваться'}
                 </Button>
               </div>
             </form>

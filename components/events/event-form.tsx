@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import TelegramRichEditor from '@/components/ui/telegram-rich-editor'
 import CoverImageUpload from './cover-image-upload'
-import { ExternalLink, X, RefreshCw } from 'lucide-react'
+import { ExternalLink, X, RefreshCw, FileText, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, CreditCard } from 'lucide-react'
 
 const PRODAMUS_REF_URL = 'https://connect.prodamus.ru/?ref=ORBOPARTNERS&c=Rw6'
 const PRODAMUS_DISMISSED_KEY = 'prodamus_banner_dismissed'
+
+type ContractStatus = 'filled_by_client' | 'verified' | 'signed' | 'terminated' | null
 
 // Field status for registration form configuration
 type FieldStatus = 'disabled' | 'optional' | 'required'
@@ -172,6 +174,33 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
       }, 50)
     }
   }
+
+  // Contract status for payment method selection
+  const [contractStatus, setContractStatus] = useState<ContractStatus>(null)
+  const [contractLoading, setContractLoading] = useState(true)
+  const [paymentLinkFallbackOpen, setPaymentLinkFallbackOpen] = useState(
+    !!(initialEvent?.payment_link) // Auto-open if event already has a payment link
+  )
+
+  useEffect(() => {
+    const loadContract = async () => {
+      try {
+        const res = await fetch(`/api/contracts?orgId=${orgId}`)
+        const data = await res.json()
+        if (data.contract) {
+          setContractStatus(data.contract.status)
+        }
+      } catch {
+        // ignore
+      } finally {
+        setContractLoading(false)
+      }
+    }
+    loadContract()
+  }, [orgId])
+
+  const hasActiveContract = contractStatus === 'verified' || contractStatus === 'signed'
+  const hasPendingContract = contractStatus === 'filled_by_client'
 
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
@@ -825,76 +854,120 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                     </p>
                   </div>
 
-                  {/* Prodamus promo banner — shown while no payment link is set */}
-                  {!prodamusDismissed && !paymentLink && (
-                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <p className="text-sm font-medium text-indigo-900">
-                          💳 Как принимать оплату по картам?
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => dismissProdamusBanner()}
-                          className="text-indigo-400 hover:text-indigo-600 shrink-0 mt-0.5"
-                          aria-label="Закрыть"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                  {/* Payment method: contract-based or fallback link */}
+                  {contractLoading ? (
+                    <p className="text-sm text-gray-500">Загрузка способа оплаты...</p>
+                  ) : hasActiveContract ? (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                      <div className="flex items-center gap-2 text-green-700 mb-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <p className="text-sm font-medium">Оплата через Orbo подключена</p>
                       </div>
-                      <p className="text-sm text-indigo-800 mb-3">
-                        Prodamus подходит для <strong>ИП, ООО и самозанятых</strong>.
-                        Комиссия 2,9–3,8% — заполните короткую анкету и узнайте персональные условия.
+                      <p className="text-xs text-gray-600">
+                        Участники смогут оплатить онлайн. Средства будут выведены на ваш счёт за вычетом комиссии.
                       </p>
-                      <div className="flex gap-2 flex-wrap">
-                        <a
-                          href={PRODAMUS_REF_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-                        >
-                          Заполнить анкету
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => dismissProdamusBanner(true)}
-                          className="inline-flex items-center rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50"
-                        >
-                          У меня уже есть ссылка
-                        </button>
+                    </div>
+                  ) : hasPendingContract ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                      <div className="flex items-center gap-2 text-amber-700 mb-1">
+                        <AlertCircle className="w-4 h-4" />
+                        <p className="text-sm font-medium">Договор на проверке</p>
                       </div>
+                      <p className="text-xs text-gray-600 mb-2">
+                        После подтверждения договора участники смогут оплачивать через Orbo. Пока можно использовать собственную платёжную ссылку.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <p className="text-sm font-medium text-blue-900">Подключите приём платежей</p>
+                      </div>
+                      <p className="text-sm text-gray-700 mb-3">
+                        Заключите договор с Orbo, и мы будем принимать оплаты за мероприятие как платёжный агент. Средства выводятся на ваш счёт.
+                      </p>
+                      <a
+                        href={`/p/${orgId}/settings?tab=contract`}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                      >
+                        <FileText className="w-3 h-3" />
+                        Заключить договор
+                      </a>
                     </div>
                   )}
 
-                  <div>
-                    <label className="text-sm font-medium block mb-2">
-                      Платёжная ссылка
-                    </label>
-                    <Input
-                      id="paymentLinkInput"
-                      type="url"
-                      value={paymentLink}
-                      onChange={(e) => setPaymentLink(e.target.value)}
-                      placeholder="https://prodamus.ru/pay/... или другая ссылка"
-                    />
-                    <p className="text-xs text-neutral-500 mt-1">
-                      Ссылка на страницу оплаты. Участники смогут перейти по ней для оплаты.
-                    </p>
-                  </div>
+                  {/* Fallback: own payment link (collapsed) */}
+                  <div className="border border-neutral-200 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentLinkFallbackOpen(!paymentLinkFallbackOpen)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-lg transition-colors"
+                    >
+                      {paymentLinkFallbackOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>{paymentLink ? 'Платёжная ссылка указана' : 'Использовать собственную платёжную ссылку'}</span>
+                    </button>
 
-                  <div>
-                    <label className="text-sm font-medium block mb-2">
-                      Инструкции по оплате
-                    </label>
-                    <textarea
-                      value={paymentInstructions}
-                      onChange={(e) => setPaymentInstructions(e.target.value)}
-                      placeholder="Реквизиты для оплаты, номер карты, дополнительные указания..."
-                      className="w-full min-h-[100px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-neutral-500 mt-1">
-                      Дополнительные инструкции, которые увидят участники
-                    </p>
+                    {paymentLinkFallbackOpen && (
+                      <div className="px-3 pb-3 space-y-3 border-t border-neutral-100">
+                        <div className="pt-3">
+                          <label className="text-sm font-medium block mb-2">
+                            Платёжная ссылка
+                          </label>
+                          <Input
+                            id="paymentLinkInput"
+                            type="url"
+                            value={paymentLink}
+                            onChange={(e) => setPaymentLink(e.target.value)}
+                            placeholder="https://..."
+                          />
+                          <p className="text-xs text-neutral-500 mt-1">
+                            Участники смогут перейти по этой ссылке для оплаты.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-medium block mb-2">
+                            Инструкции по оплате
+                          </label>
+                          <textarea
+                            value={paymentInstructions}
+                            onChange={(e) => setPaymentInstructions(e.target.value)}
+                            placeholder="Реквизиты для оплаты, номер карты, дополнительные указания..."
+                            className="w-full min-h-[80px] p-3 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                        </div>
+
+                        {/* Prodamus promo (compact) */}
+                        {!prodamusDismissed && !paymentLink && (
+                          <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="text-xs font-medium text-indigo-900">Рекомендуем Prodamus</p>
+                              <button
+                                type="button"
+                                onClick={() => dismissProdamusBanner()}
+                                className="text-indigo-400 hover:text-indigo-600 shrink-0"
+                                aria-label="Закрыть"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-600 mb-2">
+                              Подходит для ООО, ИП и самозанятых. Комиссия 2,9–3,8%.
+                            </p>
+                            <a
+                              href={PRODAMUS_REF_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                            >
+                              Подключить Prodamus
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className={`flex items-center pt-2 border-t border-neutral-200 ${isRecurring ? 'opacity-50' : ''}`}>
