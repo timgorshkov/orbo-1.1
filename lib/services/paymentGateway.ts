@@ -1,111 +1,129 @@
 /**
  * PaymentGateway — abstract interface for payment providers.
- * Phase 3 stub: currently only manual/external payment links are supported.
- * Future adapters: Prodamus, YooKassa, T-Bank.
+ *
+ * Supported gateways:
+ * - manual: admin confirms payments manually (bank transfer, cash, external links)
+ * - yookassa: YooKassa (ЮKassa) — cards, SBP, wallets
+ * - tbank: T-Bank (Tinkoff) — cards, SBP
+ *
+ * Each gateway implements createPayment, checkStatus, handleWebhook, and refund.
  */
+
+// ─── Shared Types ───────────────────────────────────────────────────
+
+export type GatewayCode = 'manual' | 'yookassa' | 'tbank' | 'sbp'
+
+export interface CreatePaymentParams {
+  amount: number
+  currency: string
+  description: string
+  returnUrl: string
+  metadata?: Record<string, any>
+  /** Idempotency key to prevent duplicate payments */
+  idempotencyKey?: string
+  /** For SBP: phone number hint */
+  phone?: string
+}
 
 export interface PaymentResult {
   success: boolean
-  paymentId?: string
+  /** Gateway-assigned payment ID */
+  gatewayPaymentId?: string
+  /** URL to redirect the user to */
   redirectUrl?: string
+  /** For SBP: QR code data/image URL */
+  qrCodeUrl?: string
+  /** For bank transfer: payment reference */
+  paymentReference?: string
   error?: string
 }
 
 export interface PaymentStatus {
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled' | 'refunded'
   paid: boolean
   amount: number
   currency: string
   paidAt?: string
   refunded?: boolean
+  refundedAmount?: number
+  gatewayData?: Record<string, any>
 }
 
 export interface WebhookEvent {
-  type: 'payment.succeeded' | 'payment.failed' | 'payment.refunded'
-  paymentId: string
+  type: 'payment.succeeded' | 'payment.waiting_for_capture' | 'payment.cancelled' | 'refund.succeeded'
+  gatewayPaymentId: string
   amount: number
   currency: string
   metadata: Record<string, any>
+  rawData?: any
 }
+
+export interface RefundResult {
+  success: boolean
+  refundId?: string
+  amount?: number
+  error?: string
+}
+
+// ─── Gateway Interface ──────────────────────────────────────────────
 
 export interface PaymentGateway {
   readonly name: string
-  readonly code: string
+  readonly code: GatewayCode
 
-  /**
-   * Create a payment session and return a redirect URL for the user.
-   */
-  createPayment(params: {
-    amount: number
-    currency: string
-    description: string
-    membershipId: string
-    returnUrl: string
-    metadata?: Record<string, any>
-  }): Promise<PaymentResult>
+  /** Create a payment and return redirect URL or QR data */
+  createPayment(params: CreatePaymentParams): Promise<PaymentResult>
 
-  /**
-   * Check the status of a previously created payment.
-   */
-  checkStatus(paymentId: string): Promise<PaymentStatus>
+  /** Check current payment status by gateway payment ID */
+  checkStatus(gatewayPaymentId: string): Promise<PaymentStatus>
 
-  /**
-   * Process a webhook callback from the payment provider.
-   * Returns the parsed event, or null if the signature is invalid.
-   */
+  /** Process webhook callback; returns parsed event or null if invalid signature */
   handleWebhook(rawBody: string, headers: Record<string, string>): Promise<WebhookEvent | null>
+
+  /** Refund a payment (full or partial) */
+  refund(gatewayPaymentId: string, amount?: number): Promise<RefundResult>
 }
 
-// ─── Manual / External Payment (stub) ────────────────────────────────
+// ─── Gateway Registry ───────────────────────────────────────────────
 
-export const PRODAMUS_REF_URL = 'https://connect.prodamus.ru/?ref=ORBOPARTNERS&c=Rw6'
+const gatewayRegistry = new Map<GatewayCode, () => PaymentGateway>()
 
-/**
- * ManualPaymentGateway: No API integration; admin confirms payments manually.
- * The payment link in the membership plan settings directs users to an external
- * payment page (Prodamus form, bank transfer page, etc.).
- */
-export class ManualPaymentGateway implements PaymentGateway {
-  readonly name = 'Ручная оплата'
-  readonly code = 'manual'
-
-  async createPayment(params: {
-    amount: number
-    currency: string
-    description: string
-    membershipId: string
-    returnUrl: string
-  }): Promise<PaymentResult> {
-    // No API call — return the plan's payment link or instructions
-    return { success: true, redirectUrl: undefined }
-  }
-
-  async checkStatus(_paymentId: string): Promise<PaymentStatus> {
-    return { paid: false, amount: 0, currency: 'RUB' }
-  }
-
-  async handleWebhook(_rawBody: string, _headers: Record<string, string>): Promise<WebhookEvent | null> {
-    return null
-  }
+export function registerGateway(code: GatewayCode, factory: () => PaymentGateway) {
+  gatewayRegistry.set(code, factory)
 }
 
-// ─── Future: Prodamus Gateway (placeholder) ──────────────────────────
+export function getGateway(code: GatewayCode): PaymentGateway {
+  const factory = gatewayRegistry.get(code)
+  if (!factory) {
+    throw new Error(`Payment gateway not registered: ${code}`)
+  }
+  return factory()
+}
 
-// export class ProdamusGateway implements PaymentGateway {
-//   readonly name = 'Prodamus'
-//   readonly code = 'prodamus'
-//   constructor(private apiKey: string, private shopId: string) {}
-//   async createPayment(params) { /* ... */ }
-//   async checkStatus(paymentId) { /* ... */ }
-//   async handleWebhook(rawBody, headers) { /* ... */ }
-// }
+export function getAvailableGateways(): GatewayCode[] {
+  return Array.from(gatewayRegistry.keys())
+}
 
-// ─── Future: YooKassa Gateway (placeholder) ──────────────────────────
+// ─── Register built-in gateways ─────────────────────────────────────
 
-// export class YooKassaGateway implements PaymentGateway {
-//   readonly name = 'ЮKassa'
-//   readonly code = 'yookassa'
-//   constructor(private shopId: string, private secretKey: string) {}
-//   async createPayment(params) { /* ... */ }
-//   async checkStatus(paymentId) { /* ... */ }
-//   async handleWebhook(rawBody, headers) { /* ... */ }
-// }
+// Manual gateway is always available
+registerGateway('manual', () => {
+  const { ManualGateway } = require('./gateways/manualGateway')
+  return new ManualGateway()
+})
+
+// YooKassa — available if credentials are set
+if (process.env.YOOKASSA_SHOP_ID && process.env.YOOKASSA_SECRET_KEY) {
+  registerGateway('yookassa', () => {
+    const { YookassaGateway } = require('./gateways/yookassaGateway')
+    return new YookassaGateway()
+  })
+}
+
+// T-Bank — available if credentials are set
+if (process.env.TBANK_TERMINAL_KEY && process.env.TBANK_SECRET_KEY) {
+  registerGateway('tbank', () => {
+    const { TbankGateway } = require('./gateways/tbankGateway')
+    return new TbankGateway()
+  })
+}
