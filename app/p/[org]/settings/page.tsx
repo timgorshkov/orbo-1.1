@@ -32,6 +32,11 @@ const PaymentsSettingsContent = dynamic(() => import('@/components/settings/paym
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
+// Dynamic import for finances page (it's a client component)
+const FinancesContent = dynamic(() => import('@/components/settings/finances-content'), {
+  loading: () => <div className="p-6">Загрузка...</div>
+})
+
 // Dynamic import for contract page (it's a client component)
 const ContractContent = dynamic(() => import('@/components/settings/contract-content'), {
   loading: () => <div className="p-6">Загрузка...</div>
@@ -228,6 +233,21 @@ export default async function OrganizationSettingsPage({
               orgId={orgId}
               initialDefaultPaymentLink={organization.default_payment_link ?? null}
             />
+          </div>
+        )
+        break
+      }
+
+      case 'finances': {
+        tabContent = (
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold">Финансы</h2>
+              <p className="text-gray-600 mt-1">
+                Баланс, транзакции и выводы средств
+              </p>
+            </div>
+            <FinancesContent />
           </div>
         )
         break

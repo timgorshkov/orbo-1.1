@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-export type SettingsTab = 'team' | 'general' | 'tags' | 'notifications' | 'billing' | 'portal' | 'payments' | 'contract'
+export type SettingsTab = 'team' | 'general' | 'tags' | 'notifications' | 'billing' | 'portal' | 'payments' | 'finances' | 'contract'
 
 interface SettingsTabsProps {
   activeTab: SettingsTab
@@ -17,6 +17,7 @@ const TABS = [
   { id: 'tags', label: 'Теги участников' },
   { id: 'notifications', label: 'Уведомления' },
   { id: 'payments', label: 'Приём платежей' },
+  { id: 'finances', label: 'Финансы' },
   { id: 'billing', label: 'Тариф и оплата' },
   { id: 'contract', label: 'Договор' },
 ] as const
