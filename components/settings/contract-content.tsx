@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import ContractWizard from './contract-wizard'
 import { ContractStatusBadge, BankStatusBadge, CounterpartyTypeBadge } from './contract-status-badge'
+import { FileText, Download, Loader2 } from 'lucide-react'
 
 interface ContractData {
   id: string
   contract_number: string
   contract_date: string
   status: string
+  invoice_url: string | null
   counterparty: {
     type: string
     inn: string | null
@@ -147,25 +149,7 @@ export default function ContractContent() {
 
       {/* Confirmation block for pending contracts */}
       {contract.status === 'filled_by_client' && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 space-y-3">
-          <h4 className="text-sm font-semibold text-blue-800">Подтверждение расчётного счёта</h4>
-          <p className="text-sm text-blue-700">
-            Для активации договора необходимо подтвердить расчётный счёт одним из двух способов:
-          </p>
-          <ol className="text-sm text-blue-700 list-decimal list-inside space-y-2">
-            <li>
-              <strong>Банковский перевод 200 ₽</strong> с указанного расчётного счёта по реквизитам
-              в счёте на оплату.
-            </li>
-            <li>
-              <strong>Подписанное заявление</strong> — оригинал подписанного заявления о присоединении к оферте.
-            </li>
-          </ol>
-          <p className="text-xs text-blue-500">
-            После подтверждения мы активируем ваш договор. По вопросам:{' '}
-            <a href="mailto:sales@orbo.ru" className="underline">sales@orbo.ru</a>
-          </p>
-        </div>
+        <VerificationBlock contractId={contract.id} invoiceUrl={contract.invoice_url} />
       )}
 
       {/* Hint */}
@@ -173,6 +157,85 @@ export default function ContractContent() {
         Для изменения реквизитов напишите на{' '}
         <a href="mailto:sales@orbo.ru" className="text-blue-600 hover:underline">sales@orbo.ru</a>
       </div>
+    </div>
+  )
+}
+
+function VerificationBlock({ contractId, invoiceUrl: initialUrl }: { contractId: string; invoiceUrl: string | null }) {
+  const [invoiceUrl, setInvoiceUrl] = useState(initialUrl)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Auto-generate invoice if not yet generated
+  useEffect(() => {
+    if (invoiceUrl) return
+
+    setGenerating(true)
+    fetch(`/api/contracts/${contractId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate-invoice' }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.url) setInvoiceUrl(data.url)
+        else setError('Не удалось сформировать счёт')
+      })
+      .catch(() => setError('Ошибка сети'))
+      .finally(() => setGenerating(false))
+  }, [contractId, invoiceUrl])
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 space-y-4">
+      <h4 className="text-sm font-semibold text-blue-800">Подтверждение расчётного счёта</h4>
+      <p className="text-sm text-blue-700">
+        Для активации договора необходимо подтвердить расчётный счёт одним из двух способов:
+      </p>
+      <ol className="text-sm text-blue-700 list-decimal list-inside space-y-2">
+        <li>
+          <strong>Банковский перевод 200 ₽</strong> с указанного расчётного счёта по реквизитам
+          в счёте на оплату.
+        </li>
+        <li>
+          <strong>Подписанное заявление</strong> — оригинал подписанного заявления о присоединении к оферте.
+        </li>
+      </ol>
+
+      {/* Invoice link */}
+      <div className="rounded-lg border border-blue-300 bg-white p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <FileText className="w-5 h-5 text-blue-600" />
+          <h5 className="text-sm font-semibold text-blue-900">Счёт на оплату</h5>
+        </div>
+        {generating ? (
+          <div className="flex items-center gap-2 text-sm text-blue-600">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Формирование счёта...
+          </div>
+        ) : invoiceUrl ? (
+          <a
+            href={invoiceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Открыть счёт на оплату
+          </a>
+        ) : error ? (
+          <p className="text-sm text-red-600">{error}</p>
+        ) : null}
+        {invoiceUrl && (
+          <p className="text-xs text-blue-500 mt-2">
+            Оплатите 200 ₽ с расчётного счёта, указанного выше. Назначение платежа указано в счёте.
+          </p>
+        )}
+      </div>
+
+      <p className="text-xs text-blue-500">
+        После подтверждения мы активируем ваш договор. По вопросам:{' '}
+        <a href="mailto:sales@orbo.ru" className="underline">sales@orbo.ru</a>
+      </p>
     </div>
   )
 }

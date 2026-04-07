@@ -49,6 +49,7 @@ export interface ContractFull {
   contract_number: string
   contract_date: string
   status: string
+  invoice_url: string | null
   created_at: string
   updated_at: string
   counterparty: {
@@ -87,7 +88,7 @@ export interface ContractFull {
 const CONTRACT_QUERY = `
   SELECT
     c.id, c.org_id, c.contract_number, c.contract_date, c.status,
-    c.created_at, c.updated_at,
+    c.invoice_url, c.created_at, c.updated_at,
     cp.id as cp_id, cp.type as cp_type, cp.inn as cp_inn, cp.email as cp_email,
     cp.phone as cp_phone, cp.full_name as cp_full_name,
     cp.passport_series_number as cp_passport_series_number,
@@ -120,6 +121,7 @@ function mapRow(row: any): ContractFull {
     contract_number: row.contract_number,
     contract_date: row.contract_date,
     status: row.status,
+    invoice_url: row.invoice_url || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     org_name: row.org_name,
@@ -343,6 +345,205 @@ export async function updateBankAccount(
   }
 
   return { error: null }
+}
+
+// ─── Invoice Generation ─────────────────────────────────────────────
+
+/** Orbo company details for invoices */
+const ORBO_COMPANY = {
+  name: 'ООО "ОРБО"',
+  inn: '9731153780',
+  kpp: '773101001',
+  ogrn: '1247700745593',
+  address: '121205, г. Москва, тер. Инновационного центра Сколково, б-р Большой, д. 42, стр. 1, эт. 1, пом. 337, раб.м. 1.28',
+  bank: 'ПАО Сбербанк',
+  bik: '044525225',
+  corrAccount: '30101810400000000225',
+  account: '40702810038000133498',
+  director: 'Горшков Тимофей Юрьевич',
+}
+
+const INVOICE_AMOUNT = 200
+const INVOICE_AMOUNT_WORDS = 'Двести рублей 00 копеек'
+
+/**
+ * Generate a verification invoice (счёт на оплату) for a contract.
+ * Returns the public URL of the generated HTML invoice.
+ */
+export async function generateVerificationInvoice(contractId: string): Promise<string> {
+  const contract = await getContractById(contractId)
+  if (!contract) throw new Error('Contract not found')
+
+  const cp = contract.counterparty
+  const invoiceNumber = contract.contract_number // Use same number as contract, e.g. ЛД-000001
+  const invoiceDate = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const contractDate = new Date(contract.contract_date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+  // Buyer name
+  const buyerName = cp.type === 'legal_entity'
+    ? (cp.org_name || 'Контрагент')
+    : (cp.full_name || 'Контрагент')
+
+  // Buyer full line
+  const buyerInn = cp.inn ? `, ИНН ${cp.inn}` : ''
+  const buyerKpp = cp.type === 'legal_entity' && cp.kpp ? `, КПП ${cp.kpp}` : ''
+  const buyerAddress = cp.type === 'legal_entity' ? (cp.legal_address || '') : (cp.registration_address || '')
+  const buyerLine = `${buyerName}${buyerInn}${buyerKpp}${buyerAddress ? `, ${buyerAddress}` : ''}`
+
+  const paymentPurpose = `Оплата стоимости однократного доступа (неисключительной лицензии) к функционалу ускоренного заключения Лицензионного Договора по счету №${invoiceNumber} от ${contractDate}, в соответствии с условиями оферты, размещенной в сети Интернет по адресу https://orbo.ru/terms. НДС не облагается.`
+
+  const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Счёт №${invoiceNumber}</title>
+<style>
+  body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 40px; color: #000; }
+  table { border-collapse: collapse; width: 100%; }
+  .header-table td { padding: 2px 4px; font-size: 10pt; }
+  .main-title { font-size: 16pt; font-weight: bold; text-align: center; margin: 24px 0 16px; }
+  .info-row { margin: 4px 0; font-size: 11pt; }
+  .info-label { color: #555; }
+  .items-table { margin: 16px 0; }
+  .items-table th, .items-table td { border: 1px solid #000; padding: 6px 8px; text-align: left; font-size: 11pt; }
+  .items-table th { background: #f0f0f0; font-weight: bold; }
+  .items-table td.num { text-align: center; }
+  .items-table td.amount { text-align: right; }
+  .total-row { font-weight: bold; }
+  .amount-words { margin: 12px 0; font-weight: bold; font-size: 11pt; }
+  .purpose { margin: 12px 0; font-size: 10pt; border: 1px solid #ccc; padding: 8px; background: #fafafa; }
+  .signatures { margin-top: 40px; }
+  .sig-row { display: flex; justify-content: space-between; margin-top: 30px; }
+  .sig-block { width: 45%; }
+  .sig-line { border-bottom: 1px solid #000; margin-top: 30px; padding-bottom: 4px; }
+  .bank-header { background: #e8e8e8; padding: 4px 8px; font-size: 10pt; font-weight: bold; border: 1px solid #999; }
+  .bank-details { border: 1px solid #999; border-top: none; padding: 8px; font-size: 10pt; }
+  .bank-details table td { padding: 2px 6px; vertical-align: top; }
+  .bank-details table td.label { color: #555; white-space: nowrap; }
+  hr.thick { border: none; border-top: 2px solid #000; margin: 0; }
+  hr.thin { border: none; border-top: 1px solid #000; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- Bank details header block -->
+<div class="bank-header">
+  ${ORBO_COMPANY.bank}, БИК ${ORBO_COMPANY.bik}, к/с ${ORBO_COMPANY.corrAccount}
+</div>
+<div class="bank-details">
+  <table>
+    <tr><td class="label">Получатель:</td><td><strong>${ORBO_COMPANY.name}</strong></td></tr>
+    <tr><td class="label">ИНН ${ORBO_COMPANY.inn}</td><td>КПП ${ORBO_COMPANY.kpp}</td></tr>
+    <tr><td class="label">Р/с:</td><td>${ORBO_COMPANY.account}</td></tr>
+  </table>
+</div>
+
+<hr class="thick" style="margin-top: 16px;">
+
+<!-- Title -->
+<div class="main-title">
+  Счёт на оплату №${invoiceNumber} от ${invoiceDate}
+</div>
+
+<hr class="thin">
+
+<!-- Parties -->
+<div style="margin: 12px 0;">
+  <div class="info-row"><span class="info-label">Поставщик:</span> <strong>${ORBO_COMPANY.name}</strong>, ИНН ${ORBO_COMPANY.inn}, КПП ${ORBO_COMPANY.kpp}, ОГРН ${ORBO_COMPANY.ogrn}, ${ORBO_COMPANY.address}</div>
+  <div class="info-row"><span class="info-label">Покупатель:</span> <strong>${buyerLine}</strong></div>
+</div>
+
+<!-- Items table -->
+<table class="items-table">
+  <thead>
+    <tr>
+      <th style="width: 40px;">№</th>
+      <th>Наименование</th>
+      <th style="width: 50px;">Кол-во</th>
+      <th style="width: 50px;">Ед.</th>
+      <th style="width: 100px;">Цена</th>
+      <th style="width: 100px;">Сумма</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td>
+      <td>Однократный доступ (неисключительная лицензия) к функционалу ускоренного заключения Лицензионного Договора №${invoiceNumber} от ${contractDate}</td>
+      <td class="num">1</td>
+      <td class="num">шт.</td>
+      <td class="amount">${INVOICE_AMOUNT}.00</td>
+      <td class="amount">${INVOICE_AMOUNT}.00</td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="5" style="text-align: right; border: 1px solid #000; padding: 6px 8px;">Итого:</td>
+      <td class="amount" style="border: 1px solid #000; padding: 6px 8px;">${INVOICE_AMOUNT}.00</td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5" style="text-align: right; border: 1px solid #000; padding: 6px 8px;">Без НДС</td>
+      <td class="amount" style="border: 1px solid #000; padding: 6px 8px;">—</td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5" style="text-align: right; border: 1px solid #000; padding: 6px 8px;">Всего к оплате:</td>
+      <td class="amount" style="border: 1px solid #000; padding: 6px 8px;">${INVOICE_AMOUNT}.00</td>
+    </tr>
+  </tfoot>
+</table>
+
+<div class="amount-words">
+  Всего наименований 1, на сумму ${INVOICE_AMOUNT}.00 руб.<br>
+  ${INVOICE_AMOUNT_WORDS}
+</div>
+
+<!-- Payment purpose -->
+<div class="purpose">
+  <strong>Назначение платежа:</strong> ${paymentPurpose}
+</div>
+
+<!-- Signatures -->
+<div class="signatures">
+  <table style="width: 100%;">
+    <tr>
+      <td style="width: 50%; vertical-align: bottom;">
+        <div>Руководитель</div>
+        <div class="sig-line">${ORBO_COMPANY.director}</div>
+      </td>
+      <td style="width: 50%; vertical-align: bottom; padding-left: 40px;">
+        <div>Бухгалтер</div>
+        <div class="sig-line">${ORBO_COMPANY.director}</div>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p style="margin-top: 24px; font-size: 9pt; color: #888; text-align: center;">
+  Счёт действителен в течение 30 дней с даты выставления. Оплата данного счёта означает согласие с условиями оферты.
+</p>
+
+</body>
+</html>`
+
+  // Upload to S3
+  const { createStorage } = await import('@/lib/storage')
+  const storage = createStorage()
+  const filePath = `invoices/${contract.org_id}/invoice_${invoiceNumber.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
+
+  await storage.upload('documents', filePath, Buffer.from(html, 'utf-8'), {
+    contentType: 'text/html; charset=utf-8',
+  })
+
+  const url = storage.getPublicUrl('documents', filePath)
+
+  // Save invoice URL to contract metadata (we'll store in the contracts table)
+  const db = createAdminServer()
+  await db.raw(
+    `UPDATE contracts SET invoice_url = $1 WHERE id = $2`,
+    [url, contractId]
+  )
+
+  logger.info({ contract_id: contractId, invoice_number: invoiceNumber, url }, 'Verification invoice generated')
+  return url
 }
 
 export async function listContracts(filters?: { status?: string }): Promise<ContractFull[]> {
