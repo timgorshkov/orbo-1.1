@@ -391,7 +391,7 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
   const buyerAddress = cp.type === 'legal_entity' ? (cp.legal_address || '') : (cp.registration_address || '')
   const buyerLine = `${buyerName}${buyerInn}${buyerKpp}${buyerAddress ? `, ${buyerAddress}` : ''}`
 
-  const paymentPurpose = `Оплата стоимости однократного доступа (неисключительной лицензии) к функционалу ускоренного заключения Лицензионного Договора по счету №${invoiceNumber} от ${contractDate}, в соответствии с условиями оферты, размещенной в сети Интернет по адресу https://orbo.ru/terms. НДС не облагается.`
+  const paymentPurpose = `Оплата однократного доступа (неисключительной лицензии) по счету №${invoiceNumber} от ${contractDate}. НДС не облагается.`
 
   // Generate QR code for bank payment (format per CBR standard for payment orders)
   const amountKopecks = INVOICE_AMOUNT * 100
@@ -408,7 +408,7 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
     `Purpose=${paymentPurpose}`,
   ].join('|')
 
-  const qrSvg = await QRCode.toString(qrPayload, { type: 'svg', width: 160, margin: 0 })
+  const qrSvg = await QRCode.toString(qrPayload, { type: 'svg', width: 192, margin: 0 })
 
   const html = `<!DOCTYPE html>
 <html lang="ru">
@@ -436,7 +436,7 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
   /* Payment order sample */
   .po-wrapper { display: flex; gap: 20px; align-items: flex-start; }
   .po-table-wrap { flex: 1; }
-  .po-qr { flex: 0 0 180px; text-align: center; padding-top: 10px; }
+  .po-qr { flex: 0 0 210px; text-align: center; padding-top: 10px; }
   .po-qr-label { font-size: 8pt; color: #555; margin-top: 4px; }
   .po-title { font-size: 10pt; font-weight: bold; text-align: center; margin-bottom: 8px; text-transform: uppercase; }
   .po-table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
@@ -554,9 +554,10 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
   ${INVOICE_AMOUNT_WORDS}
 </div>
 
-<!-- Payment purpose -->
-<div class="purpose">
-  <strong>Назначение платежа:</strong> ${paymentPurpose}
+<!-- Warning -->
+<div style="margin: 16px 0; padding: 10px 14px; border: 1px solid #c00; background: #fff5f5; font-size: 10pt; color: #900;">
+  <strong>Внимание!</strong><br>
+  Оплата счёта может быть произведена только с банковского счёта, указанного при заключении договора. Проверьте перед оплатой.
 </div>
 
 <!-- Signatures -->
