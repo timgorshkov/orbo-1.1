@@ -149,7 +149,7 @@ export async function POST(request: Request) {
         WHERE bot_status IN ('connected', 'pending')
           AND migrated_to IS NULL
           AND tg_chat_id NOT IN (
-            SELECT DISTINCT tg_chat_id::text FROM telegram_group_admins
+            SELECT DISTINCT tg_chat_id FROM telegram_group_admins
           )
       `, []);
 

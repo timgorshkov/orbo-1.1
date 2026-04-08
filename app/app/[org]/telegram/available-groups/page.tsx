@@ -180,11 +180,14 @@ export default function AvailableGroupsPage({ params }: { params: Promise<{ org:
       }
     }
     
-    // ✅ ОПТИМИЗАЦИЯ: Сначала показываем доступные группы (быстро)
-    fetchAvailableGroups();
-    
-    // ✅ Затем обновляем права админа в ФОНЕ (медленно, но не блокирует UI)
-    updateAdminRightsInBackground();
+    // Сначала обновляем права админа, затем запрашиваем группы
+    async function loadGroups() {
+      await updateAdminRightsInBackground();
+      if (isMounted) {
+        await fetchAvailableGroups();
+      }
+    }
+    loadGroups();
     
     // Функция очистки для избежания утечек памяти и обновлений состояния после размонтирования
     return () => {
