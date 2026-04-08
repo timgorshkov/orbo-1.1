@@ -140,8 +140,8 @@ export async function PATCH(
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (target_groups !== undefined) updateData.target_groups = target_groups;
-    if (target_topics !== undefined) updateData.target_topics = target_topics;
-    if (target_max_groups !== undefined) updateData.target_max_groups = target_max_groups;
+    if (target_topics !== undefined) updateData.target_topics = JSON.stringify(target_topics);
+    if (target_max_groups !== undefined) updateData.target_max_groups = JSON.stringify(target_max_groups);
     if (scheduled_at !== undefined) updateData.scheduled_at = scheduled_at;
     if (status !== undefined && ['scheduled', 'cancelled'].includes(status)) {
       updateData.status = status;

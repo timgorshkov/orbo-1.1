@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
         title,
         content,
         target_groups,
-        target_topics: target_topics || {},
+        target_topics: JSON.stringify(target_topics || {}),
         scheduled_at,
         event_id: event_id || null,
         reminder_type: reminder_type || null,
