@@ -123,13 +123,27 @@ export default function CreateOrganization() {
     }
   }
 
-  // Show loading state while checking org count
+  // Show loading skeleton matching the final form layout to avoid CLS
   if (loading || orgCount === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
         <Card className="w-full max-w-md">
-          <CardContent className="p-6">
-            <div className="text-center">Загрузка...</div>
+          <CardHeader>
+            <div className="h-7 w-3/4 bg-gray-200 rounded animate-pulse" />
+            <div className="h-4 w-full bg-gray-100 rounded animate-pulse mt-2" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="h-4 w-1/3 bg-gray-200 rounded animate-pulse" />
+                <div className="h-10 w-full bg-gray-100 rounded animate-pulse" />
+                <div className="h-8 w-full bg-gray-50 rounded animate-pulse" />
+              </div>
+              <div className="flex gap-3">
+                <div className="h-10 flex-1 bg-gray-100 rounded animate-pulse" />
+                <div className="h-10 flex-1 bg-gray-200 rounded animate-pulse" />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

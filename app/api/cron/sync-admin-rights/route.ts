@@ -99,16 +99,43 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
+        // Пропускаем личные чаты (положительный chat_id) — они не могут быть группами
+        if (Number(chatId) > 0) {
+          logger.debug({ chat_id: chatId }, 'Skipping positive chat_id (private chat)');
+          continue;
+        }
+
         try {
           logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
-          
+
           // Получаем всех администраторов группы из Telegram
           const adminsResponse = await telegramService.getChatAdministrators(Number(chatId));
 
           if (!adminsResponse.ok) {
-            logger.warn({ 
-              chat_id: chatId, 
-              error: adminsResponse.description || 'Unknown error' 
+            const errDesc = adminsResponse.description || 'Unknown error';
+
+            // "member list is inaccessible" — бот не имеет прав или группа ограничена
+            // Помечаем как inactive, чтобы не опрашивать каждый цикл
+            if (errDesc.includes('member list is inaccessible')) {
+              logger.warn({
+                chat_id: chatId,
+                group_title: groupTitle,
+                org_id: org.id,
+              }, 'Member list inaccessible — marking group as inactive');
+
+              await supabaseService
+                .from('telegram_groups')
+                .update({
+                  bot_status: 'inactive',
+                  last_sync_at: new Date().toISOString()
+                })
+                .eq('tg_chat_id', chatId);
+              continue;
+            }
+
+            logger.warn({
+              chat_id: chatId,
+              error: errDesc
             }, 'Failed to get admins for chat');
             continue;
           }
