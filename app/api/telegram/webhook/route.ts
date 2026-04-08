@@ -500,12 +500,39 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
             }, { onConflict: 'tg_chat_id' });
           
           if (upsertError) {
-            logger.error({ 
+            logger.error({
               chat_id: memberChatId,
               chat_title: chatTitle,
               error: upsertError.message,
               error_code: (upsertError as any).code
             }, 'Bot status upsert error');
+          }
+
+          // Сразу синкаем админов группы, чтобы она появилась в "доступных"
+          if (botStatus === 'connected' || botStatus === 'pending') {
+            try {
+              const tgService = createTelegramService('main');
+              const adminsResp = await tgService.getChatAdministrators(Number(memberChatId));
+              if (adminsResp?.ok && adminsResp.result) {
+                for (const admin of adminsResp.result) {
+                  if (admin.user?.is_bot || !admin.user?.id) continue;
+                  const isAdmin = admin.status === 'administrator' || admin.status === 'creator';
+                  await supabaseServiceRole
+                    .from('telegram_group_admins')
+                    .upsert({
+                      tg_chat_id: Number(memberChatId),
+                      tg_user_id: admin.user.id,
+                      is_admin: isAdmin,
+                      is_owner: admin.status === 'creator',
+                      verified_at: new Date().toISOString(),
+                      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    }, { onConflict: 'tg_chat_id,tg_user_id' });
+                }
+                logger.info({ chat_id: memberChatId, admins_count: adminsResp.result.length }, 'Synced group admins on bot add');
+              }
+            } catch (adminSyncErr) {
+              logger.warn({ chat_id: memberChatId, error: adminSyncErr instanceof Error ? adminSyncErr.message : String(adminSyncErr) }, 'Failed to sync admins on bot add');
+            }
           }
         }
       }

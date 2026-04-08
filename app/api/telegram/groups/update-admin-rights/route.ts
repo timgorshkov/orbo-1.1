@@ -142,6 +142,29 @@ export async function POST(request: Request) {
     // Note: telegram_groups.org_id was removed in migration 071
     // All org-group mappings are now in org_telegram_groups table (already fetched above)
 
+    // Ищем "осиротевшие" группы: бот добавлен, но админы ещё не синкнуты
+    try {
+      const { data: orphanedGroups } = await supabaseService.raw(`
+        SELECT tg_chat_id FROM telegram_groups
+        WHERE bot_status IN ('connected', 'pending')
+          AND migrated_to IS NULL
+          AND tg_chat_id NOT IN (
+            SELECT DISTINCT tg_chat_id::text FROM telegram_group_admins
+          )
+      `, []);
+
+      if (orphanedGroups && orphanedGroups.length > 0) {
+        orphanedGroups.forEach((row: any) => {
+          if (row?.tg_chat_id) {
+            candidateChatIds.add(String(row.tg_chat_id));
+          }
+        });
+        logger.info({ orphaned_count: orphanedGroups.length }, 'Found orphaned groups without admin records');
+      }
+    } catch (orphanErr: any) {
+      logger.warn({ error: orphanErr.message }, 'Failed to query orphaned groups');
+    }
+
     if (candidateChatIds.size === 0) {
       return NextResponse.json({
         success: true,
