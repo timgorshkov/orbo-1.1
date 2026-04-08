@@ -137,7 +137,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
     onDropRejected: (fileRejections) => {
       const rejection = fileRejections[0];
       if (rejection?.errors?.some(e => e.code === 'file-too-large')) {
-        setError(`Файл слишком большой (${(rejection.file.size / 1024 / 1024).toFixed(0)}MB). Максимальный размер — 150MB.`);
+        setError(`Файл слишком большой (${(rejection.file.size / 1024 / 1024).toFixed(0)}MB). Максимальный размер — 500MB.`);
       } else if (rejection?.errors?.some(e => e.code === 'file-invalid-type')) {
         const fileName = rejection?.file?.name || '';
         if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
@@ -152,7 +152,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
     accept: {
       'application/json': ['.json'],
     },
-    maxSize: 150 * 1024 * 1024, // 150MB for large group histories
+    maxSize: 500 * 1024 * 1024, // 500MB for large group histories
     multiple: false,
   });
 
@@ -341,7 +341,9 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
           <CardHeader>
             <CardTitle>Загрузить файл истории</CardTitle>
             <CardDescription>
-              Макс. размер: 150MB. Принимается JSON файл экспорта из Telegram Desktop.
+              Макс. размер: 500MB. Принимается JSON файл экспорта из Telegram Desktop.
+              <br />
+              <span className="text-neutral-400">Рекомендуется загружать файлы до 100MB. Если при экспорте файл получается больше, попробуйте экспортировать более короткий период — от 3 месяцев до 1 года.</span>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -371,7 +373,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
                       Перетащите файл экспорта сюда или нажмите для выбора
                     </p>
                     <p className="text-sm text-neutral-500">
-                      Принимаются файлы формата .json размером до 150MB
+                      Принимаются файлы формата .json размером до 500MB
                     </p>
                   </>
                 )}

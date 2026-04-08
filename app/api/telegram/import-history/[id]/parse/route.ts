@@ -6,9 +6,9 @@ import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 600;
 
-const MAX_FILE_SIZE = 150 * 1024 * 1024; // 150MB for large group histories
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB for large group histories
 
 interface ParticipantMatch {
   // Данные из импорта
