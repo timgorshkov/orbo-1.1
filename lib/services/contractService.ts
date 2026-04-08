@@ -1,5 +1,6 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
+import * as QRCode from 'qrcode'
 
 const logger = createServiceLogger('ContractService')
 
@@ -351,15 +352,15 @@ export async function updateBankAccount(
 
 /** Orbo company details for invoices */
 const ORBO_COMPANY = {
-  name: 'ООО "ОРБО"',
-  inn: '9731153780',
-  kpp: '773101001',
-  ogrn: '1247700745593',
-  address: '121205, г. Москва, тер. Инновационного центра Сколково, б-р Большой, д. 42, стр. 1, эт. 1, пом. 337, раб.м. 1.28',
-  bank: 'ПАО Сбербанк',
-  bik: '044525225',
-  corrAccount: '30101810400000000225',
-  account: '40702810038000133498',
+  name: 'ООО «ОРБО»',
+  inn: '9701327025',
+  kpp: '770101001',
+  ogrn: '1267700119037',
+  address: '105094, г. Москва, Басманный р-н, ул. Госпитальный Вал, д. 3, к. 4, кв. 79',
+  bank: 'АО «ТБанк»',
+  bik: '044525974',
+  corrAccount: '30101810145250000974',
+  account: '40702810110002081803',
   director: 'Горшков Тимофей Юрьевич',
 }
 
@@ -376,8 +377,8 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
 
   const cp = contract.counterparty
   const invoiceNumber = contract.contract_number // Use same number as contract, e.g. ЛД-000001
-  const invoiceDate = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const contractDate = new Date(contract.contract_date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const invoiceDate = contractDate // Дата счёта = дата договора
 
   // Buyer name
   const buyerName = cp.type === 'legal_entity'
@@ -392,6 +393,23 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
 
   const paymentPurpose = `Оплата стоимости однократного доступа (неисключительной лицензии) к функционалу ускоренного заключения Лицензионного Договора по счету №${invoiceNumber} от ${contractDate}, в соответствии с условиями оферты, размещенной в сети Интернет по адресу https://orbo.ru/terms. НДС не облагается.`
 
+  // Generate QR code for bank payment (format per CBR standard for payment orders)
+  const amountKopecks = INVOICE_AMOUNT * 100
+  const qrPayload = [
+    'ST00012',
+    `Name=${ORBO_COMPANY.name.replace(/«/g, '"').replace(/»/g, '"')}`,
+    `PersonalAcc=${ORBO_COMPANY.account}`,
+    `BankName=${ORBO_COMPANY.bank.replace(/«/g, '"').replace(/»/g, '"')}`,
+    `BIC=${ORBO_COMPANY.bik}`,
+    `CorrespAcc=${ORBO_COMPANY.corrAccount}`,
+    `PayeeINN=${ORBO_COMPANY.inn}`,
+    `KPP=${ORBO_COMPANY.kpp}`,
+    `Sum=${amountKopecks}`,
+    `Purpose=${paymentPurpose}`,
+  ].join('|')
+
+  const qrSvg = await QRCode.toString(qrPayload, { type: 'svg', width: 160, margin: 0 })
+
   const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -400,7 +418,6 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
 <style>
   body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 40px; color: #000; }
   table { border-collapse: collapse; width: 100%; }
-  .header-table td { padding: 2px 4px; font-size: 10pt; }
   .main-title { font-size: 16pt; font-weight: bold; text-align: center; margin: 24px 0 16px; }
   .info-row { margin: 4px 0; font-size: 11pt; }
   .info-label { color: #555; }
@@ -413,29 +430,70 @@ export async function generateVerificationInvoice(contractId: string): Promise<s
   .amount-words { margin: 12px 0; font-weight: bold; font-size: 11pt; }
   .purpose { margin: 12px 0; font-size: 10pt; border: 1px solid #ccc; padding: 8px; background: #fafafa; }
   .signatures { margin-top: 40px; }
-  .sig-row { display: flex; justify-content: space-between; margin-top: 30px; }
-  .sig-block { width: 45%; }
   .sig-line { border-bottom: 1px solid #000; margin-top: 30px; padding-bottom: 4px; }
-  .bank-header { background: #e8e8e8; padding: 4px 8px; font-size: 10pt; font-weight: bold; border: 1px solid #999; }
-  .bank-details { border: 1px solid #999; border-top: none; padding: 8px; font-size: 10pt; }
-  .bank-details table td { padding: 2px 6px; vertical-align: top; }
-  .bank-details table td.label { color: #555; white-space: nowrap; }
   hr.thick { border: none; border-top: 2px solid #000; margin: 0; }
   hr.thin { border: none; border-top: 1px solid #000; margin: 0; }
+  /* Payment order sample */
+  .po-wrapper { display: flex; gap: 20px; align-items: flex-start; }
+  .po-table-wrap { flex: 1; }
+  .po-qr { flex: 0 0 180px; text-align: center; padding-top: 10px; }
+  .po-qr-label { font-size: 8pt; color: #555; margin-top: 4px; }
+  .po-title { font-size: 10pt; font-weight: bold; text-align: center; margin-bottom: 8px; text-transform: uppercase; }
+  .po-table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
+  .po-table td { border: 1px solid #000; padding: 3px 6px; vertical-align: top; }
+  .po-table td.po-label { background: #f5f5f5; white-space: nowrap; width: 160px; font-size: 9pt; }
+  .po-table td.po-value { font-weight: normal; }
 </style>
 </head>
 <body>
 
-<!-- Bank details header block -->
-<div class="bank-header">
-  ${ORBO_COMPANY.bank}, БИК ${ORBO_COMPANY.bik}, к/с ${ORBO_COMPANY.corrAccount}
-</div>
-<div class="bank-details">
-  <table>
-    <tr><td class="label">Получатель:</td><td><strong>${ORBO_COMPANY.name}</strong></td></tr>
-    <tr><td class="label">ИНН ${ORBO_COMPANY.inn}</td><td>КПП ${ORBO_COMPANY.kpp}</td></tr>
-    <tr><td class="label">Р/с:</td><td>${ORBO_COMPANY.account}</td></tr>
-  </table>
+<!-- Образец заполнения платёжного поручения + QR -->
+<div class="po-wrapper">
+  <div class="po-table-wrap">
+    <div class="po-title">Образец заполнения платёжного поручения</div>
+    <table class="po-table">
+      <tr>
+        <td class="po-label">Банк получателя</td>
+        <td class="po-value">${ORBO_COMPANY.bank}</td>
+      </tr>
+      <tr>
+        <td class="po-label">БИК</td>
+        <td class="po-value">${ORBO_COMPANY.bik}</td>
+      </tr>
+      <tr>
+        <td class="po-label">Корр. счёт</td>
+        <td class="po-value">${ORBO_COMPANY.corrAccount}</td>
+      </tr>
+      <tr>
+        <td class="po-label">Расч. счёт</td>
+        <td class="po-value">${ORBO_COMPANY.account}</td>
+      </tr>
+      <tr>
+        <td class="po-label">Получатель</td>
+        <td class="po-value"><strong>${ORBO_COMPANY.name}</strong></td>
+      </tr>
+      <tr>
+        <td class="po-label">ИНН получателя</td>
+        <td class="po-value">${ORBO_COMPANY.inn}</td>
+      </tr>
+      <tr>
+        <td class="po-label">КПП получателя</td>
+        <td class="po-value">${ORBO_COMPANY.kpp}</td>
+      </tr>
+      <tr>
+        <td class="po-label">Сумма платежа</td>
+        <td class="po-value"><strong>${INVOICE_AMOUNT}.00 руб.</strong></td>
+      </tr>
+      <tr>
+        <td class="po-label">Назначение платежа</td>
+        <td class="po-value" style="font-size: 8.5pt;">${paymentPurpose}</td>
+      </tr>
+    </table>
+  </div>
+  <div class="po-qr">
+    ${qrSvg}
+    <div class="po-qr-label">QR-код для<br>банк-клиента</div>
+  </div>
 </div>
 
 <hr class="thick" style="margin-top: 16px;">
