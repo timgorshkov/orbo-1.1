@@ -9,7 +9,7 @@
 # ============================================
 # Base stage - Common dependencies
 # ============================================
-FROM node:20-alpine AS base
+FROM node:25-alpine AS base
 
 # Install dependencies for native modules
 RUN apk add --no-cache libc6-compat
