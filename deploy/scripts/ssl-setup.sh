@@ -197,7 +197,7 @@ http {
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
 
-        client_max_body_size 50M;
+        client_max_body_size 500M;
 
         location / {
             proxy_pass http://nextjs;

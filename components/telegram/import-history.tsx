@@ -103,8 +103,18 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || errorData.error || 'Failed to parse file');
+        // Nginx может вернуть HTML-ошибку (413, 504) вместо JSON
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || errorData.error || 'Failed to parse file');
+        } else if (response.status === 413) {
+          throw new Error('Файл слишком большой для загрузки. Попробуйте экспортировать более короткий период (3-6 месяцев).');
+        } else if (response.status === 504) {
+          throw new Error('Сервер не успел обработать файл — он слишком большой. Попробуйте экспортировать более короткий период (3-6 месяцев).');
+        } else {
+          throw new Error(`Ошибка сервера (${response.status}). Попробуйте ещё раз или загрузите файл меньшего размера.`);
+        }
       }
 
       const result = await response.json();
