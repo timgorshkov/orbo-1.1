@@ -15,6 +15,11 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_TELEGRAM_EVENT_BOT_USERNAME: process.env.TELEGRAM_EVENT_BOT_USERNAME || 'orbo_event_bot',
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '500mb',
+    },
+  },
   serverExternalPackages: ['@hawk.so/nodejs', 'telegram'],
   outputFileTracingExcludes: {
     '*': ['./temp/**/*'],
