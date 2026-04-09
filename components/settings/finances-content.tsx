@@ -57,11 +57,13 @@ interface ContractInfo {
 const TRANSACTION_LABELS: Record<string, string> = {
   payment_incoming: 'Оплата',
   commission_deduction: 'Комиссия',
+  agent_commission: 'Агентское вознаграждение',
   withdrawal_requested: 'Вывод (заморожено)',
   withdrawal_completed: 'Вывод выполнен',
   withdrawal_rejected: 'Вывод отклонён',
   refund: 'Возврат',
   commission_reversal: 'Возврат комиссии',
+  agent_commission_reversal: 'Возврат аг. вознаграждения',
   adjustment: 'Корректировка',
 }
 
@@ -90,12 +92,15 @@ export default function FinancesContent() {
   const [contract, setContract] = useState<ContractInfo | null>(null)
 
   const [loading, setLoading] = useState(true)
-  const [activeView, setActiveView] = useState<'transactions' | 'withdrawals'>('transactions')
+  const [activeView, setActiveView] = useState<'transactions' | 'withdrawals' | 'reports'>('transactions')
   const [txPage, setTxPage] = useState(1)
   const [wdPage, setWdPage] = useState(1)
   const [txTypeFilter, setTxTypeFilter] = useState<string>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  const [reports, setReports] = useState<any[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
 
   const [requestingWithdrawal, setRequestingWithdrawal] = useState(false)
   const [withdrawalError, setWithdrawalError] = useState<string | null>(null)
@@ -158,6 +163,20 @@ export default function FinancesContent() {
   useEffect(() => {
     if (activeView === 'withdrawals') loadWithdrawals()
   }, [activeView, loadWithdrawals])
+
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true)
+    try {
+      const res = await fetch(`/api/agent-reports?orgId=${orgId}`)
+      const data = await res.json()
+      if (res.ok) setReports(data.reports || [])
+    } catch { /* ignore */ }
+    finally { setReportsLoading(false) }
+  }, [orgId])
+
+  useEffect(() => {
+    if (activeView === 'reports') loadReports()
+  }, [activeView, loadReports])
 
   const formatAmount = (amount: number, currency: string = 'RUB') => {
     const sym = CURRENCY_SYMBOLS[currency] || currency
@@ -343,6 +362,18 @@ export default function FinancesContent() {
         >
           Выводы ({withdrawalsTotal})
         </button>
+        {hasActiveContract && (
+          <button
+            onClick={() => setActiveView('reports')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeView === 'reports'
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Отчёты агента
+          </button>
+        )}
       </div>
 
       {/* Transactions View */}
@@ -530,6 +561,85 @@ export default function FinancesContent() {
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reports view */}
+      {activeView === 'reports' && (
+        <div className="space-y-4">
+          {reportsLoading ? (
+            <div className="py-8 text-center text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              Загрузка отчётов...
+            </div>
+          ) : reports.length === 0 ? (
+            <div className="py-8 text-center text-gray-400">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">Отчётов пока нет</p>
+              <p className="text-xs text-gray-400 mt-1">Отчёты формируются автоматически каждый месяц</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-gray-600">
+                    <th className="text-left px-4 py-2 font-medium">Номер</th>
+                    <th className="text-left px-4 py-2 font-medium">Период</th>
+                    <th className="text-right px-4 py-2 font-medium">Продажи</th>
+                    <th className="text-right px-4 py-2 font-medium">К перечислению</th>
+                    <th className="text-left px-4 py-2 font-medium">Статус</th>
+                    <th className="text-left px-4 py-2 font-medium">Документ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map((report: any) => (
+                    <tr key={report.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-900">{report.report_number}</td>
+                      <td className="px-4 py-2 text-gray-600">
+                        {new Date(report.period_start).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-900">
+                        {parseFloat(report.total_sales_amount).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽
+                        <span className="text-xs text-gray-400 ml-1">({report.sales_count} шт.)</span>
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">
+                        {parseFloat(report.total_to_transfer).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                          report.status === 'generated' || report.status === 'sent'
+                            ? 'text-green-700 bg-green-50 border-green-200'
+                            : report.status === 'accepted'
+                            ? 'text-blue-700 bg-blue-50 border-blue-200'
+                            : 'text-gray-600 bg-gray-50 border-gray-200'
+                        }`}>
+                          {report.status === 'draft' ? 'Черновик' :
+                           report.status === 'generated' ? 'Сформирован' :
+                           report.status === 'sent' ? 'Отправлен' :
+                           report.status === 'accepted' ? 'Принят' : report.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        {report.document_url ? (
+                          <a
+                            href={report.document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            <Download className="w-3 h-3" />
+                            Скачать
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
