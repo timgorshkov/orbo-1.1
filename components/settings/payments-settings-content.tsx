@@ -5,7 +5,12 @@ import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ExternalLink, CreditCard, CheckCircle2, FileText, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react'
+import { ExternalLink, CreditCard, CheckCircle2, FileText, ChevronDown, ChevronRight, AlertCircle, Info } from 'lucide-react'
+import dynamic from 'next/dynamic'
+
+const ContractContent = dynamic(() => import('@/components/settings/contract-content'), {
+  loading: () => <div className="py-4 text-sm text-gray-400">Загрузка...</div>
+})
 
 const PRODAMUS_REF_URL = 'https://connect.prodamus.ru/?ref=ORBOPARTNERS&c=Rw6'
 
@@ -28,7 +33,9 @@ export default function PaymentsSettingsContent({
 
   // Contract status
   const [contractStatus, setContractStatus] = useState<ContractStatus>(null)
+  const [counterpartyType, setCounterpartyType] = useState<'individual' | 'legal_entity' | null>(null)
   const [contractLoading, setContractLoading] = useState(true)
+  const [showContractDetails, setShowContractDetails] = useState(false)
 
   useEffect(() => {
     const loadContract = async () => {
@@ -37,6 +44,7 @@ export default function PaymentsSettingsContent({
         const data = await res.json()
         if (data.contract) {
           setContractStatus(data.contract.status)
+          setCounterpartyType(data.contract.counterparty?.type || null)
         }
       } catch {
         // ignore — will show "no contract" state
@@ -93,21 +101,43 @@ export default function PaymentsSettingsContent({
                 <p className="text-sm font-medium">Платежи подключены</p>
               </div>
               <p className="text-sm text-gray-600">
-                Договор заключён. Orbo принимает оплаты за ваши мероприятия и выводит средства на ваш счёт за вычетом комиссии.
+                Договор заключён. Для платных событий оплата автоматически принимается через платформу.
               </p>
-              <p className="text-sm text-gray-500">
-                Для платных событий оплата будет автоматически приниматься через платформу.
-              </p>
+
+              {/* Условия сборов */}
+              <div className="bg-white rounded-lg border border-green-100 p-3 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  <Info className="w-3.5 h-3.5" />
+                  Условия приёма платежей
+                </div>
+                {counterpartyType === 'legal_entity' ? (
+                  <p className="text-xs text-gray-500">
+                    Сервисный сбор 5% включён в стоимость билета для участника.
+                    Агентское вознаграждение 5% удерживается из поступлений.
+                    Расходы на платёжные комиссии и фискальные чеки входят в агентское вознаграждение.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Сервисный сбор 10% включён в стоимость билета для участника.
+                    Расходы на платёжные комиссии и фискализацию берёт на себя Orbo.
+                  </p>
+                )}
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  window.location.href = `/p/${orgId}/settings?tab=contract`
-                }}
+                onClick={() => setShowContractDetails(!showContractDetails)}
               >
                 <FileText className="w-4 h-4 mr-1.5" />
-                Посмотреть договор
+                {showContractDetails ? 'Скрыть договор' : 'Посмотреть договор'}
               </Button>
+
+              {showContractDetails && (
+                <div className="border-t border-green-100 pt-4">
+                  <ContractContent />
+                </div>
+              )}
             </>
           ) : hasPendingContract ? (
             <>
@@ -118,22 +148,15 @@ export default function PaymentsSettingsContent({
               <p className="text-sm text-gray-600">
                 Вы заполнили данные для договора. После проверки и подтверждения вы сможете принимать платежи через Orbo.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.location.href = `/p/${orgId}/settings?tab=contract`
-                }}
-              >
-                <FileText className="w-4 h-4 mr-1.5" />
-                Статус договора
-              </Button>
+              <div className="border-t border-amber-100 pt-3">
+                <ContractContent />
+              </div>
             </>
           ) : (
             <>
               <p className="text-sm text-gray-700">
                 Заключите лицензионный договор с Orbo, и мы будем принимать оплаты за ваши мероприятия как платёжный агент.
-                Средства выводятся на ваш счёт за вычетом комиссии.
+                Средства выводятся на ваш счёт.
               </p>
 
               <div className="grid grid-cols-3 gap-3 text-sm">
@@ -154,21 +177,16 @@ export default function PaymentsSettingsContent({
               <div className="bg-white rounded-lg border border-blue-100 p-3 text-sm text-gray-700 space-y-1">
                 <p className="font-medium text-gray-800">Как это работает:</p>
                 <ol className="list-decimal list-inside space-y-0.5 text-gray-600">
-                  <li>Заключите договор — укажите реквизиты во вкладке «Договор»</li>
+                  <li>Заключите договор — укажите реквизиты ниже</li>
                   <li>Создавайте платные события — участники оплачивают онлайн</li>
-                  <li>Получайте выплаты на ваш счёт за вычетом комиссии</li>
+                  <li>Получайте выплаты на ваш счёт</li>
                 </ol>
               </div>
 
-              <Button
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={() => {
-                  window.location.href = `/p/${orgId}/settings?tab=contract`
-                }}
-              >
-                <FileText className="w-4 h-4 mr-1.5" />
-                Заключить договор
-              </Button>
+              {/* Contract wizard inline */}
+              <div className="border-t border-blue-100 pt-4">
+                <ContractContent />
+              </div>
             </>
           )}
         </CardContent>

@@ -37,6 +37,8 @@ interface PaymentPageProps {
   amount: number
   currency: string
   description: string
+  /** Сервисный сбор (включён в amount). Если указан, показывается подсказка */
+  serviceFeeAmount?: number
   /** For event payments */
   eventId?: string
   eventRegistrationId?: string
@@ -71,6 +73,7 @@ export default function PaymentPage({
   amount,
   currency,
   description,
+  serviceFeeAmount,
   eventId,
   eventRegistrationId,
   membershipPaymentId,
@@ -238,6 +241,11 @@ export default function PaymentPage({
               <p className="text-sm text-blue-800">
                 К оплате: <span className="font-bold text-lg">{amount.toLocaleString('ru-RU')} {currencySymbol}</span>
               </p>
+              {serviceFeeAmount != null && serviceFeeAmount > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  включая сервисный сбор {serviceFeeAmount.toLocaleString('ru-RU')} {currencySymbol}
+                </p>
+              )}
             </div>
 
             {/* Payment reference */}
@@ -346,6 +354,11 @@ export default function PaymentPage({
           <p className="text-4xl font-bold text-gray-900">
             {amount.toLocaleString('ru-RU')} <span className="text-2xl text-gray-500">{currencySymbol}</span>
           </p>
+          {serviceFeeAmount != null && serviceFeeAmount > 0 && (
+            <p className="text-xs text-gray-400 mt-1">
+              включая сервисный сбор {serviceFeeAmount.toLocaleString('ru-RU')} {currencySymbol} (не возвращается при отмене)
+            </p>
+          )}
         </CardContent>
       </Card>
 

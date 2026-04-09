@@ -363,6 +363,14 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
                   <option value="7">НДС 7%</option>
                   <option value="22">НДС 22%</option>
                 </select>
+                {cp.vat_rate !== 'none' && (
+                  <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      В данный момент мы не работаем с организаторами-плательщиками НДС, т.к. не можем обеспечить полноценный электронный документооборот.
+                      Вы можете подать заявку, и мы свяжемся с вами, когда эта возможность станет доступна.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Контактный e-mail" type="email" value={cp.email} onChange={v => updateCp('email', v)} required showValidation={showValidation} validatorKey="email" />

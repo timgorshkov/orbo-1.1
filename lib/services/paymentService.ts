@@ -14,7 +14,8 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { getGateway, type GatewayCode, type WebhookEvent } from './paymentGateway'
-import { recordEventPayment, recordMembershipPayment } from './orgAccountService'
+import { recordEventPayment, recordMembershipPayment, recordEventPaymentV2 } from './orgAccountService'
+import { calculateFees, getOrgFeeConfig, type CounterpartyType } from './feeCalculationService'
 
 const logger = createServiceLogger('PaymentService')
 
@@ -33,6 +34,12 @@ export interface PaymentSession {
   participant_id: string | null
   amount: number
   currency: string
+  /** Номинальная цена билета (без сервисного сбора) */
+  ticket_price: number | null
+  /** Сумма сервисного сбора */
+  service_fee_amount: number | null
+  /** Ставка сервисного сбора (снэпшот на момент оплаты) */
+  service_fee_rate: number | null
   description: string | null
   gateway_code: GatewayCode
   gateway_payment_id: string | null
@@ -126,6 +133,23 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
     }
   }
 
+  // Calculate fees for this org
+  let ticketPrice: number | null = null
+  let serviceFeeAmount: number | null = null
+  let serviceFeeRate: number | null = null
+
+  try {
+    const feeConfig = await getOrgFeeConfig(params.orgId)
+    if (feeConfig.hasActiveContract) {
+      const fees = calculateFees(params.amount, feeConfig.serviceFeeRate, feeConfig.agentCommissionRate)
+      ticketPrice = fees.ticketPrice
+      serviceFeeAmount = fees.serviceFeeAmount
+      serviceFeeRate = feeConfig.serviceFeeRate
+    }
+  } catch (feeErr: any) {
+    logger.warn({ org_id: params.orgId, error: feeErr.message }, 'Could not calculate fees, proceeding without')
+  }
+
   // Create session record first to get ID for payment reference
   const { data: session, error: insertErr } = await db
     .from('payment_sessions')
@@ -137,6 +161,9 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
       membership_payment_id: params.membershipPaymentId || null,
       participant_id: params.participantId || null,
       amount: params.amount,
+      ticket_price: ticketPrice,
+      service_fee_amount: serviceFeeAmount,
+      service_fee_rate: serviceFeeRate,
       currency: params.currency || 'RUB',
       description: params.description || null,
       gateway_code: params.gatewayCode,
@@ -581,24 +608,45 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
 
   // Record in ledger
   try {
+    const paidAmount = event.amount || session.amount
+
     if (session.payment_for === 'event' && session.event_registration_id) {
-      await recordEventPayment({
-        orgId: session.org_id,
-        eventId: session.event_id!,
-        eventRegistrationId: session.event_registration_id,
-        participantId: session.participant_id!,
-        amount: event.amount || session.amount,
-        currency: session.currency,
-        paymentGateway: session.gateway_code,
-        externalPaymentId: event.gatewayPaymentId,
-      })
+      // Use V2 recording if fee data available, otherwise fall back to V1
+      if (session.ticket_price != null && session.service_fee_amount != null) {
+        const feeConfig = await getOrgFeeConfig(session.org_id)
+        await recordEventPaymentV2({
+          orgId: session.org_id,
+          eventId: session.event_id!,
+          eventRegistrationId: session.event_registration_id,
+          participantId: session.participant_id!,
+          totalAmount: paidAmount,
+          ticketPrice: session.ticket_price,
+          serviceFeeAmount: session.service_fee_amount,
+          counterpartyType: feeConfig.counterpartyType,
+          currency: session.currency,
+          paymentGateway: session.gateway_code,
+          externalPaymentId: event.gatewayPaymentId,
+        })
+      } else {
+        // Legacy path: no fee separation
+        await recordEventPayment({
+          orgId: session.org_id,
+          eventId: session.event_id!,
+          eventRegistrationId: session.event_registration_id,
+          participantId: session.participant_id!,
+          amount: paidAmount,
+          currency: session.currency,
+          paymentGateway: session.gateway_code,
+          externalPaymentId: event.gatewayPaymentId,
+        })
+      }
 
       // Update event_registration payment status
       await db
         .from('event_registrations')
         .update({
           payment_status: 'paid',
-          paid_amount: event.amount || session.amount,
+          paid_amount: paidAmount,
           payment_method: session.gateway_code,
           paid_at: new Date().toISOString(),
         })
@@ -609,7 +657,7 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
         orgId: session.org_id,
         membershipPaymentId: session.membership_payment_id,
         participantId: session.participant_id || undefined,
-        amount: event.amount || session.amount,
+        amount: paidAmount,
         currency: session.currency,
         paymentGateway: session.gateway_code,
       })

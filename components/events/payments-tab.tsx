@@ -58,15 +58,21 @@ type Event = {
   currency: string
   payment_deadline_days: number | null
   payment_instructions: string | null
+  payment_link: string | null
   event_date: string
 }
 
 type Props = {
   eventId: string
   event: Event
+  /** Есть ли у организации активный контракт (verified/signed) */
+  hasActiveContract?: boolean
 }
 
-export default function PaymentsTab({ eventId, event }: Props) {
+export default function PaymentsTab({ eventId, event, hasActiveContract }: Props) {
+  // ОРБО-платежи включены, если: событие платное, есть активный контракт, нет внешней ссылки
+  const isOrboPayments = event.requires_payment && hasActiveContract === true && !event.payment_link
+
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [stats, setStats] = useState<PaymentStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -428,6 +434,14 @@ export default function PaymentsTab({ eventId, event }: Props) {
                 </div>
               </div>
 
+              {isOrboPayments && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-2">
+                  <p className="text-xs text-blue-700">
+                    Статус оплаты и способ оплаты управляются автоматически через систему приёма платежей Orbo.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-medium block mb-2">
                   Цена к оплате
@@ -438,7 +452,11 @@ export default function PaymentsTab({ eventId, event }: Props) {
                   value={editForm.price}
                   onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
                   placeholder="1000"
+                  disabled={isOrboPayments && editingRegistration?.payment_status === 'paid'}
                 />
+                {isOrboPayments && editingRegistration?.payment_status === 'paid' && (
+                  <p className="text-xs text-gray-400 mt-1">Нельзя изменить цену оплаченного билета</p>
+                )}
               </div>
 
               <div>
@@ -446,9 +464,10 @@ export default function PaymentsTab({ eventId, event }: Props) {
                   Статус оплаты
                 </label>
                 <select
-                  className="w-full p-2 border rounded-lg"
+                  className="w-full p-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
                   value={editForm.payment_status}
                   onChange={(e) => setEditForm({ ...editForm, payment_status: e.target.value as any })}
+                  disabled={isOrboPayments}
                 >
                   <option value="pending">Ожидает оплаты</option>
                   <option value="paid">Оплачено</option>
@@ -461,12 +480,13 @@ export default function PaymentsTab({ eventId, event }: Props) {
 
               <div>
                 <label className="text-sm font-medium block mb-2">
-                  Способ оплаты {editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
+                  Способ оплаты {!isOrboPayments && editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
                 </label>
                 <select
-                  className="w-full p-2 border rounded-lg"
+                  className="w-full p-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
                   value={editForm.payment_method}
                   onChange={(e) => setEditForm({ ...editForm, payment_method: e.target.value })}
+                  disabled={isOrboPayments}
                 >
                   <option value="">Не указан</option>
                   <option value="bank_transfer">Банковский перевод</option>
@@ -478,7 +498,7 @@ export default function PaymentsTab({ eventId, event }: Props) {
 
               <div>
                 <label className="text-sm font-medium block mb-2">
-                  Сумма оплаты {editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
+                  Сумма оплаты {!isOrboPayments && editForm.payment_status === 'paid' && <span className="text-red-500">*</span>}
                 </label>
                 <Input
                   type="number"
@@ -487,8 +507,9 @@ export default function PaymentsTab({ eventId, event }: Props) {
                   value={editForm.paid_amount}
                   onChange={(e) => setEditForm({ ...editForm, paid_amount: e.target.value })}
                   placeholder="0"
+                  disabled={isOrboPayments}
                 />
-                {editForm.payment_status === 'paid' && (!editForm.paid_amount || parseFloat(editForm.paid_amount) <= 0) && (
+                {!isOrboPayments && editForm.payment_status === 'paid' && (!editForm.paid_amount || parseFloat(editForm.paid_amount) <= 0) && (
                   <p className="text-xs text-red-500 mt-1">Укажите сумму оплаты</p>
                 )}
               </div>

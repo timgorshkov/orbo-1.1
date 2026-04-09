@@ -2,6 +2,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { getParticipantSession } from '@/lib/participant-auth/session'
 import PaymentPage from '@/components/payments/payment-page'
+import { calculateFeesForOrg } from '@/lib/services/feeCalculationService'
 import PaymentReturnHandler from '@/components/payments/payment-return-handler'
 
 interface Props {
@@ -147,6 +148,17 @@ export default async function PayPage({ params, searchParams }: Props) {
     }
   }
 
+  // Calculate service fee for display
+  let serviceFeeAmount: number | undefined
+  if (amount > 0 && bankDetails) {
+    try {
+      const fees = await calculateFeesForOrg(orgId, amount)
+      serviceFeeAmount = fees.serviceFeeAmount
+    } catch {
+      // If fee calculation fails, just don't show it
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <PaymentPage
@@ -156,6 +168,7 @@ export default async function PayPage({ params, searchParams }: Props) {
         amount={amount}
         currency={currency}
         description={description}
+        serviceFeeAmount={serviceFeeAmount}
         eventId={eventId}
         eventRegistrationId={eventRegistrationId}
         membershipPaymentId={membershipPaymentId}

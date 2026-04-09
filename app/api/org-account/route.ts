@@ -61,19 +61,22 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { commission_rate, min_withdrawal_amount, is_active } = body
+  const { commission_rate, service_fee_rate, agent_commission_rate, min_withdrawal_amount, is_active } = body
 
-  // Validate commission_rate
-  if (commission_rate !== undefined) {
-    if (typeof commission_rate !== 'number' || commission_rate < 0 || commission_rate > 1) {
-      return NextResponse.json({ error: 'commission_rate must be between 0 and 1' }, { status: 400 })
+  // Validate rate fields
+  const rateFields = { commission_rate, service_fee_rate, agent_commission_rate }
+  for (const [key, val] of Object.entries(rateFields)) {
+    if (val !== undefined) {
+      if (typeof val !== 'number' || val < 0 || val > 1) {
+        return NextResponse.json({ error: `${key} must be between 0 and 1` }, { status: 400 })
+      }
     }
   }
 
   try {
     // Ensure account exists before updating
     await getOrCreateOrgAccount(orgId)
-    const account = await updateOrgAccount(orgId, { commission_rate, min_withdrawal_amount, is_active })
+    const account = await updateOrgAccount(orgId, { commission_rate, service_fee_rate, agent_commission_rate, min_withdrawal_amount, is_active })
 
     logger.info({ org_id: orgId, updates: body }, 'Org account updated by superadmin')
     return NextResponse.json({ account })

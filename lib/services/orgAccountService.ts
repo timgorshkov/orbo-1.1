@@ -17,6 +17,10 @@ export interface OrgAccount {
   id: string
   org_id: string
   commission_rate: number
+  /** Ставка сервисного сбора (с участника). 0.10 = 10% для физлиц, 0.05 = 5% для юрлиц */
+  service_fee_rate: number
+  /** Ставка агентского вознаграждения (с организатора). 0 для физлиц, 0.05 для юрлиц */
+  agent_commission_rate: number
   min_withdrawal_amount: number
   currency: string
   is_active: boolean
@@ -27,11 +31,13 @@ export interface OrgAccount {
 export type TransactionType =
   | 'payment_incoming'
   | 'commission_deduction'
+  | 'agent_commission'
   | 'withdrawal_requested'
   | 'withdrawal_completed'
   | 'withdrawal_rejected'
   | 'refund'
   | 'commission_reversal'
+  | 'agent_commission_reversal'
   | 'adjustment'
 
 export interface OrgTransaction {
@@ -283,6 +289,149 @@ export async function recordMembershipPayment(params: {
   })
 }
 
+// ─── V2: Recording with separate service fee + agent commission ─────
+
+export interface RecordPaymentV2Params {
+  orgId: string
+  totalAmount: number          // полная сумма от участника
+  ticketPrice: number          // номинальная цена билета
+  serviceFeeAmount: number     // сервисный сбор
+  counterpartyType: 'individual' | 'legal_entity'
+  currency?: string
+  eventRegistrationId?: string
+  membershipPaymentId?: string
+  eventId?: string
+  participantId?: string
+  paymentGateway?: string
+  externalPaymentId?: string
+  description?: string
+  createdBy?: string
+}
+
+export interface RecordPaymentV2Result {
+  paymentTransactionId: string
+  commissionTransactionId: string | null
+  agentCommissionAmount: number
+  platformServiceFee: number
+  organizerNetAmount: number
+  newBalance: number
+}
+
+/**
+ * Record an incoming payment using V2 model:
+ * - ticket_price → org balance
+ * - service_fee → platform_income (not in org ledger)
+ * - agent_commission (юрлица) → deducted from org balance + platform_income
+ */
+export async function recordIncomingPaymentV2(
+  params: RecordPaymentV2Params
+): Promise<RecordPaymentV2Result> {
+  const db = createAdminServer()
+
+  let idempotencyKey: string | null = null
+  if (params.eventRegistrationId) {
+    idempotencyKey = `evt_reg_${params.eventRegistrationId}`
+  } else if (params.membershipPaymentId) {
+    idempotencyKey = `mbr_pay_${params.membershipPaymentId}`
+  }
+
+  const { data, error } = await db.raw(
+    `SELECT * FROM record_incoming_payment_v2($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      params.orgId,
+      params.totalAmount,
+      params.ticketPrice,
+      params.serviceFeeAmount,
+      params.counterpartyType,
+      params.currency || 'RUB',
+      idempotencyKey,
+      params.eventRegistrationId || null,
+      params.membershipPaymentId || null,
+      params.eventId || null,
+      params.participantId || null,
+      params.paymentGateway || 'manual',
+      params.externalPaymentId || null,
+      params.description || null,
+      params.createdBy || null,
+    ]
+  )
+
+  if (error) {
+    if (error.message?.includes('unique') || error.code === '23505') {
+      logger.warn({ idempotency_key: idempotencyKey }, 'Duplicate v2 payment recording attempt, skipping')
+      const balance = await getOrgBalance(params.orgId)
+      return {
+        paymentTransactionId: '',
+        commissionTransactionId: null,
+        agentCommissionAmount: 0,
+        platformServiceFee: params.serviceFeeAmount,
+        organizerNetAmount: params.ticketPrice,
+        newBalance: balance,
+      }
+    }
+    logger.error({ org_id: params.orgId, error: error.message }, 'Failed to record incoming payment v2')
+    throw new Error(`Failed to record payment v2: ${error.message}`)
+  }
+
+  const row = data?.[0]
+  if (!row) {
+    throw new Error('No result from record_incoming_payment_v2')
+  }
+
+  logger.info({
+    org_id: params.orgId,
+    total_amount: params.totalAmount,
+    ticket_price: params.ticketPrice,
+    service_fee: params.serviceFeeAmount,
+    agent_commission: row.agent_commission_amount,
+    balance: row.new_balance,
+    counterparty_type: params.counterpartyType,
+  }, 'Incoming payment v2 recorded')
+
+  return {
+    paymentTransactionId: row.payment_transaction_id,
+    commissionTransactionId: row.commission_transaction_id || null,
+    agentCommissionAmount: parseFloat(row.agent_commission_amount),
+    platformServiceFee: parseFloat(row.platform_service_fee),
+    organizerNetAmount: parseFloat(row.organizer_net_amount),
+    newBalance: parseFloat(row.new_balance),
+  }
+}
+
+/**
+ * V2: record event payment with fee separation.
+ */
+export async function recordEventPaymentV2(params: {
+  orgId: string
+  eventId: string
+  eventRegistrationId: string
+  participantId: string
+  totalAmount: number
+  ticketPrice: number
+  serviceFeeAmount: number
+  counterpartyType: 'individual' | 'legal_entity'
+  currency?: string
+  paymentGateway?: string
+  externalPaymentId?: string
+  confirmedBy?: string
+}): Promise<RecordPaymentV2Result> {
+  return recordIncomingPaymentV2({
+    orgId: params.orgId,
+    totalAmount: params.totalAmount,
+    ticketPrice: params.ticketPrice,
+    serviceFeeAmount: params.serviceFeeAmount,
+    counterpartyType: params.counterpartyType,
+    currency: params.currency,
+    eventRegistrationId: params.eventRegistrationId,
+    eventId: params.eventId,
+    participantId: params.participantId,
+    paymentGateway: params.paymentGateway,
+    externalPaymentId: params.externalPaymentId,
+    description: 'Оплата участия в мероприятии',
+    createdBy: params.confirmedBy,
+  })
+}
+
 // ─── Transaction History ────────────────────────────────────────────
 
 /**
@@ -396,7 +545,7 @@ export async function getOrgFinancialSummary(
   const { data, error } = await db.raw(
     `SELECT
        COALESCE(SUM(CASE WHEN type = 'payment_incoming' THEN amount ELSE 0 END), 0) AS total_income,
-       COALESCE(SUM(CASE WHEN type = 'commission_deduction' THEN ABS(amount) ELSE 0 END), 0) AS total_commission,
+       COALESCE(SUM(CASE WHEN type IN ('commission_deduction', 'agent_commission') THEN ABS(amount) ELSE 0 END), 0) AS total_commission,
        COALESCE(SUM(CASE WHEN type = 'withdrawal_completed' THEN ABS(amount) ELSE 0 END), 0) AS total_withdrawn,
        COALESCE(SUM(CASE WHEN type = 'refund' THEN ABS(amount) ELSE 0 END), 0) AS total_refunded,
        COUNT(*)::int AS transaction_count
@@ -439,6 +588,8 @@ export async function updateOrgAccount(
   orgId: string,
   updates: {
     commission_rate?: number
+    service_fee_rate?: number
+    agent_commission_rate?: number
     min_withdrawal_amount?: number
     is_active?: boolean
   }
@@ -449,6 +600,8 @@ export async function updateOrgAccount(
     updated_at: new Date().toISOString(),
   }
   if (updates.commission_rate !== undefined) updateData.commission_rate = updates.commission_rate
+  if (updates.service_fee_rate !== undefined) updateData.service_fee_rate = updates.service_fee_rate
+  if (updates.agent_commission_rate !== undefined) updateData.agent_commission_rate = updates.agent_commission_rate
   if (updates.min_withdrawal_amount !== undefined) updateData.min_withdrawal_amount = updates.min_withdrawal_amount
   if (updates.is_active !== undefined) updateData.is_active = updates.is_active
 

@@ -202,6 +202,30 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
   const hasActiveContract = contractStatus === 'verified' || contractStatus === 'signed'
   const hasPendingContract = contractStatus === 'filled_by_client'
 
+  // Load service fee rate for nominal price calculation
+  const [serviceFeeRate, setServiceFeeRate] = useState<number | null>(null)
+  useEffect(() => {
+    if (!hasActiveContract) return
+    const loadFeeConfig = async () => {
+      try {
+        const res = await fetch(`/api/org-account?orgId=${orgId}`)
+        const data = await res.json()
+        if (data.account?.service_fee_rate != null) {
+          setServiceFeeRate(parseFloat(data.account.service_fee_rate))
+        }
+      } catch { /* ignore */ }
+    }
+    loadFeeConfig()
+  }, [orgId, hasActiveContract])
+
+  // Calculate nominal ticket price from total price
+  const nominalTicketPrice = (() => {
+    if (!defaultPrice || !serviceFeeRate || serviceFeeRate <= 0) return null
+    const total = parseFloat(defaultPrice)
+    if (!total || total <= 0) return null
+    return Math.floor((total / (1 + serviceFeeRate)) * 100) / 100
+  })()
+
   const [allowMultipleTickets, setAllowMultipleTickets] = useState(
     initialEvent?.allow_multiple_tickets ?? false
   )
@@ -804,7 +828,7 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium block mb-2">
-                        Цена по умолчанию <span className="text-red-500">*</span>
+                        {hasActiveContract ? 'Стоимость для участника' : 'Цена по умолчанию'} <span className="text-red-500">*</span>
                       </label>
                       <Input
                         type="number"
@@ -815,9 +839,15 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                         placeholder="1000"
                         required={requiresPayment}
                       />
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Можно изменить для каждого участника отдельно
-                      </p>
+                      {nominalTicketPrice != null ? (
+                        <p className="text-xs text-neutral-400 mt-1">
+                          Номинальная стоимость билета: {nominalTicketPrice.toLocaleString('ru-RU')} ₽
+                        </p>
+                      ) : (
+                        <p className="text-xs text-neutral-500 mt-1">
+                          Можно изменить для каждого участника отдельно
+                        </p>
+                      )}
                     </div>
 
                     <div>

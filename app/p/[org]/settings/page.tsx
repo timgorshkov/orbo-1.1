@@ -226,7 +226,7 @@ export default async function OrganizationSettingsPage({
             <div className="mb-6">
               <h2 className="text-2xl font-semibold">Приём платежей</h2>
               <p className="text-gray-600 mt-1">
-                Настройте платёжную ссылку и подключите приём оплат картами
+                Договор, условия сборов и приём оплат
               </p>
             </div>
             <PaymentsSettingsContent
@@ -254,18 +254,8 @@ export default async function OrganizationSettingsPage({
       }
 
       case 'contract': {
-        tabContent = (
-          <div className="p-6">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold">Договор</h2>
-              <p className="text-gray-600 mt-1">
-                Заключите лицензионный договор и укажите реквизиты
-              </p>
-            </div>
-            <ContractContent />
-          </div>
-        )
-        break
+        // Вкладка «Договор» объединена с «Приём платежей» — редирект
+        redirect(`/p/${orgId}/settings?tab=payments`)
       }
 
       // 'digest' tab removed - digest settings are now in the Notifications tab

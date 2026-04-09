@@ -1221,6 +1221,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   currency: event.currency || 'RUB',
                   payment_deadline_days: event.payment_deadline_days ?? null,
                   payment_instructions: event.payment_instructions ?? null,
+                  payment_link: event.payment_link ?? null,
                   event_date: event.event_date
                 }}
               />

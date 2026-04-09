@@ -1,5 +1,6 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
+import { getDefaultRates, type CounterpartyType } from '@/lib/services/feeCalculationService'
 import * as QRCode from 'qrcode'
 
 const logger = createServiceLogger('ContractService')
@@ -309,6 +310,39 @@ export async function updateContractStatus(
   }
 
   logger.info({ contract_id: contractId, status }, 'Contract status updated')
+
+  // При верификации/подписании — автоматически установить ставки сборов по типу контрагента
+  if (status === 'verified' || status === 'signed') {
+    try {
+      const contract = await getContractById(contractId)
+      if (contract) {
+        const cpType = contract.counterparty.type as CounterpartyType
+        const rates = getDefaultRates(cpType)
+
+        // Upsert org_accounts with correct rates
+        const { error: upsertErr } = await db.raw(
+          `INSERT INTO org_accounts (org_id, service_fee_rate, agent_commission_rate)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (org_id)
+           DO UPDATE SET service_fee_rate = $2, agent_commission_rate = $3, updated_at = NOW()`,
+          [contract.org_id, rates.serviceFeeRate, rates.agentCommissionRate]
+        )
+        if (upsertErr) {
+          logger.error({ error: upsertErr.message, org_id: contract.org_id }, 'Failed to set fee rates')
+        } else {
+          logger.info({
+            org_id: contract.org_id,
+            counterparty_type: cpType,
+            service_fee_rate: rates.serviceFeeRate,
+            agent_commission_rate: rates.agentCommissionRate,
+          }, 'Fee rates auto-set based on counterparty type')
+        }
+      }
+    } catch (rateErr: any) {
+      logger.error({ error: rateErr.message, contract_id: contractId }, 'Failed to auto-set fee rates')
+    }
+  }
+
   return { error: null }
 }
 

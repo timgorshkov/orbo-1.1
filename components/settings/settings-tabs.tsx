@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-export type SettingsTab = 'team' | 'general' | 'tags' | 'notifications' | 'billing' | 'portal' | 'payments' | 'finances' | 'contract'
+export type SettingsTab = 'team' | 'general' | 'tags' | 'notifications' | 'billing' | 'portal' | 'payments' | 'finances' | 'contract' /* deprecated, redirects to payments */
 
 interface SettingsTabsProps {
   activeTab: SettingsTab
@@ -19,7 +19,6 @@ const TABS = [
   { id: 'payments', label: 'Приём платежей' },
   { id: 'finances', label: 'Финансы' },
   { id: 'billing', label: 'Тариф и оплата' },
-  { id: 'contract', label: 'Договор' },
 ] as const
 
 export default function SettingsTabs({ activeTab, orgId }: SettingsTabsProps) {
