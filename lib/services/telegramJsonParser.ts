@@ -244,9 +244,9 @@ export class TelegramJsonParser {
     if (typeof msg.text === 'string') {
       text = msg.text;
     } else if (Array.isArray(msg.text)) {
-      text = msg.text.map(entity => entity.text || '').join('');
+      text = msg.text.map(entity => typeof entity === 'string' ? entity : (entity.text || '')).join('');
     } else if (Array.isArray(msg.text_entities)) {
-      text = msg.text_entities.map(entity => entity.text || '').join('');
+      text = msg.text_entities.map(entity => typeof entity === 'string' ? entity : (entity.text || '')).join('');
     }
 
     text = text.trim();

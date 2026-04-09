@@ -17,6 +17,12 @@ function sanitizeForJson(str: string | null | undefined): string {
   return str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 }
 
+/** Serialize an object to a JSONB-safe string for PostgreSQL.
+ *  Removes escaped null bytes (\u0000) which PostgreSQL rejects even in escaped form. */
+function toJsonbSafe(obj: unknown): string {
+  return JSON.stringify(obj).replace(/\\u0000/g, '');
+}
+
 interface ImportDecision {
   importName: string;
   importUsername?: string;
@@ -564,14 +570,14 @@ async function processBatch(
         created_at: createdAt,
         import_source: 'json_import',
         import_batch_id: batchId,
-        meta: {
+        meta: toJsonbSafe({
           user: { name: sanitizeForJson(msg.authorName), username: sanitizeForJson(msg.authorUsername), tg_user_id: tgUserId },
           message: {
             id: messageId, thread_id: null, reply_to_id: (msg as any).replyToMessageId || null,
             text_preview: textPreview, text_length: msg.text?.length || 0, has_media: false, media_type: null
           },
           source: { type: 'import', format: 'json', batch_id: batchId }
-        }
+        })
       },
       fullText: msg.text ? sanitizeForJson(msg.text) : null,
       participantId,
@@ -613,7 +619,52 @@ async function processBatch(
         alreadyInDb += newEvents.length;
         logger.debug({ batch_size: newEvents.length }, 'Concurrent duplicates detected');
       } else {
-        throw error;
+        // Log detailed info about the failing batch for debugging
+        logger.error({
+          batch_size: newEvents.length,
+          error_code: error.code,
+          error_message: error.message,
+          sample_meta: newEvents[0]?.meta,
+          sample_keys: Object.keys(newEvents[0] || {}),
+        }, 'Batch insert failed — retrying row-by-row');
+
+        // Retry inserting one-by-one to skip only the bad rows
+        for (const evt of newEvents) {
+          const { data: singleData, error: singleErr } = await supabaseAdmin
+            .from('activity_events')
+            .insert(evt)
+            .select('id') as { data: any[] | null; error: any };
+
+          if (singleErr) {
+            if (singleErr.code === '23505') {
+              alreadyInDb++;
+            } else {
+              logger.warn({
+                error_code: singleErr.code,
+                error_message: singleErr.message,
+                message_id: evt.message_id,
+                meta_preview: typeof evt.meta === 'string' ? evt.meta.substring(0, 200) : JSON.stringify(evt.meta).substring(0, 200),
+              }, 'Skipping problematic event row');
+            }
+            continue;
+          }
+          if (singleData && singleData.length > 0) {
+            imported++;
+            // Find matching mapped event for text saving
+            const matchedM = newMapped.find(m => m.messageId === evt.message_id);
+            if (matchedM?.fullText && singleData[0].id) {
+              const pm = buildParticipantMessage(orgId, tgChatId, singleData[0].id, matchedM);
+              if (pm) {
+                await supabaseAdmin
+                  .from('participant_messages')
+                  .upsert(pm, { onConflict: 'tg_chat_id,message_id', ignoreDuplicates: true });
+                textsSaved++;
+              }
+            }
+            if (matchedM?.messageId) existingMessageIdSet.add(matchedM.messageId);
+          }
+        }
+        return { imported, alreadyInDb, skippedNoDecision, textsSaved, textsBackfilled };
       }
     } else {
       imported = data?.length || 0;
