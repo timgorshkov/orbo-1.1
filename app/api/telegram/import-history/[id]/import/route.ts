@@ -18,9 +18,11 @@ function sanitizeForJson(str: string | null | undefined): string {
 }
 
 /** Serialize an object to a JSONB-safe string for PostgreSQL.
- *  Removes escaped null bytes (\u0000) which PostgreSQL rejects even in escaped form. */
+ *  Removes escaped null bytes and lone surrogates which PostgreSQL rejects in JSONB. */
 function toJsonbSafe(obj: unknown): string {
-  return JSON.stringify(obj).replace(/\\u0000/g, '');
+  return JSON.stringify(obj)
+    .replace(/\\u0000/g, '')
+    .replace(/\\u[dD][89aAbB][0-9a-fA-F]{2}/g, '');
 }
 
 interface ImportDecision {
@@ -786,21 +788,25 @@ async function recalculateGroupMetrics(
     .from('telegram_groups')
     .update({
       member_count: memberCount || 0,
-      last_activity_at: lastActivity?.created_at,
+      last_sync_at: new Date().toISOString(),
     })
     .eq('tg_chat_id', tgChatId);
 
+  // Update last_activity_at for participants who have activity in this group
+  // activity_events uses tg_user_id (not participant_id), so join via participant's tg_user_id
   const { data: participants } = await supabase
     .from('participants')
-    .select('id')
-    .eq('org_id', orgId);
+    .select('id, tg_user_id')
+    .eq('org_id', orgId)
+    .not('tg_user_id', 'is', null);
 
   if (participants) {
     for (const participant of participants) {
       const { data: lastParticipantActivity } = await supabase
         .from('activity_events')
         .select('created_at')
-        .eq('participant_id', participant.id)
+        .eq('tg_user_id', participant.tg_user_id)
+        .eq('tg_chat_id', tgChatId)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();

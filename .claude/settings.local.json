@@ -84,7 +84,8 @@
       "WebFetch(domain:github.com)",
       "Bash(find ./app/app/[org]/events -name \"*.tsx\")",
       "Bash(find \"C:\\\\Cursor WS\\\\orbo-1.1.1\\\\orbo-1.1/db/migrations\" -name \"*.sql\" -exec grep -l \"organizations\" {} \\\\;)",
-      "WebFetch(domain:40947234-09c7-4a09-8966-33bd3fb30a20.selstorage.ru)"
+      "WebFetch(domain:40947234-09c7-4a09-8966-33bd3fb30a20.selstorage.ru)",
+      "Bash(find:*)"
     ]
   }
 }

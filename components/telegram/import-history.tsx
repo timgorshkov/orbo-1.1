@@ -256,7 +256,7 @@ export default function ImportHistory({ groupId, orgId, onImportSuccess, simplif
         parts.push(`🔗 Связано с существующими: ${stats.matchedParticipants}`);
       }
       if (stats.skippedNoDecision > 0) {
-        parts.push(`⏭️ Без решения: ${stats.skippedNoDecision}`);
+        parts.push(`⏭️ Пропущено (автор не распознан): ${stats.skippedNoDecision}`);
       }
 
       if (parts.length === 0) {
