@@ -32,8 +32,8 @@ export async function GET(
   // Проверяем наличие контракта для ОРБО-платежей
   const feeConfig = await getOrgFeeConfig(event.org_id)
 
-  // Если нет активного контракта или используется внешний payment_link — нет breakdown
-  if (!feeConfig.hasActiveContract || event.payment_link) {
+  // Если нет активного контракта — нет breakdown (payment_link игнорируется при наличии контракта)
+  if (!feeConfig.hasActiveContract) {
     return NextResponse.json({
       totalAmount: parseFloat(event.default_price),
       ticketPrice: parseFloat(event.default_price),

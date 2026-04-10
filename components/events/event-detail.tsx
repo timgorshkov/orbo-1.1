@@ -167,19 +167,19 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
       })
   }, [event.id, isRegistered])
 
-  // Check if org has active Orbo payments (contract verified/signed)
+  // Check if org has active Orbo payments (via public price endpoint — no auth required)
   const [hasOrboPayments, setHasOrboPayments] = useState(false)
   useEffect(() => {
     if (!event.requires_payment) return
-    fetch(`/api/contracts?orgId=${orgId}`)
-      .then(res => res.json())
+    fetch(`/api/events/${event.id}/price`)
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (data.contract && (data.contract.status === 'verified' || data.contract.status === 'signed')) {
+        if (data?.hasOrboPayments) {
           setHasOrboPayments(true)
         }
       })
       .catch(() => {})
-  }, [orgId, event.requires_payment])
+  }, [event.id, event.requires_payment])
 
   // Load participant profile for pre-filling registration form
   useEffect(() => {
@@ -791,7 +791,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                           {event.payment_instructions}
                                         </div>
                                       )}
-                                      {event.payment_link && (
+                                      {event.payment_link && !hasOrboPayments && (
                                         <a
                                           href={event.payment_link}
                                           target="_blank"
@@ -1345,7 +1345,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                           {event.payment_instructions}
                                         </div>
                                       )}
-                                      {event.payment_link && (
+                                      {event.payment_link && !hasOrboPayments && (
                                         <a
                                           href={event.payment_link}
                                           target="_blank"
@@ -1658,8 +1658,8 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         defaultPrice={event.default_price}
         currency={event.currency || 'RUB'}
         allowMultipleTickets={event.allow_multiple_tickets || false}
-        paymentLink={event.payment_link}
-        paymentInstructions={event.payment_instructions}
+        paymentLink={hasOrboPayments ? null : event.payment_link}
+        paymentInstructions={hasOrboPayments ? null : event.payment_instructions}
         hasOrboPayments={hasOrboPayments}
         open={showRegistrationForm}
         onOpenChange={setShowRegistrationForm}

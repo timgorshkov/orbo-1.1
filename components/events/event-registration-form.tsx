@@ -351,10 +351,10 @@ export default function EventRegistrationForm({
           </DialogTitle>
           <DialogDescription>
             {eventTitle}
-            {requiresPayment && step === 1 && (
+            {requiresPayment && !hasOrboPayments && step === 1 && (
               <span className="text-neutral-500"> • Шаг 1 из 2</span>
             )}
-            {requiresPayment && step === 2 && (
+            {requiresPayment && !hasOrboPayments && step === 2 && (
               <span className="text-neutral-500"> • Шаг 2 из 2</span>
             )}
           </DialogDescription>

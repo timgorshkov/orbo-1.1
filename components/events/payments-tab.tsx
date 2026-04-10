@@ -70,8 +70,8 @@ type Props = {
 }
 
 export default function PaymentsTab({ eventId, event, hasActiveContract }: Props) {
-  // ОРБО-платежи включены, если: событие платное, есть активный контракт, нет внешней ссылки
-  const isOrboPayments = event.requires_payment && hasActiveContract === true && !event.payment_link
+  // ОРБО-платежи включены, если: событие платное + есть активный контракт (payment_link игнорируется)
+  const isOrboPayments = event.requires_payment && hasActiveContract === true
 
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [stats, setStats] = useState<PaymentStats | null>(null)

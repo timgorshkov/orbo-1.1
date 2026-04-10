@@ -329,8 +329,8 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
       defaultPrice: requiresPayment && defaultPrice ? parseFloat(defaultPrice) : null,
       currency: requiresPayment ? currency : null,
       paymentDeadlineDays: requiresPayment && paymentDeadlineDays ? parseInt(paymentDeadlineDays) : null,
-      paymentInstructions: requiresPayment && paymentInstructions ? paymentInstructions : null,
-      paymentLink: requiresPayment && paymentLink ? paymentLink : null,
+      paymentInstructions: requiresPayment && !hasActiveContract && paymentInstructions ? paymentInstructions : null,
+      paymentLink: requiresPayment && !hasActiveContract && paymentLink ? paymentLink : null,
       allowMultipleTickets: allowMultipleTickets,
       // Registration fields config - only send if contact info is requested
       registrationFieldsConfig: requestContactInfo ? fieldsConfig : null,
@@ -926,7 +926,8 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                     </div>
                   )}
 
-                  {/* Fallback: own payment link (collapsed) */}
+                  {/* Fallback: own payment link — only show when no active Orbo contract */}
+                  {!hasActiveContract && (
                   <div className="border border-neutral-200 rounded-lg">
                     <button
                       type="button"
@@ -999,6 +1000,7 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                       </div>
                     )}
                   </div>
+                  )}
 
                   <div className={`flex items-center pt-2 border-t border-neutral-200 ${isRecurring ? 'opacity-50' : ''}`}>
                     <input
