@@ -1,9 +1,37 @@
 /**
  * Сервис для взаимодействия с Telegram Bot API
+ * Поддержка прокси: TELEGRAM_PROXY_URL или OPENAI_PROXY_URL (fallback)
  */
 import { createServiceLogger } from '@/lib/logger';
+import { ProxyAgent } from 'undici';
 
 const logger = createServiceLogger('TelegramService');
+
+// Proxy for Telegram API (uses TELEGRAM_PROXY_URL or falls back to OPENAI_PROXY_URL)
+const TG_PROXY_URL = process.env.TELEGRAM_PROXY_URL || process.env.OPENAI_PROXY_URL;
+let tgProxyAgent: ProxyAgent | undefined;
+if (TG_PROXY_URL) {
+  try {
+    tgProxyAgent = new ProxyAgent(TG_PROXY_URL);
+    if (process.env.NEXT_PHASE !== 'phase-production-build') {
+      logger.info({ proxy_host: TG_PROXY_URL.replace(/^https?:\/\/[^@]*@/, '').split(':')[0] }, 'Telegram API proxy configured');
+    }
+  } catch (e) {
+    logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Failed to configure Telegram proxy');
+  }
+}
+
+/**
+ * Shared fetch function for Telegram API with optional proxy support.
+ * Use this instead of raw fetch() for any requests to api.telegram.org.
+ */
+export function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
+  const options: any = { ...init };
+  if (tgProxyAgent) {
+    options.dispatcher = tgProxyAgent;
+  }
+  return fetch(url, options);
+}
 
 export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';
 
@@ -417,7 +445,7 @@ async getChatMember(chatId: number, userId: number) {
    */
   async downloadFile(filePath: string): Promise<ArrayBuffer> {
     const url = this.getFileUrl(filePath);
-    const response = await fetch(url);
+    const response = await telegramFetch(url);
     
     if (!response.ok) {
       throw new Error(`Failed to download file: ${response.statusText}`);
@@ -446,7 +474,7 @@ async getChatMember(chatId: number, userId: number) {
     const MAX_RETRIES = 2;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(url, {
+      const fetchOptions: any = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -454,7 +482,11 @@ async getChatMember(chatId: number, userId: number) {
         },
         body: JSON.stringify(params),
         signal: AbortSignal.timeout(8000),
-      });
+      };
+      if (tgProxyAgent) {
+        fetchOptions.dispatcher = tgProxyAgent;
+      }
+      const response = await fetch(url, fetchOptions);
 
       const responseData = await response.json();
       

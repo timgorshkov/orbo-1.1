@@ -8,6 +8,7 @@
 
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createServiceLogger } from '@/lib/logger';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 const logger = createServiceLogger('AppsNotification');
 
@@ -33,7 +34,7 @@ async function sendTelegramMessage(
     reply_markup?: any;
   }
 ): Promise<TelegramResponse> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+  const response = await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

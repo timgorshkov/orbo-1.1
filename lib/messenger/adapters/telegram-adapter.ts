@@ -6,6 +6,7 @@
  */
 
 import { BaseMessengerAdapter } from '../adapter';
+import { telegramFetch } from '@/lib/services/telegramService';
 import type {
   MessengerPlatform,
   MessengerUser,
@@ -78,7 +79,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
     const url = `${this.apiBase}${this.token}/${method}`;
     
     try {
-      const response = await fetch(url, {
+      const response = await telegramFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -367,7 +368,7 @@ export class TelegramAdapter extends BaseMessengerAdapter {
     const fileUrl = `https://api.telegram.org/file/bot${this.token}/${fileResponse.result.file_path}`;
     
     try {
-      const response = await fetch(fileUrl);
+      const response = await telegramFetch(fileUrl);
       if (!response.ok) {
         return this.error(`Failed to download file: ${response.statusText}`);
       }

@@ -9,6 +9,7 @@
  */
 
 import { createServiceLogger } from '@/lib/logger';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 const logger = createServiceLogger('TelegramNotification');
 
@@ -41,7 +42,7 @@ async function sendTelegramMessage(
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   
   try {
-    const response = await fetch(url, {
+    const response = await telegramFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -80,7 +81,7 @@ async function checkBotAccess(
 ): Promise<{ canSendDM: boolean; reason?: string }> {
   try {
     const url = `https://api.telegram.org/bot${botToken}/getChat`;
-    const response = await fetch(url, {
+    const response = await telegramFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: userId }),
