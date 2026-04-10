@@ -54,13 +54,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { orgId, amount, periodFrom, periodTo, bankAccountId, contractId, items } = body
+  const { orgId, periodFrom, periodTo, bankAccountId, contractId, items } = body
+  const amount = typeof body.amount === 'string' ? parseFloat(body.amount) : body.amount
 
   if (!orgId || !amount) {
     return NextResponse.json({ error: 'orgId and amount are required' }, { status: 400 })
   }
 
-  if (typeof amount !== 'number' || amount <= 0) {
+  if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
   }
 

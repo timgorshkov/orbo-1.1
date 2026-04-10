@@ -156,7 +156,7 @@ export async function getOrgBalance(orgId: string): Promise<number> {
     .limit(1)
     .maybeSingle()
 
-  return data?.balance_after ?? 0
+  return parseFloat(data?.balance_after) || 0
 }
 
 // ─── Recording Payments ─────────────────────────────────────────────
