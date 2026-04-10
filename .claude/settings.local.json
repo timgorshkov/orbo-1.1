@@ -89,7 +89,8 @@
       "Bash(docker exec:*)",
       "WebFetch(domain:developer.tbank.ru)",
       "WebFetch(domain:orangedata.ru)",
-      "WebFetch(domain:online-check.business.ru)"
+      "WebFetch(domain:online-check.business.ru)",
+      "Bash(node -e ':*)"
     ]
   }
 }
