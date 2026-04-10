@@ -189,13 +189,16 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
     .update({ payment_reference: paymentReference })
     .eq('id', session.id)
 
-  // Call gateway
+  // Call gateway — append sessionId to returnUrl if it ends with placeholder
   const gateway = getGateway(params.gatewayCode)
+  const finalReturnUrl = params.returnUrl.endsWith('sessionId=')
+    ? `${params.returnUrl}${session.id}`
+    : params.returnUrl
   const gatewayResult = await gateway.createPayment({
     amount: params.amount,
     currency: params.currency || 'RUB',
     description: params.description || `Оплата ${params.paymentFor === 'event' ? 'мероприятия' : 'подписки'}`,
-    returnUrl: params.returnUrl,
+    returnUrl: finalReturnUrl,
     metadata: {
       session_id: session.id,
       org_id: params.orgId,
@@ -208,6 +211,7 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
   // Update session with gateway response
   const updates: Record<string, any> = {
     payment_reference: paymentReference,
+    return_url: finalReturnUrl,
   }
 
   if (gatewayResult.success) {
