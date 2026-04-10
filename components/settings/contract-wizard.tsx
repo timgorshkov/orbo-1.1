@@ -304,6 +304,15 @@ export default function ContractWizard({ onComplete }: { onComplete: () => void 
               <div className="text-xs text-gray-500 mt-1">Для компаний и ИП</div>
             </button>
           </div>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800">
+              Подключая приём платежей, вы принимаете условия{' '}
+              <a href="https://orbo.ru/agent-agreement" target="_blank" rel="noopener noreferrer" className="font-medium underline hover:text-blue-900">
+                агентского договора-оферты
+              </a>
+              {' '}на приём платежей за мероприятия.
+            </p>
+          </div>
           <button onClick={() => setStep(1)} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
             <ArrowLeft className="w-3 h-3" /> Назад
           </button>

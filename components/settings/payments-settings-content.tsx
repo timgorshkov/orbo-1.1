@@ -134,8 +134,19 @@ export default function PaymentsSettingsContent({
               </Button>
 
               {showContractDetails && (
-                <div className="border-t border-green-100 pt-4">
+                <div className="border-t border-green-100 pt-4 space-y-3">
                   <ContractContent />
+                  <div className="pt-2 border-t border-gray-100">
+                    <a
+                      href="https://orbo.ru/agent-agreement"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Публичная оферта агентского договора
+                    </a>
+                  </div>
                 </div>
               )}
             </>
