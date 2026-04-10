@@ -58,6 +58,8 @@ export default function TelegramEventPage() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
+  const [hasOrboPayments, setHasOrboPayments] = useState(false);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +199,8 @@ export default function TelegramEventPage() {
         setIsRegistered(data.isRegistered || false);
         setPaymentStatus(data.paymentStatus || null);
         setQrToken(data.userRegistration?.qr_token || null);
+        setHasOrboPayments(data.hasOrboPayments || false);
+        setRegistrationId(data.userRegistration?.id || null);
         
         // Pre-fill form with Telegram user data
         let tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -289,18 +293,21 @@ export default function TelegramEventPage() {
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
       setIsRegistered(true);
       
-      // Set QR token if provided
+      // Set registration ID and QR token
+      if (data.registration?.id) {
+        setRegistrationId(data.registration.id);
+      }
       if (data.registration?.qr_token) {
         setQrToken(data.registration.qr_token);
       }
-      
+
       // Set payment status if provided
       if (data.registration?.payment_status) {
         setPaymentStatus(data.registration.payment_status);
       }
-      
-      // If paid event, show payment step
-      if (event.requires_payment && event.payment_link) {
+
+      // If paid event, show payment step (Orbo payments or external link)
+      if (event.requires_payment && (hasOrboPayments || event.payment_link)) {
         setViewState('payment');
       } else {
         setViewState('success');
@@ -505,7 +512,14 @@ export default function TelegramEventPage() {
                       {event.payment_instructions}
                     </p>
                   )}
-                  {event.payment_link && (
+                  {hasOrboPayments && registrationId ? (
+                    <a
+                      href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-green-600 text-white rounded-xl font-semibold"
+                    >
+                      💳 Оплатить
+                    </a>
+                  ) : event.payment_link ? (
                     <>
                       <a
                         href={event.payment_link}
@@ -519,7 +533,7 @@ export default function TelegramEventPage() {
                         Если вы уже оплатили, дождитесь учёта оплаты организатором
                       </p>
                     </>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -653,8 +667,15 @@ export default function TelegramEventPage() {
             </div>
           )}
           
-          {/* Payment link */}
-          {event?.payment_link && (
+          {/* Payment button */}
+          {hasOrboPayments && registrationId ? (
+            <a
+              href={`/p/${event?.org_id}/pay?type=event&registrationId=${registrationId}`}
+              className="flex items-center justify-center gap-2 w-full py-4 bg-green-600 text-white rounded-xl font-semibold text-lg"
+            >
+              💳 Оплатить
+            </a>
+          ) : event?.payment_link ? (
             <a
               href={event.payment_link}
               target="_blank"
@@ -663,10 +684,10 @@ export default function TelegramEventPage() {
             >
               💳 Перейти к оплате
             </a>
-          )}
-          
+          ) : null}
+
           {/* Payment instructions */}
-          {event?.payment_instructions && (
+          {!hasOrboPayments && event?.payment_instructions && (
             <div className="mt-6 p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-gray-700 whitespace-pre-wrap">
                 {event.payment_instructions}
@@ -958,15 +979,24 @@ export default function TelegramEventPage() {
                 <CheckCircle2 className="w-5 h-5" />
                 Вы зарегистрированы
               </div>
-              {event?.requires_payment && event?.payment_link && paymentStatus !== 'paid' && (
-                <a
-                  href={event.payment_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-500 text-sm"
-                >
-                  Перейти к оплате →
-                </a>
+              {event?.requires_payment && paymentStatus !== 'paid' && (
+                hasOrboPayments && registrationId ? (
+                  <a
+                    href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                    className="text-blue-500 text-sm"
+                  >
+                    Оплатить →
+                  </a>
+                ) : event?.payment_link ? (
+                  <a
+                    href={event.payment_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 text-sm"
+                  >
+                    Перейти к оплате →
+                  </a>
+                ) : null
               )}
               {/* Cancel registration - subtle link */}
               <button

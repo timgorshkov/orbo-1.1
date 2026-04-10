@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { validateMaxInitData, getMaxEventBotToken } from '@/lib/max/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
+import { getOrgFeeConfig } from '@/lib/services/feeCalculationService';
 
 /**
  * GET /api/max/webapp/events/[id]
@@ -145,6 +146,15 @@ export async function GET(
       is_registered: isRegistered,
     }, 'MAX webapp event loaded successfully');
 
+    // Check if org has active Orbo payments
+    let hasOrboPayments = false;
+    if (eventData.requires_payment) {
+      try {
+        const feeConfig = await getOrgFeeConfig(eventData.org_id);
+        hasOrboPayments = feeConfig.hasActiveContract;
+      } catch { /* ignore */ }
+    }
+
     return NextResponse.json({
       event: {
         id: eventData.id,
@@ -177,6 +187,7 @@ export async function GET(
       isValidated,
       paymentStatus,
       userRegistration,
+      hasOrboPayments,
     });
   } catch (error: any) {
     logger.error({ error: error.message, event_id: eventId }, 'Error loading event for MAX MiniApp');

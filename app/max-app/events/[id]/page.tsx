@@ -59,6 +59,8 @@ export default function MaxEventPage() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
+  const [hasOrboPayments, setHasOrboPayments] = useState(false);
+  const [registrationId, setRegistrationId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +187,8 @@ export default function MaxEventPage() {
         setIsRegistered(data.isRegistered || false);
         setPaymentStatus(data.paymentStatus || null);
         setQrToken(data.userRegistration?.qr_token || null);
+        setHasOrboPayments(data.hasOrboPayments || false);
+        setRegistrationId(data.userRegistration?.id || null);
 
         let user = (window as any).WebApp?.initDataUnsafe?.user;
         if (!user) {
@@ -252,10 +256,11 @@ export default function MaxEventPage() {
       if (!response.ok) throw new Error(data.error || 'Registration failed');
 
       setIsRegistered(true);
+      if (data.registration?.id) setRegistrationId(data.registration.id);
       if (data.registration?.qr_token) setQrToken(data.registration.qr_token);
       if (data.registration?.payment_status) setPaymentStatus(data.registration.payment_status);
 
-      if (event.requires_payment && event.payment_link) {
+      if (event.requires_payment && (hasOrboPayments || event.payment_link)) {
         setViewState('payment');
       } else {
         setViewState('success');
@@ -402,7 +407,14 @@ export default function MaxEventPage() {
                   {event.payment_instructions && (
                     <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{event.payment_instructions}</p>
                   )}
-                  {event.payment_link && (
+                  {hasOrboPayments && registrationId ? (
+                    <a
+                      href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-green-600 text-white rounded-xl font-semibold"
+                    >
+                      💳 Оплатить
+                    </a>
+                  ) : event.payment_link ? (
                     <>
                       <a href={event.payment_link} target="_blank" rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 w-full py-3 bg-amber-500 text-white rounded-xl font-semibold">
@@ -412,7 +424,7 @@ export default function MaxEventPage() {
                         Если вы уже оплатили, дождитесь учёта оплаты организатором
                       </p>
                     </>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -503,13 +515,20 @@ export default function MaxEventPage() {
               </p>
             </div>
           )}
-          {event?.payment_link && (
+          {hasOrboPayments && registrationId ? (
+            <a
+              href={`/p/${event?.org_id}/pay?type=event&registrationId=${registrationId}`}
+              className="flex items-center justify-center gap-2 w-full py-4 bg-green-600 text-white rounded-xl font-semibold text-lg"
+            >
+              💳 Оплатить
+            </a>
+          ) : event?.payment_link ? (
             <a href={event.payment_link} target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-4 bg-green-500 text-white rounded-xl font-semibold text-lg">
               Перейти к оплате
             </a>
-          )}
-          {event?.payment_instructions && (
+          ) : null}
+          {!hasOrboPayments && event?.payment_instructions && (
             <div className="mt-6 p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{event.payment_instructions}</p>
             </div>
@@ -696,10 +715,16 @@ export default function MaxEventPage() {
                 <CheckCircle2 className="w-5 h-5" />
                 Вы зарегистрированы
               </div>
-              {event?.requires_payment && event?.payment_link && paymentStatus !== 'paid' && (
-                <a href={event.payment_link} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-sm">
-                  Перейти к оплате →
-                </a>
+              {event?.requires_payment && paymentStatus !== 'paid' && (
+                hasOrboPayments && registrationId ? (
+                  <a href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`} className="text-blue-500 text-sm">
+                    Оплатить →
+                  </a>
+                ) : event?.payment_link ? (
+                  <a href={event.payment_link} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-sm">
+                    Перейти к оплате →
+                  </a>
+                ) : null
               )}
               <button onClick={handleCancelRegistration} disabled={isCancelling}
                 className="mt-3 text-gray-400 text-xs hover:text-red-500 transition-colors">

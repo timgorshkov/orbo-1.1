@@ -87,7 +87,9 @@
       "WebFetch(domain:40947234-09c7-4a09-8966-33bd3fb30a20.selstorage.ru)",
       "Bash(find:*)",
       "Bash(docker exec:*)",
-      "WebFetch(domain:developer.tbank.ru)"
+      "WebFetch(domain:developer.tbank.ru)",
+      "WebFetch(domain:orangedata.ru)",
+      "WebFetch(domain:online-check.business.ru)"
     ]
   }
 }

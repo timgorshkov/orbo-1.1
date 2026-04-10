@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { validateInitData, getEventBotToken, TelegramWebAppUser } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
+import { getOrgFeeConfig } from '@/lib/services/feeCalculationService';
 
 /**
  * GET /api/telegram/webapp/events/[id]
@@ -170,6 +171,15 @@ export async function GET(
       }
     }
     
+    // Check if org has active Orbo payments (contract verified/signed)
+    let hasOrboPayments = false;
+    if (event.requires_payment) {
+      try {
+        const feeConfig = await getOrgFeeConfig(event.org_id);
+        hasOrboPayments = feeConfig.hasActiveContract;
+      } catch { /* ignore */ }
+    }
+
     // Format response
     const orgInfo = event.organizations as any;
     const response = {
@@ -204,6 +214,7 @@ export async function GET(
       isValidated,
       paymentStatus,
       userRegistration,
+      hasOrboPayments,
     };
     
     return NextResponse.json(response);
