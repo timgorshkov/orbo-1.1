@@ -1224,6 +1224,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   payment_link: event.payment_link ?? null,
                   event_date: event.event_date
                 }}
+                hasActiveContract={hasOrboPayments}
               />
             </TabsContent>
           )}
