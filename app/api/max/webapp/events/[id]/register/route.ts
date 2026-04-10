@@ -208,6 +208,7 @@ export async function POST(
 
     if (registrationRow?.registration_id) {
       const regUpdate: Record<string, unknown> = { registration_source: 'max_miniapp', messenger_type: 'max' };
+      if (event.default_price) regUpdate.price = event.default_price;
       if (pdConsent) regUpdate.pd_consent_at = new Date().toISOString();
       const { data: updatedReg } = await adminSupabase
         .from('event_registrations')

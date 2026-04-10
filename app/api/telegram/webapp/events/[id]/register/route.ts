@@ -261,6 +261,7 @@ export async function POST(
     
     if (registrationRow?.registration_id) {
       const regUpdateData: Record<string, unknown> = { registration_source: 'telegram_miniapp' };
+      if (event.default_price) regUpdateData.price = event.default_price;
       if (pdConsent) regUpdateData.pd_consent_at = new Date().toISOString();
       const { data: updatedReg } = await adminSupabase
         .from('event_registrations')

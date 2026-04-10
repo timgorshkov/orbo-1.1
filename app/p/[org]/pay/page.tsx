@@ -68,10 +68,10 @@ export default async function PayPage({ params, searchParams }: Props) {
   let returnPath = `/p/${orgId}/events`
 
   if (type === 'event' && query.registrationId) {
-    // Load registration + event info
+    // Load registration + event info (use default_price as fallback if price not set on registration)
     const { data: reg } = await db.raw(
-      `SELECT er.id, er.price, er.event_id, er.participant_id,
-              e.title, e.currency
+      `SELECT er.id, er.price, er.event_id, er.participant_id, er.quantity,
+              e.title, e.currency, e.default_price
        FROM event_registrations er
        JOIN events e ON e.id = er.event_id
        WHERE er.id = $1`,
@@ -80,7 +80,9 @@ export default async function PayPage({ params, searchParams }: Props) {
 
     if (reg && reg.length > 0) {
       const r = reg[0]
-      amount = parseFloat(r.price) || 0
+      const unitPrice = parseFloat(r.price) || parseFloat(r.default_price) || 0
+      const qty = parseInt(r.quantity) || 1
+      amount = unitPrice * qty
       currency = r.currency || 'RUB'
       description = `Участие: ${r.title}`
       eventId = r.event_id

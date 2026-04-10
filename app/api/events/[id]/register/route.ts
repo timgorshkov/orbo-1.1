@@ -372,6 +372,15 @@ export async function POST(
       )
     }
 
+    // Set price from event default_price (RPC doesn't set it)
+    if (registrationRow.registration_id && event.default_price) {
+      try {
+        await adminSupabase
+          .from('event_registrations')
+          .update({ price: event.default_price })
+          .eq('id', registrationRow.registration_id)
+      } catch { /* non-critical */ }
+    }
     // Save consent timestamps
     if (registrationRow.registration_id && pdConsent) {
       try {
