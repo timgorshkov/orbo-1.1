@@ -94,13 +94,15 @@ export default function PaymentPage({
   const isTerminal = session && ['succeeded', 'failed', 'cancelled', 'refunded'].includes(session.status)
 
   // Load available gateways
+  const [autoPayTriggered, setAutoPayTriggered] = useState(false)
   useEffect(() => {
     fetch('/api/pay/gateways')
       .then(res => res.json())
       .then(data => {
-        setGateways(data.gateways || [])
+        const gws = data.gateways || []
+        setGateways(gws)
         // Auto-select first card gateway if available
-        const cardGw = (data.gateways || []).find((g: GatewayInfo) => g.icon === 'card')
+        const cardGw = gws.find((g: GatewayInfo) => g.icon === 'card')
         if (cardGw) setSelectedGateway(cardGw.code)
       })
       .catch(() => setError('Не удалось загрузить способы оплаты'))
@@ -174,6 +176,14 @@ export default function PaymentPage({
       setLoading(false)
     }
   }, [selectedGateway, orgId, paymentFor, amount, currency, description, eventId, eventRegistrationId, membershipPaymentId, participantId, userId])
+
+  // Auto-initiate payment when exactly 1 gateway is available (skip selection step)
+  useEffect(() => {
+    if (!gatewaysLoading && gateways.length === 1 && selectedGateway && !session && !autoPayTriggered && !loading) {
+      setAutoPayTriggered(true)
+      handlePay()
+    }
+  }, [gatewaysLoading, gateways.length, selectedGateway, session, autoPayTriggered, loading, handlePay])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -362,7 +372,8 @@ export default function PaymentPage({
         </CardContent>
       </Card>
 
-      {/* Gateway selection */}
+      {/* Gateway selection — hidden when only 1 option (auto-pay triggers) */}
+      {(gatewaysLoading || gateways.length > 1 || gateways.length === 0) && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Способ оплаты</CardTitle>
@@ -404,6 +415,7 @@ export default function PaymentPage({
           )}
         </CardContent>
       </Card>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -411,20 +423,27 @@ export default function PaymentPage({
         </div>
       )}
 
-      {/* Pay button */}
-      <Button
-        onClick={handlePay}
-        disabled={!selectedGateway || loading}
-        className="w-full h-12 text-base"
-      >
-        {loading ? (
-          <span className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Создание платежа...
-          </span>
-        ) : (
-          `Оплатить ${amount.toLocaleString('ru-RU')} ${currencySymbol}`
-        )}
-      </Button>
+      {/* Pay button — show loader if auto-pay in progress, full button if multiple gateways */}
+      {gateways.length === 1 && (loading || autoPayTriggered) ? (
+        <div className="flex items-center justify-center gap-2 py-4 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Переход к оплате...</span>
+        </div>
+      ) : (
+        <Button
+          onClick={handlePay}
+          disabled={!selectedGateway || loading}
+          className="w-full h-12 text-base"
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Создание платежа...
+            </span>
+          ) : (
+            `Оплатить ${amount.toLocaleString('ru-RU')} ${currencySymbol}`
+          )}
+        </Button>
+      )}
 
       {/* Back link */}
       <button

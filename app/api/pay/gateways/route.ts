@@ -7,13 +7,14 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const gateways = getAvailableGateways()
 
-  // Map to user-friendly labels
-  const gatewayInfo: Array<{ code: string; label: string; icon: string }> = gateways
-    .filter(g => g !== 'manual') // Don't show manual to end users
+  // Map to user-friendly labels (exclude manual — direct bank transfer disabled for now,
+  // will be re-enabled in Phase 9 with Orbo's own bank account + fiscalization)
+  const gatewayInfo: Array<{ code: string; label: string; icon: string; description?: string }> = gateways
+    .filter(g => g !== 'manual')
     .map(code => ({
       code,
       label: code === 'yookassa' ? 'Банковская карта'
-           : code === 'tbank' ? 'Банковская карта (T-Bank)'
+           : code === 'tbank' ? 'Банковская карта'
            : code === 'sbp' ? 'СБП (QR-код)'
            : code,
       icon: code === 'yookassa' ? 'card'
@@ -21,13 +22,6 @@ export async function GET(request: NextRequest) {
           : code === 'sbp' ? 'qr'
           : 'other',
     }))
-
-  // Always add bank transfer option
-  gatewayInfo.push({
-    code: 'manual',
-    label: 'Банковский перевод',
-    icon: 'bank',
-  })
 
   return NextResponse.json({ gateways: gatewayInfo })
 }
