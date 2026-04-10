@@ -520,6 +520,7 @@ async getChatMember(chatId: number, userId: number) {
           (responseData.error_code === 400 && responseData.description?.includes('user not found')) ||
           (responseData.error_code === 400 && responseData.description?.includes('chat not found')) ||
           (responseData.error_code === 400 && responseData.description?.includes('member not found')) ||
+          (responseData.error_code === 400 && responseData.description?.includes('member list is inaccessible')) ||
           (responseData.error_code === 400 && responseData.description?.includes('PARTICIPANT_ID_INVALID')) ||
           (responseData.error_code === 400 && responseData.description?.includes('CHAT_ADMIN_REQUIRED')) ||
           (responseData.error_code === 403 && responseData.description?.includes('bot was blocked')) ||
