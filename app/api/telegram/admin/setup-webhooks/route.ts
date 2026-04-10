@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { TelegramService } from '@/lib/services/telegramService';
+import { TelegramService, telegramFetch } from '@/lib/services/telegramService';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
 
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     const eventBotToken = getEventBotToken();
     if (eventBotToken) {
       try {
-        const eventResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
+        const eventResponse = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
         const eventResult = await eventResponse.json();
         const eventInfo = eventResult.result || {};
         
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     const expectedRegistrationUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
     if (regBotToken) {
       try {
-        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+        const regResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
         const regResult = await regResponse.json();
         const regInfo = regResult.result || {};
         
@@ -209,7 +209,7 @@ export async function POST(request: Request) {
     
     if (eventBotToken) {
       try {
-        const eventResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
+        const eventResponse = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
     
     if (regBotToken) {
       try {
-        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
+        const regResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

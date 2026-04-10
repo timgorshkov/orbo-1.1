@@ -5,6 +5,7 @@ import { logErrorToDatabase } from '@/lib/logErrorToDatabase'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 // POST /api/events/[id]/notify - Send Telegram notification for event
 export async function POST(
@@ -222,7 +223,7 @@ export async function POST(
         
         if (hasValidCoverImage) {
           // Send photo with caption if cover image exists and is valid
-          telegramResponse = await fetch(
+          telegramResponse = await telegramFetch(
             `https://api.telegram.org/bot${botToken}/sendPhoto`,
             {
               method: 'POST',
@@ -238,7 +239,7 @@ export async function POST(
           )
         } else {
           // Send text message if no cover image
-          telegramResponse = await fetch(
+          telegramResponse = await telegramFetch(
             `https://api.telegram.org/bot${botToken}/sendMessage`,
             {
               method: 'POST',

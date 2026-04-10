@@ -2,6 +2,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAPILogger } from '@/lib/logger';
 import { requireOrgAccess } from '@/lib/orgGuard';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,7 +97,7 @@ export async function POST(
     // Method 2: Try getChat with @username
     if (!botUserId) {
       try {
-        const botInfoResp = await fetch(`https://api.telegram.org/bot${botToken}/getChat`, {
+        const botInfoResp = await telegramFetch(`https://api.telegram.org/bot${botToken}/getChat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: `@${botUsernameLower}` })
@@ -116,7 +117,7 @@ export async function POST(
     if (!botUserId) {
       for (const group of groups) {
         try {
-          const adminsResp = await fetch(`https://api.telegram.org/bot${botToken}/getChatAdministrators`, {
+          const adminsResp = await telegramFetch(`https://api.telegram.org/bot${botToken}/getChatAdministrators`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: group.tg_chat_id })
@@ -171,7 +172,7 @@ export async function POST(
     
     for (const group of groups) {
       try {
-        const memberResp = await fetch(`https://api.telegram.org/bot${botToken}/getChatMember`, {
+        const memberResp = await telegramFetch(`https://api.telegram.org/bot${botToken}/getChatMember`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 

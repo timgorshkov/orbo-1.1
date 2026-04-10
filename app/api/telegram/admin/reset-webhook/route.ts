@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createTelegramService } from '@/lib/services/telegramService'
+import { createTelegramService, telegramFetch } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         const webhookUrl = `${appUrl}/api/telegram/webhook`
         
         // Получаем текущую информацию о webhook
-        const infoResponse = await fetch(
+        const infoResponse = await telegramFetch(
           `https://api.telegram.org/bot${mainBotToken}/getWebhookInfo`
         )
         const currentInfo = await infoResponse.json()
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         const webhookUrl = `${appUrl}/api/telegram/notifications/webhook`
         
         // Получаем текущую информацию о webhook
-        const infoResponse = await fetch(
+        const infoResponse = await telegramFetch(
           `https://api.telegram.org/bot${notificationsBotToken}/getWebhookInfo`
         )
         const currentInfo = await infoResponse.json()

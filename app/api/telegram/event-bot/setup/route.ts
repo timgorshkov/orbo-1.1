@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 /**
  * POST /api/telegram/event-bot/setup
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     
     // Set webhook
     const setWebhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook`;
-    const response = await fetch(setWebhookUrl, {
+    const response = await telegramFetch(setWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     
     // Get webhook info
     const getInfoUrl = `https://api.telegram.org/bot${botToken}/getWebhookInfo`;
-    const infoResponse = await fetch(getInfoUrl);
+    const infoResponse = await telegramFetch(getInfoUrl);
     const info = await infoResponse.json();
     
     return NextResponse.json({
@@ -82,12 +83,12 @@ export async function GET(request: NextRequest) {
     }
     
     const getInfoUrl = `https://api.telegram.org/bot${botToken}/getWebhookInfo`;
-    const response = await fetch(getInfoUrl);
+    const response = await telegramFetch(getInfoUrl);
     const info = await response.json();
     
     // Get bot info
     const getMeUrl = `https://api.telegram.org/bot${botToken}/getMe`;
-    const meResponse = await fetch(getMeUrl);
+    const meResponse = await telegramFetch(getMeUrl);
     const me = await meResponse.json();
     
     return NextResponse.json({

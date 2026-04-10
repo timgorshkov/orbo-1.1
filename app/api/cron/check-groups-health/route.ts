@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createCronLogger } from '@/lib/logger';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // Allow up to 2 minutes
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
       
       try {
         // Check bot's membership in the chat using getChat
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`,
           { method: 'GET' }
         );

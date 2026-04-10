@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { telegramFetch } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     // Проверяем основной бот
     if (mainBotToken) {
       try {
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${mainBotToken}/getWebhookInfo`
         )
         const data = await response.json()
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
     // Проверяем бот уведомлений
     if (notificationsBotToken) {
       try {
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${notificationsBotToken}/getWebhookInfo`
         )
         const data = await response.json()
@@ -117,7 +118,7 @@ export async function DELETE(req: NextRequest) {
     if (!botType || botType === 'main') {
       const mainBotToken = process.env.TELEGRAM_BOT_TOKEN
       if (mainBotToken) {
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${mainBotToken}/deleteWebhook`
         )
         const data = await response.json()
@@ -129,7 +130,7 @@ export async function DELETE(req: NextRequest) {
     if (!botType || botType === 'notifications') {
       const notificationsBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN
       if (notificationsBotToken) {
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${notificationsBotToken}/deleteWebhook`
         )
         const data = await response.json()

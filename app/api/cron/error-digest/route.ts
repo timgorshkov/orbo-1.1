@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createCronLogger } from '@/lib/logger';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const telegramResponse = await fetch(
+    const telegramResponse = await telegramFetch(
       `https://api.telegram.org/bot${botToken}/sendMessage`,
       {
         method: 'POST',

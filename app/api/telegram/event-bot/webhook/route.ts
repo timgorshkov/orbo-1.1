@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getEventBotToken, extractEventId } from '@/lib/telegram/webAppAuth';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 /**
  * POST /api/telegram/event-bot/webhook
@@ -121,7 +122,7 @@ async function sendTelegramMessage(
     body.reply_markup = replyMarkup;
   }
   
-  const response = await fetch(url, {
+  const response = await telegramFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

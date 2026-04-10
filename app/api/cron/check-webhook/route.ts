@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCronLogger } from '@/lib/logger'
 import { createMaxService, MaxBotType } from '@/lib/services/maxService'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // 60 seconds timeout
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     for (const bot of bots) {
       try {
-        const webhookInfoResponse = await fetch(
+        const webhookInfoResponse = await telegramFetch(
           `https://api.telegram.org/bot${bot.token}/getWebhookInfo`,
           { method: 'GET' }
         )
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
 
         logger.info({ bot: bot.name }, 'Restoring webhook');
         
-        const setWebhookResponse = await fetch(
+        const setWebhookResponse = await telegramFetch(
           `https://api.telegram.org/bot${bot.token}/setWebhook`,
           {
             method: 'POST',

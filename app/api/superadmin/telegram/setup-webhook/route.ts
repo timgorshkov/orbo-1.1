@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { TelegramService } from '@/lib/services/telegramService';
+import { TelegramService, telegramFetch } from '@/lib/services/telegramService';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       
       logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting registration bot webhook');
       
-      const response = await fetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
+      const response = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/setWebhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: result.description || 'Failed to set webhook' }, { status: 500 });
       }
       
-      const infoResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+      const infoResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
       const infoResult = await infoResponse.json();
       const webhookInfo = infoResult.result || {};
       
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       
       logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting event bot webhook');
       
-      const response = await fetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
+      const response = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       }
       
       // Get webhook info
-      const infoResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
+      const infoResponse = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
       const infoResult = await infoResponse.json();
       const webhookInfo = infoResult.result || {};
       
@@ -265,11 +265,11 @@ export async function GET(req: NextRequest) {
     
     if (eventBotToken) {
       try {
-        const eventResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
+        const eventResponse = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/getWebhookInfo`);
         const eventResult = await eventResponse.json();
         eventBotInfo = eventResult.result || {};
         
-        const meResponse = await fetch(`https://api.telegram.org/bot${eventBotToken}/getMe`);
+        const meResponse = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/getMe`);
         const meResult = await meResponse.json();
         if (meResult.result) {
           eventBotInfo.botUsername = meResult.result.username;
@@ -285,11 +285,11 @@ export async function GET(req: NextRequest) {
     
     if (regBotToken) {
       try {
-        const regResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
+        const regResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
         const regResult = await regResponse.json();
         regBotInfo = regResult.result || {};
         
-        const meResponse = await fetch(`https://api.telegram.org/bot${regBotToken}/getMe`);
+        const meResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/getMe`);
         const meResult = await meResponse.json();
         if (meResult.result) {
           regBotInfo.botUsername = meResult.result.username;

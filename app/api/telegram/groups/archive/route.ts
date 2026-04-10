@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { getUserRoleInOrg } from '@/lib/auth/getUserRole';
+import { telegramFetch } from '@/lib/services/telegramService';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +121,7 @@ export async function DELETE(request: Request) {
     
     if (botToken) {
       try {
-        const response = await fetch(
+        const response = await telegramFetch(
           `https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`
         );
         const data = await response.json();

@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedSession } from '@/lib/auth/unified-auth'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 export const dynamic = 'force-dynamic';
 
@@ -242,7 +243,7 @@ export async function POST(req: NextRequest) {
 
           for (const token of botTokens) {
             try {
-              const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${tgUserId}`, {
+              const chatRes = await telegramFetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${tgUserId}`, {
                 signal: AbortSignal.timeout(3000),
               })
               const chatData = await chatRes.json()

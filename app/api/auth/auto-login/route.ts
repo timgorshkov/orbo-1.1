@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { decode } from 'next-auth/jwt'
 import { createAdminServer } from '@/lib/server/supabaseServer'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 /**
  * Auto-login endpoint: sets a JWT session cookie and redirects.
@@ -84,7 +85,7 @@ async function sendTelegramConfirmation(token: string, salt: string, baseUrl: st
       ? `🎉 ${userName ? `${userName}, аккаунт` : 'Аккаунт'} создан!\n\nЭта ссылка всегда приведёт вас в личный кабинет:`
       : `✅ ${userName ? `${userName}, вы` : 'Вы'} вошли в Orbo.\n\nЭта ссылка всегда приведёт вас в личный кабинет:`
 
-    await fetch(`https://api.telegram.org/bot${regBotToken}/sendMessage`, {
+    await telegramFetch(`https://api.telegram.org/bot${regBotToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

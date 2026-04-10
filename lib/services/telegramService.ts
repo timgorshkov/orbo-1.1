@@ -1,20 +1,31 @@
 /**
  * Сервис для взаимодействия с Telegram Bot API
  * Поддержка прокси: TELEGRAM_PROXY_URL или OPENAI_PROXY_URL (fallback)
+ *
+ * Конфигурация прокси:
+ *   TELEGRAM_PROXY_URL — URL прокси (socks5://user:pass@host:port)
+ *   TELEGRAM_PROXY_ENABLED — "false" чтобы отключить прокси без удаления URL
+ *   TELEGRAM_PROXY_FALLBACK — "false" чтобы НЕ пытаться напрямую при ошибке прокси (по умолчанию fallback включён)
  */
 import { createServiceLogger } from '@/lib/logger';
 import { ProxyAgent } from 'undici';
 
 const logger = createServiceLogger('TelegramService');
 
-// Proxy for Telegram API (uses TELEGRAM_PROXY_URL or falls back to OPENAI_PROXY_URL)
+// Proxy for Telegram API
 const TG_PROXY_URL = process.env.TELEGRAM_PROXY_URL || process.env.OPENAI_PROXY_URL;
+const PROXY_ENABLED = process.env.TELEGRAM_PROXY_ENABLED !== 'false';
+const PROXY_FALLBACK = process.env.TELEGRAM_PROXY_FALLBACK !== 'false';
+
 let tgProxyAgent: ProxyAgent | undefined;
-if (TG_PROXY_URL) {
+if (TG_PROXY_URL && PROXY_ENABLED) {
   try {
     tgProxyAgent = new ProxyAgent(TG_PROXY_URL);
     if (process.env.NEXT_PHASE !== 'phase-production-build') {
-      logger.info({ proxy_host: TG_PROXY_URL.replace(/^https?:\/\/[^@]*@/, '').split(':')[0] }, 'Telegram API proxy configured');
+      logger.info({
+        proxy_host: TG_PROXY_URL.replace(/^https?:\/\/[^@]*@/, '').split(':')[0],
+        fallback: PROXY_FALLBACK,
+      }, 'Telegram API proxy configured');
     }
   } catch (e) {
     logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Failed to configure Telegram proxy');
@@ -22,15 +33,31 @@ if (TG_PROXY_URL) {
 }
 
 /**
- * Shared fetch function for Telegram API with optional proxy support.
- * Use this instead of raw fetch() for any requests to api.telegram.org.
+ * Единая точка вызова Telegram API с поддержкой прокси и fallback.
+ * Используйте ВМЕСТО голого fetch() для любых запросов к api.telegram.org.
+ *
+ * Логика:
+ * 1. Если прокси настроен и включён — запрос через прокси
+ * 2. Если прокси-запрос упал (сеть, таймаут) и fallback включён — повтор напрямую
+ * 3. Если прокси не настроен — запрос напрямую
  */
-export function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
-  const options: any = { ...init };
+export async function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
   if (tgProxyAgent) {
-    options.dispatcher = tgProxyAgent;
+    try {
+      const options: any = { ...init, dispatcher: tgProxyAgent };
+      const res = await fetch(url, options);
+      return res;
+    } catch (proxyErr) {
+      if (!PROXY_FALLBACK) throw proxyErr;
+      // Fallback: try direct
+      logger.warn({
+        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+        url: url.replace(/bot[^/]+/, 'bot***'),
+      }, 'Telegram proxy failed, falling back to direct');
+      return fetch(url, init);
+    }
   }
-  return fetch(url, options);
+  return fetch(url, init);
 }
 
 export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';

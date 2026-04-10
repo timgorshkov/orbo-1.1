@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { verifyTelegramAuthCode } from '@/lib/services/telegramAuthService'
+import { telegramFetch } from '@/lib/services/telegramService'
 import crypto from 'crypto'
 
 const logger = createServiceLogger('RegistrationBotWebhook')
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (result.success && result.alreadyAuthenticated) {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
           const loginButton = {
             inline_keyboard: [[{ text: '🔑 Войти в Orbo', url: result.sessionUrl }]]
           }
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
           })
           logger.info({ chat_id: chatId, tg_user_id: userId, code: startParam.toUpperCase() }, 'Registration bot: auth code verified, login link sent')
         } else {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -197,7 +198,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (result.success && result.sessionUrl) {
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -210,7 +211,7 @@ export async function POST(request: NextRequest) {
             })
             logger.info({ chat_id: chatId, tg_user_id: userId }, 'Registration bot: login link sent (URL button)')
           } else {
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -222,7 +223,7 @@ export async function POST(request: NextRequest) {
           }
         } catch (err) {
           logger.error({ chat_id: chatId, tg_user_id: userId, error: err instanceof Error ? err.message : String(err) }, 'Registration bot: login flow error')
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -239,7 +240,7 @@ export async function POST(request: NextRequest) {
           'Регистрация, напоминания, карточки участников, события — всё в одном месте.\n\n' +
           'Нажмите кнопку ниже, чтобы создать пространство:'
 
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -277,7 +278,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (result.success && result.alreadyAuthenticated) {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
           })
           logger.info({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase() }, 'Registration bot: auth code verified (plain text), account linked')
         } else if (result.success && result.sessionUrl) {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -298,7 +299,7 @@ export async function POST(request: NextRequest) {
           })
           logger.info({ chat_id: chatId, tg_user_id: userId, code: text.toUpperCase() }, 'Registration bot: auth code verified (plain text), login link sent')
         } else {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -317,7 +318,7 @@ export async function POST(request: NextRequest) {
         } else {
           const supportContact = process.env.SUPPORT_CONTACT_TG || 'orbo_support'
           try {
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            await telegramFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

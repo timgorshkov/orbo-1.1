@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     let assistBotStarted = false
     try {
-      const res = await fetch(
+      const res = await telegramFetch(
         `https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${telegramUserId}`
       )
       const data = await res.json()

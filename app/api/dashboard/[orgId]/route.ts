@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { telegramFetch } from '@/lib/services/telegramService'
 
 // GET /api/dashboard/[orgId] - Get dashboard data
 export async function GET(
@@ -161,7 +162,7 @@ export async function GET(
         if (!tgUserId) return false;
         const notifBotToken = process.env.TELEGRAM_NOTIFICATIONS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
         if (!notifBotToken) return false;
-        const res = await fetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`, {
+        const res = await telegramFetch(`https://api.telegram.org/bot${notifBotToken}/getChat?chat_id=${tgUserId}`, {
           signal: AbortSignal.timeout(1500)
         });
         const chatData = await res.json();
