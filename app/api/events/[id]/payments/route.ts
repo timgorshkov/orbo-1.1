@@ -83,6 +83,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       });
     }
 
+    // Fetch payment sessions for Orbo-paid registrations
+    const regIds = (registrationsRaw || []).map((r: any) => r.id).filter(Boolean)
+    let sessionsMap = new Map()
+    if (regIds.length > 0) {
+      const { data: sessions } = await supabase
+        .from('payment_sessions')
+        .select('id, event_registration_id, ticket_price, service_fee_amount, service_fee_rate, status, gateway_code, amount')
+        .in('event_registration_id', regIds)
+        .in('status', ['succeeded', 'refunded'])
+      sessions?.forEach((s: any) => {
+        sessionsMap.set(s.event_registration_id, s)
+      })
+    }
+
     // Calculate payment_deadline and overdue status
     const now = new Date();
     const enrichedRegistrations = (registrationsRaw || []).map((reg: any) => {
@@ -100,11 +114,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ? new Date(payment_deadline) < now && reg.payment_status !== 'paid'
         : false;
 
+      const session = sessionsMap.get(reg.id)
+
       return {
         ...reg,
         payment_deadline,
         is_overdue,
-        participants: participantsMap.get(reg.participant_id) || null
+        participants: participantsMap.get(reg.participant_id) || null,
+        // Payment session info for Orbo refunds
+        payment_session: session ? {
+          id: session.id,
+          ticket_price: session.ticket_price ? parseFloat(session.ticket_price) : null,
+          service_fee_amount: session.service_fee_amount ? parseFloat(session.service_fee_amount) : null,
+          total_amount: session.amount ? parseFloat(session.amount) : null,
+          gateway_code: session.gateway_code,
+          session_status: session.status,
+        } : null,
       };
     });
 

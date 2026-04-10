@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { sessionId, amount, reason } = body
+    const { sessionId, reason } = body
 
     if (!sessionId) {
       return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
@@ -29,22 +29,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Check access — org owner or superadmin
-    const isAdmin = await isSuperadmin()
-    if (!isAdmin) {
+    // Check access — org owner, admin, or superadmin
+    const isSA = await isSuperadmin()
+    if (!isSA) {
       const role = await getEffectiveOrgRole(user.id, session.org_id)
-      if (!role || role.role !== 'owner') {
-        return NextResponse.json({ error: 'Only org owner or superadmin can process refunds' }, { status: 403 })
+      if (!role || !['owner', 'admin'].includes(role.role)) {
+        return NextResponse.json({ error: 'Только владелец или администратор организации может оформить возврат' }, { status: 403 })
       }
     }
 
-    const result = await processRefund(sessionId, user.id, amount, reason)
+    const result = await processRefund(sessionId, user.id, reason)
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, refundAmount: result.refundAmount })
   } catch (error: any) {
     logger.error({ error: error.message }, 'Failed to process refund')
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

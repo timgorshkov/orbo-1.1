@@ -320,14 +320,28 @@ export async function handlePaymentWebhook(
       })
       .eq('id', session.id)
   } else if (event.type === 'refund.succeeded') {
-    await db
-      .from('payment_sessions')
-      .update({
-        status: 'refunded',
-        refunded_at: new Date().toISOString(),
-        gateway_data: event.rawData || {},
-      })
-      .eq('id', session.id)
+    // Update session (may already be refunded if initiated via our processRefund)
+    if (session.status !== 'refunded') {
+      await db
+        .from('payment_sessions')
+        .update({
+          status: 'refunded',
+          refunded_at: new Date().toISOString(),
+          gateway_data: event.rawData || {},
+        })
+        .eq('id', session.id)
+
+      // Also update event_registration if refund came from gateway dashboard
+      if (session.event_registration_id) {
+        await db
+          .from('event_registrations')
+          .update({
+            payment_status: 'refunded',
+            payment_updated_at: new Date().toISOString(),
+          })
+          .eq('id', session.event_registration_id)
+      }
+    }
   }
 
   logger.info({
@@ -425,9 +439,8 @@ export async function reconcileBankTransfer(
 export async function processRefund(
   sessionId: string,
   refundedBy: string,
-  amount?: number,
   reason?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; refundAmount?: number }> {
   const db = createAdminServer()
 
   const { data: session, error } = await db
@@ -437,26 +450,58 @@ export async function processRefund(
     .single()
 
   if (error || !session) {
-    return { success: false, error: 'Payment session not found' }
+    return { success: false, error: 'Платёжная сессия не найдена' }
   }
 
   if (session.status !== 'succeeded') {
-    return { success: false, error: `Cannot refund session in status: ${session.status}` }
+    return { success: false, error: `Невозможно вернуть платёж в статусе: ${session.status}` }
   }
 
-  const refundAmount = amount || session.amount
+  // Determine refund amount: only ticket_price is refunded to participant,
+  // service_fee stays with the platform (business decision for MVP).
+  const ticketPrice = session.ticket_price != null
+    ? parseFloat(session.ticket_price)
+    : parseFloat(session.amount) // legacy fallback
+  const serviceFeeAmount = session.service_fee_amount != null
+    ? parseFloat(session.service_fee_amount)
+    : 0
 
-  // Call gateway refund if not manual
-  if (session.gateway_code !== 'manual' && session.gateway_payment_id) {
-    const gateway = getGateway(session.gateway_code)
-    const refundResult = await gateway.refund(session.gateway_payment_id, refundAmount)
+  // Check org balance — must have enough to cover refund
+  const { data: balanceRow } = await db
+    .from('org_transactions')
+    .select('balance_after')
+    .eq('org_id', session.org_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const currentBalance = balanceRow?.balance_after ?? 0
 
-    if (!refundResult.success) {
-      return { success: false, error: refundResult.error }
+  // For legal entities with agent commission, we also reverse commission,
+  // so the org needs: ticketPrice - agentCommission
+  const feeConfig = await getOrgFeeConfig(session.org_id)
+  const agentCommission = feeConfig.counterpartyType === 'legal_entity'
+    ? ticketPrice * feeConfig.agentCommissionRate
+    : 0
+  const requiredBalance = ticketPrice - agentCommission
+
+  if (currentBalance < requiredBalance) {
+    return {
+      success: false,
+      error: `Недостаточно средств на балансе. Необходимо: ${requiredBalance.toFixed(2)} ₽, доступно: ${currentBalance.toFixed(2)} ₽`
     }
   }
 
-  // Update session
+  // Call gateway refund — refund only ticket_price (partial refund, service fee stays)
+  if (session.gateway_code !== 'manual' && session.gateway_payment_id) {
+    const gateway = getGateway(session.gateway_code)
+    const refundResult = await gateway.refund(session.gateway_payment_id, ticketPrice)
+
+    if (!refundResult.success) {
+      return { success: false, error: `Ошибка шлюза: ${refundResult.error}` }
+    }
+  }
+
+  // Update session status
   await db
     .from('payment_sessions')
     .update({
@@ -466,64 +511,84 @@ export async function processRefund(
         ...session.metadata,
         refund_reason: reason,
         refunded_by: refundedBy,
-        refund_amount: refundAmount,
+        refund_amount: ticketPrice,
+        service_fee_retained: serviceFeeAmount,
+        agent_commission_reversed: agentCommission,
       },
     })
     .eq('id', sessionId)
 
-  // Record refund in ledger (negative amount) + commission reversal
+  // Record refund in ledger
   try {
-    const idempotencyKey = `refund_${sessionId}`
+    // 1. Deduct ticket_price from org balance (refund to participant)
     await db.raw(
       `SELECT * FROM record_simple_transaction($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9, $10, $11, $12)`,
       [
         session.org_id,
         'refund',
-        -refundAmount,
+        -ticketPrice,
         session.currency,
-        idempotencyKey,
+        `refund_${sessionId}`,
         session.event_registration_id,
         session.membership_payment_id,
         session.event_id,
         session.participant_id,
-        `Возврат: ${reason || 'без причины'}`,
-        JSON.stringify({ session_id: sessionId }),
+        `Возврат стоимости билета: ${reason || 'по запросу организатора'}`,
+        JSON.stringify({ session_id: sessionId, ticket_price: ticketPrice }),
         refundedBy,
       ]
     )
 
-    // Reverse commission on the refund
-    const { data: accountData } = await db
-      .from('org_accounts')
-      .select('commission_rate')
-      .eq('org_id', session.org_id)
-      .single()
-
-    const commissionRate = accountData ? parseFloat(accountData.commission_rate) : 0.05
-    const commissionReversal = refundAmount * commissionRate
-
-    if (commissionReversal > 0) {
+    // 2. For legal entities: reverse agent commission (return to org balance)
+    if (agentCommission > 0) {
       await db.raw(
-        `SELECT * FROM record_simple_transaction($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, NULL, $6, $7, $8)`,
+        `SELECT * FROM record_simple_transaction($1, $2, $3, $4, $5, NULL, $6, $7, $8, $9, $10, $11, $12)`,
         [
           session.org_id,
-          'commission_reversal',
-          commissionReversal,
+          'agent_commission_reversal',
+          agentCommission,
           session.currency,
-          `comrev_${sessionId}`,
-          'Возврат комиссии при рефанде',
+          `agcomrev_${sessionId}`,
+          session.event_registration_id,
+          session.membership_payment_id,
+          session.event_id,
+          session.participant_id,
+          'Возврат агентского вознаграждения при рефанде',
           JSON.stringify({ session_id: sessionId }),
           refundedBy,
         ]
       )
     }
+
+    // 3. Record service fee refund in platform_income (if table exists)
+    // For MVP: service fee is NOT refunded to participant, but we track it
+    // platform_income reversal will be added when fiscal receipts are implemented
   } catch (ledgerErr: any) {
     logger.error({ session_id: sessionId, error: ledgerErr.message }, 'Failed to record refund in ledger')
     // Don't fail — the gateway refund already succeeded
   }
 
-  logger.info({ session_id: sessionId, amount: refundAmount, reason }, 'Refund processed')
-  return { success: true }
+  // Update event_registration payment status
+  if (session.event_registration_id) {
+    await db
+      .from('event_registrations')
+      .update({
+        payment_status: 'refunded',
+        payment_updated_at: new Date().toISOString(),
+      })
+      .eq('id', session.event_registration_id)
+  }
+
+  logger.info({
+    session_id: sessionId,
+    org_id: session.org_id,
+    ticket_price: ticketPrice,
+    service_fee_retained: serviceFeeAmount,
+    agent_commission_reversed: agentCommission,
+    reason,
+  }, 'Refund processed')
+
+  return { success: true, refundAmount: ticketPrice }
 }
 
 // ─── Poll Session Status ────────────────────────────────────────────

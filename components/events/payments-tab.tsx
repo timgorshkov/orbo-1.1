@@ -4,16 +4,18 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { 
-  DollarSign, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
+import {
+  DollarSign,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
   Edit2,
   Download,
   Filter,
   X,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw,
+  Loader2
 } from 'lucide-react'
 
 type Registration = {
@@ -37,6 +39,14 @@ type Registration = {
     tg_user_id: number | null
     photo_url: string | null
   }
+  payment_session: {
+    id: string
+    ticket_price: number | null
+    service_fee_amount: number | null
+    total_amount: number | null
+    gateway_code: string
+    session_status: string
+  } | null
 }
 
 type PaymentStats = {
@@ -92,6 +102,12 @@ export default function PaymentsTab({ eventId, event, hasActiveContract }: Props
     paid_amount: '',
     payment_notes: ''
   })
+
+  // Refund dialog state
+  const [refundingRegistration, setRefundingRegistration] = useState<Registration | null>(null)
+  const [refundReason, setRefundReason] = useState('')
+  const [refundLoading, setRefundLoading] = useState(false)
+  const [refundError, setRefundError] = useState<string | null>(null)
 
   // Fetch payments data
   useEffect(() => {
@@ -181,6 +197,38 @@ export default function PaymentsTab({ eventId, event, hasActiveContract }: Props
       fetchPaymentsData() // Refresh data
     } catch (err: any) {
       alert(err.message || 'Ошибка при сохранении')
+    }
+  }
+
+  const handleRefund = async () => {
+    if (!refundingRegistration?.payment_session) return
+
+    setRefundLoading(true)
+    setRefundError(null)
+
+    try {
+      const res = await fetch('/api/pay/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: refundingRegistration.payment_session.id,
+          reason: refundReason || undefined,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка при оформлении возврата')
+      }
+
+      setRefundingRegistration(null)
+      setRefundReason('')
+      fetchPaymentsData()
+    } catch (err: any) {
+      setRefundError(err.message)
+    } finally {
+      setRefundLoading(false)
     }
   }
 
@@ -395,13 +443,30 @@ export default function PaymentsTab({ eventId, event, hasActiveContract }: Props
                           : '-'}
                       </td>
                       <td className="p-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(reg)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(reg)}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          {isOrboPayments && reg.payment_status === 'paid' && reg.payment_session?.session_status === 'succeeded' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setRefundingRegistration(reg)
+                                setRefundReason('')
+                                setRefundError(null)
+                              }}
+                              title="Вернуть оплату"
+                              className="text-purple-600 hover:text-purple-700 hover:border-purple-300"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -532,6 +597,102 @@ export default function PaymentsTab({ eventId, event, hasActiveContract }: Props
                 </Button>
                 <Button onClick={handleSavePayment}>
                   Сохранить
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Refund Confirmation Dialog */}
+      {refundingRegistration && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-purple-600" />
+                  Возврат оплаты
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setRefundingRegistration(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium">
+                  {refundingRegistration.participants?.full_name || refundingRegistration.participants?.username || 'Участник'}
+                </p>
+              </div>
+
+              {refundingRegistration.payment_session && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Стоимость билета (возвращается):</span>
+                    <span className="font-medium text-green-700">
+                      {formatCurrency(refundingRegistration.payment_session.ticket_price)}
+                    </span>
+                  </div>
+                  {(refundingRegistration.payment_session.service_fee_amount ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Сервисный сбор (не возвращается):</span>
+                      <span className="font-medium text-gray-500">
+                        {formatCurrency(refundingRegistration.payment_session.service_fee_amount)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm border-t pt-2">
+                    <span className="text-gray-600">Итого оплачено участником:</span>
+                    <span className="font-medium">
+                      {formatCurrency(refundingRegistration.payment_session.total_amount)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs text-amber-800">
+                  Участнику будет возвращена стоимость билета ({formatCurrency(refundingRegistration.payment_session?.ticket_price ?? null)}).
+                  Сервисный сбор не возвращается. Средства будут списаны с баланса организации.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium block mb-2">
+                  Причина возврата
+                </label>
+                <textarea
+                  className="w-full p-2 border rounded-lg min-h-[60px] text-sm"
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Необязательно..."
+                />
+              </div>
+
+              {refundError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                  {refundError}
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="outline" onClick={() => setRefundingRegistration(null)} disabled={refundLoading}>
+                  Отмена
+                </Button>
+                <Button
+                  onClick={handleRefund}
+                  disabled={refundLoading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  {refundLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Возврат...
+                    </>
+                  ) : (
+                    'Подтвердить возврат'
+                  )}
                 </Button>
               </div>
             </CardContent>
