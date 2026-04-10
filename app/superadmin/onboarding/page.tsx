@@ -7,11 +7,24 @@ export default async function SuperadminOnboardingPage() {
 
   const supabase = createAdminServer()
 
-  const { data: messages } = await supabase
-    .from('onboarding_messages')
-    .select('id, user_id, step_key, channel, status, scheduled_at, sent_at, error, created_at')
-    .order('scheduled_at', { ascending: true })
-    .limit(2000)
+  // Загружаем в два этапа:
+  // 1) Все pending/failed (текущие) — без лимита
+  // 2) Последние 2000 завершённых (sent/skipped) — для истории
+  const [{ data: activeMessages }, { data: pastMessages }] = await Promise.all([
+    supabase
+      .from('onboarding_messages')
+      .select('id, user_id, step_key, channel, status, scheduled_at, sent_at, error, created_at')
+      .in('status', ['pending', 'failed'])
+      .order('scheduled_at', { ascending: true }),
+    supabase
+      .from('onboarding_messages')
+      .select('id, user_id, step_key, channel, status, scheduled_at, sent_at, error, created_at')
+      .in('status', ['sent', 'skipped'])
+      .order('scheduled_at', { ascending: false })
+      .limit(2000),
+  ])
+
+  const messages = [...(activeMessages || []), ...(pastMessages || [])]
 
   if (!messages || messages.length === 0) {
     return (

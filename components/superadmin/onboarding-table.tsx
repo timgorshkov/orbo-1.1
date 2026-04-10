@@ -223,8 +223,6 @@ export default function OnboardingTable({ messages: initialMessages }: { message
   const [tooltip, setTooltip] = useState<{ content: string; x: number; y: number } | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const cutoffTime = Date.now() - 24 * 60 * 60 * 1000
-
   const matchesSearch = (m: OnboardingMessage) =>
     !search ||
     m.userName.toLowerCase().includes(search.toLowerCase()) ||
@@ -233,12 +231,14 @@ export default function OnboardingTable({ messages: initialMessages }: { message
 
   const getTime = (s: string) => new Date(s).getTime()
 
+  // Текущие = pending + failed (ещё не отправлены / нужна ретрай)
   const currentMessages = messages
-    .filter(m => m.scheduledAt && getTime(m.scheduledAt) >= cutoffTime && matchesSearch(m))
+    .filter(m => (m.status === 'pending' || m.status === 'failed') && matchesSearch(m))
     .sort((a, b) => getTime(a.scheduledAt) - getTime(b.scheduledAt))
 
+  // Прошедшие = sent + skipped (обработаны)
   const pastMessages = messages
-    .filter(m => m.scheduledAt && getTime(m.scheduledAt) < cutoffTime && matchesSearch(m))
+    .filter(m => (m.status === 'sent' || m.status === 'skipped') && matchesSearch(m))
     .sort((a, b) => getTime(b.scheduledAt) - getTime(a.scheduledAt))
 
   const filtered = viewMode === 'current' ? currentMessages : pastMessages
