@@ -75,9 +75,9 @@ export async function notifyItemApproved(itemId: string): Promise<{
       itemBase.creator_id ? adminSupabase.from('participants').select('id, username, tg_user_id').eq('id', itemBase.creator_id).single() : null
     ]);
 
-    const collection = collectionResult?.data;
-    let app = null;
-    let org = null;
+    const collection = collectionResult?.data as any;
+    let app: any = null;
+    let org: any = null;
 
     if (collection?.app_id) {
       const { data: appData } = await adminSupabase.from('apps').select('name, icon, org_id').eq('id', collection.app_id).single();
@@ -89,7 +89,7 @@ export async function notifyItemApproved(itemId: string): Promise<{
     }
 
     // Собираем item в формате, совместимом с предыдущим кодом
-    const item = {
+    const item: any = {
       ...itemBase,
       app_collections: collection ? {
         ...collection,
@@ -196,7 +196,7 @@ export async function notifyItemApproved(itemId: string): Promise<{
     };
 
     // Send to all groups
-    const results = [];
+    const results: Array<{ groupId: string; success: boolean; messageId?: number; error?: string }> = [];
     for (const group of groups) {
       try {
         const telegramResponse = await sendTelegramMessage(botToken, {
@@ -302,9 +302,9 @@ export async function notifyItemRejected(
       itemBase.creator_id ? adminSupabase.from('participants').select('id, username, tg_user_id').eq('id', itemBase.creator_id).single() : null
     ]);
 
-    const collection = collectionResult?.data;
-    let app = null;
-    let org = null;
+    const collection = collectionResult?.data as any;
+    let app: any = null;
+    let org: any = null;
 
     if (collection?.app_id) {
       const { data: appData } = await adminSupabase.from('apps').select('name, icon, org_id').eq('id', collection.app_id).single();
@@ -316,7 +316,7 @@ export async function notifyItemRejected(
     }
 
     // Собираем item в формате, совместимом с предыдущим кодом
-    const item = {
+    const item: any = {
       ...itemBase,
       app_collections: collection ? {
         ...collection,

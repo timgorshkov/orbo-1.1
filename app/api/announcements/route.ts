@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       title,
       content,
       target_groups,
+      target_max_groups,
       target_topics,
       scheduled_at,
       event_id,
@@ -105,9 +106,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    if (!target_groups || !Array.isArray(target_groups) || target_groups.length === 0) {
-      return NextResponse.json({ 
-        error: 'target_groups must be a non-empty array' 
+    const hasTgGroups = target_groups && Array.isArray(target_groups) && target_groups.length > 0;
+    const hasMaxGroups = target_max_groups && Array.isArray(target_max_groups) && target_max_groups.length > 0;
+    if (!hasTgGroups && !hasMaxGroups) {
+      return NextResponse.json({
+        error: 'At least one of target_groups or target_max_groups must be a non-empty array'
       }, { status: 400 });
     }
     
@@ -149,7 +152,8 @@ export async function POST(request: NextRequest) {
         org_id,
         title,
         content,
-        target_groups,
+        target_groups: target_groups || [],
+        target_max_groups: target_max_groups || null,
         target_topics: JSON.stringify(target_topics || {}),
         scheduled_at,
         event_id: event_id || null,

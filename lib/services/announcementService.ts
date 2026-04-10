@@ -14,6 +14,7 @@ interface Announcement {
   target_groups: string[];
   target_max_groups?: string[];
   target_topics?: Record<string, number>;  // { "<tg_chat_id>": topic_id }
+  event_id?: string | null;
   status: string;
   image_url?: string | null;
   retry_count?: number;
@@ -41,28 +42,41 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
   let successCount = 0;
   let failCount = 0;
   
+  const hasMaxTargets = Array.isArray(announcement.target_max_groups) && announcement.target_max_groups.length > 0;
+
   try {
-    // Получаем информацию о группах по tg_chat_id
-    const { data: groups, error: groupsError } = await supabase
-      .from('telegram_groups')
-      .select('tg_chat_id, title')
-      .in('tg_chat_id', announcement.target_groups);
-    
-    if (groupsError || !groups || groups.length === 0) {
+    // Получаем информацию о Telegram группах по tg_chat_id
+    const hasTgTargets = announcement.target_groups && announcement.target_groups.length > 0;
+    let groups: any[] = [];
+
+    if (hasTgTargets) {
+      const { data: tgGroups, error: groupsError } = await supabase
+        .from('telegram_groups')
+        .select('tg_chat_id, title')
+        .in('tg_chat_id', announcement.target_groups);
+
+      if (!groupsError && tgGroups) {
+        groups = tgGroups;
+      }
+    }
+
+    if (groups.length === 0 && !hasMaxTargets) {
       logger.warn({ announcementId: announcement.id }, 'No valid target groups found');
-      
+
       await supabase
         .from('announcements')
-        .update({ 
+        .update({
           status: 'failed',
           send_results: { error: 'No valid target groups' },
           sent_at: new Date().toISOString()
         })
         .eq('id', announcement.id);
-      
-      return { successCount: 0, failCount: announcement.target_groups.length, results };
+
+      return { successCount: 0, failCount: (announcement.target_groups?.length || 0), results };
     }
     
+    // ─── Send to Telegram groups ─────────────────────────
+    if (groups.length > 0) {
     // Verify org admins still have Telegram admin rights in target groups
     const chatIds = groups.map(g => g.tg_chat_id).filter(Boolean)
     const accessibleGroups = await verifyOrgGroupAccessBatch(announcement.org_id, chatIds)
@@ -75,7 +89,7 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
     }
 
     const telegram = new TelegramService();
-    
+
     for (const group of groups) {
       const chatId = group.tg_chat_id;
       const groupTitle = group.title || 'Unknown';
@@ -185,15 +199,20 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
         }, 'Failed to send message to group');
       }
     }
-    
+    } // end if (groups.length > 0)
+
     // ─── Send to MAX groups if specified ─────────────────────
-    if (announcement.target_max_groups && announcement.target_max_groups.length > 0) {
+    // target_max_groups is JSONB — could be array of strings or numbers, or empty object {}
+    const maxTargets = Array.isArray(announcement.target_max_groups) ? announcement.target_max_groups : [];
+    if (maxTargets.length > 0) {
       try {
         const maxService = createMaxService('main');
+        // max_chat_id in DB can be stored as strings or numbers; normalize
+        const maxTargetIds = maxTargets.map(String);
         const { data: maxGroups } = await supabase
           .from('max_groups')
           .select('max_chat_id, title')
-          .in('max_chat_id', announcement.target_max_groups);
+          .in('max_chat_id', maxTargetIds);
 
         for (const mg of (maxGroups || [])) {
           const chatId = mg.max_chat_id;
@@ -223,6 +242,143 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       } catch (maxErr: any) {
         logger.warn({ error: maxErr.message }, 'Failed to send announcement to MAX groups (service init)');
       }
+    }
+
+    // ─── Send personal DMs to participants with announcements consent ───
+    try {
+      // Найти участников с consent + tg_user_id, зарегистрированных на события.
+      // Если анонс привязан к конкретному событию (event_id) — только его участники.
+      // Если event_id нет — все участники орг с consent и хотя бы одной регистрацией.
+      const dmEventFilter = announcement.event_id
+        ? 'AND er.event_id = $2'
+        : '';
+      const dmParams = announcement.event_id
+        ? [announcement.org_id, announcement.event_id]
+        : [announcement.org_id];
+
+      const { data: consentParticipants } = await supabase.raw(
+        `SELECT DISTINCT p.tg_user_id
+         FROM participants p
+         JOIN event_registrations er ON er.participant_id = p.id
+         JOIN events e ON e.id = er.event_id AND e.org_id = p.org_id
+         WHERE p.org_id = $1
+           AND p.tg_user_id IS NOT NULL
+           AND p.announcements_consent_granted_at IS NOT NULL
+           AND (p.announcements_consent_revoked_at IS NULL
+                OR p.announcements_consent_revoked_at < p.announcements_consent_granted_at)
+           AND p.merged_into IS NULL
+           AND er.status != 'cancelled'
+           ${dmEventFilter}
+         LIMIT 500`,
+        dmParams
+      );
+
+      if (consentParticipants && consentParticipants.length > 0) {
+        const tgService = new TelegramService();
+        let dmSent = 0;
+        let dmFailed = 0;
+
+        for (const p of consentParticipants) {
+          try {
+            const dmResult = await tgService.sendMessage(p.tg_user_id, announcement.content, {
+              parse_mode: 'HTML',
+              disable_web_page_preview: true,
+            });
+            if (dmResult?.ok) {
+              dmSent++;
+            } else {
+              dmFailed++;
+            }
+          } catch {
+            dmFailed++;
+          }
+          // Задержка чтобы не превысить лимиты
+          if ((dmSent + dmFailed) % 25 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        results['personal_dm_tg'] = {
+          success: dmSent > 0,
+          message_id: undefined,
+          error: dmFailed > 0 ? `${dmFailed} TG DMs failed` : undefined,
+        };
+
+        if (dmSent > 0) successCount++;
+
+        logger.info({
+          announcementId: announcement.id,
+          dm_sent: dmSent,
+          dm_failed: dmFailed,
+          total_consent: consentParticipants.length,
+        }, 'Personal TG DMs sent to consented event registrants');
+      }
+
+      // Также отправляем DM через Max участникам с max_user_id (без tg_user_id)
+      const { data: maxConsentParticipants } = await supabase.raw(
+        `SELECT DISTINCT p.max_user_id
+         FROM participants p
+         JOIN event_registrations er ON er.participant_id = p.id
+         JOIN events e ON e.id = er.event_id AND e.org_id = p.org_id
+         WHERE p.org_id = $1
+           AND p.max_user_id IS NOT NULL
+           AND p.tg_user_id IS NULL
+           AND p.announcements_consent_granted_at IS NOT NULL
+           AND (p.announcements_consent_revoked_at IS NULL
+                OR p.announcements_consent_revoked_at < p.announcements_consent_granted_at)
+           AND p.merged_into IS NULL
+           AND er.status != 'cancelled'
+           ${dmEventFilter}
+         LIMIT 500`,
+        dmParams
+      );
+
+      if (maxConsentParticipants && maxConsentParticipants.length > 0) {
+        try {
+          const maxDmService = createMaxService('main');
+          let maxDmSent = 0;
+          let maxDmFailed = 0;
+
+          for (const p of maxConsentParticipants) {
+            try {
+              const dmResult = await maxDmService.sendMessageToUser(
+                p.max_user_id,
+                announcement.content,
+                { format: 'html' }
+              );
+              if (dmResult?.ok) {
+                maxDmSent++;
+              } else {
+                maxDmFailed++;
+              }
+            } catch {
+              maxDmFailed++;
+            }
+            if ((maxDmSent + maxDmFailed) % 25 === 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+
+          results['personal_dm_max'] = {
+            success: maxDmSent > 0,
+            message_id: undefined,
+            error: maxDmFailed > 0 ? `${maxDmFailed} Max DMs failed` : undefined,
+          };
+
+          if (maxDmSent > 0) successCount++;
+
+          logger.info({
+            announcementId: announcement.id,
+            dm_sent: maxDmSent,
+            dm_failed: maxDmFailed,
+            total: maxConsentParticipants.length,
+          }, 'Personal Max DMs sent to consented event registrants');
+        } catch (maxDmErr: any) {
+          logger.warn({ error: maxDmErr.message }, 'Failed to send Max personal DMs');
+        }
+      }
+    } catch (dmErr: any) {
+      logger.warn({ error: dmErr.message, announcementId: announcement.id }, 'Failed to send personal DMs');
     }
 
     // Обновляем статус анонса
