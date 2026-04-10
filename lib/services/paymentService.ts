@@ -16,6 +16,7 @@ import { createServiceLogger } from '@/lib/logger'
 import { getGateway, type GatewayCode, type WebhookEvent } from './paymentGateway'
 import { recordEventPayment, recordMembershipPayment, recordEventPaymentV2 } from './orgAccountService'
 import { calculateFees, getOrgFeeConfig, type CounterpartyType } from './feeCalculationService'
+import { createPaymentReceipt, createRefundReceipt, getReceiptsBySession, sendReceiptToOrangeData } from './fiscalReceiptService'
 
 const logger = createServiceLogger('PaymentService')
 
@@ -588,6 +589,36 @@ export async function processRefund(
     reason,
   }, 'Refund processed')
 
+  // --- Refund fiscal receipt (fire-and-forget) ---
+  try {
+    const originalReceipts = await getReceiptsBySession(sessionId)
+    const originalReceipt = originalReceipts.find(r => r.receipt_type === 'income' && r.status === 'succeeded')
+    if (originalReceipt) {
+      const { getContractByOrgId } = await import('./contractService')
+      const contract = await getContractByOrgId(session.org_id)
+      const cp = (contract as any)?.counterparty
+      const refundReceipt = await createRefundReceipt({
+        orgId: session.org_id,
+        originalReceiptId: originalReceipt.id,
+        refundAmount: ticketPrice,
+        ticketRefundAmount: ticketPrice,
+        serviceFeeRefundAmount: 0, // service fee not refunded per business rules
+        eventName: session.description || 'Мероприятие',
+        supplierName: cp?.org_name || cp?.full_name || '',
+        supplierInn: cp?.inn || '',
+        customerEmail: originalReceipt.customer_email || undefined,
+        customerPhone: originalReceipt.customer_phone || undefined,
+      })
+      if (refundReceipt) {
+        sendReceiptToOrangeData(refundReceipt).catch(err =>
+          logger.error({ receipt_id: refundReceipt.id, error: err.message }, 'Failed to send refund receipt')
+        )
+      }
+    }
+  } catch (receiptErr: any) {
+    logger.error({ session_id: sessionId, error: receiptErr.message }, 'Failed to create refund fiscal receipt')
+  }
+
   return { success: true, refundAmount: ticketPrice }
 }
 
@@ -745,4 +776,35 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
     payment_for: session.payment_for,
     gateway: session.gateway_code,
   }, 'Payment succeeded')
+
+  // --- Fiscal receipt (fire-and-forget, errors don't block payment) ---
+  try {
+    if (session.payment_for === 'event' && session.ticket_price != null && session.service_fee_amount != null) {
+      const { getContractByOrgId } = await import('./contractService')
+      const contract = await getContractByOrgId(session.org_id)
+      const cp = (contract as any)?.counterparty
+      if (cp?.inn) {
+        const receipt = await createPaymentReceipt({
+          orgId: session.org_id,
+          paymentSessionId: session.id,
+          eventRegistrationId: session.event_registration_id || undefined,
+          totalAmount: parseFloat(session.amount as any),
+          ticketPrice: parseFloat(session.ticket_price as any),
+          serviceFeeAmount: parseFloat(session.service_fee_amount as any),
+          eventName: session.description || 'Мероприятие',
+          supplierName: cp.org_name || cp.full_name || '',
+          supplierInn: cp.inn,
+          supplierPhone: cp.phone || undefined,
+          paymentMethod: 'electronic',
+        })
+        if (receipt) {
+          sendReceiptToOrangeData(receipt).catch(err =>
+            logger.error({ receipt_id: receipt.id, error: err.message }, 'Failed to send receipt to OrangeData')
+          )
+        }
+      }
+    }
+  } catch (receiptErr: any) {
+    logger.error({ session_id: session.id, error: receiptErr.message }, 'Failed to create fiscal receipt')
+  }
 }
