@@ -71,8 +71,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return sum + (price * quantity);
     }, 0);
 
-    // Calculate paid amount
+    // Calculate paid amount (exclude refunded registrations)
     const total_paid_amount = regs.reduce((sum, reg) => {
+      if (reg.payment_status === 'refunded') return sum;
+      return sum + (Number(reg.paid_amount) || 0);
+    }, 0);
+
+    // Calculate refunded amount
+    const total_refunded_amount = regs.reduce((sum, reg) => {
+      if (reg.payment_status !== 'refunded') return sum;
       return sum + (Number(reg.paid_amount) || 0);
     }, 0);
 
@@ -80,6 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const paid_count = regs.filter(r => r.payment_status === 'paid').length;
     const pending_count = regs.filter(r => r.payment_status === 'pending').length;
     const overdue_count = regs.filter(r => r.payment_status === 'overdue').length;
+    const refunded_count = regs.filter(r => r.payment_status === 'refunded').length;
 
     // Payment completion percentage
     const payment_completion_percent = total_expected_amount > 0
@@ -97,9 +105,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       total_registrations,
       total_expected_amount,
       total_paid_amount,
+      total_refunded_amount,
       paid_count,
       pending_count,
       overdue_count,
+      refunded_count,
       payment_completion_percent,
       breakdown_by_status
     };

@@ -53,9 +53,11 @@ type PaymentStats = {
   total_registrations: number
   total_expected_amount: number
   total_paid_amount: number
+  total_refunded_amount?: number
   paid_count: number
   pending_count: number
   overdue_count: number
+  refunded_count?: number
   payment_completion_percent: number
   breakdown_by_status: Record<string, number>
 }
@@ -325,6 +327,11 @@ export default function PaymentsTab({ eventId, event, hasActiveContract }: Props
             <CardContent className="pt-6">
               <div className="text-sm text-gray-600 mb-1">Собрано</div>
               <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.total_paid_amount)}</div>
+              {(stats.total_refunded_amount ?? 0) > 0 && (
+                <div className="text-xs text-purple-600 mt-1">
+                  Возвращено: {formatCurrency(stats.total_refunded_amount ?? 0)}
+                </div>
+              )}
             </CardContent>
           </Card>
           <Card>
