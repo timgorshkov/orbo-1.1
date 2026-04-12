@@ -28,6 +28,10 @@ interface Invoice {
   paid_at: string | null
   confirmed_by: string | null
   created_at: string
+  act_number?: string | null
+  act_document_url?: string | null
+  customer_name?: string | null
+  customer_type?: string | null
 }
 
 interface BillingPlan {
@@ -47,6 +51,13 @@ export default function BillingManagement() {
   const [paymentAmount, setPaymentAmount] = useState(1500)
   const [selectedPlanCode, setSelectedPlanCode] = useState('pro')
   const [actionLoading, setActionLoading] = useState(false)
+  // Customer data for act / receipt generation
+  const [customerType, setCustomerType] = useState<'individual' | 'legal_entity' | 'self_employed'>('individual')
+  const [customerName, setCustomerName] = useState('')
+  const [customerInn, setCustomerInn] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'manual'>('bank_transfer')
 
   const fetchData = async () => {
     setLoading(true)
@@ -82,24 +93,57 @@ export default function BillingManagement() {
 
   const handleAddPayment = async (orgId: string) => {
     if (paymentAmount <= 0) return
+    if (!customerName.trim() || customerName.trim().length < 4) {
+      alert('Укажите ФИО или название организации')
+      return
+    }
+    if (customerType !== 'legal_entity' && !customerEmail.trim()) {
+      alert('Для физлиц и самозанятых обязателен email (для фискального чека)')
+      return
+    }
+
     setActionLoading(true)
     try {
       const res = await fetch(`/api/superadmin/billing/${orgId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_payment', amount: paymentAmount, planCode: selectedPlanCode }),
+        body: JSON.stringify({
+          action: 'add_payment',
+          amount: paymentAmount,
+          planCode: selectedPlanCode,
+          paymentMethod,
+          customer: {
+            type: customerType,
+            name: customerName.trim(),
+            inn: customerInn.trim() || undefined,
+            email: customerEmail.trim() || undefined,
+            phone: customerPhone.trim() || undefined,
+          },
+        }),
       })
       if (res.ok) {
         const result = await res.json()
         if (result.periodEnd) {
-          alert(`Оплата добавлена. Подписка до ${new Date(result.periodEnd).toLocaleDateString('ru-RU')}`)
+          const actMsg = result.actUrl ? '\nАкт сформирован.' : ''
+          alert(`Оплата добавлена. Подписка до ${new Date(result.periodEnd).toLocaleDateString('ru-RU')}.${actMsg}`)
         }
         setActivatingOrg(null)
         setPaymentAmount(1500)
         setSelectedPlanCode('pro')
+        setCustomerName('')
+        setCustomerInn('')
+        setCustomerEmail('')
+        setCustomerPhone('')
+        setCustomerType('individual')
+        setPaymentMethod('bank_transfer')
         await fetchData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err.error || 'Не удалось добавить оплату')
       }
-    } catch {}
+    } catch {
+      alert('Ошибка сети')
+    }
     setActionLoading(false)
   }
 
@@ -301,55 +345,165 @@ export default function BillingManagement() {
         const chosenPlan = paidPlans.find(p => p.code === selectedPlanCode)
         const planPrice = chosenPlan?.price_monthly || 1500
         const daysEstimate = Math.round((paymentAmount / planPrice) * 30)
+        const willGenerateReceipt = customerType !== 'legal_entity'
         return (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <h3 className="text-base font-semibold mb-1">Добавить оплату</h3>
               <p className="text-sm text-gray-500 mb-4">{sub?.org_name}</p>
               <div className="space-y-4">
+                {/* Plan + amount */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Тарифный план</label>
+                    <select
+                      value={selectedPlanCode}
+                      onChange={e => {
+                        setSelectedPlanCode(e.target.value)
+                        const p = paidPlans.find(pl => pl.code === e.target.value)
+                        if (p?.price_monthly) setPaymentAmount(p.price_monthly)
+                      }}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {paidPlans.map(p => (
+                        <option key={p.code} value={p.code}>
+                          {p.name} ({p.price_monthly?.toLocaleString('ru-RU')} ₽/мес)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Сумма, ₽</label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={e => setPaymentAmount(Number(e.target.value))}
+                      min={100}
+                      step={100}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    {paymentAmount > 0 && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        ≈ {daysEstimate} {daysEstimate === 1 ? 'день' : daysEstimate < 5 ? 'дня' : 'дней'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment method */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Тарифный план</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Способ оплаты</label>
                   <select
-                    value={selectedPlanCode}
-                    onChange={e => {
-                      setSelectedPlanCode(e.target.value)
-                      const p = paidPlans.find(pl => pl.code === e.target.value)
-                      if (p?.price_monthly) setPaymentAmount(p.price_monthly)
-                    }}
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value as 'bank_transfer' | 'manual')}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
-                    {paidPlans.map(p => (
-                      <option key={p.code} value={p.code}>
-                        {p.name} {p.price_monthly ? `(${p.price_monthly.toLocaleString('ru-RU')} ₽/мес)` : ''}
-                      </option>
-                    ))}
+                    <option value="bank_transfer">Банковский перевод</option>
+                    <option value="manual">Другое (прочее)</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Сумма оплаты, ₽</label>
-                  <input
-                    type="number"
-                    value={paymentAmount}
-                    onChange={e => setPaymentAmount(Number(e.target.value))}
-                    min={100}
-                    step={100}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="Введите сумму"
-                  />
-                  {paymentAmount > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      ≈ {daysEstimate} {daysEstimate === 1 ? 'день' : daysEstimate < 5 ? 'дня' : 'дней'}
-                    </p>
-                  )}
+
+                <div className="border-t border-gray-100 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Плательщик (для акта и чека)</h4>
+
+                  {/* Customer type */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Тип плательщика</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'individual', label: 'Физлицо' },
+                        { value: 'self_employed', label: 'Самозанятый' },
+                        { value: 'legal_entity', label: 'Юрлицо / ИП' },
+                      ] as const).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setCustomerType(opt.value)}
+                          className={`p-2 text-xs rounded-lg border transition ${
+                            customerType === opt.value
+                              ? 'border-purple-500 bg-purple-50 text-purple-700'
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Name */}
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      {customerType === 'legal_entity' ? 'Название организации *' : 'ФИО *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={e => setCustomerName(e.target.value)}
+                      placeholder={customerType === 'legal_entity' ? 'ООО "Ромашка"' : 'Иванов Иван Иванович'}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  {/* Email / INN grid */}
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Email {customerType !== 'legal_entity' && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="email"
+                        value={customerEmail}
+                        onChange={e => setCustomerEmail(e.target.value)}
+                        placeholder="email@example.com"
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        ИНН {customerType === 'legal_entity' && <span className="text-gray-400">(реком.)</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={customerInn}
+                        onChange={e => setCustomerInn(e.target.value.replace(/\D/g, ''))}
+                        placeholder={customerType === 'legal_entity' ? '7701234567' : '123456789012'}
+                        maxLength={12}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Phone */}
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Телефон</label>
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={e => setCustomerPhone(e.target.value)}
+                      placeholder="+7..."
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+
+                  {/* Receipt info */}
+                  <div className={`mt-3 p-2.5 rounded-lg text-xs ${willGenerateReceipt ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-600'}`}>
+                    {willGenerateReceipt ? (
+                      <>✓ Будет выбит фискальный чек на указанный email. Сформируется акт передачи прав.</>
+                    ) : (
+                      <>Безналичный расчёт между юрлицами — чек не требуется. Сформируется только акт.</>
+                    )}
+                  </div>
                 </div>
               </div>
+
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => handleAddPayment(activatingOrg)}
                   disabled={actionLoading || paymentAmount <= 0}
                   className="flex-1 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50"
                 >
-                  {actionLoading ? 'Сохранение...' : 'Подтвердить'}
+                  {actionLoading ? 'Сохранение...' : 'Подтвердить оплату'}
                 </button>
                 <button
                   onClick={() => setActivatingOrg(null)}
@@ -373,9 +527,11 @@ export default function BillingManagement() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Дата</th>
                   <th className="px-4 py-3 font-medium">Организация</th>
+                  <th className="px-4 py-3 font-medium">Плательщик</th>
                   <th className="px-4 py-3 font-medium">Сумма</th>
                   <th className="px-4 py-3 font-medium">Период</th>
                   <th className="px-4 py-3 font-medium">Способ</th>
+                  <th className="px-4 py-3 font-medium">Акт</th>
                   <th className="px-4 py-3 font-medium">Статус</th>
                 </tr>
               </thead>
@@ -386,11 +542,28 @@ export default function BillingManagement() {
                     <tr key={inv.id}>
                       <td className="px-4 py-3">{new Date(inv.created_at).toLocaleDateString('ru-RU')}</td>
                       <td className="px-4 py-3 font-medium">{sub?.org_name || inv.org_id.slice(0, 8)}</td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">
+                        {inv.customer_name || '—'}
+                      </td>
                       <td className="px-4 py-3 font-medium">{inv.amount.toLocaleString('ru-RU')} {inv.currency}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">
                         {new Date(inv.period_start).toLocaleDateString('ru-RU')} — {new Date(inv.period_end).toLocaleDateString('ru-RU')}
                       </td>
                       <td className="px-4 py-3 text-gray-500">{inv.payment_method || '-'}</td>
+                      <td className="px-4 py-3">
+                        {inv.act_document_url ? (
+                          <a
+                            href={inv.act_document_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-600 hover:text-purple-800 text-xs"
+                          >
+                            {inv.act_number || 'Акт'}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {inv.status === 'paid' ? 'Оплачен' : 'Ожидает'}

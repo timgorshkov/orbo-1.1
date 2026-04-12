@@ -58,7 +58,7 @@ export async function POST(
 
     const { orgId } = await params
     const body = await request.json()
-    const { action, months, paymentMethod, amount, planCode } = body
+    const { action, months, paymentMethod, amount, planCode, customer } = body
 
     switch (action) {
       case 'activate_pro': {
@@ -67,8 +67,44 @@ export async function POST(
         return NextResponse.json({ success: true, message: `Pro activated for ${months || 1} month(s)` })
       }
       case 'add_payment': {
-        if (!amount || amount <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 })
-        const result = await addPayment(orgId, amount, user.id, paymentMethod || 'manual', planCode || 'pro')
+        const amt = typeof amount === 'string' ? parseFloat(amount) : amount
+        if (!amt || isNaN(amt) || amt <= 0) {
+          return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 })
+        }
+
+        // Validate customer data if provided
+        if (customer) {
+          if (!customer.type || !['individual', 'legal_entity', 'self_employed'].includes(customer.type)) {
+            return NextResponse.json({ error: 'customer.type must be individual, legal_entity or self_employed' }, { status: 400 })
+          }
+          if (!customer.name || customer.name.trim().length < 4) {
+            return NextResponse.json({ error: 'customer.name required (ФИО или название организации)' }, { status: 400 })
+          }
+          // For individuals & self_employed — email required for fiscal receipt
+          if (customer.type !== 'legal_entity' && (!customer.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email))) {
+            return NextResponse.json({ error: 'Для физлиц и самозанятых обязателен корректный email (для фискального чека)' }, { status: 400 })
+          }
+          // For legal entities — INN recommended (won't block, but log)
+        }
+
+        const result = await addPayment({
+          orgId,
+          amount: amt,
+          confirmedBy: user.id,
+          planCode: planCode || 'pro',
+          paymentMethod: paymentMethod || 'manual',
+          gatewayCode: paymentMethod === 'bank_transfer' ? 'manual' : undefined,
+          customer: customer ? {
+            type: customer.type,
+            name: customer.name.trim(),
+            inn: customer.inn || null,
+            email: customer.email || null,
+            phone: customer.phone || null,
+          } : undefined,
+          // Receipt rules: individual/self_employed always, legal_entity never (B2B bank transfer)
+          generateReceipt: customer ? customer.type !== 'legal_entity' : false,
+        })
+
         if (!result.success) return NextResponse.json({ error: 'Payment failed' }, { status: 500 })
         return NextResponse.json({ success: true, ...result })
       }

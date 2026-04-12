@@ -10,8 +10,13 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/organizations' });
   try {
-    const { name } = await req.json()
-    
+    const body = await req.json()
+    const { name } = body
+    const selectedPlan = typeof body.selected_plan === 'string' &&
+      ['pro', 'enterprise'].includes(body.selected_plan)
+      ? body.selected_plan
+      : null
+
     // Используем сервисную роль для обхода RLS
     const supabase = createAdminServer()
 
@@ -157,6 +162,45 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       org_name: name
     }, 'Organization created successfully');
+
+    // If user selected a paid plan on /pricing — start a 14-day trial
+    if (selectedPlan) {
+      try {
+        const trialDays = 14
+        const startedAt = new Date()
+        const expiresAt = new Date(startedAt.getTime() + trialDays * 24 * 60 * 60 * 1000)
+
+        await supabase
+          .from('org_subscriptions')
+          .insert({
+            org_id: org.id,
+            plan_code: selectedPlan,
+            status: 'trial',
+            started_at: startedAt.toISOString(),
+            expires_at: expiresAt.toISOString(),
+            auto_renew: false,
+          })
+
+        // Also update the legacy organizations.plan field (kept for backwards compat)
+        await supabase
+          .from('organizations')
+          .update({ plan: selectedPlan })
+          .eq('id', org.id)
+
+        logger.info({
+          org_id: org.id,
+          plan: selectedPlan,
+          trial_expires_at: expiresAt.toISOString(),
+        }, 'Trial subscription started for new org')
+      } catch (subErr: any) {
+        // Non-critical — user can still start trial via platform UI later
+        logger.error({
+          org_id: org.id,
+          plan: selectedPlan,
+          error: subErr?.message,
+        }, 'Failed to start trial subscription for new org')
+      }
+    }
 
     // Race condition cleanup: if two concurrent requests both passed the idempotency check
     // (TOCTOU), there may be a duplicate "Моё сообщество" org created in the last 30s.

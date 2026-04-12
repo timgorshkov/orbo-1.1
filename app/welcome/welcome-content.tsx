@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { QualificationForm } from '@/components/onboarding/qualification-form';
 import { Mail, CheckCircle2, Send, Users, Shield, ArrowRight, Copy, Check, ExternalLink } from 'lucide-react';
 import { ymGoal } from '@/components/analytics/YandexMetrika';
-import { getRegistrationMeta, clearRegistrationMeta } from '@/lib/client/registration-meta';
+import { getRegistrationMeta, clearRegistrationMeta, getSelectedPlan, clearSelectedPlan } from '@/lib/client/registration-meta';
 
 function EmailVerificationStep({ onVerified }: { onVerified: () => void }) {
   const [email, setEmail] = useState('');
@@ -536,17 +536,25 @@ export function WelcomeContent({
 
     setCreatingOrg(true);
     try {
+      // Pick up plan selection from pricing page (independent cookie, survives meta clear)
+      const selectedPlan = getSelectedPlan()
+
       const res = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Моё сообщество' }),
+        body: JSON.stringify({
+          name: 'Моё сообщество',
+          selected_plan: selectedPlan, // starts 14-day trial of chosen plan if 'pro' or 'enterprise'
+        }),
         signal: AbortSignal.timeout(15000),
       });
       const data = await res.json();
       if (res.ok && data.org_id) {
-        ymGoal('org_created', { auto: true }, { once: true });
-        ymGoal('first_org_created', { auto: true }, { once: true });
-        logWelcomeEvent('org_created', { org_id: data.org_id });
+        // Consume plan — only first org gets trial. Subsequent orgs stay on free.
+        if (selectedPlan) clearSelectedPlan()
+        ymGoal('org_created', { auto: true, plan: selectedPlan || 'free' }, { once: true });
+        ymGoal('first_org_created', { auto: true, plan: selectedPlan || 'free' }, { once: true });
+        logWelcomeEvent('org_created', { org_id: data.org_id, plan: selectedPlan });
         // Show Telegram connect dialog if user hasn't connected yet
         if (shouldOfferTelegram) {
           setCreatingOrg(false);

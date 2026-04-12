@@ -42,8 +42,8 @@ const PLANS = [
     priceSuffix: '/ месяц',
     icon: Sparkles,
     highlighted: true,
-    cta: 'Оплатить',
-    ctaHref: 'https://payform.ru/tkaK5Rn/',
+    cta: 'Попробовать 14 дней бесплатно',
+    ctaHref: 'https://my.orbo.ru/signup?plan=pro',
     features: [
       { name: 'Безлимитные участники', included: true },
       { name: 'Всё из Бесплатного', included: true },
@@ -63,8 +63,8 @@ const PLANS = [
     priceSuffix: '/ месяц',
     icon: Building2,
     highlighted: false,
-    cta: 'Оплатить',
-    ctaHref: 'https://payform.ru/4taVjLm/',
+    cta: 'Попробовать 14 дней бесплатно',
+    ctaHref: 'https://my.orbo.ru/signup?plan=enterprise',
     features: [
       { name: 'Всё из Профессионального', included: true },
       { name: 'Платные членства участников', included: true },
@@ -156,8 +156,6 @@ export default function PricingPage() {
                   ) : plan.highlighted ? (
                     <a
                       href={plan.ctaHref}
-                      target={plan.ctaHref.startsWith('http') && !plan.ctaHref.includes('my.orbo.ru') ? '_blank' : undefined}
-                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 py-3 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-indigo-700 transition shadow-lg"
                     >
                       {plan.cta}

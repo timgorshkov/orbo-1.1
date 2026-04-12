@@ -7,6 +7,11 @@ const COOKIE_NAME = 'orbo_reg_meta'
 const COOKIE_DOMAIN = '.orbo.ru'
 const COOKIE_MAX_AGE = 86400 * 30 // 30 days
 
+// Selected plan has its own independent lifecycle (see bottom of file)
+const PLAN_COOKIE_NAME = 'orbo_selected_plan'
+const PLAN_STORAGE_KEY = 'orbo_selected_plan'
+const PLAN_COOKIE_MAX_AGE = 86400 // 24 hours
+
 const storage: Storage | null = (() => {
   try { return typeof window !== 'undefined' ? window.localStorage : null }
   catch { return null }
@@ -25,6 +30,8 @@ export interface RegistrationMeta {
   user_agent?: string
   screen_width?: number
   partner_code?: string
+  /** Selected tariff plan code from /pricing (pro | enterprise). Applied on first org creation. */
+  selected_plan?: string
 }
 
 function getDeviceType(width: number): string {
@@ -97,6 +104,17 @@ export function captureRegistrationMeta(): void {
 
   const params = new URLSearchParams(window.location.search)
   const partnerCode = extractPartnerCode(params)
+  const planParam = params.get('plan')
+  const allowedPlans = ['pro', 'enterprise']
+  const selectedPlan = planParam && allowedPlans.includes(planParam) ? planParam : undefined
+
+  // Mirror selected_plan into its own independent cookie/storage (independent lifecycle)
+  if (selectedPlan) {
+    try {
+      document.cookie = `${PLAN_COOKIE_NAME}=${encodeURIComponent(selectedPlan)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${PLAN_COOKIE_MAX_AGE}; SameSite=Lax; Secure`
+      storage?.setItem(PLAN_STORAGE_KEY, selectedPlan)
+    } catch { /* ignore */ }
+  }
 
   // Check existing meta: localStorage (same domain) first, then cookie (cross-domain).
   const existing = storage?.getItem(STORAGE_KEY) || null
@@ -110,6 +128,12 @@ export function captureRegistrationMeta(): void {
     // If a partner code is present on this page visit, always update it
     if (partnerCode && !existingMeta.partner_code) {
       existingMeta.partner_code = partnerCode
+      updated = true
+    }
+
+    // Update selected_plan if a new one comes through (last-write-wins)
+    if (selectedPlan && existingMeta.selected_plan !== selectedPlan) {
+      existingMeta.selected_plan = selectedPlan
       updated = true
     }
 
@@ -144,6 +168,7 @@ export function captureRegistrationMeta(): void {
     user_agent: navigator.userAgent,
     screen_width: window.innerWidth,
     partner_code: partnerCode,
+    selected_plan: selectedPlan,
   }
 
   const cleaned = Object.fromEntries(
@@ -171,4 +196,53 @@ export function clearRegistrationMeta(): void {
   if (typeof window === 'undefined') return
   storage?.removeItem(STORAGE_KEY)
   clearCookie()
+}
+
+// ── Selected plan (independent lifecycle, cleared after first org creation) ──
+//
+// Kept separately from RegistrationMeta because meta is cleared early in the
+// welcome flow (when sent to server), but org creation may happen later.
+
+export function setSelectedPlan(plan: string): void {
+  if (typeof window === 'undefined') return
+  if (!['pro', 'enterprise'].includes(plan)) return
+
+  try {
+    document.cookie = `${PLAN_COOKIE_NAME}=${encodeURIComponent(plan)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${PLAN_COOKIE_MAX_AGE}; SameSite=Lax; Secure`
+  } catch { /* ignore */ }
+
+  try {
+    storage?.setItem(PLAN_STORAGE_KEY, plan)
+  } catch { /* ignore */ }
+}
+
+export function getSelectedPlan(): string | null {
+  if (typeof window === 'undefined') return null
+
+  // localStorage first
+  const stored = storage?.getItem(PLAN_STORAGE_KEY)
+  if (stored && ['pro', 'enterprise'].includes(stored)) return stored
+
+  // Cookie fallback
+  try {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${PLAN_COOKIE_NAME}=([^;]+)`))
+    if (match) {
+      const val = decodeURIComponent(match[1])
+      if (['pro', 'enterprise'].includes(val)) return val
+    }
+  } catch { /* ignore */ }
+
+  return null
+}
+
+export function clearSelectedPlan(): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    storage?.removeItem(PLAN_STORAGE_KEY)
+  } catch { /* ignore */ }
+
+  try {
+    document.cookie = `${PLAN_COOKIE_NAME}=; domain=${COOKIE_DOMAIN}; path=/; max-age=0; SameSite=Lax; Secure`
+  } catch { /* ignore */ }
 }
