@@ -49,12 +49,14 @@ export async function telegramFetch(url: string, init?: RequestInit): Promise<Re
       return res;
     } catch (proxyErr) {
       if (!PROXY_FALLBACK) throw proxyErr;
-      // Fallback: try direct
+      // Fallback: try direct with a FRESH abort signal
+      // (original signal may be aborted if proxy timed out)
       logger.warn({
         error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
         url: url.replace(/bot[^/]+/, 'bot***'),
       }, 'Telegram proxy failed, falling back to direct');
-      return fetch(url, init);
+      const fallbackInit: RequestInit = { ...init, signal: AbortSignal.timeout(10000) };
+      return fetch(url, fallbackInit);
     }
   }
   return fetch(url, init);
@@ -508,12 +510,10 @@ async getChatMember(chatId: number, userId: number) {
           'Connection': 'close',
         },
         body: JSON.stringify(params),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(15000), // 15s — proxy can be slow
       };
-      if (tgProxyAgent) {
-        fetchOptions.dispatcher = tgProxyAgent;
-      }
-      const response = await fetch(url, fetchOptions);
+      // Use telegramFetch for proxy + fallback support
+      const response = await telegramFetch(url, fetchOptions);
 
       const responseData = await response.json();
       

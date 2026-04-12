@@ -86,6 +86,9 @@ export async function GET(request: NextRequest) {
       const orgLinks = org.org_telegram_groups || [];
 
       let updatedGroups = 0;
+      // Track which groups we successfully synced this run
+      // Only groups that were successfully updated should undergo the revoke check
+      const successfullySyncedChats = new Set<string>();
 
       for (const groupBinding of orgLinks) {
         const chatId = groupBinding.tg_chat_id;
@@ -143,18 +146,20 @@ export async function GET(request: NextRequest) {
           const administrators = adminsResponse.result || [];
           logger.debug({ chat_id: chatId, admins_count: administrators.length }, 'Found administrators in group');
 
-          // Деактивируем все существующие записи для этой группы
-          await supabaseService
-            .from('telegram_group_admins')
-            .update({
-              is_admin: false,
-              is_owner: false,
-              verified_at: new Date().toISOString(),
-              expires_at: new Date(Date.now() + 1000).toISOString()
-            })
-            .eq('tg_chat_id', chatId);
+          // Safety guard: if API unexpectedly returned 0 admins (can happen when
+          // the bot has restricted permissions), skip to avoid wiping admin data.
+          // A real supergroup always has at least one admin (the creator).
+          if (administrators.length === 0) {
+            logger.warn({
+              chat_id: chatId,
+              group_title: groupTitle,
+              org_id: org.id,
+            }, 'Empty admin list returned — skipping to preserve existing data');
+            continue;
+          }
 
-          // Сохраняем новых админов
+          // 1. Upsert current admins FIRST (so we never have a gap where admin data is missing)
+          const currentAdminUserIds: number[] = [];
           for (const admin of administrators) {
             const user = admin.user;
             if (!user || !user.id) continue;
@@ -162,6 +167,7 @@ export async function GET(request: NextRequest) {
             // Пропускаем ботов (кроме нашего бота, если нужно отслеживать его статус отдельно)
             if (user.is_bot && user.id !== Number(process.env.TELEGRAM_BOT_ID)) continue;
 
+            currentAdminUserIds.push(user.id);
             const isOwner = admin.status === 'creator';
 
             await supabaseService
@@ -178,6 +184,21 @@ export async function GET(request: NextRequest) {
               });
           }
 
+          // 2. Expire records for users NO LONGER in the admin list
+          if (currentAdminUserIds.length > 0) {
+            await supabaseService.raw(
+              `UPDATE telegram_group_admins
+               SET is_admin = false, is_owner = false,
+                   verified_at = NOW(),
+                   expires_at = NOW() + INTERVAL '1 second'
+               WHERE tg_chat_id = $1
+                 AND tg_user_id NOT IN (${currentAdminUserIds.map((_, i) => `$${i + 2}`).join(',')})
+                 AND is_admin = true`,
+              [String(chatId), ...currentAdminUserIds]
+            );
+          }
+
+          successfullySyncedChats.add(String(chatId));
           updatedGroups++;
         } catch (groupError: any) {
           const errorMessage = groupError.message || String(groupError);
@@ -385,13 +406,24 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Check each group: if no org admin has TG admin rights, mark as access_revoked
+      // Revoke check: only for groups that were SUCCESSFULLY synced this run.
+      // Groups where API calls failed are skipped to avoid false positives from proxy timeouts.
       let revokedCount = 0;
       for (const groupBinding of orgLinks) {
         const chatId = groupBinding.tg_chat_id;
         const grpData = groupsMap.get(String(chatId));
         const groupBotStatus = grpData?.bot_status;
         if (groupBotStatus === 'inactive' || groupBotStatus === 'migration_needed') continue;
+
+        // Skip revoke check if we didn't successfully sync this group
+        // (API failed, proxy timeout, etc.) — preserve existing status
+        if (!successfullySyncedChats.has(String(chatId))) {
+          logger.debug({
+            org_id: org.id, tg_chat_id: chatId,
+          }, 'Skipping revoke check — group was not successfully synced this run');
+          continue;
+        }
+
         try {
           const hasAccess = await verifyOrgGroupAccess(org.id, chatId);
 
