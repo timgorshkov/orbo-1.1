@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import PlanCards from '@/components/billing/plan-cards'
-import { Crown, Users, Calendar, ExternalLink, Clock, CreditCard } from 'lucide-react'
+import { Crown, Users, Calendar, ExternalLink, Clock, CreditCard, FileText, Download, Loader2, X } from 'lucide-react'
 
 interface BillingData {
   plan: { code: string; name: string; price_monthly: number | null; description: string | null }
@@ -26,7 +26,10 @@ interface BillingData {
     status: string
     paid_at: string | null
     created_at: string
+    act_number?: string | null
+    act_document_url?: string | null
   }>
+  ownerEmail?: string | null
 }
 
 interface AllPlans {
@@ -199,12 +202,15 @@ export default function BillingContent() {
 
       {/* Payment section */}
       <PaymentSection
+        orgId={orgId}
         planCode={data.plan.code}
+        planName={data.plan.name}
         priceMonthly={data.plan.price_monthly}
         currentExpiresAt={data.subscription?.expires_at || null}
-        paymentUrl={data.paymentUrl}
         isTrial={data.isTrial}
         trialExpired={data.trialExpired}
+        ownerEmail={data.ownerEmail || null}
+        plans={plans}
       />
 
       {/* Plan cards */}
@@ -230,6 +236,7 @@ export default function BillingContent() {
                   <th className="px-4 py-3 font-medium">Период</th>
                   <th className="px-4 py-3 font-medium">Сумма</th>
                   <th className="px-4 py-3 font-medium">Статус</th>
+                  <th className="px-4 py-3 font-medium">Акт</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -245,6 +252,24 @@ export default function BillingContent() {
                         {inv.status === 'paid' ? 'Оплачен' : inv.status === 'pending' ? 'Ожидает' : inv.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3">
+                      {inv.act_document_url ? (
+                        <a
+                          href={inv.act_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-purple-600 hover:text-purple-800 text-xs"
+                          title={inv.act_number || 'Скачать акт'}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {inv.act_number || 'Акт'}
+                        </a>
+                      ) : inv.status === 'paid' ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -257,30 +282,32 @@ export default function BillingContent() {
 }
 
 function PaymentSection({
+  orgId,
   planCode,
+  planName,
   priceMonthly,
   currentExpiresAt,
-  paymentUrl,
   isTrial,
   trialExpired,
+  ownerEmail,
+  plans,
 }: {
+  orgId: string
   planCode: string
+  planName?: string
   priceMonthly: number | null
   currentExpiresAt: string | null
-  paymentUrl: string
   isTrial: boolean
   trialExpired: boolean
+  ownerEmail?: string | null
+  plans: AllPlans[]
 }) {
-  const price = priceMonthly || 1500
-  const now = new Date()
+  const [showModal, setShowModal] = useState(false)
+  const [selectedPlanCode, setSelectedPlanCode] = useState(planCode === 'free' || planCode === 'promo' ? 'pro' : planCode)
 
-  const periodStart = currentExpiresAt && new Date(currentExpiresAt) > now && planCode === 'pro' && !trialExpired
-    ? new Date(currentExpiresAt)
-    : now
-  const periodEnd = new Date(periodStart)
-  periodEnd.setMonth(periodEnd.getMonth() + 1)
-
-  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > now && planCode === 'pro' && !isTrial
+  // Free/promo orgs default to Pro; existing paid orgs default to their current plan
+  const paidPlans = plans.filter(p => p.price_monthly && p.price_monthly > 0)
+  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > new Date() && !isTrial && (planCode === selectedPlanCode)
 
   const actionLabel = trialExpired
     ? 'Оплатить подписку'
@@ -289,51 +316,237 @@ function PaymentSection({
       : isExtension
         ? 'Продлить подписку'
         : planCode === 'free'
-          ? 'Перейти на Pro'
+          ? `Перейти на ${planName || 'Pro'}`
           : 'Оплатить'
 
-  if (planCode === 'enterprise') return null
-
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <CreditCard className="h-6 w-6 text-purple-600" />
-        <h2 className="text-xl font-semibold">Оплата</h2>
-      </div>
+    <>
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <CreditCard className="h-6 w-6 text-purple-600" />
+          <h2 className="text-xl font-semibold">Оплата</h2>
+        </div>
 
-      <div className="bg-purple-50 rounded-lg p-4 mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-purple-700 font-medium">Тариф Профессиональный</span>
-          <span className="text-lg font-bold text-purple-900">{price.toLocaleString('ru-RU')} ₽/мес</span>
-        </div>
-        <div className="text-sm text-purple-600">
-          {isExtension ? (
-            <>Продление: с {periodStart.toLocaleDateString('ru-RU')} по {periodEnd.toLocaleDateString('ru-RU')}</>
-          ) : (
-            <>Период: с {periodStart.toLocaleDateString('ru-RU')} по {periodEnd.toLocaleDateString('ru-RU')}</>
-          )}
-        </div>
-        {isExtension && (
-          <div className="text-xs text-purple-500 mt-1">
-            Текущая подписка активна до {new Date(currentExpiresAt!).toLocaleDateString('ru-RU')}. Оплата продлит период.
-          </div>
+        {paidPlans.length === 0 ? (
+          <p className="text-sm text-gray-500">Платные тарифы временно недоступны</p>
+        ) : (
+          <>
+            {/* Quick actions for each paid plan */}
+            <div className="space-y-3">
+              {paidPlans.map(p => (
+                <div
+                  key={p.code}
+                  className={`flex items-center justify-between p-4 rounded-lg border ${
+                    p.code === planCode ? 'border-purple-300 bg-purple-50' : 'border-gray-200'
+                  }`}
+                >
+                  <div>
+                    <div className="font-medium">Тариф «{p.name}»</div>
+                    <div className="text-sm text-gray-500">{p.price_monthly?.toLocaleString('ru-RU')} ₽ / мес</div>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedPlanCode(p.code); setShowModal(true) }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition"
+                  >
+                    {p.code === planCode ? (isExtension ? 'Продлить' : 'Оплатить') : 'Выбрать'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-500 mt-4">
+              Оплата картой через защищённую форму T-Bank. После оплаты подписка активируется автоматически, чек и акт придут на email.
+            </p>
+          </>
         )}
       </div>
 
-      <a
-        href={paymentUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition"
-      >
-        <CreditCard className="h-4 w-4" />
-        {actionLabel}
-        <ExternalLink className="h-3.5 w-3.5 ml-1" />
-      </a>
+      {showModal && (
+        <CheckoutModal
+          orgId={orgId}
+          plans={paidPlans}
+          initialPlanCode={selectedPlanCode}
+          ownerEmail={ownerEmail || ''}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </>
+  )
+}
 
-      <p className="text-xs text-gray-500 mt-3">
-        После оплаты подтвердите в чат поддержки или на почту <a href="mailto:support@orbo.ru" className="text-purple-600 hover:underline">support@orbo.ru</a>
-      </p>
+function CheckoutModal({
+  orgId,
+  plans,
+  initialPlanCode,
+  ownerEmail,
+  onClose,
+}: {
+  orgId: string
+  plans: AllPlans[]
+  initialPlanCode: string
+  ownerEmail: string
+  onClose: () => void
+}) {
+  const [planCode, setPlanCode] = useState(initialPlanCode)
+  const [periodMonths, setPeriodMonths] = useState<1 | 3 | 12>(1)
+  const [customerName, setCustomerName] = useState('')
+  const [customerEmail, setCustomerEmail] = useState(ownerEmail)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const selectedPlan = plans.find(p => p.code === planCode)
+  const price = selectedPlan?.price_monthly || 0
+  const total = price * periodMonths
+
+  const handleCheckout = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId,
+          planCode,
+          periodMonths,
+          gatewayCode: 'tbank',
+          customerName,
+          customerEmail,
+          customerType: 'individual',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Ошибка при создании платежа')
+      if (data.redirectUrl) {
+        window.location.href = data.redirectUrl
+      } else {
+        throw new Error('Не получили ссылку на оплату')
+      }
+    } catch (e: any) {
+      setError(e.message)
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-semibold">Оплата тарифа</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Plan selector */}
+        <div>
+          <label className="text-sm font-medium block mb-2">Тариф</label>
+          <div className="grid grid-cols-2 gap-2">
+            {plans.map(p => (
+              <button
+                key={p.code}
+                onClick={() => setPlanCode(p.code)}
+                className={`p-3 rounded-lg border-2 text-left transition ${
+                  planCode === p.code ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium text-sm">{p.name}</div>
+                <div className="text-xs text-gray-500">{p.price_monthly?.toLocaleString('ru-RU')} ₽/мес</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Period selector */}
+        <div>
+          <label className="text-sm font-medium block mb-2">Период</label>
+          <div className="grid grid-cols-3 gap-2">
+            {([1, 3, 12] as const).map(months => (
+              <button
+                key={months}
+                onClick={() => setPeriodMonths(months)}
+                className={`p-3 rounded-lg border-2 text-center transition ${
+                  periodMonths === months ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium text-sm">{months} мес</div>
+                <div className="text-xs text-gray-500">{(price * months).toLocaleString('ru-RU')} ₽</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Customer name */}
+        <div>
+          <label className="text-sm font-medium block mb-1">
+            ФИО <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={customerName}
+            onChange={e => setCustomerName(e.target.value)}
+            placeholder="Иванов Иван Иванович"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+          />
+          <p className="text-xs text-gray-500 mt-1">Будет указано в акте передачи прав</p>
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="text-sm font-medium block mb-1">
+            Email для чека <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="email"
+            value={customerEmail}
+            onChange={e => setCustomerEmail(e.target.value)}
+            placeholder="email@example.com"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+          />
+          <p className="text-xs text-gray-500 mt-1">На этот email придёт фискальный чек</p>
+        </div>
+
+        {/* Total */}
+        <div className="bg-purple-50 rounded-lg p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-purple-700">К оплате</span>
+            <span className="text-2xl font-bold text-purple-900">{total.toLocaleString('ru-RU')} ₽</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleCheckout}
+            disabled={loading || !customerName.trim() || !customerEmail.trim()}
+            className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Переход к оплате...
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                Оплатить картой
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

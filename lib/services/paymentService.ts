@@ -22,7 +22,7 @@ const logger = createServiceLogger('PaymentService')
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type PaymentFor = 'event' | 'membership'
+export type PaymentFor = 'event' | 'membership' | 'subscription'
 export type SessionStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled' | 'refunded'
 
 export interface PaymentSession {
@@ -134,21 +134,24 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
     }
   }
 
-  // Calculate fees for this org
+  // Calculate fees for this org (only for event/membership payments — not for subscription,
+  // which is Orbo's direct sale of its own license, not an agent model).
   let ticketPrice: number | null = null
   let serviceFeeAmount: number | null = null
   let serviceFeeRate: number | null = null
 
-  try {
-    const feeConfig = await getOrgFeeConfig(params.orgId)
-    if (feeConfig.hasActiveContract) {
-      const fees = calculateFees(params.amount, feeConfig.serviceFeeRate, feeConfig.agentCommissionRate)
-      ticketPrice = fees.ticketPrice
-      serviceFeeAmount = fees.serviceFeeAmount
-      serviceFeeRate = feeConfig.serviceFeeRate
+  if (params.paymentFor !== 'subscription') {
+    try {
+      const feeConfig = await getOrgFeeConfig(params.orgId)
+      if (feeConfig.hasActiveContract) {
+        const fees = calculateFees(params.amount, feeConfig.serviceFeeRate, feeConfig.agentCommissionRate)
+        ticketPrice = fees.ticketPrice
+        serviceFeeAmount = fees.serviceFeeAmount
+        serviceFeeRate = feeConfig.serviceFeeRate
+      }
+    } catch (feeErr: any) {
+      logger.warn({ org_id: params.orgId, error: feeErr.message }, 'Could not calculate fees, proceeding without')
     }
-  } catch (feeErr: any) {
-    logger.warn({ org_id: params.orgId, error: feeErr.message }, 'Could not calculate fees, proceeding without')
   }
 
   // Create session record first to get ID for payment reference
@@ -760,6 +763,29 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
         amount: paidAmount,
         currency: session.currency,
         paymentGateway: session.gateway_code,
+      })
+    } else if (session.payment_for === 'subscription') {
+      // Tariff plan payment — extend subscription, create invoice, act, and receipt
+      const meta = (session.metadata || {}) as any
+      const planCode = meta.plan_code || 'pro'
+
+      const { addPayment } = await import('./billingService')
+      await addPayment({
+        orgId: session.org_id,
+        amount: paidAmount,
+        confirmedBy: session.created_by || 'system',
+        planCode,
+        paymentMethod: 'electronic',
+        gatewayCode: session.gateway_code,
+        paymentSessionId: session.id,
+        customer: meta.customer ? {
+          type: meta.customer.type || 'individual',
+          name: meta.customer.name || '',
+          inn: meta.customer.inn || null,
+          email: meta.customer.email || null,
+          phone: meta.customer.phone || null,
+        } : undefined,
+        generateReceipt: true, // always for card payments
       })
     }
   } catch (ledgerErr: any) {
