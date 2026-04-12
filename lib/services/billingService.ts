@@ -339,21 +339,67 @@ export async function getOrgInvoices(orgId: string) {
  * Add a payment to an org subscription. If already on the same plan, extends the existing period.
  * Duration is calculated from amount / plan.price_monthly * 30 days.
  */
+export interface AddPaymentOptions {
+  orgId: string
+  amount: number
+  confirmedBy: string
+  planCode?: string
+  paymentMethod?: string
+  gatewayCode?: string
+  paymentSessionId?: string
+  /** Customer data — if present, used for receipts and acts */
+  customer?: {
+    type: 'individual' | 'legal_entity' | 'self_employed'
+    name: string
+    inn?: string | null
+    email?: string | null
+    phone?: string | null
+  }
+  /**
+   * If true, try to generate fiscal receipt (for individuals/self_employed / card payments).
+   * Defaults to true for card gateways, false for manual legal-entity bank transfers.
+   */
+  generateReceipt?: boolean
+}
+
+export interface AddPaymentResult {
+  success: boolean
+  periodStart?: string
+  periodEnd?: string
+  invoiceId?: string
+  actUrl?: string | null
+}
+
+/**
+ * Records a subscription payment. Creates an invoice, extends the subscription,
+ * generates a closing act (license transfer) and (optionally) a fiscal receipt.
+ *
+ * Backwards-compatible: old call signature (orgId, amount, confirmedBy, paymentMethod?, planCode?) is supported.
+ */
 export async function addPayment(
-  orgId: string,
-  amount: number,
-  confirmedBy: string,
+  orgIdOrOpts: string | AddPaymentOptions,
+  amount?: number,
+  confirmedBy?: string,
   paymentMethod?: string,
   planCode: string = 'pro'
-): Promise<{ success: boolean; periodStart: string; periodEnd: string } | { success: false }> {
+): Promise<AddPaymentResult> {
+  // Normalize to options object
+  const opts: AddPaymentOptions = typeof orgIdOrOpts === 'string'
+    ? { orgId: orgIdOrOpts, amount: amount!, confirmedBy: confirmedBy!, paymentMethod, planCode }
+    : orgIdOrOpts
+
+  const orgId = opts.orgId
+  const amt = opts.amount
+  const resolvedPlanCode = opts.planCode || 'pro'
+
   const supabase = createAdminServer()
   const sub = await ensureSubscription(orgId)
 
-  const plan = await getPlanByCode(planCode)
+  const plan = await getPlanByCode(resolvedPlanCode)
   const planMonthlyPrice = plan.price_monthly || PRO_MONTHLY_PRICE
-  const daysToAdd = Math.round((amount / planMonthlyPrice) * 30)
+  const daysToAdd = Math.round((amt / planMonthlyPrice) * 30)
   if (daysToAdd < 1) {
-    logger.warn({ org_id: orgId, amount }, 'Payment amount too small')
+    logger.warn({ org_id: orgId, amount: amt }, 'Payment amount too small')
     return { success: false }
   }
 
@@ -362,7 +408,7 @@ export async function addPayment(
   let newExpiresAt: Date
 
   if (
-    sub.plan_code === planCode &&
+    sub.plan_code === resolvedPlanCode &&
     (sub.status === 'active' || sub.status === 'trial') &&
     sub.expires_at &&
     new Date(sub.expires_at) > now
@@ -379,9 +425,9 @@ export async function addPayment(
   const { error: subError } = await supabase
     .from('org_subscriptions')
     .update({
-      plan_code: planCode,
+      plan_code: resolvedPlanCode,
       status: 'active',
-      started_at: sub.plan_code !== planCode || sub.status !== 'active' ? now.toISOString() : sub.started_at,
+      started_at: sub.plan_code !== resolvedPlanCode || sub.status !== 'active' ? now.toISOString() : sub.started_at,
       expires_at: newExpiresAt.toISOString(),
       over_limit_since: null,
     })
@@ -392,27 +438,107 @@ export async function addPayment(
     return { success: false }
   }
 
-  const { error: invError } = await supabase
+  const { data: invoiceRow, error: invError } = await supabase
     .from('org_invoices')
     .insert({
       org_id: orgId,
       subscription_id: sub.id,
-      amount,
+      amount: amt,
       currency: 'RUB',
       period_start: periodStart.toISOString().slice(0, 10),
       period_end: newExpiresAt.toISOString().slice(0, 10),
       status: 'paid',
-      payment_method: paymentMethod || 'manual',
+      payment_method: opts.paymentMethod || 'manual',
+      gateway_code: opts.gatewayCode || null,
+      payment_session_id: opts.paymentSessionId || null,
       paid_at: now.toISOString(),
-      confirmed_by: confirmedBy,
+      confirmed_by: opts.confirmedBy,
+      customer_type: opts.customer?.type || null,
+      customer_name: opts.customer?.name || null,
+      customer_inn: opts.customer?.inn || null,
+      customer_email: opts.customer?.email || null,
+      customer_phone: opts.customer?.phone || null,
     })
+    .select('id')
+    .single()
 
-  if (invError) {
-    logger.error({ org_id: orgId, error: invError.message }, 'Failed to create invoice')
+  if (invError || !invoiceRow) {
+    logger.error({ org_id: orgId, error: invError?.message }, 'Failed to create invoice')
+    return { success: false }
   }
 
-  logger.info({ org_id: orgId, amount, days: daysToAdd, confirmed_by: confirmedBy, period_end: newExpiresAt.toISOString() }, 'Payment added')
-  return { success: true, periodStart: periodStart.toISOString(), periodEnd: newExpiresAt.toISOString() }
+  logger.info({
+    org_id: orgId,
+    invoice_id: invoiceRow.id,
+    amount: amt,
+    days: daysToAdd,
+    confirmed_by: opts.confirmedBy,
+    period_end: newExpiresAt.toISOString(),
+  }, 'Payment added')
+
+  // Generate license transfer act (fire-and-forget — errors don't block payment)
+  let actUrl: string | null = null
+  try {
+    const { generateSubscriptionAct } = await import('./subscriptionActService')
+    actUrl = await generateSubscriptionAct(invoiceRow.id)
+  } catch (actErr: any) {
+    logger.error({
+      invoice_id: invoiceRow.id,
+      error: actErr?.message,
+    }, 'Failed to generate subscription act')
+  }
+
+  // Generate fiscal receipt if applicable
+  // Rules:
+  //   - Card payments (any customer type) → receipt required
+  //   - Bank transfer from individual/self_employed → receipt required
+  //   - Bank transfer from legal_entity → no receipt needed (B2B non-cash)
+  const shouldGenerateReceipt = opts.generateReceipt ?? (
+    opts.gatewayCode && opts.gatewayCode !== 'manual'  // any card gateway
+    || (opts.customer && opts.customer.type !== 'legal_entity')  // individual / self_employed
+  )
+
+  if (shouldGenerateReceipt && opts.customer) {
+    try {
+      const { createSubscriptionReceipt, sendReceiptToOrangeData } = await import('./fiscalReceiptService')
+      const receipt = await createSubscriptionReceipt({
+        orgId,
+        amount: amt,
+        planName: plan.name || resolvedPlanCode,
+        customerEmail: opts.customer.email || undefined,
+        customerPhone: opts.customer.phone || undefined,
+        paymentMethod: opts.gatewayCode && opts.gatewayCode !== 'manual' ? 'electronic' : 'electronic',
+        metadata: {
+          org_invoice_id: invoiceRow.id,
+          period_start: periodStart.toISOString().slice(0, 10),
+          period_end: newExpiresAt.toISOString().slice(0, 10),
+        },
+      })
+      if (receipt) {
+        await supabase
+          .from('org_invoices')
+          .update({ fiscal_receipt_id: receipt.id })
+          .eq('id', invoiceRow.id)
+        // Fire-and-forget send to OrangeData
+        sendReceiptToOrangeData(receipt).catch(err =>
+          logger.error({ receipt_id: receipt.id, error: err.message }, 'Failed to send subscription receipt to OrangeData')
+        )
+      }
+    } catch (receiptErr: any) {
+      logger.error({
+        invoice_id: invoiceRow.id,
+        error: receiptErr?.message,
+      }, 'Failed to create subscription fiscal receipt')
+    }
+  }
+
+  return {
+    success: true,
+    periodStart: periodStart.toISOString(),
+    periodEnd: newExpiresAt.toISOString(),
+    invoiceId: invoiceRow.id,
+    actUrl,
+  }
 }
 
 export async function activatePromo(orgId: string, activatedBy: string): Promise<boolean> {
