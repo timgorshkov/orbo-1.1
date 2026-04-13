@@ -14,7 +14,10 @@ export interface PlanCardData {
 interface PlanCardsProps {
   plans: PlanCardData[]
   currentPlanCode?: string
-  paymentUrl: string
+  /** Called when user clicks "Оплатить" on a paid plan — opens checkout flow */
+  onSelectPlan?: (planCode: string) => void
+  /** Legacy: direct payment URLs (Payform). Kept for backwards compatibility but no longer used on my.orbo.ru. */
+  paymentUrl?: string
   clubPaymentUrl?: string
   compact?: boolean
 }
@@ -55,7 +58,7 @@ const PLAN_ICONS: Record<string, typeof Users> = {
   enterprise: Building2,
 }
 
-export default function PlanCards({ plans, currentPlanCode, paymentUrl, clubPaymentUrl, compact }: PlanCardsProps) {
+export default function PlanCards({ plans, currentPlanCode, onSelectPlan, paymentUrl, clubPaymentUrl, compact }: PlanCardsProps) {
   return (
     <div className={cn('grid gap-6', compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3')}>
       {plans.map((plan) => {
@@ -136,46 +139,22 @@ export default function PlanCards({ plans, currentPlanCode, paymentUrl, clubPaym
               )
             )}
 
-            {plan.code === 'pro' && (
+            {(plan.code === 'pro' || plan.code === 'enterprise') && (
               isCurrent ? (
                 <div className="py-2.5 text-center text-sm font-medium text-purple-600 border border-purple-300 rounded-xl bg-purple-50">
                   Активен
                 </div>
-              ) : (
-                <a
-                  href={paymentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block py-2.5 text-center text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition shadow"
+              ) : onSelectPlan ? (
+                <button
+                  onClick={() => onSelectPlan(plan.code)}
+                  className="block w-full py-2.5 text-center text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition shadow"
                 >
                   Оплатить
-                </a>
-              )
-            )}
-
-            {plan.code === 'enterprise' && (
-              clubPaymentUrl ? (
-                isCurrent ? (
-                  <div className="py-2.5 text-center text-sm font-medium text-purple-600 border border-purple-300 rounded-xl bg-purple-50">
-                    Активен
-                  </div>
-                ) : (
-                  <a
-                    href={clubPaymentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block py-2.5 text-center text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition shadow"
-                  >
-                    Оплатить
-                  </a>
-                )
+                </button>
               ) : (
-                <a
-                  href="mailto:tg@orbo.ru"
-                  className="block py-2.5 text-center text-sm font-medium text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
-                >
-                  Связаться с нами
-                </a>
+                <div className="py-2.5 text-center text-sm text-gray-400 border border-gray-200 rounded-xl">
+                  Недоступно
+                </div>
               )
             )}
           </div>

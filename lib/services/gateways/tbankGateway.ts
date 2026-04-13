@@ -63,13 +63,36 @@ export class TbankGateway implements PaymentGateway {
         TerminalKey: terminalKey,
         Amount: Math.round(params.amount * 100), // T-Bank uses kopecks
         OrderId: orderId,
-        Description: params.description,
+        Description: (params.description || '').slice(0, 140),
         SuccessURL: params.returnUrl,
         FailURL: params.returnUrl,
       }
 
+      // T-Bank DATA requires flat { string -> string } object.
+      // Nested objects/arrays are rejected with "Отсутствуют обязательные параметры".
+      // Sanitize: flatten one level, stringify values, skip empty/null, enforce length limits.
       if (params.metadata) {
-        reqBody.DATA = params.metadata
+        const flatData: Record<string, string> = {}
+        const addKV = (k: string, v: unknown) => {
+          if (v === null || v === undefined || v === '') return
+          // T-Bank: key ≤ 20 chars, value ≤ 100 chars, max 20 pairs
+          const key = String(k).slice(0, 20)
+          const val = String(v).slice(0, 100)
+          if (Object.keys(flatData).length < 20) flatData[key] = val
+        }
+        for (const [k, v] of Object.entries(params.metadata)) {
+          if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+            // Flatten one level: customer.email, customer.name, etc.
+            for (const [nk, nv] of Object.entries(v as Record<string, unknown>)) {
+              if (nv !== null && typeof nv !== 'object') addKV(`${k}_${nk}`, nv)
+            }
+          } else {
+            addKV(k, v)
+          }
+        }
+        if (Object.keys(flatData).length > 0) {
+          reqBody.DATA = flatData
+        }
       }
 
       reqBody.Token = generateToken(reqBody)

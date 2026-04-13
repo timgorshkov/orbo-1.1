@@ -62,3 +62,7 @@ docs/productradar-materials.md
 docs/linkedin-profile-draft.md
 .claude/settings.local.json
 docs/tmp-cert/rsa_2048_private_key.xml
+docs/orange_keys/9701327025_43789.key
+docs/orange_keys/9701327025_43789.crt
+docs/orange_keys/9701327025_43789.pfx
+docs/orange_keys/client_ca.crt

@@ -45,6 +45,8 @@ export default function BillingContent() {
   const [data, setData] = useState<BillingData | null>(null)
   const [plans, setPlans] = useState<AllPlans[]>([])
   const [loading, setLoading] = useState(true)
+  // Checkout modal state — lifted to top-level so both PaymentSection and PlanCards can trigger it
+  const [checkoutPlanCode, setCheckoutPlanCode] = useState<string | null>(null)
 
   useEffect(() => {
     if (!orgId) return
@@ -211,6 +213,7 @@ export default function BillingContent() {
         trialExpired={data.trialExpired}
         ownerEmail={data.ownerEmail || null}
         plans={plans}
+        onSelectPlan={(code) => setCheckoutPlanCode(code)}
       />
 
       {/* Plan cards */}
@@ -219,10 +222,20 @@ export default function BillingContent() {
         <PlanCards
           plans={plans.filter(p => p.code !== 'promo')}
           currentPlanCode={data.plan.code}
-          paymentUrl={data.paymentUrl}
-          clubPaymentUrl="https://payform.ru/4taVjLm/"
+          onSelectPlan={(code) => setCheckoutPlanCode(code)}
         />
       </div>
+
+      {/* Centralized checkout modal — triggered by either PaymentSection or PlanCards */}
+      {checkoutPlanCode && (
+        <CheckoutModal
+          orgId={orgId}
+          plans={plans.filter(p => p.price_monthly && p.price_monthly > 0)}
+          initialPlanCode={checkoutPlanCode}
+          ownerEmail={data.ownerEmail || ''}
+          onClose={() => setCheckoutPlanCode(null)}
+        />
+      )}
 
       {/* Invoice history */}
       {data.invoices && data.invoices.length > 0 && (
@@ -301,76 +314,51 @@ function PaymentSection({
   trialExpired: boolean
   ownerEmail?: string | null
   plans: AllPlans[]
+  onSelectPlan: (code: string) => void
 }) {
-  const [showModal, setShowModal] = useState(false)
-  const [selectedPlanCode, setSelectedPlanCode] = useState(planCode === 'free' || planCode === 'promo' ? 'pro' : planCode)
-
-  // Free/promo orgs default to Pro; existing paid orgs default to their current plan
   const paidPlans = plans.filter(p => p.price_monthly && p.price_monthly > 0)
-  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > new Date() && !isTrial && (planCode === selectedPlanCode)
-
-  const actionLabel = trialExpired
-    ? 'Оплатить подписку'
-    : isTrial
-      ? 'Оплатить и продолжить'
-      : isExtension
-        ? 'Продлить подписку'
-        : planCode === 'free'
-          ? `Перейти на ${planName || 'Pro'}`
-          : 'Оплатить'
+  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > new Date() && !isTrial
 
   return (
-    <>
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <CreditCard className="h-6 w-6 text-purple-600" />
-          <h2 className="text-xl font-semibold">Оплата</h2>
-        </div>
-
-        {paidPlans.length === 0 ? (
-          <p className="text-sm text-gray-500">Платные тарифы временно недоступны</p>
-        ) : (
-          <>
-            {/* Quick actions for each paid plan */}
-            <div className="space-y-3">
-              {paidPlans.map(p => (
-                <div
-                  key={p.code}
-                  className={`flex items-center justify-between p-4 rounded-lg border ${
-                    p.code === planCode ? 'border-purple-300 bg-purple-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div>
-                    <div className="font-medium">Тариф «{p.name}»</div>
-                    <div className="text-sm text-gray-500">{p.price_monthly?.toLocaleString('ru-RU')} ₽ / мес</div>
-                  </div>
-                  <button
-                    onClick={() => { setSelectedPlanCode(p.code); setShowModal(true) }}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition"
-                  >
-                    {p.code === planCode ? (isExtension ? 'Продлить' : 'Оплатить') : 'Выбрать'}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-xs text-gray-500 mt-4">
-              Оплата картой через защищённую форму T-Bank. После оплаты подписка активируется автоматически, чек и акт придут на email.
-            </p>
-          </>
-        )}
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <CreditCard className="h-6 w-6 text-purple-600" />
+        <h2 className="text-xl font-semibold">Оплата</h2>
       </div>
 
-      {showModal && (
-        <CheckoutModal
-          orgId={orgId}
-          plans={paidPlans}
-          initialPlanCode={selectedPlanCode}
-          ownerEmail={ownerEmail || ''}
-          onClose={() => setShowModal(false)}
-        />
+      {paidPlans.length === 0 ? (
+        <p className="text-sm text-gray-500">Платные тарифы временно недоступны</p>
+      ) : (
+        <>
+          {/* Quick actions for each paid plan */}
+          <div className="space-y-3">
+            {paidPlans.map(p => (
+              <div
+                key={p.code}
+                className={`flex items-center justify-between p-4 rounded-lg border ${
+                  p.code === planCode ? 'border-purple-300 bg-purple-50' : 'border-gray-200'
+                }`}
+              >
+                <div>
+                  <div className="font-medium">Тариф «{p.name}»</div>
+                  <div className="text-sm text-gray-500">{p.price_monthly?.toLocaleString('ru-RU')} ₽ / мес</div>
+                </div>
+                <button
+                  onClick={() => onSelectPlan(p.code)}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition"
+                >
+                  {p.code === planCode ? (isExtension ? 'Продлить' : 'Оплатить') : 'Выбрать'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-gray-500 mt-4">
+            Оплата картой через защищённую форму T-Bank. После оплаты подписка активируется автоматически, чек и акт придут на email.
+          </p>
+        </>
       )}
-    </>
+    </div>
   )
 }
 
