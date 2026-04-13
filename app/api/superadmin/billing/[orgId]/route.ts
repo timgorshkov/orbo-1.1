@@ -72,7 +72,7 @@ export async function POST(
           return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 })
         }
 
-        // Validate customer data if provided
+        // Validate customer data if provided (used for act generation, not for receipt)
         if (customer) {
           if (!customer.type || !['individual', 'legal_entity', 'self_employed'].includes(customer.type)) {
             return NextResponse.json({ error: 'customer.type must be individual, legal_entity or self_employed' }, { status: 400 })
@@ -80,11 +80,8 @@ export async function POST(
           if (!customer.name || customer.name.trim().length < 4) {
             return NextResponse.json({ error: 'customer.name required (ФИО или название организации)' }, { status: 400 })
           }
-          // For individuals & self_employed — email required for fiscal receipt
-          if (customer.type !== 'legal_entity' && (!customer.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email))) {
-            return NextResponse.json({ error: 'Для физлиц и самозанятых обязателен корректный email (для фискального чека)' }, { status: 400 })
-          }
-          // For legal entities — INN recommended (won't block, but log)
+          // Email is still useful for the act (contact info), but not strictly required for manual entry
+          // since no fiscal receipt is generated for manual payments (see generateReceipt: false below).
         }
 
         const result = await addPayment({
@@ -101,8 +98,10 @@ export async function POST(
             email: customer.email || null,
             phone: customer.phone || null,
           } : undefined,
-          // Receipt rules: individual/self_employed always, legal_entity never (B2B bank transfer)
-          generateReceipt: customer ? customer.type !== 'legal_entity' : false,
+          // Manual superadmin payment confirmation — we do NOT issue fiscal receipts here.
+          // Cash registers (ОФД) are only used for online acquiring (T-Bank / YooKassa / SBP).
+          // Bank transfer payments recorded manually by superadmin are NOT fiscalized at this stage.
+          generateReceipt: false,
         })
 
         if (!result.success) return NextResponse.json({ error: 'Payment failed' }, { status: 500 })

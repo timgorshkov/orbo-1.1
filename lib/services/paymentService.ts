@@ -804,8 +804,15 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
   }, 'Payment succeeded')
 
   // --- Fiscal receipt (fire-and-forget, errors don't block payment) ---
+  // Only for ONLINE ACQUIRING payments (T-Bank / YooKassa / SBP).
+  // Manual gateway (bank transfer recorded by superadmin) does NOT get fiscalized here —
+  // for manual payments the receipt is issued separately by the organizer.
   try {
-    if (session.payment_for === 'event' && session.ticket_price != null && session.service_fee_amount != null) {
+    const isOnlineAcquiring = session.gateway_code && session.gateway_code !== 'manual'
+    const isAgentPayment = (session.payment_for === 'event' || session.payment_for === 'membership')
+      && session.ticket_price != null && session.service_fee_amount != null
+
+    if (isOnlineAcquiring && isAgentPayment) {
       const { getContractByOrgId } = await import('./contractService')
       const contract = await getContractByOrgId(session.org_id)
       const cp = (contract as any)?.counterparty
@@ -817,7 +824,8 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
           totalAmount: parseFloat(session.amount as any),
           ticketPrice: parseFloat(session.ticket_price as any),
           serviceFeeAmount: parseFloat(session.service_fee_amount as any),
-          eventName: session.description || 'Мероприятие',
+          eventName: session.description
+            || (session.payment_for === 'membership' ? 'Членство' : 'Мероприятие'),
           supplierName: cp.org_name || cp.full_name || '',
           supplierInn: cp.inn,
           supplierPhone: cp.phone || undefined,
@@ -828,6 +836,12 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
             logger.error({ receipt_id: receipt.id, error: err.message }, 'Failed to send receipt to OrangeData')
           )
         }
+      } else {
+        logger.warn({
+          session_id: session.id,
+          org_id: session.org_id,
+          payment_for: session.payment_for,
+        }, 'Cannot create fiscal receipt: contract counterparty INN not found')
       }
     }
   } catch (receiptErr: any) {

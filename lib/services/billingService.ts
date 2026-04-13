@@ -488,14 +488,14 @@ export async function addPayment(
     }, 'Failed to generate subscription act')
   }
 
-  // Generate fiscal receipt if applicable
-  // Rules:
-  //   - Card payments (any customer type) → receipt required
-  //   - Bank transfer from individual/self_employed → receipt required
-  //   - Bank transfer from legal_entity → no receipt needed (B2B non-cash)
+  // Generate fiscal receipt — ONLY for online acquiring (T-Bank / YooKassa / SBP).
+  // Manual payments (bank transfer confirmed by superadmin) are NOT fiscalized at this stage:
+  // cash register (ОФД) is used only for online acquiring flows. Organizer handles receipts
+  // for direct bank transfers separately.
+  //
+  // Explicit opts.generateReceipt overrides the default (e.g. when caller is sure).
   const shouldGenerateReceipt = opts.generateReceipt ?? (
-    opts.gatewayCode && opts.gatewayCode !== 'manual'  // any card gateway
-    || (opts.customer && opts.customer.type !== 'legal_entity')  // individual / self_employed
+    !!opts.gatewayCode && opts.gatewayCode !== 'manual'
   )
 
   if (shouldGenerateReceipt && opts.customer) {
@@ -507,7 +507,7 @@ export async function addPayment(
         planName: plan.name || resolvedPlanCode,
         customerEmail: opts.customer.email || undefined,
         customerPhone: opts.customer.phone || undefined,
-        paymentMethod: opts.gatewayCode && opts.gatewayCode !== 'manual' ? 'electronic' : 'electronic',
+        paymentMethod: 'electronic',
         metadata: {
           org_invoice_id: invoiceRow.id,
           period_start: periodStart.toISOString().slice(0, 10),

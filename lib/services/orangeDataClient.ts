@@ -21,7 +21,7 @@
 import { createServiceLogger } from '@/lib/logger'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
-import * as https from 'https'
+import { Agent as UndiciAgent, fetch as undiciFetch } from 'undici'
 
 const logger = createServiceLogger('OrangeData')
 
@@ -75,12 +75,14 @@ function signBody(body: string): string {
   return sign.sign({ key, passphrase: PASSPHRASE || undefined }, 'base64')
 }
 
-// ─── HTTPS Agent with mTLS ──────────────────────────────────────────
+// ─── HTTPS Agent with mTLS (undici Dispatcher) ──────────────────────
+// Node's global fetch (undici) does NOT support the legacy https.Agent — it uses Dispatcher.
+// We build an undici.Agent with connect options including cert/key/ca for mTLS.
 
-let _agent: https.Agent | null = null
+let _dispatcher: UndiciAgent | null = null
 
-function getAgent(): https.Agent {
-  if (_agent) return _agent
+function getDispatcher(): UndiciAgent {
+  if (_dispatcher) return _dispatcher
 
   const cert = getCert()
   const key = getKey()
@@ -88,15 +90,21 @@ function getAgent(): https.Agent {
 
   if (!cert || !key) throw new Error('OrangeData client certificate not configured')
 
-  _agent = new https.Agent({
-    cert,
-    key,
-    passphrase: PASSPHRASE || undefined,
-    ca: ca ? [ca] : undefined,
-    rejectUnauthorized: !!ca, // если нет CA — не проверяем (для теста)
+  _dispatcher = new UndiciAgent({
+    connect: {
+      cert,
+      key,
+      passphrase: PASSPHRASE || undefined,
+      ca: ca ? [ca] : undefined,
+      // If ca is provided — strict verification; otherwise relaxed (test environments)
+      rejectUnauthorized: !!ca,
+    },
+    connectTimeout: 15_000,
+    headersTimeout: 15_000,
+    bodyTimeout: 15_000,
   })
 
-  return _agent
+  return _dispatcher
 }
 
 // ─── API Types ──────────────────────────────────────────────────────
@@ -199,15 +207,14 @@ export async function createDocument(doc: OrangeDataDocument): Promise<{ success
   const signature = signBody(body)
 
   try {
-    const response = await fetch(`${API_URL}/documents/`, {
+    const response = await undiciFetch(`${API_URL}/documents/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
         'X-Signature': signature,
       },
       body,
-      // @ts-ignore — Node.js fetch supports agent option
-      agent: getAgent(),
+      dispatcher: getDispatcher(),
     })
 
     if (response.status === 201) {
@@ -238,13 +245,12 @@ export async function getDocumentStatus(documentId: string): Promise<OrangeDataS
   }
 
   try {
-    const response = await fetch(`${API_URL}/documents/${INN}/status/${documentId}`, {
+    const response = await undiciFetch(`${API_URL}/documents/${INN}/status/${documentId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
       },
-      // @ts-ignore
-      agent: getAgent(),
+      dispatcher: getDispatcher(),
     })
 
     if (response.status === 200 || response.status === 202) {
