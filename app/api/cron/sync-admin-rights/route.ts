@@ -79,9 +79,17 @@ export async function GET(request: NextRequest) {
     const results: any[] = [];
     const telegramService = createTelegramService('main');
 
+    // Cache for getChatAdministrators results: one chat can be bound to multiple orgs,
+    // but admin list only needs to be fetched once per run. Saves ~2-3x Telegram API load.
+    // Value: admins array on success, null on failure, undefined = not yet fetched.
+    const adminsCache = new Map<string, any[] | null>();
+    // Track chats where telegram_group_admins has already been upserted this run
+    // (prevents duplicate DB writes for the same chat bound to multiple orgs)
+    const chatsUpsertedThisRun = new Set<string>();
+
     for (const org of orgs || []) {
       logger.debug({ org_id: org.id, org_name: org.name }, 'Processing org');
-      
+
       // Получаем все активные группы организации
       const orgLinks = org.org_telegram_groups || [];
 
@@ -109,42 +117,54 @@ export async function GET(request: NextRequest) {
         }
 
         try {
-          logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
+          // Check cache first (one chat may be bound to multiple orgs)
+          const cacheKey = String(chatId);
+          let administrators: any[] | null | undefined = adminsCache.get(cacheKey);
 
-          // Получаем всех администраторов группы из Telegram
-          const adminsResponse = await telegramService.getChatAdministrators(Number(chatId));
+          if (administrators === undefined) {
+            // Not cached — fetch from Telegram
+            logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
+            const adminsResponse = await telegramService.getChatAdministrators(Number(chatId));
 
-          if (!adminsResponse.ok) {
-            const errDesc = adminsResponse.description || 'Unknown error';
+            if (!adminsResponse.ok) {
+              const errDesc = adminsResponse.description || 'Unknown error';
 
-            // "member list is inaccessible" — бот не имеет прав или группа ограничена
-            // Помечаем как inactive, чтобы не опрашивать каждый цикл
-            if (errDesc.includes('member list is inaccessible')) {
+              // "member list is inaccessible" — бот не имеет прав или группа ограничена
+              // Помечаем как inactive, чтобы не опрашивать каждый цикл
+              if (errDesc.includes('member list is inaccessible')) {
+                logger.warn({
+                  chat_id: chatId,
+                  group_title: groupTitle,
+                  org_id: org.id,
+                }, 'Member list inaccessible — marking group as inactive');
+
+                await supabaseService
+                  .from('telegram_groups')
+                  .update({
+                    bot_status: 'inactive',
+                    last_sync_at: new Date().toISOString()
+                  })
+                  .eq('tg_chat_id', chatId);
+                adminsCache.set(cacheKey, null); // cache failure
+                continue;
+              }
+
               logger.warn({
                 chat_id: chatId,
-                group_title: groupTitle,
-                org_id: org.id,
-              }, 'Member list inaccessible — marking group as inactive');
-
-              await supabaseService
-                .from('telegram_groups')
-                .update({
-                  bot_status: 'inactive',
-                  last_sync_at: new Date().toISOString()
-                })
-                .eq('tg_chat_id', chatId);
+                error: errDesc
+              }, 'Failed to get admins for chat');
+              adminsCache.set(cacheKey, null); // cache failure
               continue;
             }
 
-            logger.warn({
-              chat_id: chatId,
-              error: errDesc
-            }, 'Failed to get admins for chat');
+            administrators = adminsResponse.result || [];
+            adminsCache.set(cacheKey, administrators);
+            logger.debug({ chat_id: chatId, admins_count: administrators.length }, 'Found administrators in group');
+          } else if (administrators === null) {
+            // Previous fetch in this run failed — skip this org's binding silently
             continue;
           }
-
-          const administrators = adminsResponse.result || [];
-          logger.debug({ chat_id: chatId, admins_count: administrators.length }, 'Found administrators in group');
+          // administrators is now the cached array
 
           // Safety guard: if API unexpectedly returned 0 admins (can happen when
           // the bot has restricted permissions), skip to avoid wiping admin data.
@@ -159,7 +179,10 @@ export async function GET(request: NextRequest) {
           }
 
           // 1. Upsert current admins FIRST (so we never have a gap where admin data is missing)
+          // Skip DB upsert if this chat was already synced in this run (another org had same chat)
           const currentAdminUserIds: number[] = [];
+          const alreadyUpserted = chatsUpsertedThisRun.has(String(chatId));
+
           for (const admin of administrators) {
             const user = admin.user;
             if (!user || !user.id) continue;
@@ -168,6 +191,8 @@ export async function GET(request: NextRequest) {
             if (user.is_bot && user.id !== Number(process.env.TELEGRAM_BOT_ID)) continue;
 
             currentAdminUserIds.push(user.id);
+            if (alreadyUpserted) continue; // skip actual DB write, but still collect IDs
+
             const isOwner = admin.status === 'creator';
 
             await supabaseService
@@ -184,8 +209,8 @@ export async function GET(request: NextRequest) {
               });
           }
 
-          // 2. Expire records for users NO LONGER in the admin list
-          if (currentAdminUserIds.length > 0) {
+          // 2. Expire records for users NO LONGER in the admin list (skip if already done)
+          if (!alreadyUpserted && currentAdminUserIds.length > 0) {
             await supabaseService.raw(
               `UPDATE telegram_group_admins
                SET is_admin = false, is_owner = false,
@@ -196,6 +221,7 @@ export async function GET(request: NextRequest) {
                  AND is_admin = true`,
               [String(chatId), ...currentAdminUserIds]
             );
+            chatsUpsertedThisRun.add(String(chatId));
           }
 
           successfullySyncedChats.add(String(chatId));
@@ -392,8 +418,6 @@ export async function GET(request: NextRequest) {
 
       // Синхронизируем memberships для организации
       if (updatedGroups > 0) {
-        logger.info({ org_id: org.id, updated_groups: updatedGroups }, 'Syncing memberships for org');
-        
         const { data: syncResult, error: syncError } = await supabaseService.rpc(
           'sync_telegram_admins',
           { p_org_id: org.id }
@@ -402,7 +426,8 @@ export async function GET(request: NextRequest) {
         if (syncError) {
           logger.error({ org_id: org.id, error: syncError.message }, 'Error syncing memberships for org');
         } else {
-          logger.info({ org_id: org.id, sync_result: syncResult }, 'Memberships synced for org');
+          // Debug level: only visible with log level debug; avoids spamming info log
+          logger.debug({ org_id: org.id, sync_result: syncResult, updated_groups: updatedGroups }, 'Memberships synced for org');
         }
       }
 
@@ -474,13 +499,22 @@ export async function GET(request: NextRequest) {
         updated_groups: updatedGroups,
         total_groups: orgLinks.length,
         revoked_groups: revokedCount,
+        restored_groups: restoredCount,
       });
     }
 
+    // Aggregate totals for summary log
+    const totalRevoked = results.reduce((s, r) => s + (r.revoked_groups || 0), 0);
+    const totalRestored = results.reduce((s, r) => s + ((r as any).restored_groups || 0), 0);
+    const totalUpdated = results.reduce((s, r) => s + (r.updated_groups || 0), 0);
     const duration = Date.now() - startTime;
-    logger.info({ 
+
+    logger.info({
       duration_ms: duration,
-      organizations_processed: results.length
+      organizations_processed: results.length,
+      groups_synced: totalUpdated,
+      status_changes_to_revoked: totalRevoked,
+      status_changes_to_restored: totalRestored,
     }, 'Admin rights sync completed');
 
     return NextResponse.json({
