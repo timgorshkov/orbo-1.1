@@ -409,6 +409,7 @@ export async function GET(request: NextRequest) {
       // Revoke check: only for groups that were SUCCESSFULLY synced this run.
       // Groups where API calls failed are skipped to avoid false positives from proxy timeouts.
       let revokedCount = 0;
+      let restoredCount = 0;
       for (const groupBinding of orgLinks) {
         const chatId = groupBinding.tg_chat_id;
         const grpData = groupsMap.get(String(chatId));
@@ -418,17 +419,26 @@ export async function GET(request: NextRequest) {
         // Skip revoke check if we didn't successfully sync this group
         // (API failed, proxy timeout, etc.) — preserve existing status
         if (!successfullySyncedChats.has(String(chatId))) {
-          logger.debug({
-            org_id: org.id, tg_chat_id: chatId,
-          }, 'Skipping revoke check — group was not successfully synced this run');
           continue;
         }
 
         try {
+          // Read current status first — we only need to act on transitions
+          const { data: currentBinding } = await supabaseService
+            .from('org_telegram_groups')
+            .select('status')
+            .eq('org_id', org.id)
+            .eq('tg_chat_id', chatId)
+            .maybeSingle();
+
+          const currentStatus = (currentBinding as any)?.status as string | undefined;
+          // Skip records that don't exist or are in other statuses we don't manage here
+          if (currentStatus !== 'active' && currentStatus !== 'access_revoked') continue;
+
           const hasAccess = await verifyOrgGroupAccess(org.id, chatId);
 
-          if (!hasAccess) {
-            // Mark as access_revoked
+          if (!hasAccess && currentStatus === 'active') {
+            // Transition: active → access_revoked
             await supabaseService
               .from('org_telegram_groups')
               .update({ status: 'access_revoked' })
@@ -439,15 +449,20 @@ export async function GET(request: NextRequest) {
             logger.warn({
               org_id: org.id, tg_chat_id: chatId,
             }, 'Group marked as access_revoked — no org admin has TG admin rights');
-          } else {
-            // Restore if previously revoked
+          } else if (hasAccess && currentStatus === 'access_revoked') {
+            // Transition: access_revoked → active
             await supabaseService
               .from('org_telegram_groups')
               .update({ status: 'active' })
               .eq('org_id', org.id)
               .eq('tg_chat_id', chatId)
               .eq('status', 'access_revoked');
+            restoredCount++;
+            logger.info({
+              org_id: org.id, tg_chat_id: chatId,
+            }, 'Group access restored');
           }
+          // No transition: no log, no update — silent
         } catch (e: any) {
           logger.warn({ org_id: org.id, tg_chat_id: chatId, error: e.message }, 'Error checking group access');
         }
