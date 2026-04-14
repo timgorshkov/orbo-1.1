@@ -366,7 +366,7 @@ export function mapToOrangeData(receipt: FiscalReceipt): OrangeDataDocument {
     inn: getInn() || ORBO_INN,
     group: 'Main',
     content: {
-      ffdVersion: 4, // FFD 1.2
+      ffdVersion: parseInt(process.env.ORANGEDATA_FFD_VERSION || '2', 10), // 2=FFD 1.05, 4=FFD 1.2
       type,
       customerContact,
       positions,

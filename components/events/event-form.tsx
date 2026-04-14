@@ -836,6 +836,7 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
                         step="0.01"
                         value={defaultPrice}
                         onChange={(e) => setDefaultPrice(e.target.value)}
+                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
                         placeholder="1000"
                         required={requiresPayment}
                       />
