@@ -410,6 +410,8 @@ export default function MaxEventPage() {
                   {hasOrboPayments && registrationId ? (
                     <a
                       href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-3 bg-green-600 text-white rounded-xl font-semibold"
                     >
                       💳 Оплатить
@@ -518,6 +520,8 @@ export default function MaxEventPage() {
           {hasOrboPayments && registrationId ? (
             <a
               href={`/p/${event?.org_id}/pay?type=event&registrationId=${registrationId}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-4 bg-green-600 text-white rounded-xl font-semibold text-lg"
             >
               💳 Оплатить
@@ -717,7 +721,7 @@ export default function MaxEventPage() {
               </div>
               {event?.requires_payment && paymentStatus !== 'paid' && (
                 hasOrboPayments && registrationId ? (
-                  <a href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`} className="text-blue-500 text-sm">
+                  <a href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-sm">
                     Оплатить →
                   </a>
                 ) : event?.payment_link ? (

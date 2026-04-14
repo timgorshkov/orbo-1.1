@@ -92,7 +92,8 @@
       "WebFetch(domain:online-check.business.ru)",
       "Bash(node -e ':*)",
       "Bash(iconv -f cp1251 -t utf-8 \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/readme_v2.txt\")",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(curl:*)"
     ]
   }
 }

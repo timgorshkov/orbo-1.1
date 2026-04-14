@@ -515,6 +515,8 @@ export default function TelegramEventPage() {
                   {hasOrboPayments && registrationId ? (
                     <a
                       href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-3 bg-green-600 text-white rounded-xl font-semibold"
                     >
                       💳 Оплатить
@@ -671,6 +673,8 @@ export default function TelegramEventPage() {
           {hasOrboPayments && registrationId ? (
             <a
               href={`/p/${event?.org_id}/pay?type=event&registrationId=${registrationId}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-4 bg-green-600 text-white rounded-xl font-semibold text-lg"
             >
               💳 Оплатить
@@ -983,6 +987,8 @@ export default function TelegramEventPage() {
                 hasOrboPayments && registrationId ? (
                   <a
                     href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-blue-500 text-sm"
                   >
                     Оплатить →
