@@ -117,24 +117,39 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
     ? `pay_mbr_${params.membershipPaymentId}_${params.gatewayCode}`
     : `pay_${params.orgId}_${Date.now()}`
 
-  // Check for existing active session with same idempotency key.
-  // Only reuse if not expired — stale sessions have dead gateway URLs (e.g. T-Bank drops
-  // the session on their side once expired, leaving "Не нашли такую страницу").
+  // Check for existing session with same idempotency key.
+  // Reuse only if still active and not expired — stale sessions have dead gateway URLs
+  // (e.g. T-Bank drops the session on their side once expired, leaving "Не нашли такую страницу").
+  // Expired/terminal rows get their idempotency_key freed so a new session can be created
+  // (the column has a UNIQUE constraint).
+  const nowIso = new Date().toISOString()
   const { data: existing } = await db
     .from('payment_sessions')
     .select('*')
     .eq('idempotency_key', idempotencyKey)
-    .in('status', ['pending', 'processing'])
-    .gt('expires_at', new Date().toISOString())
     .limit(1)
 
   if (existing && existing.length > 0) {
     const session = existing[0] as PaymentSession
-    return {
-      session,
-      redirectUrl: session.payment_url || undefined,
-      paymentReference: session.payment_reference || undefined,
+    const isActive = ['pending', 'processing'].includes(session.status)
+    const isExpired = !session.expires_at || session.expires_at <= nowIso
+
+    if (isActive && !isExpired) {
+      return {
+        session,
+        redirectUrl: session.payment_url || undefined,
+        paymentReference: session.payment_reference || undefined,
+      }
     }
+
+    // Free the unique idempotency_key from the stale/terminal row so insert below succeeds
+    await db
+      .from('payment_sessions')
+      .update({
+        idempotency_key: null,
+        status: isActive ? 'cancelled' : session.status,
+      })
+      .eq('id', session.id)
   }
 
   // Calculate fees for this org (only for event/membership payments — not for subscription,
