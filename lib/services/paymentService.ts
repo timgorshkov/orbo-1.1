@@ -117,12 +117,15 @@ export async function initiatePayment(params: InitiatePaymentParams): Promise<In
     ? `pay_mbr_${params.membershipPaymentId}_${params.gatewayCode}`
     : `pay_${params.orgId}_${Date.now()}`
 
-  // Check for existing active session with same idempotency key
+  // Check for existing active session with same idempotency key.
+  // Only reuse if not expired — stale sessions have dead gateway URLs (e.g. T-Bank drops
+  // the session on their side once expired, leaving "Не нашли такую страницу").
   const { data: existing } = await db
     .from('payment_sessions')
     .select('*')
     .eq('idempotency_key', idempotencyKey)
     .in('status', ['pending', 'processing'])
+    .gt('expires_at', new Date().toISOString())
     .limit(1)
 
   if (existing && existing.length > 0) {
