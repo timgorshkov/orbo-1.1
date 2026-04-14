@@ -791,7 +791,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                           {event.payment_instructions}
                                         </div>
                                       )}
-                                      {event.payment_link && !hasOrboPayments && (
+                                      {hasOrboPayments && userRegistration?.id ? (
+                                        <a
+                                          href={`/p/${orgId}/pay?type=event&registrationId=${userRegistration.id}`}
+                                          className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
+                                        >
+                                          💳 Оплатить
+                                        </a>
+                                      ) : event.payment_link ? (
                                         <a
                                           href={event.payment_link}
                                           target="_blank"
@@ -800,7 +807,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                         >
                                           💳 Перейти к оплате
                                         </a>
-                                      )}
+                                      ) : null}
                                     </div>
                                   ) : (
                                     /* Paid — compact confirmation */
@@ -1346,7 +1353,14 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                           {event.payment_instructions}
                                         </div>
                                       )}
-                                      {event.payment_link && !hasOrboPayments && (
+                                      {hasOrboPayments && userRegistration?.id ? (
+                                        <a
+                                          href={`/p/${orgId}/pay?type=event&registrationId=${userRegistration.id}`}
+                                          className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
+                                        >
+                                          💳 Оплатить
+                                        </a>
+                                      ) : event.payment_link ? (
                                         <a
                                           href={event.payment_link}
                                           target="_blank"
@@ -1355,7 +1369,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                         >
                                           💳 Перейти к оплате
                                         </a>
-                                      )}
+                                      ) : null}
                                     </div>
                                   ) : (
                                     <div className="flex items-center justify-center gap-2">
