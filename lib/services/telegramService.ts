@@ -3,9 +3,13 @@
  * Поддержка прокси: TELEGRAM_PROXY_URL или OPENAI_PROXY_URL (fallback)
  *
  * Конфигурация прокси:
- *   TELEGRAM_PROXY_URL — URL прокси (socks5://user:pass@host:port)
- *   TELEGRAM_PROXY_ENABLED — "false" чтобы отключить прокси без удаления URL
- *   TELEGRAM_PROXY_FALLBACK — "false" чтобы НЕ пытаться напрямую при ошибке прокси (по умолчанию fallback включён)
+ *   TELEGRAM_PROXY_URL — URL прокси (http(s)://user:pass@host:port)
+ *   TELEGRAM_PROXY_ENABLED — "false" чтобы отключить прокси
+ *   TELEGRAM_PROXY_FALLBACK — "true" чтобы при полной неудаче прокси пробовать direct.
+ *                             По умолчанию FALSE: с российских серверов api.telegram.org обычно заблокирован,
+ *                             direct даёт только таймауты и задержку.
+ *   TELEGRAM_DIRECT_FIRST    — "true" чтобы СНАЧАЛА пробовать direct, и только при ошибке — через прокси.
+ *                              По умолчанию FALSE (прокси первый).
  */
 import { createServiceLogger } from '@/lib/logger';
 import { ProxyAgent } from 'undici';
@@ -15,51 +19,129 @@ const logger = createServiceLogger('TelegramService');
 // Proxy for Telegram API
 const TG_PROXY_URL = process.env.TELEGRAM_PROXY_URL || process.env.OPENAI_PROXY_URL;
 const PROXY_ENABLED = process.env.TELEGRAM_PROXY_ENABLED !== 'false';
-const PROXY_FALLBACK = process.env.TELEGRAM_PROXY_FALLBACK !== 'false';
+const PROXY_FALLBACK = process.env.TELEGRAM_PROXY_FALLBACK === 'true'; // default OFF
+const DIRECT_FIRST = process.env.TELEGRAM_DIRECT_FIRST === 'true'; // default OFF
 
-let tgProxyAgent: ProxyAgent | undefined;
-if (TG_PROXY_URL && PROXY_ENABLED) {
+// Create a fresh ProxyAgent. Called at startup and can be re-created if we suspect
+// the connection pool has stale/half-closed sockets accumulating "fetch failed" errors.
+function createProxyAgent(): ProxyAgent | undefined {
+  if (!TG_PROXY_URL || !PROXY_ENABLED) return undefined;
   try {
-    tgProxyAgent = new ProxyAgent(TG_PROXY_URL);
-    if (process.env.NEXT_PHASE !== 'phase-production-build') {
-      logger.info({
-        proxy_host: TG_PROXY_URL.replace(/^https?:\/\/[^@]*@/, '').split(':')[0],
-        fallback: PROXY_FALLBACK,
-      }, 'Telegram API proxy configured');
-    }
+    return new ProxyAgent({
+      uri: TG_PROXY_URL,
+      // Tight keep-alive: close idle sockets quickly so we don't reuse a half-dead one.
+      keepAliveTimeout: 4_000,
+      keepAliveMaxTimeout: 30_000,
+      connectTimeout: 10_000,
+      pipelining: 0,
+    });
   } catch (e) {
     logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Failed to configure Telegram proxy');
+    return undefined;
   }
 }
 
+let tgProxyAgent: ProxyAgent | undefined = createProxyAgent();
+if (tgProxyAgent && process.env.NEXT_PHASE !== 'phase-production-build') {
+  logger.info({
+    proxy_host: TG_PROXY_URL!.replace(/^https?:\/\/[^@]*@/, '').split(':')[0],
+    direct_first: DIRECT_FIRST,
+    fallback: PROXY_FALLBACK,
+  }, 'Telegram API proxy configured');
+}
+
+// Periodically refresh the pool (every 5 min) — helps with long-running containers
+// accumulating broken connections.
+const POOL_REFRESH_MS = 5 * 60 * 1000;
+let lastPoolRefresh = Date.now();
+function maybeRefreshPool() {
+  if (Date.now() - lastPoolRefresh > POOL_REFRESH_MS && tgProxyAgent) {
+    const old = tgProxyAgent;
+    tgProxyAgent = createProxyAgent();
+    lastPoolRefresh = Date.now();
+    old.close().catch(() => { /* ignore */ });
+  }
+}
+
+// Counter for proxy failure aggregation (emit warn at most every 60s with summary)
+let proxyFailsSinceLastLog = 0;
+let lastProxyFailLog = 0;
+function recordProxyFail(err: unknown) {
+  proxyFailsSinceLastLog++;
+  const now = Date.now();
+  if (now - lastProxyFailLog > 60_000) {
+    logger.warn({
+      fails_since_last_log: proxyFailsSinceLastLog,
+      last_error: err instanceof Error ? err.message : String(err),
+    }, 'Telegram proxy transient errors (aggregated)');
+    proxyFailsSinceLastLog = 0;
+    lastProxyFailLog = now;
+  }
+}
+
+async function fetchDirect(url: string, init?: RequestInit): Promise<Response> {
+  const directInit: RequestInit = { ...init, signal: AbortSignal.timeout(10_000) };
+  return fetch(url, directInit);
+}
+
+async function fetchViaProxy(url: string, init?: RequestInit): Promise<Response> {
+  if (!tgProxyAgent) throw new Error('Proxy not configured');
+  const options: any = { ...init, dispatcher: tgProxyAgent };
+  return fetch(url, options);
+}
+
 /**
- * Единая точка вызова Telegram API с поддержкой прокси и fallback.
+ * Единая точка вызова Telegram API.
  * Используйте ВМЕСТО голого fetch() для любых запросов к api.telegram.org.
  *
- * Логика:
- * 1. Если прокси настроен и включён — запрос через прокси
- * 2. Если прокси-запрос упал (сеть, таймаут) и fallback включён — повтор напрямую
- * 3. Если прокси не настроен — запрос напрямую
+ * Стратегия (по умолчанию):
+ * 1. Через прокси → если "fetch failed" (нестабильный pool) — ещё одна попытка через прокси (новый pool).
+ * 2. Если оба прокси-запроса упали И TELEGRAM_PROXY_FALLBACK=true — попробовать direct.
+ * 3. Если прокси не настроен — direct.
+ *
+ * С флагом TELEGRAM_DIRECT_FIRST=true — порядок обратный: сначала direct, потом прокси.
  */
 export async function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (tgProxyAgent) {
+  if (!tgProxyAgent) {
+    return fetchDirect(url, init);
+  }
+
+  maybeRefreshPool();
+
+  if (DIRECT_FIRST) {
     try {
-      const options: any = { ...init, dispatcher: tgProxyAgent };
-      const res = await fetch(url, options);
-      return res;
-    } catch (proxyErr) {
-      if (!PROXY_FALLBACK) throw proxyErr;
-      // Fallback: try direct with a FRESH abort signal
-      // (original signal may be aborted if proxy timed out)
-      logger.warn({
-        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
-        url: url.replace(/bot[^/]+/, 'bot***'),
-      }, 'Telegram proxy failed, falling back to direct');
-      const fallbackInit: RequestInit = { ...init, signal: AbortSignal.timeout(10000) };
-      return fetch(url, fallbackInit);
+      return await fetchDirect(url, init);
+    } catch (directErr) {
+      try {
+        return await fetchViaProxy(url, init);
+      } catch (proxyErr) {
+        recordProxyFail(proxyErr);
+        throw proxyErr;
+      }
     }
   }
-  return fetch(url, init);
+
+  // Default: proxy first, with a single retry via a fresh pool on transient failure
+  try {
+    return await fetchViaProxy(url, init);
+  } catch (proxyErr1) {
+    recordProxyFail(proxyErr1);
+    // Rebuild the pool (assume stale connections) and retry once
+    if (tgProxyAgent) {
+      const old = tgProxyAgent;
+      tgProxyAgent = createProxyAgent();
+      old.close().catch(() => { /* ignore */ });
+    }
+    try {
+      return await fetchViaProxy(url, init);
+    } catch (proxyErr2) {
+      if (PROXY_FALLBACK) {
+        // Last-resort fallback to direct (usually blocked from RU servers, but try)
+        return await fetchDirect(url, init);
+      }
+      throw proxyErr2;
+    }
+  }
 }
 
 export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';
