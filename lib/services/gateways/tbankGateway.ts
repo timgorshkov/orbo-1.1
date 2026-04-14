@@ -105,8 +105,22 @@ export class TbankGateway implements PaymentGateway {
 
       const data = await res.json()
 
+      // Log full Init response for diagnostics (terminal misconfig debugging)
+      logger.info({
+        http_status: res.status,
+        success: data.Success,
+        error_code: data.ErrorCode,
+        message: data.Message,
+        details: data.Details,
+        payment_id: data.PaymentId,
+        order_id: data.OrderId,
+        status: data.Status,
+        terminal_key: data.TerminalKey,
+        payment_url: data.PaymentURL,
+      }, 'T-Bank Init response')
+
       if (!data.Success) {
-        logger.error({ error_code: data.ErrorCode, message: data.Message }, 'T-Bank Init failed')
+        logger.error({ error_code: data.ErrorCode, message: data.Message, details: data.Details }, 'T-Bank Init failed')
         return { success: false, error: data.Message || `T-Bank error: ${data.ErrorCode}` }
       }
 
