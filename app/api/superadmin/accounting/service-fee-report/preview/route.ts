@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { previewServiceFeeReport, getLastReportPeriodEnd } from '@/lib/services/serviceFeeReportService'
+import {
+  previewServiceFeeReport,
+  getLastReportPeriodEnd,
+  getNextRequiredFrom,
+} from '@/lib/services/serviceFeeReportService'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,14 +60,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const [preview, lastPeriodEnd] = await Promise.all([
+    const [preview, lastPeriodEnd, requiredFrom] = await Promise.all([
       previewServiceFeeReport(from, to),
       getLastReportPeriodEnd(),
+      getNextRequiredFrom(),
     ])
 
     return NextResponse.json({
       ...preview,
       lastReportPeriodEnd: lastPeriodEnd,
+      requiredFrom,
     })
   } catch (err: any) {
     logger.error(

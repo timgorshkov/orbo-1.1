@@ -244,17 +244,56 @@ export async function previewServiceFeeReport(
 }
 
 /**
+ * Возвращает дату начала следующего ОРП — день, следующий за period_end
+ * последнего отчёта. Если отчётов ещё нет, возвращает null (оператор выбирает
+ * стартовую дату самостоятельно для самого первого документа).
+ */
+export async function getNextRequiredFrom(): Promise<string | null> {
+  const lastEnd = await getLastReportPeriodEnd()
+  if (!lastEnd) return null
+  // Прибавить 1 день к ISO-дате
+  const d = new Date(lastEnd + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
+/**
  * Сформировать и сохранить ОРП за указанный период. Создаёт запись в
  * accounting_documents и HTML-файл в S3. Возвращает идентификаторы.
- * Если за период нет ни одного service_fee — бросает ошибку (не создаём пустой документ).
+ *
+ * Валидация:
+ *   - Если уже есть ОРП — periodStart должен строго равняться last.period_end + 1
+ *     (нельзя задним числом, нельзя с разрывом, нельзя дублировать).
+ *   - periodEnd >= periodStart.
+ *   - periodEnd не может быть позже сегодняшнего дня (UTC).
+ *   - За период должны быть платежи.
  */
 export async function generateServiceFeeReport(
   periodStart: string,
   periodEnd: string
 ): Promise<ServiceFeeReportGenerateResult> {
   const db = createAdminServer()
-  const preview = await previewServiceFeeReport(periodStart, periodEnd)
 
+  // 1. Базовая sanity-валидация диапазона
+  if (periodStart > periodEnd) {
+    throw new Error('Дата начала периода позже даты окончания.')
+  }
+  const todayISO = new Date().toISOString().split('T')[0]
+  if (periodEnd > todayISO) {
+    throw new Error(`Дата окончания (${periodEnd}) не может быть в будущем (сегодня ${todayISO}).`)
+  }
+
+  // 2. Нельзя задним числом и с разрывом: periodStart должен быть = last.period_end + 1
+  const requiredFrom = await getNextRequiredFrom()
+  if (requiredFrom && periodStart !== requiredFrom) {
+    throw new Error(
+      `Начало периода должно быть ${requiredFrom} (день, следующий за последним ОРП). ` +
+      `Получено ${periodStart}. Нельзя формировать ОРП задним числом или с разрывом.`
+    )
+  }
+
+  // 3. Должны быть платежи
+  const preview = await previewServiceFeeReport(periodStart, periodEnd)
   if (preview.paymentsCount === 0 || preview.totalAmount <= 0) {
     throw new Error(
       `За период ${periodStart} — ${periodEnd} нет сервисных сборов. Документ не сформирован.`

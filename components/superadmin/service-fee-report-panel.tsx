@@ -33,6 +33,8 @@ interface PreviewResponse {
   eventLines: EventLine[]
   payments: PaymentDetail[]
   lastReportPeriodEnd: string | null
+  /** День, с которого ОБЯЗАН начинаться следующий ОРП (если уже есть прошлый отчёт). */
+  requiredFrom: string | null
 }
 
 interface GenerateResponse {
@@ -78,15 +80,6 @@ function normalizeISODate(s: string | null | undefined): string | null {
   return m ? m[1] : null
 }
 
-function addDaysISO(iso: string | null | undefined, days: number): string | null {
-  const base = normalizeISODate(iso)
-  if (!base) return null
-  const d = new Date(base + 'T00:00:00Z')
-  if (Number.isNaN(d.getTime())) return null
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().split('T')[0]
-}
-
 function firstDayOfMonthISO(): string {
   const d = new Date()
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
@@ -103,6 +96,17 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [lastPeriodEnd, setLastPeriodEnd] = useState<string | null>(null)
+  const [requiredFrom, setRequiredFrom] = useState<string | null>(null)
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().split('T')[0]
+  }, [])
+  // Максимальная допустимая дата окончания периода — сегодня (нельзя в будущее).
+  const maxTo = todayStr
+  // Если есть требуемое from — используем его, иначе пользовательское.
+  const effectiveFrom = requiredFrom || from
+  const fromLocked = !!requiredFrom
+  const isInvalidRange = !!effectiveFrom && (!to || to < effectiveFrom || to > maxTo)
 
   // Подтягиваем last period_end из сервера при первом рендере — сразу же
   // через запрос preview с текущим диапазоном. Серверу это дешевле, чем
@@ -112,49 +116,40 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
     setError(null)
     setSuccessMessage(null)
     try {
-      const params = new URLSearchParams({ from, to })
+      // Используем effectiveFrom (если есть зафиксированный requiredFrom — берём его)
+      const queryFrom = requiredFrom || from
+      const params = new URLSearchParams({ from: queryFrom, to })
       const res = await fetch(`/api/superadmin/accounting/service-fee-report/preview?${params.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Ошибка предпросмотра')
       setPreview(data)
       setLastPeriodEnd(normalizeISODate(data.lastReportPeriodEnd))
+      const nextRequired = normalizeISODate(data.requiredFrom)
+      setRequiredFrom(nextRequired)
+      // Если сервер сказал, что нужно стартовать с конкретной даты — синхронизируем поле from.
+      if (nextRequired && from !== nextRequired) {
+        setFrom(nextRequired)
+      }
     } catch (e: any) {
       setError(e.message)
       setPreview(null)
     } finally {
       setLoading(false)
     }
-  }, [from, to])
+  }, [from, to, requiredFrom])
 
   useEffect(() => {
     loadPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const applyDefaultFromLastPeriod = useCallback(() => {
-    if (!lastPeriodEnd) {
-      setFrom(firstDayOfMonthISO())
-      return
-    }
-    const next = addDaysISO(lastPeriodEnd, 1)
-    if (next) setFrom(next)
-  }, [lastPeriodEnd])
-
-  useEffect(() => {
-    // При изменении lastPeriodEnd после первого preview — если from ещё «первое число месяца»
-    // и есть более актуальная дата — подменим мягко на неё.
-    if (lastPeriodEnd && from === firstDayOfMonthISO()) {
-      const next = addDaysISO(lastPeriodEnd, 1)
-      if (next && next > from) setFrom(next)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastPeriodEnd])
-
   const handleGenerate = useCallback(async () => {
     if (!preview) return
     if (preview.paymentsCount === 0) return
+    if (isInvalidRange) return
+    const startDate = effectiveFrom
     const confirmed = window.confirm(
-      `Сформировать ОРП за период ${formatDate(from)} — ${formatDate(to)}?\n\nПлатежей: ${preview.paymentsCount}\nСумма: ${formatMoney(preview.totalAmount)} ₽`
+      `Сформировать ОРП за период ${formatDate(startDate)} — ${formatDate(to)}?\n\nПлатежей: ${preview.paymentsCount}\nСумма: ${formatMoney(preview.totalAmount)} ₽`
     )
     if (!confirmed) return
 
@@ -164,7 +159,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
       const res = await fetch('/api/superadmin/accounting/service-fee-report/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to }),
+        body: JSON.stringify({ from: startDate, to }),
       })
       const data: GenerateResponse | { error: string } = await res.json()
       if (!res.ok) {
@@ -181,7 +176,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
     } finally {
       setGenerating(false)
     }
-  }, [preview, from, to, loadPreview, onGenerated])
+  }, [preview, effectiveFrom, to, loadPreview, onGenerated, isInvalidRange])
 
   return (
     <div className="bg-white rounded-xl border border-purple-200 p-4 space-y-3">
@@ -195,19 +190,15 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
             Используется для учёта в КУДиР и импорта в Эльбу.
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Последний сформированный ОРП покрывает период до{' '}
-            <strong>{formatDate(lastPeriodEnd)}</strong>.
-            {lastPeriodEnd && addDaysISO(lastPeriodEnd, 1) && (
+            {lastPeriodEnd ? (
               <>
-                {' '}
-                <button
-                  onClick={applyDefaultFromLastPeriod}
-                  className="text-purple-600 hover:underline"
-                  type="button"
-                >
-                  Продолжить с {formatDate(addDaysISO(lastPeriodEnd, 1))}
-                </button>
+                Последний ОРП покрывает период до{' '}
+                <strong>{formatDate(lastPeriodEnd)}</strong>. Следующий обязан начинаться с{' '}
+                <strong>{formatDate(requiredFrom)}</strong> — задним числом и с разрывом
+                сформировать нельзя.
               </>
+            ) : (
+              <>Это будет первый ОРП. Стартовая дата выбирается свободно.</>
             )}
           </p>
         </div>
@@ -215,12 +206,17 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Период с</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Период с {fromLocked && <span className="text-gray-400">(зафиксировано)</span>}
+          </label>
           <input
             type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            value={effectiveFrom}
+            min={fromLocked ? effectiveFrom : undefined}
+            max={fromLocked ? effectiveFrom : maxTo}
+            onChange={(e) => !fromLocked && setFrom(e.target.value)}
+            disabled={fromLocked}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-100 disabled:text-gray-600"
           />
         </div>
         <div>
@@ -228,13 +224,23 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
           <input
             type="date"
             value={to}
+            min={effectiveFrom}
+            max={maxTo}
             onChange={(e) => setTo(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className={`w-full px-3 py-2 border rounded-lg text-sm ${
+              isInvalidRange ? 'border-red-300 bg-red-50' : 'border-gray-300'
+            }`}
           />
+          {isInvalidRange && (
+            <div className="text-xs text-red-600 mt-1">
+              {to && to < effectiveFrom && `Не раньше ${formatDate(effectiveFrom)}.`}
+              {to && to > maxTo && `Не позже ${formatDate(maxTo)}.`}
+            </div>
+          )}
         </div>
         <button
           onClick={loadPreview}
-          disabled={loading}
+          disabled={loading || isInvalidRange}
           className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium disabled:opacity-50"
           type="button"
         >
@@ -243,7 +249,9 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
         </button>
         <button
           onClick={handleGenerate}
-          disabled={generating || loading || !preview || preview.paymentsCount === 0}
+          disabled={
+            generating || loading || isInvalidRange || !preview || preview.paymentsCount === 0
+          }
           className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
           type="button"
           title="Сформировать ОРП и сохранить в accounting_documents"
