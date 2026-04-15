@@ -97,7 +97,10 @@
       "Bash(iconv:*)",
       "Bash(openssl x509:*)",
       "Bash(sha256sum \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.crt \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.key \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.xml \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.pem)",
-      "Read(//c/Users/Lenovo/.ssh/**)"
+      "Read(//c/Users/Lenovo/.ssh/**)",
+      "Bash(node -e ' *)",
+      "Bash(mkdir -p public/docs)",
+      "Bash(cp docs/screenshot-registration.png docs/screenshot-connect-telegram.png docs/screenshot-create-org.png docs/screenshot-add-bot-to-group.gif docs/screenshot-create-event.gif docs/screenshot-connect-max.gif public/docs/)"
     ]
   }
 }
