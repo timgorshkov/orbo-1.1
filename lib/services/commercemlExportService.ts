@@ -21,13 +21,15 @@
 
 export interface AccountingDocumentRow {
   id: string
-  doc_type: 'subscription_act' | 'agent_commission_upd'
+  doc_type: 'subscription_act' | 'agent_commission_upd' | 'service_fee_report'
   doc_number: string
   doc_date: string
   period_start: string | null
   period_end: string | null
-  org_id: string
+  /** NULL для service_fee_report (сводный документ по всей платформе). */
+  org_id: string | null
   supplier_requisites: any // JSONB — см. orbo-entity.ts:orboSupplierSnapshot()
+  /** Для service_fee_report содержит маркер { is_retail: true, name: 'Розничные покупатели' } */
   customer_requisites: any
   customer_type: 'individual' | 'legal_entity' | 'self_employed'
   lines: any // JSONB array
@@ -70,6 +72,11 @@ function supplierCounterpartyKey(req: any): CounterpartyKey {
 }
 
 function customerCounterpartyKey(req: any): CounterpartyKey {
+  // Для розничных покупателей ИНН/КПП отсутствуют — используем стабильный маркер,
+  // чтобы все service_fee_report в пакете ссылались на одного и того же контрагента.
+  if (req?.is_retail) {
+    return { inn: 'retail', kpp: '' }
+  }
   return { inn: String(req?.inn || ''), kpp: String(req?.kpp || '') }
 }
 
@@ -107,12 +114,20 @@ function renderSupplierCounterparty(req: any): string {
 }
 
 function renderCustomerCounterparty(req: any, customerType: string): string {
-  const name = req?.name || ''
+  const isRetail = !!req?.is_retail
+  const name = req?.name || (isRetail ? 'Розничные покупатели' : '')
   const isLegal = customerType === 'legal_entity'
   const tags: string[] = []
   tags.push(`<Ид>${escapeXml(keyString(customerCounterpartyKey(req)))}</Ид>`)
   tags.push(`<Роль>Покупатель</Роль>`)
   tags.push(`<Наименование>${escapeXml(name)}</Наименование>`)
+  // Для розничных покупателей достаточно только Роль + Наименование (без ИНН/КПП/адреса).
+  if (isRetail) {
+    return `
+    <Контрагент>
+      ${tags.join('\n      ')}
+    </Контрагент>`
+  }
   if (isLegal) {
     tags.push(`<ПолноеНаименование>${escapeXml(name)}</ПолноеНаименование>`)
     tags.push(`<ОфициальноеНаименование>${escapeXml(name)}</ОфициальноеНаименование>`)
@@ -149,7 +164,18 @@ function renderCustomerCounterparty(req: any, customerType: string): string {
 // ─── Document XML ──────────────────────────────────────────────────
 
 function docHozOperation(doc: AccountingDocumentRow): string {
-  return doc.doc_type === 'subscription_act' ? 'Акт на услуги' : 'Акт на услуги'
+  // CommerceML ХозОперация — строковое значение, трактуется принимающей системой.
+  // Для Эльбы и 1С: «Отчёт о розничных продажах» — валидный тип, попадает в КУДиР.
+  if (doc.doc_type === 'service_fee_report') return 'Отчёт о розничных продажах'
+  return 'Акт на услуги'
+}
+
+function docTypeReqValue(docType: AccountingDocumentRow['doc_type']): string {
+  switch (docType) {
+    case 'subscription_act': return 'АктНаПередачуПрав'
+    case 'agent_commission_upd': return 'АктНаАгентскоеВознаграждение'
+    case 'service_fee_report': return 'ОтчётОРозничныхПродажах'
+  }
 }
 
 function renderLines(lines: any[]): string {
@@ -200,7 +226,7 @@ function renderDocument(doc: AccountingDocumentRow): string {
     <ЗначенияРеквизитов>
       <ЗначениеРеквизита>
         <Наименование>ТипДокумента</Наименование>
-        <Значение>${doc.doc_type === 'subscription_act' ? 'АктНаПередачуПрав' : 'АктНаАгентскоеВознаграждение'}</Значение>
+        <Значение>${docTypeReqValue(doc.doc_type)}</Значение>
       </ЗначениеРеквизита>
       ${doc.period_start ? `<ЗначениеРеквизита><Наименование>ПериодС</Наименование><Значение>${escapeXml(doc.period_start)}</Значение></ЗначениеРеквизита>` : ''}
       ${doc.period_end ? `<ЗначениеРеквизита><Наименование>ПериодПо</Наименование><Значение>${escapeXml(doc.period_end)}</Значение></ЗначениеРеквизита>` : ''}
@@ -208,6 +234,7 @@ function renderDocument(doc: AccountingDocumentRow): string {
         <Наименование>ОснованиеНеНДС</Наименование>
         <Значение>УСН, ст. 346.11 НК РФ</Значение>
       </ЗначениеРеквизита>
+      ${doc.doc_type === 'service_fee_report' ? `<ЗначениеРеквизита><Наименование>ВидОперации</Наименование><Значение>РозничныеПродажи</Значение></ЗначениеРеквизита>` : ''}
     </ЗначенияРеквизитов>
   </Документ>`
 }

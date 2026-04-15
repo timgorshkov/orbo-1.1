@@ -5,12 +5,12 @@ import { Download, FileText, Loader2, RefreshCw } from 'lucide-react'
 
 interface DocRow {
   id: string
-  doc_type: 'subscription_act' | 'agent_commission_upd'
+  doc_type: 'subscription_act' | 'agent_commission_upd' | 'service_fee_report'
   doc_number: string
   doc_date: string
   period_start: string | null
   period_end: string | null
-  org_id: string
+  org_id: string | null
   org_name: string | null
   customer_type: string
   customer_name: string | null
@@ -27,11 +27,13 @@ interface Aggregates {
   total_sum: string | number
   subscription_acts_count: number
   commission_upds_count: number
+  service_fee_reports_count: number
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   subscription_act: 'Акт лицензии (АЛ)',
   agent_commission_upd: 'УПД на комиссию (АВ)',
+  service_fee_report: 'ОРП (сервисный сбор)',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -159,6 +161,7 @@ export default function AccountingDocumentsTable() {
               <option value="">Все типы</option>
               <option value="subscription_act">Акт лицензии (АЛ)</option>
               <option value="agent_commission_upd">УПД комиссии (АВ)</option>
+              <option value="service_fee_report">ОРП (сервисный сбор)</option>
             </select>
           </div>
           <div>
@@ -199,7 +202,7 @@ export default function AccountingDocumentsTable() {
 
       {/* Агрегаты */}
       {aggregates && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="text-xs text-gray-600">Всего документов</div>
             <div className="text-2xl font-bold text-gray-900">{aggregates.total_count}</div>
@@ -215,6 +218,10 @@ export default function AccountingDocumentsTable() {
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="text-xs text-gray-600">УПД комиссии (АВ)</div>
             <div className="text-2xl font-bold text-gray-900">{aggregates.commission_upds_count}</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="text-xs text-gray-600">ОРП</div>
+            <div className="text-2xl font-bold text-gray-900">{aggregates.service_fee_reports_count ?? 0}</div>
           </div>
         </div>
       )}
@@ -270,7 +277,7 @@ export default function AccountingDocumentsTable() {
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
                     {r.period_start ? `${formatDate(r.period_start)} — ${formatDate(r.period_end)}` : '—'}
                   </td>
-                  <td className="px-4 py-3">{r.org_name || r.org_id.slice(0, 8)}</td>
+                  <td className="px-4 py-3">{r.org_name || (r.org_id ? r.org_id.slice(0, 8) : '—')}</td>
                   <td className="px-4 py-3">
                     <div>{r.customer_name}</div>
                     {r.customer_inn && (

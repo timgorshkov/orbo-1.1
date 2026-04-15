@@ -108,7 +108,8 @@ export async function GET(request: NextRequest) {
          COUNT(*)::int AS total_count,
          COALESCE(SUM(d.total_amount), 0)::numeric(14,2) AS total_sum,
          COUNT(*) FILTER (WHERE d.doc_type = 'subscription_act')::int AS subscription_acts_count,
-         COUNT(*) FILTER (WHERE d.doc_type = 'agent_commission_upd')::int AS commission_upds_count
+         COUNT(*) FILTER (WHERE d.doc_type = 'agent_commission_upd')::int AS commission_upds_count,
+         COUNT(*) FILTER (WHERE d.doc_type = 'service_fee_report')::int AS service_fee_reports_count
        FROM accounting_documents d
        WHERE ${whereSql}`,
       aggregateParams
@@ -121,6 +122,7 @@ export async function GET(request: NextRequest) {
         total_sum: 0,
         subscription_acts_count: 0,
         commission_upds_count: 0,
+        service_fee_reports_count: 0,
       },
       filters: { from, to, docType, orgId, status, limit, offset },
     })
