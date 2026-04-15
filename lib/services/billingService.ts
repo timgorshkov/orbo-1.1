@@ -476,11 +476,19 @@ export async function addPayment(
     period_end: newExpiresAt.toISOString(),
   }, 'Payment added')
 
-  // Generate license transfer act (fire-and-forget — errors don't block payment)
+  // Generate license transfer act (fire-and-forget — errors don't block payment).
+  // Возвращает { skipped: 'individual_customer' } для физлиц — акт в таких случаях не формируется.
   let actUrl: string | null = null
   try {
     const { generateSubscriptionAct } = await import('./subscriptionActService')
-    actUrl = await generateSubscriptionAct(invoiceRow.id)
+    const actResult = await generateSubscriptionAct(invoiceRow.id)
+    actUrl = actResult.htmlUrl
+    if (actResult.skipped) {
+      logger.info({
+        invoice_id: invoiceRow.id,
+        reason: actResult.skipped,
+      }, 'Subscription act skipped for individual customer')
+    }
   } catch (actErr: any) {
     logger.error({
       invoice_id: invoiceRow.id,

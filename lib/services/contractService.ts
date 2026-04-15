@@ -384,18 +384,20 @@ export async function updateBankAccount(
 
 // ─── Invoice Generation ─────────────────────────────────────────────
 
-/** Orbo company details for invoices */
+/** Orbo company details for invoices (derived from lib/config/orbo-entity.ts) */
+import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
+
 const ORBO_COMPANY = {
-  name: 'ООО «ОРБО»',
-  inn: '9701327025',
-  kpp: '770101001',
-  ogrn: '1267700119037',
-  address: '105094, г. Москва, Басманный р-н, ул. Госпитальный Вал, д. 3, к. 4, кв. 79',
-  bank: 'АО «ТБанк»',
-  bik: '044525974',
-  corrAccount: '30101810145250000974',
-  account: '40702810110002081803',
-  director: 'Горшков Тимофей Юрьевич',
+  name: ORBO_ENTITY.shortName,
+  inn: ORBO_ENTITY.inn,
+  kpp: ORBO_ENTITY.kpp,
+  ogrn: ORBO_ENTITY.ogrn,
+  address: ORBO_ENTITY.legalAddress,
+  bank: ORBO_ENTITY.bank.name,
+  bik: ORBO_ENTITY.bank.bik,
+  corrAccount: ORBO_ENTITY.bank.correspondentAccount,
+  account: ORBO_ENTITY.bank.settlementAccount,
+  director: ORBO_ENTITY.signatory.fullName,
 }
 
 const INVOICE_AMOUNT = 200

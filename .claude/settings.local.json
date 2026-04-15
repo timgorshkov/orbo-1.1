@@ -100,7 +100,9 @@
       "Read(//c/Users/Lenovo/.ssh/**)",
       "Bash(node -e ' *)",
       "Bash(mkdir -p public/docs)",
-      "Bash(cp docs/screenshot-registration.png docs/screenshot-connect-telegram.png docs/screenshot-create-org.png docs/screenshot-add-bot-to-group.gif docs/screenshot-create-event.gif docs/screenshot-connect-max.gif public/docs/)"
+      "Bash(cp docs/screenshot-registration.png docs/screenshot-connect-telegram.png docs/screenshot-create-org.png docs/screenshot-add-bot-to-group.gif docs/screenshot-create-event.gif docs/screenshot-connect-max.gif public/docs/)",
+      "Bash(mkdir -p \"/c/Users/Lenovo/.claude/plans\")",
+      "Read(//c/Users/Lenovo/.claude/plans//**)"
     ]
   }
 }

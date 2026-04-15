@@ -45,10 +45,12 @@ interface ReportSalesItem {
 
 // ─── ОРБО company data ─────────────────────────────────────────────
 
+import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
+
 const ORBO_COMPANY = {
-  name: 'ООО «ОРБО»',
-  inn: '9701327025',
-  kpp: '770101001',
+  name: ORBO_ENTITY.shortName,
+  inn: ORBO_ENTITY.inn,
+  kpp: ORBO_ENTITY.kpp,
 }
 
 // ─── Generate Report ───────────────────────────────────────────────
@@ -318,9 +320,16 @@ export function generateReportHTML(report: AgentReport): string {
 }
 
 /**
- * Генерирует отчёты за предыдущий месяц для всех орг с активными контрактами.
+ * Генерирует отчёты за предыдущий месяц для всех орг с активными контрактами,
+ * и сразу после — УПД на агентское вознаграждение (для юрлиц с ненулевой комиссией).
  */
-export async function generateAllPendingReports(): Promise<{ generated: number; skipped: number }> {
+export async function generateAllPendingReports(): Promise<{
+  generated: number
+  skipped: number
+  upd_generated: number
+  upd_skipped: number
+  upd_failed: number
+}> {
   const db = createAdminServer()
 
   // Previous month
@@ -338,6 +347,11 @@ export async function generateAllPendingReports(): Promise<{ generated: number; 
 
   let generated = 0
   let skipped = 0
+  let updGenerated = 0
+  let updSkipped = 0
+  let updFailed = 0
+
+  const { generateMonthlyCommissionUPD } = await import('./agentCommissionUPDService')
 
   for (const row of (contracts || [])) {
     const report = await generateMonthlyReport(row.org_id, year, month)
@@ -346,8 +360,35 @@ export async function generateAllPendingReports(): Promise<{ generated: number; 
     } else {
       skipped++
     }
+
+    // Независимо от результата отчёта пробуем сформировать УПД на комиссию
+    // (он сам пропустит случай no_contract / individual / zero_commission).
+    // Ошибка формирования УПД не должна рушить весь крон.
+    try {
+      const updResult = await generateMonthlyCommissionUPD(row.org_id, year, month)
+      if (updResult.documentId && !updResult.skipped) {
+        updGenerated++
+      } else {
+        updSkipped++
+      }
+    } catch (err: any) {
+      updFailed++
+      logger.error(
+        { org_id: row.org_id, year, month, error: err.message },
+        'Failed to generate agent commission UPD'
+      )
+    }
   }
 
-  logger.info({ year, month, generated, skipped }, 'Monthly report generation completed')
-  return { generated, skipped }
+  logger.info(
+    { year, month, generated, skipped, upd_generated: updGenerated, upd_skipped: updSkipped, upd_failed: updFailed },
+    'Monthly report + UPD generation completed'
+  )
+  return {
+    generated,
+    skipped,
+    upd_generated: updGenerated,
+    upd_skipped: updSkipped,
+    upd_failed: updFailed,
+  }
 }
