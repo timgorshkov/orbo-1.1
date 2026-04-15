@@ -123,6 +123,7 @@ async function loadPayments(
      LEFT JOIN events e ON e.id = er.event_id
      LEFT JOIN organizations o ON o.id = pi.org_id
      WHERE pi.income_type = 'service_fee'
+       AND COALESCE((pi.metadata->>'is_test')::boolean, false) = false
        AND pi.created_at >= $1::date
        AND pi.created_at < ($2::date + INTERVAL '1 day')
      ORDER BY pi.created_at ASC`,
@@ -202,18 +203,21 @@ function buildLines(eventLines: ServiceFeeReportEventLine[]) {
  */
 export async function getLastReportPeriodEnd(): Promise<string | null> {
   const db = createAdminServer()
-  const { data, error } = await db
-    .from('accounting_documents')
-    .select('period_end')
-    .eq('doc_type', 'service_fee_report')
-    .order('period_end', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // to_char гарантирует строку 'YYYY-MM-DD'. Без него драйвер postgres возвращает
+  // Date (или ISO-строку с time-частью), что ломает арифметику дат на клиенте.
+  const { data, error } = await db.raw(
+    `SELECT to_char(period_end, 'YYYY-MM-DD') AS period_end
+       FROM accounting_documents
+      WHERE doc_type = 'service_fee_report'
+      ORDER BY period_end DESC
+      LIMIT 1`,
+    []
+  )
   if (error) {
     logger.error({ error: error.message }, 'Failed to get last ОРП period_end')
     return null
   }
-  return data?.period_end || null
+  return data?.[0]?.period_end || null
 }
 
 /**

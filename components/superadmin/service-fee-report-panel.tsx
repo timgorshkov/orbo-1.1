@@ -71,8 +71,18 @@ function yesterdayISO(): string {
   return d.toISOString().split('T')[0]
 }
 
-function addDaysISO(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00Z')
+/** Нормализует ISO/YYYY-MM-DD-строку к ровно 'YYYY-MM-DD'. */
+function normalizeISODate(s: string | null | undefined): string | null {
+  if (!s) return null
+  const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : null
+}
+
+function addDaysISO(iso: string | null | undefined, days: number): string | null {
+  const base = normalizeISODate(iso)
+  if (!base) return null
+  const d = new Date(base + 'T00:00:00Z')
+  if (Number.isNaN(d.getTime())) return null
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().split('T')[0]
 }
@@ -107,7 +117,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Ошибка предпросмотра')
       setPreview(data)
-      setLastPeriodEnd(data.lastReportPeriodEnd || null)
+      setLastPeriodEnd(normalizeISODate(data.lastReportPeriodEnd))
     } catch (e: any) {
       setError(e.message)
       setPreview(null)
@@ -126,7 +136,8 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
       setFrom(firstDayOfMonthISO())
       return
     }
-    setFrom(addDaysISO(lastPeriodEnd, 1))
+    const next = addDaysISO(lastPeriodEnd, 1)
+    if (next) setFrom(next)
   }, [lastPeriodEnd])
 
   useEffect(() => {
@@ -134,7 +145,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
     // и есть более актуальная дата — подменим мягко на неё.
     if (lastPeriodEnd && from === firstDayOfMonthISO()) {
       const next = addDaysISO(lastPeriodEnd, 1)
-      if (next > from) setFrom(next)
+      if (next && next > from) setFrom(next)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastPeriodEnd])
@@ -186,7 +197,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
           <p className="text-xs text-gray-500 mt-1">
             Последний сформированный ОРП покрывает период до{' '}
             <strong>{formatDate(lastPeriodEnd)}</strong>.
-            {lastPeriodEnd && (
+            {lastPeriodEnd && addDaysISO(lastPeriodEnd, 1) && (
               <>
                 {' '}
                 <button
