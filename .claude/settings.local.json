@@ -102,7 +102,16 @@
       "Bash(mkdir -p public/docs)",
       "Bash(cp docs/screenshot-registration.png docs/screenshot-connect-telegram.png docs/screenshot-create-org.png docs/screenshot-add-bot-to-group.gif docs/screenshot-create-event.gif docs/screenshot-connect-max.gif public/docs/)",
       "Bash(mkdir -p \"/c/Users/Lenovo/.claude/plans\")",
-      "Read(//c/Users/Lenovo/.claude/plans//**)"
+      "Read(//c/Users/Lenovo/.claude/plans//**)",
+      "Bash(ls lib/services/accounting/)",
+      "Bash(ls app/api/superadmin/accounting/)",
+      "Bash(ssh selectel-orbo *)",
+      "Read(//tmp/**)",
+      "Bash(npx --no-install tsc --noEmit --skipLibCheck)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" run list --branch master --limit 3 --json status,conclusion,name,headSha,databaseId,createdAt)",
+      "Bash(where gh *)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Users/Lenovo/AppData/Local/Programs/**)"
     ]
   }
 }
