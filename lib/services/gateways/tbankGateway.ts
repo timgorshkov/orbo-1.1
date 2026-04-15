@@ -57,7 +57,11 @@ export class TbankGateway implements PaymentGateway {
   async createPayment(params: CreatePaymentParams): Promise<PaymentResult> {
     try {
       const { terminalKey } = getCredentials()
-      const orderId = params.idempotencyKey || `orb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      // T-Bank OrderId: максимум 50 символов.
+      // Приоритет: session_id (UUID, 36 символов, уникален) → idempotencyKey → fallback.
+      const sessionId = (params.metadata?.session_id as string | undefined) || undefined
+      const rawOrderId = sessionId || params.idempotencyKey || `orb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const orderId = rawOrderId.slice(0, 50)
 
       const reqBody: Record<string, any> = {
         TerminalKey: terminalKey,
