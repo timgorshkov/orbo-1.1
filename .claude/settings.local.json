@@ -93,7 +93,11 @@
       "Bash(node -e ':*)",
       "Bash(iconv -f cp1251 -t utf-8 \"/c/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/readme_v2.txt\")",
       "Bash(python3:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(iconv:*)",
+      "Bash(openssl x509:*)",
+      "Bash(sha256sum \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.crt \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.key \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.xml \"C:/Cursor WS/orbo-1.1.1/orbo-1.1/docs/orange_keys/\"*.pem)",
+      "Read(//c/Users/Lenovo/.ssh/**)"
     ]
   }
 }

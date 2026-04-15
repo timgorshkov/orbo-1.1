@@ -16,6 +16,7 @@ import { createServiceLogger } from '@/lib/logger'
 import {
   isConfigured as isOrangeDataConfigured,
   getInn,
+  getKeyId,
   createDocument,
   getDocumentStatus,
   type OrangeDataDocument,
@@ -361,10 +362,14 @@ export function mapToOrangeData(receipt: FiscalReceipt): OrangeDataDocument {
   // customerContact — обязательное поле, email или телефон
   const customerContact = receipt.customer_email || receipt.customer_phone || 'none@orbo.ru'
 
+  const inn = getInn() || ORBO_INN
+  const keyId = getKeyId()
+
   return {
     id: receipt.id,
-    inn: getInn() || ORBO_INN,
+    inn,
     group: 'Main',
+    ...(keyId ? { key: keyId } : {}),
     content: {
       ffdVersion: parseInt(process.env.ORANGEDATA_FFD_VERSION || '2', 10), // 2=FFD 1.05, 4=FFD 1.2
       type,

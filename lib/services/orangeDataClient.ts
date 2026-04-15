@@ -16,6 +16,7 @@
  *   ORANGEDATA_SIGN_KEY / ORANGEDATA_SIGN_KEY_PATH — ключ для подписи X-Signature
  *   ORANGEDATA_CA / ORANGEDATA_CA_PATH — CA-сертификат сервера OrangeData
  *   ORANGEDATA_PASSPHRASE — пароль ключа (необязательно)
+ *   ORANGEDATA_KEY_ID — идентификатор ключа подписи (формат ИНН_КП, передаётся в теле как "key")
  */
 
 import { createServiceLogger } from '@/lib/logger'
@@ -61,6 +62,13 @@ export function isConfigured(): boolean {
  */
 export function getInn(): string {
   return INN
+}
+
+/**
+ * Возвращает идентификатор ключа подписи (формат ИНН_КП), передаётся в теле запроса как "key".
+ */
+export function getKeyId(): string {
+  return process.env.ORANGEDATA_KEY_ID || ''
 }
 
 // ─── Request Signing ────────────────────────────────────────────────
@@ -142,6 +150,8 @@ export interface OrangeDataDocument {
   inn: string
   /** Группа ККТ */
   group?: string
+  /** Идентификатор ключа подписи (формат ИНН_КП, например 9701327025_43789) */
+  key?: string
   /** Содержимое чека */
   content: {
     /** Версия ФФД: 2=1.05, 4=1.2 */
