@@ -34,6 +34,8 @@ interface TeamMember {
     title: string
   }>
   activation_hint?: string
+  /** user_id кандидата, если tg_user_id уже верифицирован в Orbo — можно назначить одним кликом. */
+  candidate_user_id?: string | null
 }
 
 interface OrganizationTeamProps {
@@ -60,6 +62,9 @@ export default function OrganizationTeam({
     setTeam(initialTeam)
   }, [initialTeam])
 
+  const [promotingTgId, setPromotingTgId] = useState<number | null>(null)
+  const [promoteError, setPromoteError] = useState<string | null>(null)
+
   const fetchTeam = async () => {
     try {
       const teamResponse = await fetch(`/api/organizations/${organizationId}/team`)
@@ -69,6 +74,36 @@ export default function OrganizationTeam({
       }
     } catch (err) {
       console.error('Error fetching team:', err)
+    }
+  }
+
+  const handlePromoteShadowAdmin = async (tgUserId: number, candidateUserId: string | null) => {
+    if (!tgUserId) return
+    setPromotingTgId(tgUserId)
+    setPromoteError(null)
+    try {
+      const res = await fetch(
+        `/api/organizations/${organizationId}/team/promote-by-tg`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tg_user_id: tgUserId,
+            candidate_user_id: candidateUserId,
+          }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setPromoteError(data.error || 'Не удалось назначить администратора')
+        return
+      }
+      setSyncMessage(data.message || 'Администратор назначен')
+      await fetchTeam()
+    } catch (e: any) {
+      setPromoteError(e.message || 'Ошибка сети')
+    } finally {
+      setPromotingTgId(null)
     }
   }
 
@@ -408,14 +443,46 @@ export default function OrganizationTeam({
                       
                       {/* Activation hint for shadow profiles */}
                       {admin.is_shadow_profile && admin.activation_hint && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <div className="text-sm text-blue-800">
-                            💡 <strong>Как получить полный доступ:</strong>
+                        admin.candidate_user_id && admin.tg_user_id ? (
+                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                            <div className="text-sm text-green-800">
+                              ✅ <strong>Готов к назначению:</strong>
+                            </div>
+                            <div className="text-sm text-green-700">
+                              {admin.activation_hint}
+                            </div>
+                            {userRole === 'owner' && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="mt-1"
+                                disabled={promotingTgId === admin.tg_user_id}
+                                onClick={() =>
+                                  handlePromoteShadowAdmin(
+                                    admin.tg_user_id as number,
+                                    admin.candidate_user_id ?? null
+                                  )
+                                }
+                              >
+                                {promotingTgId === admin.tg_user_id
+                                  ? 'Назначаем…'
+                                  : 'Сделать администратором'}
+                              </Button>
+                            )}
                           </div>
-                          <div className="text-sm text-blue-700 mt-1">
-                            {admin.activation_hint}
+                        ) : (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="text-sm text-blue-800">
+                              💡 <strong>Как получить полный доступ:</strong>
+                            </div>
+                            <div className="text-sm text-blue-700 mt-1">
+                              {admin.activation_hint}
+                            </div>
                           </div>
-                        </div>
+                        )
+                      )}
+                      {promoteError && promotingTgId === null && admin.tg_user_id && admin.is_shadow_profile && (
+                        <div className="mt-2 text-xs text-red-600">{promoteError}</div>
                       )}
                       
                       {/* Группы, где админ */}

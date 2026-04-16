@@ -216,22 +216,74 @@ export async function GET(
       }
     })
 
+    // Lookup: есть ли среди теневых админов те, кто уже верифицирован как Orbo-
+    // пользователь в других организациях? Тогда владелец может назначить их
+    // админом напрямую, без «напиши боту» — они уже прошли верификацию.
+    // Для каждого tg_user_id выбираем «лучшего» user:
+    //   1) email_verified IS NOT NULL
+    //   2) email не из тестовых доменов
+    //   3) самый ранний created_at.
+    const shadowTgIds = Array.from(shadowAdminsMap.keys()).map((s) => parseInt(s, 10))
+    const candidateByTgId = new Map<
+      number,
+      { user_id: string; email: string; email_verified: boolean }
+    >()
+    if (shadowTgIds.length > 0) {
+      const { data: candidates, error: candErr } = await adminSupabase.raw(
+        `SELECT DISTINCT ON (uta.telegram_user_id)
+                uta.telegram_user_id AS tg_user_id,
+                u.id                 AS user_id,
+                u.email              AS email,
+                (u.email_verified IS NOT NULL) AS email_verified
+           FROM user_telegram_accounts uta
+           JOIN users u ON u.id = uta.user_id
+          WHERE uta.telegram_user_id = ANY($1::bigint[])
+            AND uta.is_verified = true
+            AND u.email IS NOT NULL
+          ORDER BY
+            uta.telegram_user_id,
+            (u.email_verified IS NOT NULL) DESC,
+            (u.email NOT ILIKE 'test%@orbo.ru' AND u.email NOT ILIKE '%@orbo.ru') DESC,
+            u.created_at ASC`,
+        [shadowTgIds]
+      )
+      if (candErr) {
+        logger.warn(
+          { error: candErr.message },
+          'Failed to lookup verified user candidates for shadow admins'
+        )
+      }
+      for (const row of candidates || []) {
+        candidateByTgId.set(Number(row.tg_user_id), {
+          user_id: row.user_id,
+          email: row.email,
+          email_verified: row.email_verified,
+        })
+      }
+    }
+
     // Add shadow admins to the team
     for (const [tgUserId, shadowAdmin] of Array.from(shadowAdminsMap.entries())) {
-      const fullName = shadowAdmin.full_name 
-        || shadowAdmin.username 
+      const fullName = shadowAdmin.full_name
+        || shadowAdmin.username
         || `Telegram ${tgUserId}`
-      
+
+      const candidate = candidateByTgId.get(Number(tgUserId))
+      const activationHint = candidate
+        ? `У этого пользователя уже есть верифицированный аккаунт Orbo (${candidate.email}). Вы можете сразу назначить его администратором — он получит доступ без дополнительных действий.`
+        : 'Этот пользователь ещё не подтверждал свой Telegram в Orbo. Попросите его написать боту @orbo_assistant_bot и пройти верификацию — после этого появится возможность назначить его администратором.'
+
       teamWithGroups.push({
-        user_id: null, // No linked account
+        user_id: null, // No linked account in THIS org's memberships yet
         role: 'admin',
         role_source: 'telegram_admin',
-        email: null,
-        email_confirmed: false,
+        email: candidate?.email || null,
+        email_confirmed: !!candidate?.email_verified,
         full_name: fullName,
         telegram_username: shadowAdmin.username,
         tg_user_id: shadowAdmin.tg_user_id,
-        has_verified_telegram: false,
+        // Признак, что Telegram-аккаунт уже верифицирован в системе (в каком-то орге).
+        has_verified_telegram: !!candidate,
         is_shadow_profile: true,
         is_pending_invitation: false,
         invitation_id: undefined,
@@ -241,10 +293,13 @@ export async function GET(
         admin_groups: shadowAdmin.groups,
         metadata: {
           shadow_profile: true,
-          is_owner_in_groups: shadowAdmin.is_owner_in_groups
+          is_owner_in_groups: shadowAdmin.is_owner_in_groups,
+          candidate_user_id: candidate?.user_id || null,
+          candidate_email: candidate?.email || null,
         },
-        // Hint for UI - how to become a full admin
-        activation_hint: 'Для получения полного доступа администратору нужно написать боту @orbo_assistant_bot и пройти верификацию Telegram-аккаунта'
+        // Candidate — user_id кандидата для одноклик-назначения админом.
+        candidate_user_id: candidate?.user_id || null,
+        activation_hint: activationHint,
       })
     }
 
