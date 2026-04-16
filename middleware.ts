@@ -116,6 +116,12 @@ export async function middleware(request: NextRequest) {
   // Rewrites public routes to /site folder
   // ========================================
   if (isWebsiteDomain(request)) {
+    // Статические файлы из public/ (картинки, PDF и т.п.) не должны попадать под
+    // rewrite на /site/* — иначе Next.js ищет файл в app/site/docs/... и возвращает 404.
+    if (pathname.match(/\.(svg|png|jpg|jpeg|webp|gif|ico|pdf|mp4|webm|txt|xml|json|css|js|woff|woff2|ttf)$/i)) {
+      return NextResponse.next()
+    }
+
     // Fix broken UTM links: /utm_source=...&utm_medium=... -> /?utm_source=...&utm_medium=...
     // Ad platforms sometimes strip the "?" turning query params into path segments
     if (pathname.startsWith('/utm_') || pathname.startsWith('/utm ')) {
