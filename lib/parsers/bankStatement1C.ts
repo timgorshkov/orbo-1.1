@@ -223,7 +223,7 @@ function buildPaymentFromRaw(
     payer: {
       name: (raw['Плательщик'] || raw['Плательщик1'] || '').trim(),
       inn: (raw['ПлательщикИНН'] || '').trim(),
-      kpp: (raw['ПлательщикКПП'] || '').trim(),
+      kpp: normalizeKpp(raw['ПлательщикКПП']),
       account: (raw['ПлательщикСчет'] || raw['ПлательщикРасчСчет'] || '').trim(),
       bankName: (raw['ПлательщикБанк1'] || raw['ПлательщикБанк'] || '').trim(),
       bankBik: (raw['ПлательщикБИК'] || '').trim(),
@@ -231,7 +231,7 @@ function buildPaymentFromRaw(
     receiver: {
       name: (raw['Получатель'] || raw['Получатель1'] || '').trim(),
       inn: (raw['ПолучательИНН'] || '').trim(),
-      kpp: (raw['ПолучательКПП'] || '').trim(),
+      kpp: normalizeKpp(raw['ПолучательКПП']),
       account: (raw['ПолучательСчет'] || raw['ПолучательРасчСчет'] || '').trim(),
       bankName: (raw['ПолучательБанк1'] || raw['ПолучательБанк'] || '').trim(),
       bankBik: (raw['ПолучательБИК'] || '').trim(),
@@ -239,6 +239,18 @@ function buildPaymentFromRaw(
     docType,
     raw,
   }
+}
+
+/**
+ * Многие банки ставят `ПлательщикКПП=0` для ИП и физлиц, у которых КПП
+ * действительно нет. Приводим такие «заглушки» к пустой строке, чтобы сверка
+ * с договором не срабатывала на фантомное расхождение.
+ */
+function normalizeKpp(v: string | undefined): string {
+  const s = (v || '').trim()
+  if (!s) return ''
+  if (s === '0' || /^0+$/.test(s)) return ''
+  return s
 }
 
 function parse1CDate(s: string): string | null {
