@@ -1,18 +1,18 @@
 /**
- * HTML-шаблон «Отчёт о розничных продажах» (ОРП-NNN).
+ * HTML-шаблон «Акт об оказании услуг» (АУ-NNN) на сводное физлицо «Розничные покупатели».
  *
  * Документ ООО Орбо о собственной выручке от сервисного сбора с физлиц-участников
- * за период. Используется для учёта в КУДиР (УСН, «доходы») и импорта в Эльбу.
+ * за период. Используется для учёта в КУДиР (УСН «доходы») и выгружается в Эльбу
+ * через API. Реестр-расшифровка формируется отдельно (retail-act-registry-html.ts).
  *
- * Покупатель обезличен — «Розничные покупатели» (в соответствии с п. 1 ст. 492 ГК РФ
- * о розничной купле-продаже). Это обосновано тем, что услуга оказывается массово
- * физлицам, по офертно-конклюдентной модели, без заключения индивидуальных договоров
- * с каждым покупателем.
+ * Покупатель обезличен — «Розничные покупатели» (п. 1 ст. 492 ГК РФ о розничной
+ * купле-продаже): услуга оказывается массово физлицам по офертно-конклюдентной
+ * модели, без индивидуальных договоров.
  */
 
 import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
 
-export interface ServiceFeeReportEventLine {
+export interface RetailActLine {
   eventId: string | null
   eventTitle: string
   orgName: string | null
@@ -21,14 +21,16 @@ export interface ServiceFeeReportEventLine {
   paymentIds: string[]
 }
 
-export interface ServiceFeeReportTemplateData {
+export interface RetailActTemplateData {
   docNumber: string
   docDate: string
   periodStart: string
   periodEnd: string
-  eventLines: ServiceFeeReportEventLine[]
+  lines: RetailActLine[]
   totalAmount: number
   paymentsCount: number
+  /** URL зарегистрированного документа в Эльбе (если акт уже отправлен). */
+  elbaUrl?: string | null
 }
 
 const FACSIMILE_URL = '/docs/facsimile.png'
@@ -53,17 +55,27 @@ function amountToWords(amount: number): string {
   return `${formatMoney(amount)} (${rubles} рублей ${kopecks.toString().padStart(2, '0')} копеек)`
 }
 
-export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): string {
-  const { docNumber, docDate, periodStart, periodEnd, eventLines, totalAmount, paymentsCount } = data
+function escapeHtml(s: string | number | null | undefined): string {
+  if (s === null || s === undefined) return ''
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+export function buildRetailActHtml(data: RetailActTemplateData): string {
+  const { docNumber, docDate, periodStart, periodEnd, lines, totalAmount, paymentsCount, elbaUrl } = data
 
   const samePeriod = periodStart === periodEnd
   const periodLabel = samePeriod
     ? formatDate(periodStart)
     : `${formatDate(periodStart)} — ${formatDate(periodEnd)}`
 
-  const rowsHtml = eventLines
+  const rowsHtml = lines
     .map((line, idx) => {
-      const name = `Сервисный сбор за продажу билетов на мероприятие «${line.eventTitle}»${line.orgName ? ` (организатор: ${line.orgName})` : ''}`
+      const name = `Сервисный сбор за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.orgName ? ` (организатор: ${line.orgName})` : ''}`
       return `
       <tr>
         <td>${idx + 1}</td>
@@ -78,7 +90,7 @@ export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): s
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(docNumber)} — Отчёт о розничных продажах</title>
+  <title>${escapeHtml(docNumber)} — Акт об оказании услуг</title>
   <style>
     @page { size: A4; margin: 1.5cm; }
     body {
@@ -170,23 +182,28 @@ export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): s
       color: #888;
       text-align: center;
     }
+    .elba-link {
+      margin-top: 12px;
+      font-size: 9.5pt;
+      color: #555;
+    }
     @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
-  <h1>Отчёт о розничных продажах № ${escapeHtml(docNumber)}</h1>
-  <p class="subtitle">Сервисный сбор платформы Orbo с физлиц-участников</p>
+  <h1>Акт об оказании услуг № ${escapeHtml(docNumber)}</h1>
+  <p class="subtitle">Сервисный сбор платформы Orbo с физлиц-участников мероприятий</p>
 
   <div class="meta">
     <div><strong>Дата составления:</strong> ${formatDate(docDate)}</div>
-    <div><strong>Период:</strong> ${periodLabel}</div>
+    <div><strong>Период оказания услуг:</strong> ${periodLabel}</div>
     <div><strong>г. Москва</strong></div>
   </div>
 
   <div class="parties">
-    <div class="party"><strong>Продавец:</strong> ${escapeHtml(ORBO_ENTITY.fullName)}, ИНН ${ORBO_ENTITY.inn}, КПП ${ORBO_ENTITY.kpp}, ОГРН ${ORBO_ENTITY.ogrn}, адрес: ${escapeHtml(ORBO_ENTITY.legalAddress)}</div>
-    <div class="party"><strong>Покупатели:</strong> розничные покупатели (физические лица — участники мероприятий). Оферта — условия использования платформы Orbo (размещены на ${escapeHtml(ORBO_ENTITY.website)}).</div>
-    <div class="party"><strong>Предмет:</strong> сервисный сбор за информационное обслуживание при приобретении билетов на мероприятия через платформу Orbo (ст. 779 ГК РФ).</div>
+    <div class="party"><strong>Исполнитель:</strong> ${escapeHtml(ORBO_ENTITY.fullName)}, ИНН ${ORBO_ENTITY.inn}, КПП ${ORBO_ENTITY.kpp}, ОГРН ${ORBO_ENTITY.ogrn}, адрес: ${escapeHtml(ORBO_ENTITY.legalAddress)}.</div>
+    <div class="party"><strong>Заказчик:</strong> Розничные покупатели (физические лица — участники мероприятий, акцептовавшие публичную оферту платформы Orbo, размещённую на ${escapeHtml(ORBO_ENTITY.website)}).</div>
+    <div class="party"><strong>Предмет:</strong> информационно-технологические услуги по приобретению билетов на мероприятия через платформу Orbo (ст. 779 ГК РФ). Услуги оказаны в полном объёме, претензий к качеству и срокам не предъявлено.</div>
   </div>
 
   <table>
@@ -195,7 +212,7 @@ export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): s
         <th style="width: 42px;">№ п/п</th>
         <th>Наименование услуги</th>
         <th style="width: 90px;" class="center">Кол-во оплат</th>
-        <th style="width: 140px;">Сумма сбора, руб.</th>
+        <th style="width: 140px;">Сумма, руб.</th>
       </tr>
     </thead>
     <tbody>
@@ -209,21 +226,19 @@ export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): s
   </table>
 
   <p class="basis">
-    Всего на сумму <strong>${amountToWords(totalAmount)}</strong>.
+    Всего оказано услуг на сумму <strong>${amountToWords(totalAmount)}</strong>.
     Без НДС: ${escapeHtml(ORBO_ENTITY.taxation.vatExemptionReason)}.
   </p>
 
   <p class="basis">
-    Настоящий документ подтверждает получение ООО Орбо выручки в виде сервисного
-    сбора с розничных покупателей — физических лиц — участников мероприятий
-    за указанный период. Документ сформирован на основании учётных записей
-    платформы (таблица <code>platform_income</code>) и предназначен для учёта
-    в КУДиР и импорта в бухгалтерскую программу.
+    Детальный перечень платежей, вошедших в акт (идентификаторы платёжных сессий,
+    даты и суммы), оформлен отдельным реестром-расшифровкой, прилагаемым к настоящему
+    акту. Реестр хранится платформой в машиночитаемом виде и предоставляется по запросу.
   </p>
 
   <div class="signatures">
     <div class="signature-block">
-      <h3>Продавец</h3>
+      <h3>Исполнитель</h3>
       <p style="font-size: 10pt;">
         ${escapeHtml(ORBO_ENTITY.shortName)}<br>
         ОГРН: ${ORBO_ENTITY.ogrn}<br>
@@ -241,21 +256,12 @@ export function buildServiceFeeReportHtml(data: ServiceFeeReportTemplateData): s
     </div>
   </div>
 
+  ${elbaUrl ? `<p class="elba-link">Документ зарегистрирован в Контур.Эльба: <a href="${escapeHtml(elbaUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(elbaUrl)}</a></p>` : ''}
+
   <p class="footer">
     Документ сформирован автоматически платформой Orbo.
-    Номер: ${escapeHtml(docNumber)}. Розничные продажи — физические лица.
-    Подписан простой электронной подписью Продавца.
+    Номер: ${escapeHtml(docNumber)}. Подписан простой электронной подписью Исполнителя.
   </p>
 </body>
 </html>`
-}
-
-function escapeHtml(s: string | number | null | undefined): string {
-  if (s === null || s === undefined) return ''
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }

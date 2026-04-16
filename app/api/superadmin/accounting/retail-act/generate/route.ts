@@ -2,23 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
-import { generateServiceFeeReport } from '@/lib/services/serviceFeeReportService'
+import { generateRetailAct } from '@/lib/services/retailActService'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
 /**
- * POST /api/superadmin/accounting/service-fee-report/generate
+ * POST /api/superadmin/accounting/retail-act/generate
  *
  * Body: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
  *
- * Создаёт запись accounting_documents с doc_type=service_fee_report,
- * рендерит HTML и загружает в S3. Возвращает { documentId, docNumber, htmlUrl, ... }.
- * Если за период нет сервисных сборов — 400.
+ * Создаёт АУ-NNN (акт об оказании услуг) в accounting_documents, загружает HTML
+ * в S3 и отправляет акт в Контур.Эльбу через API. Если отправка в Эльбу падает,
+ * акт всё равно сохраняется локально (elbaSyncStatus = 'failed'), можно
+ * повторить через /retail-act/resend.
+ *
+ * Возвращает { documentId, docNumber, htmlUrl, elbaSyncStatus, elbaUrl, ... }.
  */
 export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, {
-    endpoint: '/api/superadmin/accounting/service-fee-report/generate',
+    endpoint: '/api/superadmin/accounting/retail-act/generate',
   })
 
   try {
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const result = await generateServiceFeeReport(from, to)
+      const result = await generateRetailAct(from, to)
       logger.info(
         {
           doc_number: result.docNumber,
@@ -64,9 +67,10 @@ export async function POST(request: NextRequest) {
           period_to: to,
           total_amount: result.totalAmount,
           payments_count: result.paymentsCount,
+          elba_sync_status: result.elbaSyncStatus,
           user_id: user.id,
         },
-        'Service fee report generated via superadmin'
+        'Retail act generated via superadmin'
       )
       return NextResponse.json(result)
     } catch (genErr: any) {
@@ -78,7 +82,7 @@ export async function POST(request: NextRequest) {
   } catch (err: any) {
     logger.error(
       { error: err.message, stack: err.stack },
-      'Error in POST service-fee-report/generate'
+      'Error in POST retail-act/generate'
     )
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }

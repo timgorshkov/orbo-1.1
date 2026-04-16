@@ -21,15 +21,15 @@
 
 export interface AccountingDocumentRow {
   id: string
-  doc_type: 'subscription_act' | 'agent_commission_upd' | 'service_fee_report'
+  doc_type: 'subscription_act' | 'agent_commission_upd' | 'retail_act'
   doc_number: string
   doc_date: string
   period_start: string | null
   period_end: string | null
-  /** NULL для service_fee_report (сводный документ по всей платформе). */
+  /** NULL для retail_act (сводный акт по всей платформе на «Розничные покупатели»). */
   org_id: string | null
   supplier_requisites: any // JSONB — см. orbo-entity.ts:orboSupplierSnapshot()
-  /** Для service_fee_report содержит маркер { is_retail: true, name: 'Розничные покупатели' } */
+  /** Для retail_act содержит маркер { is_retail: true, name: 'Розничные покупатели' } */
   customer_requisites: any
   customer_type: 'individual' | 'legal_entity' | 'self_employed'
   lines: any // JSONB array
@@ -73,7 +73,7 @@ function supplierCounterpartyKey(req: any): CounterpartyKey {
 
 function customerCounterpartyKey(req: any): CounterpartyKey {
   // Для розничных покупателей ИНН/КПП отсутствуют — используем стабильный маркер,
-  // чтобы все service_fee_report в пакете ссылались на одного и того же контрагента.
+  // чтобы все retail_act в пакете ссылались на одного и того же контрагента.
   if (req?.is_retail) {
     return { inn: 'retail', kpp: '' }
   }
@@ -165,8 +165,6 @@ function renderCustomerCounterparty(req: any, customerType: string): string {
 
 function docHozOperation(doc: AccountingDocumentRow): string {
   // CommerceML ХозОперация — строковое значение, трактуется принимающей системой.
-  // Для Эльбы и 1С: «Отчёт о розничных продажах» — валидный тип, попадает в КУДиР.
-  if (doc.doc_type === 'service_fee_report') return 'Отчёт о розничных продажах'
   return 'Акт на услуги'
 }
 
@@ -174,7 +172,7 @@ function docTypeReqValue(docType: AccountingDocumentRow['doc_type']): string {
   switch (docType) {
     case 'subscription_act': return 'АктНаПередачуПрав'
     case 'agent_commission_upd': return 'АктНаАгентскоеВознаграждение'
-    case 'service_fee_report': return 'ОтчётОРозничныхПродажах'
+    case 'retail_act': return 'АктНаУслугиРозница'
   }
 }
 
@@ -234,7 +232,7 @@ function renderDocument(doc: AccountingDocumentRow): string {
         <Наименование>ОснованиеНеНДС</Наименование>
         <Значение>УСН, ст. 346.11 НК РФ</Значение>
       </ЗначениеРеквизита>
-      ${doc.doc_type === 'service_fee_report' ? `<ЗначениеРеквизита><Наименование>ВидОперации</Наименование><Значение>РозничныеПродажи</Значение></ЗначениеРеквизита>` : ''}
+      ${doc.doc_type === 'retail_act' ? `<ЗначениеРеквизита><Наименование>ВидОперации</Наименование><Значение>УслугиРозница</Значение></ЗначениеРеквизита>` : ''}
     </ЗначенияРеквизитов>
   </Документ>`
 }

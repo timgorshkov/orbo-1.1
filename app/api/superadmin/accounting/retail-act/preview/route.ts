@@ -3,26 +3,23 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import {
-  previewServiceFeeReport,
-  getLastReportPeriodEnd,
+  previewRetailAct,
+  getLastActPeriodEnd,
   getNextRequiredFrom,
-} from '@/lib/services/serviceFeeReportService'
+} from '@/lib/services/retailActService'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * GET /api/superadmin/accounting/service-fee-report/preview?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * GET /api/superadmin/accounting/retail-act/preview?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * Предпросмотр «Отчёта о розничных продажах» (ОРП) за период. Возвращает:
- *   - eventLines: сгруппированные по мероприятию позиции
- *   - payments: детализация по каждой оплате
- *   - totalAmount, paymentsCount, eventsCount
- *   - lastReportPeriodEnd: дата period_end последнего сформированного ОРП
- *                         (подсказка для дефолтного начала периода)
+ * Предпросмотр «Акта об оказании услуг» (АУ) на сводное физлицо «Розничные
+ * покупатели» за период. Возвращает сгруппированные позиции и построчную
+ * детализацию по платежам для реестра-расшифровки.
  */
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, {
-    endpoint: '/api/superadmin/accounting/service-fee-report/preview',
+    endpoint: '/api/superadmin/accounting/retail-act/preview',
   })
 
   try {
@@ -61,20 +58,20 @@ export async function GET(request: NextRequest) {
     }
 
     const [preview, lastPeriodEnd, requiredFrom] = await Promise.all([
-      previewServiceFeeReport(from, to),
-      getLastReportPeriodEnd(),
+      previewRetailAct(from, to),
+      getLastActPeriodEnd(),
       getNextRequiredFrom(),
     ])
 
     return NextResponse.json({
       ...preview,
-      lastReportPeriodEnd: lastPeriodEnd,
+      lastActPeriodEnd: lastPeriodEnd,
       requiredFrom,
     })
   } catch (err: any) {
     logger.error(
       { error: err.message, stack: err.stack },
-      'Error in GET service-fee-report/preview'
+      'Error in GET retail-act/preview'
     )
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }

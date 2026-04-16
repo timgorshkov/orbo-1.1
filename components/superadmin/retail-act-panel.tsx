@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileText, Loader2, Play, RefreshCw } from 'lucide-react'
+import { CheckCircle2, Download, Loader2, Play, RefreshCw, XCircle } from 'lucide-react'
 
 interface EventLine {
   eventId: string | null
@@ -30,10 +30,10 @@ interface PreviewResponse {
   totalAmount: number
   paymentsCount: number
   eventsCount: number
-  eventLines: EventLine[]
+  lines: EventLine[]
   payments: PaymentDetail[]
-  lastReportPeriodEnd: string | null
-  /** День, с которого ОБЯЗАН начинаться следующий ОРП (если уже есть прошлый отчёт). */
+  lastActPeriodEnd: string | null
+  /** День, с которого ОБЯЗАН начинаться следующий акт (если уже есть прошлый). */
   requiredFrom: string | null
 }
 
@@ -45,6 +45,10 @@ interface GenerateResponse {
   totalAmount: number
   paymentsCount: number
   eventsCount: number
+  elbaSyncStatus: 'synced' | 'failed'
+  elbaDocumentId: string | null
+  elbaUrl: string | null
+  elbaError: string | null
 }
 
 function formatMoney(v: number): string {
@@ -60,12 +64,6 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU')
 }
 
-function todayISO(): string {
-  const d = new Date()
-  d.setHours(12, 0, 0, 0)
-  return d.toISOString().split('T')[0]
-}
-
 function yesterdayISO(): string {
   const d = new Date()
   d.setDate(d.getDate() - 1)
@@ -73,7 +71,6 @@ function yesterdayISO(): string {
   return d.toISOString().split('T')[0]
 }
 
-/** Нормализует ISO/YYYY-MM-DD-строку к ровно 'YYYY-MM-DD'. */
 function normalizeISODate(s: string | null | undefined): string | null {
   if (!s) return null
   const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/)
@@ -85,7 +82,25 @@ function firstDayOfMonthISO(): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
 }
 
-export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: () => void }) {
+async function downloadArchive(documentId: string, docNumber: string) {
+  const res = await fetch(`/api/superadmin/accounting/retail-act/${documentId}/archive`)
+  if (!res.ok) {
+    const msg = await res.json().catch(() => ({ error: 'Ошибка скачивания' }))
+    throw new Error(msg.error || 'Ошибка скачивания архива')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const safe = docNumber.replace(/[^a-zA-Zа-яА-ЯёЁ0-9-]/g, '_')
+  a.download = `retail-act-${safe}.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export default function RetailActPanel({ onGenerated }: { onGenerated?: () => void }) {
   const defaultTo = useMemo(yesterdayISO, [])
 
   const [from, setFrom] = useState(firstDayOfMonthISO())
@@ -95,38 +110,32 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [lastGenerated, setLastGenerated] = useState<GenerateResponse | null>(null)
   const [lastPeriodEnd, setLastPeriodEnd] = useState<string | null>(null)
   const [requiredFrom, setRequiredFrom] = useState<string | null>(null)
   const todayStr = useMemo(() => {
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().split('T')[0]
   }, [])
-  // Максимальная допустимая дата окончания периода — сегодня (нельзя в будущее).
   const maxTo = todayStr
-  // Если есть требуемое from — используем его, иначе пользовательское.
   const effectiveFrom = requiredFrom || from
   const fromLocked = !!requiredFrom
   const isInvalidRange = !!effectiveFrom && (!to || to < effectiveFrom || to > maxTo)
 
-  // Подтягиваем last period_end из сервера при первом рендере — сразу же
-  // через запрос preview с текущим диапазоном. Серверу это дешевле, чем
-  // отдельный эндпоинт.
   const loadPreview = useCallback(async () => {
     setLoading(true)
     setError(null)
     setSuccessMessage(null)
     try {
-      // Используем effectiveFrom (если есть зафиксированный requiredFrom — берём его)
       const queryFrom = requiredFrom || from
       const params = new URLSearchParams({ from: queryFrom, to })
-      const res = await fetch(`/api/superadmin/accounting/service-fee-report/preview?${params.toString()}`)
+      const res = await fetch(`/api/superadmin/accounting/retail-act/preview?${params.toString()}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Ошибка предпросмотра')
       setPreview(data)
-      setLastPeriodEnd(normalizeISODate(data.lastReportPeriodEnd))
+      setLastPeriodEnd(normalizeISODate(data.lastActPeriodEnd))
       const nextRequired = normalizeISODate(data.requiredFrom)
       setRequiredFrom(nextRequired)
-      // Если сервер сказал, что нужно стартовать с конкретной даты — синхронизируем поле from.
       if (nextRequired && from !== nextRequired) {
         setFrom(nextRequired)
       }
@@ -149,26 +158,41 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
     if (isInvalidRange) return
     const startDate = effectiveFrom
     const confirmed = window.confirm(
-      `Сформировать ОРП за период ${formatDate(startDate)} — ${formatDate(to)}?\n\nПлатежей: ${preview.paymentsCount}\nСумма: ${formatMoney(preview.totalAmount)} ₽`
+      `Сформировать акт об оказании услуг за период ${formatDate(startDate)} — ${formatDate(to)}?\n\n` +
+      `Платежей: ${preview.paymentsCount}\n` +
+      `Сумма: ${formatMoney(preview.totalAmount)} ₽\n\n` +
+      `После подтверждения акт будет отправлен в Контур.Эльбу.`
     )
     if (!confirmed) return
 
     setGenerating(true)
     setError(null)
+    setLastGenerated(null)
     try {
-      const res = await fetch('/api/superadmin/accounting/service-fee-report/generate', {
+      const res = await fetch('/api/superadmin/accounting/retail-act/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: startDate, to }),
       })
       const data: GenerateResponse | { error: string } = await res.json()
       if (!res.ok) {
-        throw new Error(('error' in data && data.error) || 'Ошибка формирования ОРП')
+        throw new Error(('error' in data && data.error) || 'Ошибка формирования акта')
       }
       const ok = data as GenerateResponse
+      setLastGenerated(ok)
+      const elbaMsg =
+        ok.elbaSyncStatus === 'synced'
+          ? 'Акт отправлен в Эльбу.'
+          : `Акт сохранён, но отправка в Эльбу не прошла: ${ok.elbaError || 'неизвестная ошибка'}. Попробуйте повторить.`
       setSuccessMessage(
-        `Сформирован ${ok.docNumber} на сумму ${formatMoney(ok.totalAmount)} ₽ (${ok.paymentsCount} платежей).`
+        `Сформирован ${ok.docNumber} на сумму ${formatMoney(ok.totalAmount)} ₽ (${ok.paymentsCount} платежей). ${elbaMsg}`
       )
+      // Автоматическое скачивание архива — акт + реестр
+      try {
+        await downloadArchive(ok.documentId, ok.docNumber)
+      } catch (dlErr: any) {
+        setError(`Документ сформирован, но архив не скачался: ${dlErr.message}`)
+      }
       if (onGenerated) onGenerated()
       await loadPreview()
     } catch (e: any) {
@@ -178,27 +202,61 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
     }
   }, [preview, effectiveFrom, to, loadPreview, onGenerated, isInvalidRange])
 
+  const handleResend = useCallback(async () => {
+    if (!lastGenerated) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/superadmin/accounting/retail-act/${lastGenerated.documentId}/resend`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Ошибка переотправки')
+      if (data.elbaSyncStatus === 'synced') {
+        setLastGenerated({ ...lastGenerated, ...data })
+        setSuccessMessage(`Акт ${lastGenerated.docNumber} успешно отправлен в Эльбу.`)
+      } else {
+        setError(`Повторная отправка не удалась: ${data.elbaError || 'неизвестная ошибка'}`)
+      }
+      if (onGenerated) onGenerated()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setGenerating(false)
+    }
+  }, [lastGenerated, onGenerated])
+
+  const handleDownloadAgain = useCallback(async () => {
+    if (!lastGenerated) return
+    try {
+      await downloadArchive(lastGenerated.documentId, lastGenerated.docNumber)
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }, [lastGenerated])
+
   return (
     <div className="bg-white rounded-xl border border-purple-200 p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            Отчёт о розничных продажах (ОРП)
+            Акт об оказании услуг (АУ) на «Розничные покупатели»
           </h3>
           <p className="text-sm text-gray-600">
             Сводный документ Орбо о выручке за сервисный сбор с физлиц-участников.
-            Используется для учёта в КУДиР и импорта в Эльбу.
+            Автоматически отправляется в Контур.Эльбу и скачивается в виде архива
+            (акт + реестр-расшифровка).
           </p>
           <p className="text-xs text-gray-500 mt-1">
             {lastPeriodEnd ? (
               <>
-                Последний ОРП покрывает период до{' '}
+                Последний акт покрывает период до{' '}
                 <strong>{formatDate(lastPeriodEnd)}</strong>. Следующий обязан начинаться с{' '}
                 <strong>{formatDate(requiredFrom)}</strong> — задним числом и с разрывом
                 сформировать нельзя.
               </>
             ) : (
-              <>Это будет первый ОРП. Стартовая дата выбирается свободно.</>
+              <>Это будет первый акт. Стартовая дата выбирается свободно.</>
             )}
           </p>
         </div>
@@ -254,10 +312,10 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
           }
           className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
           type="button"
-          title="Сформировать ОРП и сохранить в accounting_documents"
+          title="Сформировать акт, отправить в Эльбу и скачать архив"
         >
           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-          Сформировать ОРП
+          Сформировать и отправить
         </button>
       </div>
 
@@ -269,6 +327,59 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
       {successMessage && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
           {successMessage}
+        </div>
+      )}
+
+      {lastGenerated && (
+        <div className="border border-purple-200 rounded-lg p-3 bg-purple-50/50 space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            {lastGenerated.elbaSyncStatus === 'synced' ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <span>
+                  <strong>{lastGenerated.docNumber}</strong> — зарегистрирован в Эльбе.
+                </span>
+              </>
+            ) : (
+              <>
+                <XCircle className="h-4 w-4 text-red-600" />
+                <span>
+                  <strong>{lastGenerated.docNumber}</strong> — акт сохранён, но в Эльбу не ушёл.
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleDownloadAgain}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-purple-300 hover:bg-purple-100 rounded-lg text-xs font-medium"
+              type="button"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Скачать архив снова
+            </button>
+            {lastGenerated.elbaUrl && (
+              <a
+                href={lastGenerated.elbaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-purple-300 hover:bg-purple-100 rounded-lg text-xs font-medium text-purple-700"
+              >
+                Открыть в Эльбе ↗
+              </a>
+            )}
+            {lastGenerated.elbaSyncStatus === 'failed' && (
+              <button
+                onClick={handleResend}
+                disabled={generating}
+                className="flex items-center gap-2 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 rounded-lg text-xs font-medium text-orange-800 disabled:opacity-50"
+                type="button"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${generating ? 'animate-spin' : ''}`} />
+                Повторить отправку в Эльбу
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -291,7 +402,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
 
           {preview.paymentsCount === 0 ? (
             <div className="p-4 text-sm text-gray-500">
-              За выбранный период сервисных сборов не было. Документ не будет сформирован.
+              За выбранный период сервисных сборов не было. Акт не будет сформирован.
             </div>
           ) : (
             <>
@@ -306,7 +417,7 @@ export default function ServiceFeeReportPanel({ onGenerated }: { onGenerated?: (
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {preview.eventLines.map((line, idx) => (
+                    {preview.lines.map((line, idx) => (
                       <tr key={`${line.eventId || 'no_event'}-${idx}`} className="hover:bg-gray-50">
                         <td className="px-4 py-2">{line.eventTitle}</td>
                         <td className="px-4 py-2 text-xs text-gray-600">{line.orgName || '—'}</td>

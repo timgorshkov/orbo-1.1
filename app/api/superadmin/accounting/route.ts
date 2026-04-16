@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
          d.html_url,
          d.customer_requisites->>'name' AS customer_name,
          d.customer_requisites->>'inn' AS customer_inn,
+         d.elba_document_id, d.elba_url, d.elba_sync_status, d.elba_error,
          d.created_at,
          o.name AS org_name
        FROM accounting_documents d
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
          COALESCE(SUM(d.total_amount), 0)::numeric(14,2) AS total_sum,
          COUNT(*) FILTER (WHERE d.doc_type = 'subscription_act')::int AS subscription_acts_count,
          COUNT(*) FILTER (WHERE d.doc_type = 'agent_commission_upd')::int AS commission_upds_count,
-         COUNT(*) FILTER (WHERE d.doc_type = 'service_fee_report')::int AS service_fee_reports_count
+         COUNT(*) FILTER (WHERE d.doc_type = 'retail_act')::int AS retail_acts_count
        FROM accounting_documents d
        WHERE ${whereSql}`,
       aggregateParams
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
         total_sum: 0,
         subscription_acts_count: 0,
         commission_upds_count: 0,
-        service_fee_reports_count: 0,
+        retail_acts_count: 0,
       },
       filters: { from, to, docType, orgId, status, limit, offset },
     })

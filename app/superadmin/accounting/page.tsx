@@ -15,8 +15,8 @@ const AccountingDocumentsTable = dynamic(
   }
 )
 
-const ServiceFeeReportPanel = dynamic(
-  () => import('@/components/superadmin/service-fee-report-panel'),
+const RetailActPanel = dynamic(
+  () => import('@/components/superadmin/retail-act-panel'),
   {
     ssr: false,
     loading: () => (
@@ -34,11 +34,12 @@ export default function SuperadminAccountingPage() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Бухгалтерские документы</h2>
         <p className="text-gray-600 mt-1">
-          Акты лицензии на тариф (АЛ), УПД на агентское вознаграждение (АВ) и отчёты
-          о розничных продажах (ОРП). Выгрузка в 1С / CommerceML.
+          Акты лицензии на тариф (АЛ), УПД на агентское вознаграждение (АВ) и акты
+          об оказании услуг розничным покупателям (АУ). Акты на розничных покупателей
+          автоматически отправляются в Контур.Эльбу.
         </p>
       </div>
-      <ServiceFeeReportPanel onGenerated={() => setRefreshKey((k) => k + 1)} />
+      <RetailActPanel onGenerated={() => setRefreshKey((k) => k + 1)} />
       <AccountingDocumentsTable key={refreshKey} />
     </div>
   )

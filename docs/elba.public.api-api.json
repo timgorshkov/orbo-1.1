@@ -1,0 +1,5673 @@
+ {
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Elba Public API",
+    "description": "\r\n## С чего начать\r\n\r\nДля работы с API нужно выпустить API-ключ — уникальный токен, позволяющий авторизовывать ваши запросы в API Контур.Эльбы.\r\n\r\n#### Как получить API-ключ\r\n\r\n1. Откройте Эльбу, в верхнем правом углу нажмите «Настройки и оплата» → «Настройки сервиса».\r\n2. Перейдите на вкладку «API».\r\n2. Нажмите на кнопку «Выпустить ключ». После этого откроется окно со сгенерированным API-ключом.\r\n3. В открывшемся окне появится ваш API-ключ. Скопируйте и сохраните его в надежном месте, потому что он будет показан только один раз. Это сделано в целях безопасности — мы не храним ключи на своей стороне.",
+    "contact": {
+      "email": "e@kontur.ru"
+    },
+    "version": "v1"
+  },
+  "paths": {
+    "/v{version}/organizations": {
+      "get": {
+        "tags": [
+          "1. Организации"
+        ],
+        "summary": "Получение списка доступных организаций",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Позиция, начиная с которой будут вычитываться организации. По-умолчанию 0",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Максимальное количество организаций для получения. По-умолчанию 100",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список организаций",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetOrganizationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/bank-accounts": {
+      "post": {
+        "tags": [
+          "2. Банковские счета"
+        ],
+        "summary": "Создание банковского счёта",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные банковского счёта",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBankAccountRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBankAccountRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBankAccountRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Банковский счёт успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBankAccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Невалидный номер счёта\",<br />\r\n            \"Тип счёта не является рублевым\",<br />\r\n            \"Номер счёта не соответствует БИК банка\",<br />\r\n            \"Неизвестный БИК банка\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Такой банковский счёт уже существует",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "2. Банковские счета"
+        ],
+        "summary": "Получение списка банковских счетов",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Позиция, начиная с которой будут вычитываться счета. По-умолчанию 0",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Максимальное количество счетов для получения. По-умолчанию 100",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список банковских счетов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetBankAccountsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/contractors": {
+      "post": {
+        "tags": [
+          "3. Контрагенты"
+        ],
+        "summary": "Создание контрагента",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные контрагента",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateContractorRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateContractorRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateContractorRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Контрагент успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateContractorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Невалидный ИНН\",<br />\r\n            \"Невалидный КПП\",<br />\r\n            \"У контрагента ИП не должен быть указан КПП\",<br />\r\n            \"Невалидный ОКПО\",<br />\r\n            \"Невалидный ОГРН\",<br />\r\n            \"Невалидная почта контакта\",<br />\r\n            \"У контакта должно быть заполнено либо имя, либо телефон, либо почта\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Контрагент с такими ИНН-КПП уже существует",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/contractors/{contractorId}": {
+      "get": {
+        "tags": [
+          "3. Контрагенты"
+        ],
+        "summary": "Получение контрагента",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "contractorId",
+            "in": "path",
+            "description": "Идентификатор контагента",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Информация о контрагенте",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contractor"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Контрагент не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/contractors/search": {
+      "post": {
+        "tags": [
+          "3. Контрагенты"
+        ],
+        "summary": "Поиск контрагентов",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Параметры поиска",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchContractorsRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchContractorsRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchContractorsRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Результаты поиска контрагентов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchContractorsTaskResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Поставлена операция на поиск контрагентов",
+            "headers": {
+              "Location": {
+                "description": "Путь проверки статуса операции поиска",
+                "schema": {
+                  "type": "string",
+                  "description": "Путь проверки статуса операции поиска",
+                  "format": ""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedLongRunningTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Невалидный ИНН\",<br />\r\n            \"Невалидный КПП\",<br />\r\n            \"У контрагента ИП не должен быть указан КПП\",<br />\r\n            \"Должен быть заполнен хотя бы один параметр фильтра\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/products": {
+      "post": {
+        "tags": [
+          "4. Товары"
+        ],
+        "summary": "Создание товара",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные товара",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateProductRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateProductRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateProductRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Товар создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProductResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Поставлена операция на создание товара",
+            "headers": {
+              "Location": {
+                "description": "Путь проверки статуса операции создания товара",
+                "schema": {
+                  "type": "string",
+                  "description": "Путь проверки статуса операции создания товара",
+                  "format": ""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedLongRunningTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"У товара должно быть основное название\",<br />\r\n            \"У товара должно быть только одно основное название\",<br />\r\n            \"У товара не должно быть совпадающих имён\",<br />\r\n            \"У товара должна быть основная единица измерения\",<br />\r\n            \"У товара должна быть только одна основная единица измерения\",<br />\r\n            \"У товара не может быть совпадающих единиц измерения\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Товар с таким названием уже существует",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/products/{productId}/update": {
+      "post": {
+        "tags": [
+          "4. Товары"
+        ],
+        "summary": "Обновление товара",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "productId",
+            "in": "path",
+            "description": "Индентификатор товара",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные товара",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateProductRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateProductRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateProductRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Поставлена операция на обновление товара",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedLongRunningTask"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Товар обновлён"
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"У товара должно быть основное название\",<br />\r\n            \"У товара должно быть только одно основное название\",<br />\r\n            \"У товара не должно быть совпадающих имён\",<br />\r\n            \"У товара должна быть основная единица измерения\",<br />\r\n            \"У товара должна быть только одна основная единица измерения\",<br />\r\n            \"У товара не может быть совпадающих единиц измерения\",<br />\r\n            \"Название товара нельзя удалить, так как оно используется в документах\",<br />\r\n            \"Название товара нельзя изменить, так как оно используется в документах\",<br />\r\n            \"Единицу измерения нельзя удалить, так как она используется в документах\",<br />\r\n            \"Единицу измерения нельзя переименовать, так как она используется в документах\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Товар не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Товар с таким названием уже существует",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/products/{productId}": {
+      "get": {
+        "tags": [
+          "4. Товары"
+        ],
+        "summary": "Получение товара",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "productId",
+            "in": "path",
+            "description": "Идентификатор товара",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Информация о товаре",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Товар не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/products/search": {
+      "post": {
+        "tags": [
+          "4. Товары"
+        ],
+        "summary": "Поиск товаров",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Параметры поиска. Должен быть заполнен хотябы один",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProductsRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProductsRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProductsRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Результаты поиска товаров",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchProductsTaskResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Поставлена операция на поиск товаров",
+            "headers": {
+              "Location": {
+                "description": "Путь проверки статуса операции поиска",
+                "schema": {
+                  "type": "string",
+                  "description": "Путь проверки статуса операции поиска",
+                  "format": ""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedLongRunningTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Некорректно заполнен фильтр поиска. <br />\r\n            Возможные причины:<br />\r\n            \"Должен быть заполнен хотя бы один параметр фильтра\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-news": {
+      "get": {
+        "tags": [
+          "5. Новости по документам"
+        ],
+        "summary": "Получение списка новостей по документам",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Позиция, начиная с которой будут вычитываться новости",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Максимальное количество новостей для получения. По-умолчанию 100",
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список новостей",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetDocumentNewsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-news/subscription": {
+      "post": {
+        "tags": [
+          "5. Новости по документам"
+        ],
+        "summary": "Подписаться на новости по документам",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Подписка успешно создана"
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/universal-transfer-documents": {
+      "post": {
+        "tags": [
+          "6. Исходящие документы"
+        ],
+        "summary": "Создание исходящего универсального передаточного документа",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные универсального передаточного документа",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateUniversalTransferDocumentRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateUniversalTransferDocumentRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateUniversalTransferDocumentRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Универсальный передаточный документ успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateUniversalTransferDocumentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Для УПД без основания поле ReasonDate должно принимать значение null\",<br />\r\n            \"Для услуг поле UniversalTransferDocumentItemToCreate.OriginOfProductCountry должно принимать значение null\",<br />\r\n            \"Для услуг поле UniversalTransferDocumentItemToCreate.RNPT должно принимать значение null\",<br />\r\n            \"Неизвестная страна происхождения товара\",<br />\r\n            \"Указанный рассчётный счёт не найден\",<br />\r\n            \"Указанный рассчётный счёт закрыт\",<br />\r\n            \"Указанный рассчётный счёт не является рублевым\",<br />\r\n            \"Указанный грузополучатель не найден\",<br />\r\n            \"Указанный контрагент не найден\",<br />\r\n            \"Для УПД без скидки поле Discount должно принимать значение null\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) должен быть указан контрагент с заполненным ИНН\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) должен быть указан контрагент с заполненным КПП (Для контрагента ООО)\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) должен быть указан контрагент с заполненым юридическим адресом\",<br />\r\n            \"Для УПД без счета-фактуры (статус 2) поле UniversalTransferDocumentItemToCreate.NDSRate должно принимать значение null\",<br />\r\n            \"Для УПД без счета-фактуры (статус 2) поле SumsWithNDS не может принимать значение true\",<br />\r\n            \"Для УПД с включенным флагом WithProductTracing в товаре с заполненным полем RNPT поле UniversalTransferDocumentItemToCreate.Quantity должно принимать значение больше 0\",<br />\r\n            \"Для УПД с включенным флагом WithProductTracing в товаре с заполненным полем RNPT поле UniversalTransferDocumentItemToCreate.Price должно принимать значение больше 0\",<br />\r\n            \"Для УПД с включенным флагом WithProductTracing и заполненным полем UniversalTransferDocumentItemToCreate.RNPT длина значения РНПТ должна быть не менее 25 и не более 29 символов\".<br />\r\n            \"Для УПД с отключенным флагом WithProductTracing поле UniversalTransferDocumentItemToCreate.OriginOfProductCountry должно принимать значение null\",<br />\r\n            \"Для УПД с отключенным флагом WithProductTracing поле UniversalTransferDocumentItemToCreate.RNPT должно принимать значение null\".<br /><br />\r\n            Ошибки, связанные с реквизитами ИП:<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить имя в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить фамилию в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить ИНН в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить фактический адрес в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить свидетельство о гос. регистрации в реквизитах\".<br /><br />\r\n            Ошибки, связанные с реквизитами ООО:<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить краткое название организации в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить имя руководителя в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить краткое название организации в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить фамилию руководителя в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить ИНН в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить КПП в реквизитах\",<br />\r\n            \"Для УПД со счётом-фактурой (статус 1) требуется заполнить фактический адрес в реквизитах\"<br />",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/delivery-notes": {
+      "post": {
+        "tags": [
+          "6. Исходящие документы"
+        ],
+        "summary": "Создание исходящей накладной",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные накладной",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDeliveryNoteRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDeliveryNoteRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDeliveryNoteRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Накладная успешно создана",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDeliveryNoteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Указанный контрагент не найден\",<br />\r\n            \"Указанный грузополучатель не найден\",<br />\r\n            \"Указанный рассчётный счёт не найден\",<br />\r\n            \"Указанный рассчётный счёт закрыт\",<br />\r\n            \"Указанный рассчётный счёт не является рублевым\",<br />\r\n            \"В накладной без НДС цена за единицу товара не может включать в себя НДС\",<br />\r\n            \"Для накладной без скидки поле Discount должно принимать значение null\",<br />\r\n            \"Для накладной без основания поле ReasonDate должно принимать значение null\",<br />\r\n            \"Для накладной без НДС поле DeliveryNoteItemToCreate.NDSRate должно принимать значение null\"<br />",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/bills": {
+      "post": {
+        "tags": [
+          "6. Исходящие документы"
+        ],
+        "summary": "Создание исходящего счёта",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные счёта",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBillRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBillRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBillRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Счёт успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBillResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Указанный контрагент не найден\",<br />\r\n            \"Указанный рассчётный счёт не найден\",<br />\r\n            \"Указанный рассчётный счёт закрыт\",<br />\r\n            \"Указанный рассчётный счёт не является рублевым\",<br />\r\n            \"Для счёта без скидки поле Discount должно принимать значение null\",<br />\r\n            \"В счёте без НДС цена за единицу товара не может включать в себя НДС\",<br />\r\n            \"Для счёта без НДС поле BillItemToCreate.NDSRate должно принимать значение null\",<br />\r\n            \"TemplateId не задан. Указанных тегов в шаблоне не существует.\", <br />\r\n            \"Указанный шаблон не существует\", <br />\r\n            \"Указанный шаблон не подходит для счета\", <br />\r\n            \"PlaceholderItems[].Name Указанного тега в шаблоне не существует\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/bills/{billId}": {
+      "get": {
+        "tags": [
+          "6. Исходящие документы"
+        ],
+        "summary": "Получение исходящего счёта",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "billId",
+            "in": "path",
+            "description": "Идентификатор счёта",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Информация о счёте",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bill"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Счёт не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/acts": {
+      "post": {
+        "tags": [
+          "6. Исходящие документы"
+        ],
+        "summary": "Создание исходящего акта",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные акта",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateActRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateActRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateActRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Акт успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateActResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан.<br /><br />\r\n            Возможные причины:<br />\r\n            \"Указанный контрагент не найден\",<br />\r\n            \"Указанный рассчётный счёт не найден\",<br />\r\n            \"Указанный рассчётный счёт закрыт\",<br />\r\n            \"Указанный рассчётный счёт не является рублевым\",<br />\r\n            \"В акте без НДС цена за единицу товара не может включать в себя НДС\",<br />\r\n            \"Для акта без основания поле ReasonDate должно принимать значение null\",<br />\r\n            \"Для акта без скидки поле Discount должно принимать значение null\",<br />\r\n            \"Для акта без НДС поле ActItemToCreate.NDSRate должно принимать значение null\",<br />\r\n            \"TemplateId не задан. Указанных тегов в шаблоне не существует.\", <br />\r\n            \"Указанный шаблон не существует\", <br />\r\n            \"Указанный шаблон не подходит для счета\", <br />\r\n            \"PlaceholderItems[].Name Указанного тега в шаблоне не существует\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/long-running-tasks/{taskId}": {
+      "get": {
+        "tags": [
+          "7. Поллинг длительных операций"
+        ],
+        "summary": "Получить состояние операции",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "description": "Идентификатор длительной операции",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Состояние операции",
+            "headers": {
+              "Retry-After": {
+                "description": "Рекомендуемое количество секунд ожидания перед следующим запросом состояния операции",
+                "schema": {
+                  "type": "integer",
+                  "description": "Рекомендуемое количество секунд ожидания перед следующим запросом состояния операции",
+                  "format": ""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LongRunningTaskState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Операция не найдена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-links": {
+      "post": {
+        "tags": [
+          "8. Публикация документов"
+        ],
+        "summary": "Создаем контекст публикации документа",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Данные для генерации ссылки",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDocumentLinkRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDocumentLinkRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateDocumentLinkRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Документ успешно опубликован.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateDocumentLinkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан. <br />\r\n            Возможные причины: <br />\r\n            \"Такого документа не существует\", <br />\r\n            \"Для данного типа документа, нельзя создать ссылку\", <br />\r\n            Если WithSignatures: true то возможно \"Не загружены ваши подписи или печать\", <br />\r\n            Если IsQrCodeEnabled: true то возможны: \"QR код можно включить для документов с типом 'Счет'\", <br />\r\n            \"Проверьте что добавлен банковский счет\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ссылка уже была создана. В ответе будет идентификатор созданной ссылки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-links/{linkId}": {
+      "put": {
+        "tags": [
+          "8. Публикация документов"
+        ],
+        "summary": "Изменить контекст публикации документа",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "linkId",
+            "in": "path",
+            "description": "Идентификатор ссылки на документ",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "обновление параметров ссылки",
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateDocumentLinkRequest"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateDocumentLinkRequest"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateDocumentLinkRequest"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Документ успешно опубликован."
+          },
+          "400": {
+            "description": "Запрос сформирован некорректно и не может быть обработан. <br />\r\n            Возможные причины: <br />\r\n            \"Для данного типа документа, нельзя создать ссылку\", <br />\r\n            Если WithSignatures: true то возможно \"Не загружены ваши подписи или печать\", <br />\r\n            Если IsQrCodeEnabled: true то возможны: \"QR код можно включить для документов с типом 'Счет'\", <br />\r\n            \"Проверьте что добавлен банковский счет\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Такого контекста для публикации документа не сущетсвует",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "8. Публикация документов"
+        ],
+        "summary": "Получить ссылку на документ",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "linkId",
+            "in": "path",
+            "description": "Идентификатор ссылки на документ",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ссылка на документ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetLinkResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ссылка на документ не найдена.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "8. Публикация документов"
+        ],
+        "summary": "Удалить ссылку на документ",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "972252c5-6551-4ec4-90ad-cb5b296490cb"
+          },
+          {
+            "name": "linkId",
+            "in": "path",
+            "description": "Идентификатор сфлки на документ",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Ссылка на документ удалена."
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ссылка на документ не найдена.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-templates": {
+      "get": {
+        "tags": [
+          "9. Шаблоны документов"
+        ],
+        "summary": "Получить список доступных шаблонов",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Позиция, начиная с которой будут вычитываться шаблоны. По-умолчанию 0",
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Максимальное количество шаблонов для получения. По-умолчанию 100",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список шаблонов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplatesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v{version}/organizations/{organizationId}/document-templates/{templateId}": {
+      "get": {
+        "tags": [
+          "9. Шаблоны документов"
+        ],
+        "summary": "Получить шаблон по идентификатору",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "description": "Идентификатор организации",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "templateId",
+            "in": "path",
+            "description": "Идентификатор шаблона",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kontur-ApiKey",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Информация о шаблоне",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplate"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ошибка аутентификации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Текущий тариф не позволяет выполнить запрашиваемое действие",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Ошибка авторизации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Шаблон не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервиса",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptedLongRunningTask": {
+        "required": [
+          "id",
+          "status",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор асинхронной операции",
+            "format": "uuid"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LongRunningTaskStatus"
+              }
+            ],
+            "description": "Статус асинхронной операции\n\ninProcess (Операция в обработке)\n\ncompleted (Операция успешно обработана)\n\nfailed (Ошибка при выполнении операции)",
+            "x-enum-varnames": [
+              "InProcess",
+              "Completed",
+              "Failed"
+            ],
+            "x-enum-descriptions": [
+              "Операция в обработке",
+              "Операция успешно обработана",
+              "Ошибка при выполнении операции"
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LongRunningTaskType"
+              }
+            ],
+            "description": "Тип задачи\n\nsearchContractors (Операция поиска контрагентов)\n\nsearchProducts (Операция поиска товаров)\n\ncreateProduct (Операция создания товара)\n\nupdateProduct (Операция обновления товара)",
+            "x-enum-varnames": [
+              "SearchContractors",
+              "SearchProducts",
+              "CreateProduct",
+              "UpdateProduct"
+            ],
+            "x-enum-descriptions": [
+              "Операция поиска контрагентов",
+              "Операция поиска товаров",
+              "Операция создания товара",
+              "Операция обновления товара"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ActItemToCreate": {
+        "required": [
+          "productName",
+          "quantity",
+          "unitName"
+        ],
+        "type": "object",
+        "properties": {
+          "productName": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Наименование товара или услуги",
+            "example": "Услуга за ноябрь"
+          },
+          "unitName": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Единицы измерения",
+            "example": "шт."
+          },
+          "quantity": {
+            "maximum": 99999999999.9999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Количество",
+            "format": "double",
+            "example": 12345679000
+          },
+          "price": {
+            "maximum": 99999999.9999999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Цена за единицу товара",
+            "format": "double",
+            "nullable": true,
+            "example": 12345679
+          },
+          "ndsRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NDSRateToSave"
+              }
+            ],
+            "description": "НДС\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds20 (20%)\n\nnds22 (22%)",
+            "nullable": true,
+            "example": "WithoutNds"
+          },
+          "discount": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number",
+            "description": "Скидка",
+            "format": "double",
+            "nullable": true,
+            "example": 12.99
+          }
+        },
+        "additionalProperties": false
+      },
+      "Bank": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Название банка",
+            "nullable": true,
+            "example": "Контур.Банк"
+          },
+          "bik": {
+            "type": "string",
+            "description": "БИК",
+            "nullable": true,
+            "example": "046577904"
+          },
+          "corrAccount": {
+            "type": "string",
+            "description": "Корреспондентский счёт",
+            "nullable": true,
+            "example": "30101810500000000904"
+          },
+          "city": {
+            "type": "string",
+            "description": "Населенный пункт",
+            "nullable": true,
+            "example": "Екатеринбург"
+          },
+          "cityType": {
+            "type": "string",
+            "description": "Тип населенного пункта",
+            "nullable": true,
+            "example": "г."
+          }
+        },
+        "additionalProperties": false
+      },
+      "BankAccount": {
+        "required": [
+          "bank",
+          "closed",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Номер банковского счёта",
+            "nullable": true,
+            "example": "7071 9810 5916 4699 2616"
+          },
+          "bank": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bank"
+              }
+            ],
+            "description": "Информация о банке"
+          },
+          "closed": {
+            "type": "boolean",
+            "description": "Закрытость счета"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Bill": {
+        "required": [
+          "date",
+          "id",
+          "number",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор счёта",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "number": {
+            "type": "string",
+            "description": "Номер счёта",
+            "example": "311"
+          },
+          "date": {
+            "type": "string",
+            "description": "Дата счёта",
+            "format": "date",
+            "example": "2023-12-31"
+          },
+          "withNDS": {
+            "type": "boolean",
+            "description": "Ндс",
+            "nullable": true,
+            "example": true
+          },
+          "withDiscount": {
+            "type": "boolean",
+            "description": "Cчёт выставлен со скидкой",
+            "nullable": true,
+            "example": true
+          },
+          "comment": {
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Счёт выставлен на основании договора №0034, срок оплаты — 5 рабочих дней."
+          },
+          "bankAccountId": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "nullable": true,
+            "example": "c01999df-7dc3-4f5a-b815-f7cd35573012"
+          },
+          "contractorId": {
+            "type": "string",
+            "description": "Идентификатор контрагента",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "warehouseItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillItem"
+            },
+            "description": "Фактурная часть",
+            "nullable": true
+          },
+          "sumsWithNds": {
+            "type": "boolean",
+            "description": "Цена за единицу товара включает в себя НДС",
+            "nullable": true,
+            "example": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillStatus"
+              }
+            ],
+            "description": "Статус оплаты.\n\nnotPaid (Не оплачен)\n\npaid (Оплачен)\n\npartiallyPaid (Частично оплачен)\n\nrejected (Отменён)\n\noverdue (Истёк срок оплаты)",
+            "example": "true",
+            "x-enum-varnames": [
+              "NotPaid",
+              "Paid",
+              "PartiallyPaid",
+              "Rejected",
+              "Overdue"
+            ],
+            "x-enum-descriptions": [
+              "Не оплачен",
+              "Оплачен",
+              "Частично оплачен",
+              "Отменён",
+              "Истёк срок оплаты"
+            ]
+          },
+          "templateId": {
+            "type": "string",
+            "description": "Идентификатор шаблона",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "placeholderItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceholderItemToRead"
+            },
+            "description": "Данные тегов шаблона",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillItem": {
+        "required": [
+          "id",
+          "ndsRate",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор позиции",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "productName": {
+            "type": "string",
+            "description": "Наименование товара или услуги",
+            "nullable": true,
+            "example": "Услуга за ноябрь"
+          },
+          "unitName": {
+            "type": "string",
+            "description": "Единицы измерения",
+            "nullable": true,
+            "example": "шт."
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Количество",
+            "format": "double",
+            "example": 12345679000
+          },
+          "price": {
+            "type": "number",
+            "description": "Цена за единицу товара",
+            "format": "double",
+            "nullable": true,
+            "example": 12345679
+          },
+          "sum": {
+            "type": "number",
+            "description": "Сумма",
+            "format": "double",
+            "nullable": true,
+            "example": 10.02
+          },
+          "ndsRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NDSRate"
+              }
+            ],
+            "description": "НДС\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds18 (18%)\n\nnds20 (20%)\n\nnds22 (22%)",
+            "example": "WithoutNds",
+            "x-enum-varnames": [
+              "WithoutNds",
+              "Nds0",
+              "Nds5",
+              "Nds10",
+              "Nds18",
+              "Nds20",
+              "Nds22"
+            ],
+            "x-enum-descriptions": [
+              "Без НДС",
+              "0%",
+              "5%",
+              "10%",
+              "18%",
+              "20%",
+              "22%"
+            ]
+          },
+          "discount": {
+            "type": "number",
+            "description": "Скидка",
+            "format": "double",
+            "nullable": true,
+            "example": 15
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillItemToCreate": {
+        "required": [
+          "productName",
+          "quantity",
+          "unitName"
+        ],
+        "type": "object",
+        "properties": {
+          "productName": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Наименование товара или услуги",
+            "example": "Услуга за ноябрь"
+          },
+          "unitName": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Единицы измерения",
+            "example": "шт."
+          },
+          "quantity": {
+            "maximum": 99999999999.9999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Количество",
+            "format": "double",
+            "example": 12345679000
+          },
+          "price": {
+            "maximum": 99999999.9999999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Цена за единицу товара",
+            "format": "double",
+            "nullable": true,
+            "example": 12345679
+          },
+          "ndsRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NDSRateToSave"
+              }
+            ],
+            "description": "НДС\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds20 (20%)\n\nnds22 (22%)",
+            "nullable": true,
+            "example": "WithoutNds"
+          },
+          "discount": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number",
+            "description": "Скидка",
+            "format": "double",
+            "nullable": true,
+            "example": 12.99
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillPaymentNewsContent": {
+        "required": [
+          "billId",
+          "billStatus",
+          "billSum",
+          "relatedPaymentsSum"
+        ],
+        "type": "object",
+        "properties": {
+          "billId": {
+            "type": "string",
+            "description": "Идентификатор счёта",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "billStatus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillStatus"
+              }
+            ],
+            "description": "Статус оплаченности счёта.\n\nnotPaid (Не оплачен)\n\npaid (Оплачен)\n\npartiallyPaid (Частично оплачен)\n\nrejected (Отменён)\n\noverdue (Истёк срок оплаты)",
+            "example": "Overdue",
+            "x-enum-varnames": [
+              "NotPaid",
+              "Paid",
+              "PartiallyPaid",
+              "Rejected",
+              "Overdue"
+            ],
+            "x-enum-descriptions": [
+              "Не оплачен",
+              "Оплачен",
+              "Частично оплачен",
+              "Отменён",
+              "Истёк срок оплаты"
+            ]
+          },
+          "relatedPaymentsSum": {
+            "type": "number",
+            "description": "Сумма привязанных к счёту операций",
+            "format": "double",
+            "example": 90
+          },
+          "billSum": {
+            "type": "number",
+            "description": "Сумма счёта",
+            "format": "double",
+            "example": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "BillStatus": {
+        "enum": [
+          "notPaid",
+          "paid",
+          "partiallyPaid",
+          "rejected",
+          "overdue"
+        ],
+        "type": "string",
+        "description": "\n\nnotPaid (Не оплачен)\n\npaid (Оплачен)\n\npartiallyPaid (Частично оплачен)\n\nrejected (Отменён)\n\noverdue (Истёк срок оплаты)",
+        "x-enum-varnames": [
+          "NotPaid",
+          "Paid",
+          "PartiallyPaid",
+          "Rejected",
+          "Overdue"
+        ],
+        "x-enum-descriptions": [
+          "Не оплачен",
+          "Оплачен",
+          "Частично оплачен",
+          "Отменён",
+          "Истёк срок оплаты"
+        ]
+      },
+      "Contractor": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного контрагента",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "name": {
+            "type": "string",
+            "description": "Полное название контрагента"
+          },
+          "shortName": {
+            "type": "string",
+            "description": "Краткое название контрагента",
+            "nullable": true
+          },
+          "inn": {
+            "type": "string",
+            "description": "ИНН",
+            "nullable": true,
+            "example": "7766558001"
+          },
+          "kpp": {
+            "type": "string",
+            "description": "КПП",
+            "nullable": true,
+            "example": "776655001"
+          },
+          "address": {
+            "type": "string",
+            "description": "Юридический адрес",
+            "nullable": true,
+            "example": "г. Скрентон, пр. Слау, 1725, оф. 200"
+          },
+          "postAddress": {
+            "type": "string",
+            "description": "Фактический адрес",
+            "nullable": true,
+            "example": "г. Панорама, пр. Сатикой, 13927, оф. 200"
+          },
+          "okpo": {
+            "type": "string",
+            "description": "ОКПО",
+            "nullable": true,
+            "example": "47296611"
+          },
+          "ogrn": {
+            "type": "string",
+            "description": "ОГРН",
+            "nullable": true,
+            "example": "336139201874884"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractorContact"
+            },
+            "description": "Контакты",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContractorContact": {
+        "required": [
+          "emails"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Имя",
+            "nullable": true,
+            "example": "Скотт Майкл"
+          },
+          "post": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Должность",
+            "nullable": true,
+            "example": "Менеджер проектов"
+          },
+          "phone": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Телефон",
+            "nullable": true,
+            "example": "+7 (343) 111-11-11"
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "description": "Почта",
+            "nullable": true
+          },
+          "comment": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Лучший босс в мире"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateActRequest": {
+        "required": [
+          "date"
+        ],
+        "type": "object",
+        "properties": {
+          "number": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string",
+            "description": "Номер акта. Если номер не указан, то номер будет сгенерирован Эльбой",
+            "nullable": true,
+            "example": "322"
+          },
+          "date": {
+            "type": "string",
+            "description": "Дата акта",
+            "format": "date",
+            "example": "2023-12-31"
+          },
+          "withNDS": {
+            "type": "boolean",
+            "description": "Ндс",
+            "nullable": true,
+            "example": true
+          },
+          "reasonName": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Основание",
+            "nullable": true,
+            "example": "Договор"
+          },
+          "reasonNumber": {
+            "type": "string",
+            "description": "Номер основания",
+            "nullable": true,
+            "example": "28"
+          },
+          "comment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Заказчик не имеет претензий по срокам, качеству и объему товаров и услуг."
+          },
+          "reasonDate": {
+            "type": "string",
+            "description": "Дата основания",
+            "format": "date",
+            "nullable": true,
+            "example": "2023-12-29"
+          },
+          "bankAccountId": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "nullable": true,
+            "example": "c01999df-7dc3-4f5a-b815-f7cd35573012"
+          },
+          "contractorId": {
+            "type": "string",
+            "description": "Идентификатор контрагента",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "sumsWithNDS": {
+            "type": "boolean",
+            "description": "Цена за единицу товара включает в себя НДС",
+            "nullable": true,
+            "example": true
+          },
+          "withDiscount": {
+            "type": "boolean",
+            "description": "Выставить акт со скидкой",
+            "nullable": true,
+            "example": true
+          },
+          "templateId": {
+            "type": "string",
+            "description": "Идентификатор шаблона",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d4490-beef-1ce8-b27a-1672e7366d5a"
+          },
+          "placeholderItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceholderItemToCreate"
+            },
+            "description": "Данные для заполнения тегов шаблона",
+            "nullable": true
+          },
+          "warehouseItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActItemToCreate"
+            },
+            "description": "Фактурная часть",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateActResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного документа",
+            "format": "uuid",
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBankAccountRequest": {
+        "required": [
+          "accountNumber",
+          "bik"
+        ],
+        "type": "object",
+        "properties": {
+          "accountNumber": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string",
+            "description": "Номер банковского счёта",
+            "example": "70719810591646992616"
+          },
+          "bik": {
+            "maxLength": 9,
+            "minLength": 9,
+            "type": "string",
+            "description": "БИК",
+            "example": "046577904"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBankAccountResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного банковского счёта",
+            "format": "uuid",
+            "example": "ed7d3e13-d7eb-474a-9da1-cb30428a404f"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBillRequest": {
+        "required": [
+          "date"
+        ],
+        "type": "object",
+        "properties": {
+          "number": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string",
+            "description": "Номер счёта. Если номер не указан, то номер будет сгенерирован Эльбой",
+            "nullable": true,
+            "example": "311"
+          },
+          "date": {
+            "type": "string",
+            "description": "Дата счёта",
+            "format": "date",
+            "example": "2023-12-31"
+          },
+          "withNDS": {
+            "type": "boolean",
+            "description": "Ндс",
+            "nullable": true,
+            "example": true
+          },
+          "comment": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Счёт выставлен на основании договора №0034, срок оплаты — 5 рабочих дней."
+          },
+          "bankAccountId": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "nullable": true,
+            "example": "c01999df-7dc3-4f5a-b815-f7cd35573012"
+          },
+          "contractorId": {
+            "type": "string",
+            "description": "Идентификатор контрагента",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "sumsWithNDS": {
+            "type": "boolean",
+            "description": "Цена за единицу товара включает в себя НДС",
+            "nullable": true,
+            "example": true
+          },
+          "withDiscount": {
+            "type": "boolean",
+            "description": "Выставить счёт со скидкой",
+            "nullable": true,
+            "example": true
+          },
+          "templateId": {
+            "type": "string",
+            "description": "Идентификатор шаблона",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d4778-beef-4ce8-b27a-1322e7366d6w"
+          },
+          "placeholderItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceholderItemToCreate"
+            },
+            "description": "Данные для заполнения тегов шаблона",
+            "nullable": true
+          },
+          "warehouseItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillItemToCreate"
+            },
+            "description": "Фактурная часть",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateBillResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного документа",
+            "format": "uuid",
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateContractorRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Полное название контрагента"
+          },
+          "inn": {
+            "maxLength": 12,
+            "minLength": 10,
+            "type": "string",
+            "description": "ИНН",
+            "nullable": true,
+            "example": "7766558001"
+          },
+          "kpp": {
+            "maxLength": 9,
+            "minLength": 9,
+            "type": "string",
+            "description": "КПП",
+            "nullable": true,
+            "example": "776655001"
+          },
+          "shortName": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Краткое название контрагента",
+            "nullable": true
+          },
+          "address": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Юридический адрес",
+            "nullable": true,
+            "example": "г. Скрентон, пр. Слау, 1725, оф. 200"
+          },
+          "postAddress": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Фактический адрес",
+            "nullable": true,
+            "example": "г. Панорама, пр. Сатикой, 13927, оф. 200"
+          },
+          "okpo": {
+            "maxLength": 10,
+            "minLength": 8,
+            "type": "string",
+            "description": "ОКПО",
+            "nullable": true,
+            "example": "47296611"
+          },
+          "ogrn": {
+            "maxLength": 15,
+            "minLength": 13,
+            "type": "string",
+            "description": "ОГРН",
+            "nullable": true,
+            "example": "336139201874884"
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractorContact"
+            },
+            "description": "Контакты",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateContractorResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного контрагента",
+            "format": "uuid",
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDeliveryNoteRequest": {
+        "required": [
+          "date"
+        ],
+        "type": "object",
+        "properties": {
+          "number": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string",
+            "description": "Номер накладной. Если номер не указан, то номер будет сгенерирован Эльбой",
+            "nullable": true,
+            "example": "311"
+          },
+          "date": {
+            "type": "string",
+            "description": "Дата накладной",
+            "format": "date",
+            "example": "2023-12-31"
+          },
+          "withNDS": {
+            "type": "boolean",
+            "description": "Ндс",
+            "nullable": true,
+            "example": true
+          },
+          "bankAccountId": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "nullable": true,
+            "example": "c01999df-7dc3-4f5a-b815-f7cd35573012"
+          },
+          "contractorId": {
+            "type": "string",
+            "description": "Идентификатор контрагента",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "sumsWithNDS": {
+            "type": "boolean",
+            "description": "Цена за единицу товара включает в себя НДС",
+            "nullable": true,
+            "example": true
+          },
+          "consigneeId": {
+            "type": "string",
+            "description": "Идентификатор грузополучателя",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "reasonName": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Основание",
+            "nullable": true,
+            "example": "Договор"
+          },
+          "reasonNumber": {
+            "type": "string",
+            "description": "Номер основания",
+            "nullable": true,
+            "example": "28"
+          },
+          "reasonDate": {
+            "type": "string",
+            "description": "Дата основания",
+            "format": "date",
+            "nullable": true,
+            "example": "2023-12-29"
+          },
+          "withDiscount": {
+            "type": "boolean",
+            "description": "Выставить накладную со скидкой",
+            "nullable": true,
+            "example": true
+          },
+          "warehouseItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryNoteItemToCreate"
+            },
+            "description": "Фактурная часть",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDeliveryNoteResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного документа",
+            "format": "uuid",
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDocumentLinkRequest": {
+        "required": [
+          "documentId",
+          "isQrCodeEnabled",
+          "published",
+          "withSignatures"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "description": "Идентификатор документа",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "published": {
+            "type": "boolean",
+            "description": "Доступен ли документ по ссылке",
+            "example": true
+          },
+          "withSignatures": {
+            "type": "boolean",
+            "description": "Отобразить в документе печати и подписи",
+            "example": true
+          },
+          "isQrCodeEnabled": {
+            "type": "boolean",
+            "description": "Включить/выключить оплату по qr (Только для счетов!)",
+            "example": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDocumentLinkResponse": {
+        "required": [
+          "id",
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор на ссылку",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "url": {
+            "type": "string",
+            "description": "Ссылка на документ",
+            "example": "https://elba.kontur.ru/Documents/4fd5e06e7ac84e869036abf58b696038"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateProductError": {
+        "enum": [
+          "productWithSameNameExists"
+        ],
+        "type": "string",
+        "description": "\n\nproductWithSameNameExists (Уже есть товар с таким названием)",
+        "x-enum-varnames": [
+          "ProductWithSameNameExists"
+        ],
+        "x-enum-descriptions": [
+          "Уже есть товар с таким названием"
+        ]
+      },
+      "CreateProductRequest": {
+        "required": [
+          "names",
+          "units"
+        ],
+        "type": "object",
+        "properties": {
+          "names": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductNameToCreate"
+            },
+            "description": "Список названий товара"
+          },
+          "units": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUnitToCreate"
+            },
+            "description": "Список единиц измерений товара"
+          },
+          "article": {
+            "maxLength": 900,
+            "minLength": 1,
+            "type": "string",
+            "description": "Артикул",
+            "nullable": true,
+            "example": "1233412"
+          },
+          "comment": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Любой комментарий"
+          },
+          "amount": {
+            "maximum": 99999999999.9999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Количество на складе",
+            "format": "double",
+            "nullable": true,
+            "example": 5
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateProductResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного товара.",
+            "format": "uuid",
+            "nullable": true,
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateProductTaskResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного товара. Заполнен, если нет ошибки создания товара",
+            "format": "uuid",
+            "nullable": true,
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          },
+          "createProductError": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateProductError"
+              }
+            ],
+            "description": "Ошибка при создании товара\n\nproductWithSameNameExists (Уже есть товар с таким названием)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateUniversalTransferDocumentRequest": {
+        "required": [
+          "date",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "number": {
+            "maxLength": 30,
+            "minLength": 1,
+            "type": "string",
+            "description": "Номер УПД. Если номер не указан, то номер будет сгенерирован Эльбой",
+            "nullable": true,
+            "example": "311"
+          },
+          "date": {
+            "type": "string",
+            "description": "Дата УПД",
+            "format": "date",
+            "example": "2023-12-31"
+          },
+          "bankAccountId": {
+            "type": "string",
+            "description": "Идентификатор банковского счёта",
+            "format": "uuid",
+            "nullable": true,
+            "example": "c01999df-7dc3-4f5a-b815-f7cd35573012"
+          },
+          "contractorId": {
+            "type": "string",
+            "description": "Идентификатор контрагента",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "sumsWithNDS": {
+            "type": "boolean",
+            "description": "Цена за единицу товара включает в себя НДС",
+            "nullable": true,
+            "example": true
+          },
+          "consigneeId": {
+            "type": "string",
+            "description": "Идентификатор грузополучателя",
+            "format": "uuid",
+            "nullable": true,
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "withProductTracing": {
+            "type": "boolean",
+            "description": "Продаю прослеживаемый товар",
+            "nullable": true,
+            "example": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UniversalTransferDocumentStatus"
+              }
+            ],
+            "description": "Статус\n\nstatus1 (Со счётом-фактурой, то есть с НДС)\n\nstatus2 (Без счёта-фактуры)",
+            "example": "Status1"
+          },
+          "stateContractIdentifier": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string",
+            "description": "Идентификатор госконтракта",
+            "nullable": true,
+            "example": "23249993004010000000"
+          },
+          "reasonName": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Основание",
+            "nullable": true,
+            "example": "Договор"
+          },
+          "reasonNumber": {
+            "type": "string",
+            "description": "Номер основания",
+            "nullable": true,
+            "example": "28"
+          },
+          "reasonDate": {
+            "type": "string",
+            "description": "Дата основания",
+            "format": "date",
+            "nullable": true,
+            "example": "2023-12-29"
+          },
+          "withDiscount": {
+            "type": "boolean",
+            "description": "Выставить УПД со скидкой",
+            "nullable": true,
+            "example": true
+          },
+          "warehouseItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UniversalTransferDocumentItemToCreate"
+            },
+            "description": "Фактурная часть",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateUniversalTransferDocumentResponse": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного документа",
+            "format": "uuid",
+            "example": "85ee52f3-9f55-458d-8eda-ee0d016ac3a7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryNoteItemToCreate": {
+        "required": [
+          "productName",
+          "quantity",
+          "unitName"
+        ],
+        "type": "object",
+        "properties": {
+          "productName": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Наименование товара или услуги",
+            "example": "Бумага"
+          },
+          "unitName": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Единица измерения",
+            "example": "шт."
+          },
+          "quantity": {
+            "maximum": 99999999999.9999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Количество",
+            "format": "double",
+            "example": 12345679000
+          },
+          "price": {
+            "maximum": 99999999.9999999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Цена за единицу товара",
+            "format": "double",
+            "nullable": true,
+            "example": 12345679
+          },
+          "ndsRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NDSRateToSave"
+              }
+            ],
+            "description": "НДС\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds20 (20%)\n\nnds22 (22%)",
+            "nullable": true,
+            "example": "WithoutNds"
+          },
+          "discount": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number",
+            "description": "Скидка",
+            "format": "double",
+            "nullable": true,
+            "example": 12.99
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentNews": {
+        "required": [
+          "id",
+          "newsContent",
+          "newsType"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Идентификатор новости",
+            "format": "int64",
+            "example": 13
+          },
+          "newsType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NewsType"
+              }
+            ],
+            "description": "Тип новости\n\nbillPaymentNews",
+            "x-enum-varnames": [
+              "BillPaymentNews"
+            ],
+            "x-enum-descriptions": [
+              ""
+            ]
+          },
+          "newsContent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BillPaymentNewsContent"
+              }
+            ],
+            "description": "Содержимое новости"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentTemplate": {
+        "required": [
+          "documentType",
+          "id",
+          "name",
+          "placeholders",
+          "withFacture"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор шаблона",
+            "format": "uuid",
+            "example": "b79d3808-beef-4ce8-b27a-1192e7366d4e"
+          },
+          "name": {
+            "type": "string",
+            "description": "Имя шаблона",
+            "example": "Тестовый шаблон"
+          },
+          "documentType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TemplateDocumentType"
+              }
+            ],
+            "description": "Тип документа\n\nbill (Счет)\n\nact (Акт)\n\ncontract (Договор)\n\notherDocuments (Другой документ)",
+            "example": "bill",
+            "x-enum-varnames": [
+              "Bill",
+              "Act",
+              "Contract",
+              "OtherDocuments"
+            ],
+            "x-enum-descriptions": [
+              "Счет",
+              "Акт",
+              "Договор",
+              "Другой документ"
+            ]
+          },
+          "withFacture": {
+            "type": "boolean",
+            "description": "Наличие фактуры",
+            "example": true
+          },
+          "placeholders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentTemplatePlaceholder"
+            },
+            "description": "Теги шаблона"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentTemplatePlaceholder": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Наименование тега",
+            "example": "Заказ №"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentTemplatesResponse": {
+        "required": [
+          "documentTemplates"
+        ],
+        "type": "object",
+        "properties": {
+          "documentTemplates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentTemplate"
+            },
+            "description": "Список шаблонов"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "target": {
+            "type": "string",
+            "nullable": true
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "nullable": true
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": {},
+            "nullable": true
+          },
+          "innerError": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ErrorResponse": {
+        "required": [
+          "error",
+          "statusCode"
+        ],
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "traceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "FoundContractor": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор созданного контрагента",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "name": {
+            "type": "string",
+            "description": "Полное название контрагента"
+          },
+          "shortName": {
+            "type": "string",
+            "description": "Краткое название контрагента",
+            "nullable": true
+          },
+          "inn": {
+            "type": "string",
+            "description": "ИНН",
+            "nullable": true,
+            "example": "7766558001"
+          },
+          "kpp": {
+            "type": "string",
+            "description": "КПП",
+            "nullable": true,
+            "example": "776655001"
+          },
+          "address": {
+            "type": "string",
+            "description": "Юридический адрес",
+            "nullable": true,
+            "example": "г. Скрентон, пр. Слау, 1725, оф. 200"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FoundProduct": {
+        "required": [
+          "id",
+          "productMainName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор товара",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "productMainName": {
+            "type": "string",
+            "description": "Главное название товара"
+          },
+          "article": {
+            "type": "string",
+            "description": "Артикул",
+            "nullable": true,
+            "example": "1233412"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetBankAccountsResponse": {
+        "required": [
+          "bankAccounts"
+        ],
+        "type": "object",
+        "properties": {
+          "bankAccounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BankAccount"
+            },
+            "description": "Список банковских счетов"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetDocumentNewsResponse": {
+        "required": [
+          "news"
+        ],
+        "type": "object",
+        "properties": {
+          "news": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentNews"
+            },
+            "description": "Новости"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetLinkResponse": {
+        "required": [
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Ссылка на документ",
+            "example": "https://elba.kontur.ru/Documents/4fd5e06e7ac84e869036abf58b696038"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetOrganizationsResponse": {
+        "required": [
+          "organizations"
+        ],
+        "type": "object",
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Organization"
+            },
+            "description": "Список доступных организаций"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LongRunningTaskExecutionError": {
+        "required": [
+          "message",
+          "traceId"
+        ],
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string",
+            "description": "Идентификатор ошибки"
+          },
+          "message": {
+            "type": "string",
+            "description": "Текст ошибки"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LongRunningTaskState": {
+        "required": [
+          "id",
+          "status",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор асинхронной операции",
+            "format": "uuid"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LongRunningTaskStatus"
+              }
+            ],
+            "description": "Статус асинхронной операции\n\ninProcess (Операция в обработке)\n\ncompleted (Операция успешно обработана)\n\nfailed (Ошибка при выполнении операции)",
+            "x-enum-varnames": [
+              "InProcess",
+              "Completed",
+              "Failed"
+            ],
+            "x-enum-descriptions": [
+              "Операция в обработке",
+              "Операция успешно обработана",
+              "Ошибка при выполнении операции"
+            ]
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LongRunningTaskType"
+              }
+            ],
+            "description": "Тип операции\n\nsearchContractors (Операция поиска контрагентов)\n\nsearchProducts (Операция поиска товаров)\n\ncreateProduct (Операция создания товара)\n\nupdateProduct (Операция обновления товара)",
+            "x-enum-varnames": [
+              "SearchContractors",
+              "SearchProducts",
+              "CreateProduct",
+              "UpdateProduct"
+            ],
+            "x-enum-descriptions": [
+              "Операция поиска контрагентов",
+              "Операция поиска товаров",
+              "Операция создания товара",
+              "Операция обновления товара"
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UpdateProductTaskResult"
+              },
+              {
+                "$ref": "#/components/schemas/SearchProductsTaskResult"
+              },
+              {
+                "$ref": "#/components/schemas/CreateProductTaskResult"
+              },
+              {
+                "$ref": "#/components/schemas/SearchContractorsTaskResult"
+              }
+            ],
+            "description": "Результат операции. Заполнен, если операция обработана без ошибок",
+            "nullable": true
+          },
+          "errorDescription": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LongRunningTaskExecutionError"
+              }
+            ],
+            "description": "Информация об ошибке, возникшей во время выполнения операции. Заполнена, если операция завершена с ошибкой.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LongRunningTaskStatus": {
+        "enum": [
+          "inProcess",
+          "completed",
+          "failed"
+        ],
+        "type": "string",
+        "description": "\n\ninProcess (Операция в обработке)\n\ncompleted (Операция успешно обработана)\n\nfailed (Ошибка при выполнении операции)",
+        "x-enum-varnames": [
+          "InProcess",
+          "Completed",
+          "Failed"
+        ],
+        "x-enum-descriptions": [
+          "Операция в обработке",
+          "Операция успешно обработана",
+          "Ошибка при выполнении операции"
+        ]
+      },
+      "LongRunningTaskType": {
+        "enum": [
+          "searchContractors",
+          "searchProducts",
+          "createProduct",
+          "updateProduct"
+        ],
+        "type": "string",
+        "description": "\n\nsearchContractors (Операция поиска контрагентов)\n\nsearchProducts (Операция поиска товаров)\n\ncreateProduct (Операция создания товара)\n\nupdateProduct (Операция обновления товара)",
+        "x-enum-varnames": [
+          "SearchContractors",
+          "SearchProducts",
+          "CreateProduct",
+          "UpdateProduct"
+        ],
+        "x-enum-descriptions": [
+          "Операция поиска контрагентов",
+          "Операция поиска товаров",
+          "Операция создания товара",
+          "Операция обновления товара"
+        ]
+      },
+      "NDSRate": {
+        "enum": [
+          "withoutNds",
+          "nds0",
+          "nds5",
+          "nds10",
+          "nds18",
+          "nds20",
+          "nds22"
+        ],
+        "type": "string",
+        "description": "\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds18 (18%)\n\nnds20 (20%)\n\nnds22 (22%)",
+        "x-enum-varnames": [
+          "WithoutNds",
+          "Nds0",
+          "Nds5",
+          "Nds10",
+          "Nds18",
+          "Nds20",
+          "Nds22"
+        ],
+        "x-enum-descriptions": [
+          "Без НДС",
+          "0%",
+          "5%",
+          "10%",
+          "18%",
+          "20%",
+          "22%"
+        ]
+      },
+      "NDSRateToSave": {
+        "enum": [
+          "withoutNds",
+          "nds0",
+          "nds5",
+          "nds10",
+          "nds20",
+          "nds22"
+        ],
+        "type": "string",
+        "description": "\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds20 (20%)\n\nnds22 (22%)",
+        "x-enum-varnames": [
+          "WithoutNds",
+          "Nds0",
+          "Nds5",
+          "Nds10",
+          "Nds20",
+          "Nds22"
+        ],
+        "x-enum-descriptions": [
+          "Без НДС",
+          "0%",
+          "5%",
+          "10%",
+          "20%",
+          "22%"
+        ]
+      },
+      "NewsType": {
+        "enum": [
+          "billPaymentNews"
+        ],
+        "type": "string",
+        "description": "\n\nbillPaymentNews",
+        "x-enum-varnames": [
+          "BillPaymentNews"
+        ],
+        "x-enum-descriptions": [
+          ""
+        ]
+      },
+      "Organization": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор организации",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "inn": {
+            "type": "string",
+            "description": "ИНН",
+            "nullable": true,
+            "example": "7766558001"
+          },
+          "kpp": {
+            "type": "string",
+            "description": "КПП",
+            "nullable": true,
+            "example": "776655001"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaceholderItemToCreate": {
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Наименование тега",
+            "example": "Заказ №"
+          },
+          "value": {
+            "type": "string",
+            "description": "Значение тега",
+            "example": "№111111"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlaceholderItemToRead": {
+        "required": [
+          "formatName",
+          "name",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Наименование тега",
+            "example": "НомерДокумента"
+          },
+          "formatName": {
+            "type": "string",
+            "description": "Форматированное наименование тега. <br />\r\nНапример наименование тега 'Name' = 'НомерДокумента', <br />\r\nТогда 'FormatName' = 'Номер документа'",
+            "example": "Номер документа"
+          },
+          "value": {
+            "type": "string",
+            "description": "Значение тега",
+            "example": "№111111"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Product": {
+        "required": [
+          "id",
+          "names",
+          "units"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор товара",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductName"
+            },
+            "description": "Список названий товара"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUnit"
+            },
+            "description": "Список единиц измерений товара"
+          },
+          "article": {
+            "type": "string",
+            "description": "Артикул",
+            "nullable": true,
+            "example": "1233412"
+          },
+          "comment": {
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Любой комментарий"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductName": {
+        "required": [
+          "id",
+          "isMain",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор названия товара",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "name": {
+            "type": "string",
+            "description": "Название товара",
+            "example": "Бумага"
+          },
+          "isMain": {
+            "type": "boolean",
+            "description": "Название товара является основным",
+            "example": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductNameToCreate": {
+        "required": [
+          "isMain",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название товара",
+            "example": "Бумага"
+          },
+          "isMain": {
+            "type": "boolean",
+            "description": "Название товара является основным",
+            "example": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductNameToUpdate": {
+        "required": [
+          "isMain",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор названия товара",
+            "format": "uuid",
+            "nullable": true,
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "name": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название товара",
+            "example": "Бумага"
+          },
+          "isMain": {
+            "type": "boolean",
+            "description": "Название товара является основным",
+            "example": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductType": {
+        "enum": [
+          "product",
+          "service"
+        ],
+        "type": "string",
+        "description": "\n\nproduct (Товар)\n\nservice (Услуга)",
+        "x-enum-varnames": [
+          "Product",
+          "Service"
+        ],
+        "x-enum-descriptions": [
+          "Товар",
+          "Услуга"
+        ]
+      },
+      "ProductUnit": {
+        "required": [
+          "id",
+          "isMain",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор единицы измерения",
+            "format": "uuid",
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "isMain": {
+            "type": "boolean",
+            "description": "Единица измерения является основной",
+            "example": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Название единицы измерения",
+            "example": "шт."
+          },
+          "ratio": {
+            "type": "number",
+            "description": "Соотношение единицы измерения с основной",
+            "format": "double",
+            "nullable": true,
+            "example": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductUnitToCreate": {
+        "required": [
+          "isMain",
+          "name",
+          "ratio"
+        ],
+        "type": "object",
+        "properties": {
+          "isMain": {
+            "type": "boolean",
+            "description": "Единица измерения является основной",
+            "example": true
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название единицы измерения",
+            "example": "шт."
+          },
+          "ratio": {
+            "maximum": 999999999999999,
+            "minimum": 1,
+            "type": "number",
+            "description": "Соотношение единицы измерения с основной",
+            "format": "double",
+            "example": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductUnitToUpdate": {
+        "required": [
+          "isMain",
+          "name",
+          "ratio"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Идентификатор единицы измерения",
+            "format": "uuid",
+            "nullable": true,
+            "example": "9bcc6d6f-23c0-4549-b81c-1299e2d983fe"
+          },
+          "isMain": {
+            "type": "boolean",
+            "description": "Единица измерения является основной",
+            "example": true
+          },
+          "name": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название единицы измерения",
+            "example": "шт."
+          },
+          "ratio": {
+            "type": "integer",
+            "description": "Соотношение единицы измерения с основной",
+            "format": "int32",
+            "example": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchContractorsFilter": {
+        "type": "object",
+        "properties": {
+          "inn": {
+            "maxLength": 12,
+            "minLength": 10,
+            "type": "string",
+            "description": "ИНН",
+            "nullable": true,
+            "example": "7766558001"
+          },
+          "kpp": {
+            "maxLength": 9,
+            "minLength": 9,
+            "type": "string",
+            "description": "КПП",
+            "nullable": true,
+            "example": "776655001"
+          },
+          "name": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название контрагента",
+            "nullable": true,
+            "example": "Ромашка"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchContractorsRequest": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "minimum": 0,
+            "type": "integer",
+            "description": "Позиция, начиная с которой будут вычитываться результаты поиска контрагентов. По-умолчанию - 0",
+            "format": "int32",
+            "nullable": true,
+            "example": 10
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer",
+            "description": "Количество контрагентов, которое необходимо получить при поиске. По-умолчанию - 100",
+            "format": "int32",
+            "nullable": true,
+            "example": 50
+          },
+          "filter": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SearchContractorsFilter"
+              }
+            ],
+            "description": "Фильтр поиска. Хотябы один из параметров фильтра должен быть заполнен",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchContractorsTaskResult": {
+        "required": [
+          "contractors"
+        ],
+        "type": "object",
+        "properties": {
+          "contractors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoundContractor"
+            },
+            "description": "Список найденных контрагентов"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchProductsFilter": {
+        "type": "object",
+        "properties": {
+          "productName": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Название товара",
+            "nullable": true,
+            "example": "Бумага"
+          },
+          "article": {
+            "maxLength": 900,
+            "minLength": 1,
+            "type": "string",
+            "description": "Артикул",
+            "nullable": true,
+            "example": "1233412"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchProductsRequest": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "minimum": 0,
+            "type": "integer",
+            "description": "Позиция, начиная с которой будут вычитываться результаты поиска товаров. По-умолчанию - 0",
+            "format": "int32",
+            "nullable": true,
+            "example": 10
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer",
+            "description": "Количество товаров, которое необходимо получить при поиске. По-умолчанию - 100",
+            "format": "int32",
+            "nullable": true,
+            "example": 50
+          },
+          "filter": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SearchProductsFilter"
+              }
+            ],
+            "description": "Фильтр поиска. Хотябы один из параметров фильтра должен быть заполнен",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchProductsTaskResult": {
+        "required": [
+          "products"
+        ],
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoundProduct"
+            },
+            "description": "Список найденных товаров"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TemplateDocumentType": {
+        "enum": [
+          "bill",
+          "act",
+          "contract",
+          "otherDocuments"
+        ],
+        "type": "string",
+        "description": "\n\nbill (Счет)\n\nact (Акт)\n\ncontract (Договор)\n\notherDocuments (Другой документ)",
+        "x-enum-varnames": [
+          "Bill",
+          "Act",
+          "Contract",
+          "OtherDocuments"
+        ],
+        "x-enum-descriptions": [
+          "Счет",
+          "Акт",
+          "Договор",
+          "Другой документ"
+        ]
+      },
+      "UniversalTransferDocumentItemToCreate": {
+        "required": [
+          "productName",
+          "productType",
+          "quantity",
+          "unitName"
+        ],
+        "type": "object",
+        "properties": {
+          "productName": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Наименование товара или услуги",
+            "example": "Услуга за ноябрь"
+          },
+          "productType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductType"
+              }
+            ],
+            "description": "Тип товара\n\nproduct (Товар)\n\nservice (Услуга)",
+            "example": "Service"
+          },
+          "unitName": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Единица измерения",
+            "example": "шт."
+          },
+          "quantity": {
+            "maximum": 99999999999.9999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Количество",
+            "format": "double",
+            "example": 12345679000
+          },
+          "price": {
+            "maximum": 99999999.9999999,
+            "minimum": 0,
+            "type": "number",
+            "description": "Цена за единицу товара",
+            "format": "double",
+            "nullable": true,
+            "example": 12345679
+          },
+          "ndsRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NDSRateToSave"
+              }
+            ],
+            "description": "НДС\n\nwithoutNds (Без НДС)\n\nnds0 (0%)\n\nnds5 (5%)\n\nnds10 (10%)\n\nnds20 (20%)\n\nnds22 (22%)",
+            "nullable": true,
+            "example": "WithoutNds"
+          },
+          "rnpt": {
+            "maxLength": 29,
+            "minLength": 25,
+            "type": "string",
+            "description": "РНПТ",
+            "nullable": true,
+            "example": "11111111111111111111111111111"
+          },
+          "originOfProductCountry": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string",
+            "description": "Страна происхождения товара",
+            "nullable": true,
+            "example": "Россия"
+          },
+          "discount": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number",
+            "description": "Скидка",
+            "format": "double",
+            "nullable": true,
+            "example": 12.99
+          }
+        },
+        "additionalProperties": false
+      },
+      "UniversalTransferDocumentStatus": {
+        "enum": [
+          "status1",
+          "status2"
+        ],
+        "type": "string",
+        "description": "\n\nstatus1 (Со счётом-фактурой, то есть с НДС)\n\nstatus2 (Без счёта-фактуры)",
+        "x-enum-varnames": [
+          "Status1",
+          "Status2"
+        ],
+        "x-enum-descriptions": [
+          "Со счётом-фактурой, то есть с НДС",
+          "Без счёта-фактуры"
+        ]
+      },
+      "UpdateDocumentLinkRequest": {
+        "required": [
+          "isPublished",
+          "isQrCodeEnabled",
+          "withSignatures"
+        ],
+        "type": "object",
+        "properties": {
+          "isPublished": {
+            "type": "boolean",
+            "description": "Достпность документа по ссылке",
+            "example": true
+          },
+          "withSignatures": {
+            "type": "boolean",
+            "description": "Отобразить в документе печати и подписи",
+            "example": true
+          },
+          "isQrCodeEnabled": {
+            "type": "boolean",
+            "description": "Включить/выключить оплату по qr (Только для счетов!)",
+            "example": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateProductError": {
+        "enum": [
+          "productWithSameNameExists",
+          "deletingProductNameThatUsedInDocuments",
+          "renamingProductNameThatUsedInDocuments",
+          "deletingProductUnitThatUsedInDocuments",
+          "renamingProductUnitThatUsedInDocuments"
+        ],
+        "type": "string",
+        "description": "\n\nproductWithSameNameExists (Уже есть товар с таким названием)\n\ndeletingProductNameThatUsedInDocuments (Название товара нельзя удалить, так как оно используется в документах)\n\nrenamingProductNameThatUsedInDocuments (Название товара нельзя изменить, так как оно используется в документах)\n\ndeletingProductUnitThatUsedInDocuments (Единицу измерения нельзя удалить, так как она используется в документах)\n\nrenamingProductUnitThatUsedInDocuments (Единицу измерения нельзя переименовать, так как она используется в документах)",
+        "x-enum-varnames": [
+          "ProductWithSameNameExists",
+          "DeletingProductNameThatUsedInDocuments",
+          "RenamingProductNameThatUsedInDocuments",
+          "DeletingProductUnitThatUsedInDocuments",
+          "RenamingProductUnitThatUsedInDocuments"
+        ],
+        "x-enum-descriptions": [
+          "Уже есть товар с таким названием",
+          "Название товара нельзя удалить, так как оно используется в документах",
+          "Название товара нельзя изменить, так как оно используется в документах",
+          "Единицу измерения нельзя удалить, так как она используется в документах",
+          "Единицу измерения нельзя переименовать, так как она используется в документах"
+        ]
+      },
+      "UpdateProductRequest": {
+        "required": [
+          "names",
+          "units"
+        ],
+        "type": "object",
+        "properties": {
+          "names": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductNameToUpdate"
+            },
+            "description": "Список названий"
+          },
+          "units": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUnitToUpdate"
+            },
+            "description": "Список единиц измерений"
+          },
+          "article": {
+            "maxLength": 900,
+            "minLength": 1,
+            "type": "string",
+            "description": "Артикул",
+            "nullable": true,
+            "example": "1233412"
+          },
+          "comment": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string",
+            "description": "Комментарий",
+            "nullable": true,
+            "example": "Любой комментарий"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateProductTaskResult": {
+        "type": "object",
+        "properties": {
+          "updateProductError": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UpdateProductError"
+              }
+            ],
+            "description": "Ошибка при обновлении товара\n\nproductWithSameNameExists (Уже есть товар с таким названием)\n\ndeletingProductNameThatUsedInDocuments (Название товара нельзя удалить, так как оно используется в документах)\n\nrenamingProductNameThatUsedInDocuments (Название товара нельзя изменить, так как оно используется в документах)\n\ndeletingProductUnitThatUsedInDocuments (Единицу измерения нельзя удалить, так как она используется в документах)\n\nrenamingProductUnitThatUsedInDocuments (Единицу измерения нельзя переименовать, так как она используется в документах)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
