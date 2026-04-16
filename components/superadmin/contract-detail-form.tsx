@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ContractStatusBadge, BankStatusBadge, CounterpartyTypeBadge } from '@/components/settings/contract-status-badge'
-import { ArrowLeft, Pencil, Save } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Pencil, Save, Upload, X } from 'lucide-react'
 
 interface ContractData {
   id: string
@@ -139,6 +139,9 @@ export default function ContractDetailForm({ contractId }: { contractId: string 
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!editing && contract.status === 'filled_by_client' && (
+            <PaymentVerifyButton contractId={contractId} />
+          )}
           {!editing ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Редактировать
@@ -281,5 +284,228 @@ function EditableField({
       <span className="text-xs text-gray-400">{label}:</span>{' '}
       <span className="text-sm text-gray-900">{value || '—'}</span>
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Кнопка «Загрузить платёжки» + модалка со сверкой 1С-выписки
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VerifyDiscrepancy {
+  field: string
+  label: string
+  expected: string
+  actual: string
+}
+
+interface VerifyResponse {
+  contractNumber: string
+  paymentsInStatement: number
+  paymentFound: boolean
+  matched: boolean
+  payment: {
+    number: string
+    date: string
+    amount: number
+    purpose: string
+    payer: { name: string; inn: string; kpp: string; account: string; bankBik: string }
+  } | null
+  discrepancies: VerifyDiscrepancy[]
+  warnings: string[]
+}
+
+function PaymentVerifyButton({ contractId }: { contractId: string }) {
+  const [open, setOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [result, setResult] = useState<VerifyResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
+
+  const close = () => {
+    if (uploading) return
+    setOpen(false)
+    setResult(null)
+    setError(null)
+    setFileName(null)
+  }
+
+  const upload = async (file: File) => {
+    setUploading(true)
+    setError(null)
+    setResult(null)
+    setFileName(file.name)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/superadmin/contracts/${contractId}/verify-payment`, {
+        method: 'POST',
+        body: fd,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Ошибка сверки')
+      setResult(data as VerifyResponse)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Upload className="w-3.5 h-3.5 mr-1" /> Загрузить платёжки
+      </Button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">Сверка с банковской выпиской</h3>
+              <button
+                onClick={close}
+                disabled={uploading}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                aria-label="Закрыть"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <p className="text-sm text-gray-600">
+                Загрузите файл банковской выписки в формате <strong>1С</strong> (обычно
+                <code className="bg-gray-100 px-1 rounded text-xs mx-1">.txt</code> в кодировке
+                Windows-1251). Система найдёт платёжку по номеру договора в «Назначении платежа»
+                и сверит реквизиты плательщика с заполненными в договоре.
+              </p>
+
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".txt,text/plain"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) upload(f)
+                  }}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 file:cursor-pointer"
+                />
+              </label>
+
+              {fileName && (
+                <div className="text-xs text-gray-500">
+                  Файл: <span className="font-mono">{fileName}</span>
+                </div>
+              )}
+
+              {uploading && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Обработка файла...
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div>{error}</div>
+                </div>
+              )}
+
+              {result && <VerifyResultBlock result={result} />}
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+              <Button variant="outline" size="sm" onClick={close} disabled={uploading}>
+                Закрыть
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function VerifyResultBlock({ result }: { result: VerifyResponse }) {
+  if (!result.paymentFound) {
+    return (
+      <div className="flex items-start gap-2 text-sm text-orange-800 bg-orange-50 border border-orange-200 rounded-lg p-3">
+        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+        <div>
+          В выписке не найдено платёжное поручение с упоминанием номера договора{' '}
+          <strong>{result.contractNumber}</strong> в «Назначении платежа».
+          Всего платежей в файле: {result.paymentsInStatement}.
+        </div>
+      </div>
+    )
+  }
+
+  if (result.matched) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium">Все реквизиты совпадают.</div>
+            <div className="text-xs mt-0.5">
+              Найдено платёжное поручение №{result.payment?.number} от {result.payment?.date}{' '}
+              на сумму {result.payment?.amount.toFixed(2)} ₽.
+            </div>
+          </div>
+        </div>
+        <PaymentDetails payment={result.payment!} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-2 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3">
+        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-medium">Найдены расхождения ({result.discrepancies.length}):</div>
+          <div className="text-xs mt-0.5">
+            Платёжное поручение №{result.payment?.number} от {result.payment?.date} —
+            реквизиты не полностью совпадают с договором.
+          </div>
+        </div>
+      </div>
+      <div className="border border-red-200 rounded-lg divide-y divide-red-100">
+        {result.discrepancies.map((d) => (
+          <div key={d.field} className="px-3 py-2 text-xs">
+            <div className="font-medium text-gray-700 mb-0.5">{d.label}</div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 font-mono">
+              <span className="text-gray-500">Договор:</span>
+              <span className="text-green-700 break-all">{d.expected || '(пусто)'}</span>
+              <span className="text-gray-500">Выписка:</span>
+              <span className="text-red-700 break-all">{d.actual || '(пусто)'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <PaymentDetails payment={result.payment!} />
+    </div>
+  )
+}
+
+function PaymentDetails({ payment }: { payment: NonNullable<VerifyResponse['payment']> }) {
+  return (
+    <details className="text-xs border border-gray-200 rounded-lg">
+      <summary className="px-3 py-2 cursor-pointer text-gray-600 hover:bg-gray-50">
+        Данные платёжки в выписке
+      </summary>
+      <div className="px-3 py-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono">
+        <span className="text-gray-500">№:</span><span>{payment.number}</span>
+        <span className="text-gray-500">Дата:</span><span>{payment.date}</span>
+        <span className="text-gray-500">Сумма:</span><span>{payment.amount.toFixed(2)} ₽</span>
+        <span className="text-gray-500">Плательщик:</span><span className="break-all">{payment.payer.name}</span>
+        <span className="text-gray-500">ИНН:</span><span>{payment.payer.inn}</span>
+        <span className="text-gray-500">КПП:</span><span>{payment.payer.kpp || '—'}</span>
+        <span className="text-gray-500">Р/с:</span><span>{payment.payer.account}</span>
+        <span className="text-gray-500">БИК:</span><span>{payment.payer.bankBik}</span>
+        <span className="text-gray-500">Назначение:</span><span className="break-all">{payment.purpose}</span>
+      </div>
+    </details>
   )
 }
