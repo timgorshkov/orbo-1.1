@@ -162,14 +162,25 @@ export default function ContractDetailForm({ contractId }: { contractId: string 
       {/* Contract status */}
       <Section title="Статус договора">
         {editing ? (
-          <select value={contractStatus} onChange={e => setContractStatus(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm">
-            {CONTRACT_STATUSES.map(s => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-            ))}
-          </select>
+          <>
+            <select value={contractStatus} onChange={e => setContractStatus(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm">
+              {CONTRACT_STATUSES.map(s => (
+                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              ))}
+            </select>
+            <ContractStatusLegend />
+          </>
         ) : (
-          <ContractStatusBadge status={contract.status} />
+          <div className="space-y-2">
+            <ContractStatusBadge status={contract.status} />
+            <div className="text-xs text-gray-500">
+              {contract.status === 'filled_by_client' && 'Ожидает проверки: клиент заполнил реквизиты и должен оплатить счёт на 200 ₽.'}
+              {contract.status === 'verified' && 'Реквизиты сверены, платёж получен — можно принимать оплаты через платформу. Выплаты недоступны до статуса «Заключён».'}
+              {contract.status === 'signed' && 'Бумажный договор подписан обеими сторонами — доступны и приём платежей, и вывод средств.'}
+              {contract.status === 'terminated' && 'Договор расторгнут: приём платежей и выплаты заблокированы.'}
+            </div>
+          </div>
         )}
       </Section>
 
@@ -253,6 +264,17 @@ function Section({ title, children }: { title: React.ReactNode; children: React.
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">{title}</h3>
       {children}
+    </div>
+  )
+}
+
+function ContractStatusLegend() {
+  return (
+    <div className="mt-3 text-xs text-gray-500 space-y-1">
+      <div><strong className="text-gray-700">Заполнен клиентом</strong> — ожидает проверки реквизитов и оплаты счёта.</div>
+      <div><strong className="text-gray-700">Проверен</strong> — приём оплат включён. <span className="text-orange-600">Выплаты пока недоступны.</span></div>
+      <div><strong className="text-gray-700">Заключён</strong> — бумажный договор подписан. Доступны и приём оплат, и вывод средств.</div>
+      <div><strong className="text-gray-700">Расторгнут</strong> — приём оплат и выплаты заблокированы.</div>
     </div>
   )
 }

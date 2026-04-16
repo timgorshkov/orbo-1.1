@@ -326,16 +326,31 @@ export default function FinancesContent() {
 
       {/* Withdrawal button */}
       {summary && summary.balance > 0 && (
-        <div className="flex items-center gap-3">
-          <Button onClick={handleRequestWithdrawal} disabled={requestingWithdrawal}>
-            {requestingWithdrawal ? (
-              <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Запрос...</>
-            ) : (
-              <><ArrowUpFromLine className="w-4 h-4 mr-1.5" /> Запросить вывод {summary.balance.toLocaleString('ru-RU')} ₽</>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleRequestWithdrawal}
+              disabled={requestingWithdrawal || contract?.status !== 'signed'}
+              title={
+                contract?.status !== 'signed'
+                  ? 'Вывод доступен только после подписания договора (статус «Заключён»). Сейчас вы можете принимать оплаты, но выводить средства — нет.'
+                  : undefined
+              }
+            >
+              {requestingWithdrawal ? (
+                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Запрос...</>
+              ) : (
+                <><ArrowUpFromLine className="w-4 h-4 mr-1.5" /> Запросить вывод {summary.balance.toLocaleString('ru-RU')} ₽</>
+              )}
+            </Button>
+            {withdrawalError && (
+              <p className="text-sm text-red-600">{withdrawalError}</p>
             )}
-          </Button>
-          {withdrawalError && (
-            <p className="text-sm text-red-600">{withdrawalError}</p>
+          </div>
+          {contract?.status !== 'signed' && (
+            <p className="text-xs text-gray-500">
+              Вывод средств станет доступен после подписания бумажного экземпляра договора (статус «Заключён»). Оплаты при этом продолжают приниматься.
+            </p>
           )}
         </div>
       )}

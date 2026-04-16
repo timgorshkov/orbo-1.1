@@ -59,12 +59,19 @@ export default function ContractsTable() {
       <div className="grid grid-cols-4 gap-4">
         {STATUS_FILTERS.slice(1).map(f => {
           const count = contracts.filter(c => f.value === '' || c.status === f.value).length
+          const hint =
+            f.value === 'verified'
+              ? 'Платежи принимаются'
+              : f.value === 'signed'
+                ? 'Можно выводить деньги'
+                : null
           return (
             <div key={f.value} className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="text-2xl font-bold text-gray-900">
                 {f.value === '' ? contracts.length : contracts.filter(c => c.status === f.value).length}
               </div>
               <div className="text-xs text-gray-500">{f.label}</div>
+              {hint && <div className="text-[11px] text-gray-400 mt-0.5">{hint}</div>}
             </div>
           )
         })}

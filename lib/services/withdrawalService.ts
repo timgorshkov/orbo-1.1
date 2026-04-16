@@ -111,18 +111,38 @@ export async function requestWithdrawal(params: RequestWithdrawalParams): Promis
     throw new Error(`Insufficient balance: ${balance} < ${params.amount}`)
   }
 
-  // Check for active contract
+  // Check for active contract. Выплаты разрешены только если у организации
+  // есть договор в статусе 'signed'. Если contractId передан явно — проверяем
+  // именно его; если нет — ищем любой действующий договор организации.
+  let contract: { id: string; status: string } | null = null
   if (params.contractId) {
-    const { data: contract } = await db
+    const { data } = await db
       .from('contracts')
       .select('id, status')
       .eq('id', params.contractId)
       .eq('org_id', params.orgId)
       .single()
+    contract = (data as { id: string; status: string } | null) ?? null
+  } else {
+    const { data } = await db.raw(
+      `SELECT id, status FROM contracts
+         WHERE org_id = $1 AND status IN ('filled_by_client', 'verified', 'signed')
+         ORDER BY CASE status
+                    WHEN 'signed' THEN 1
+                    WHEN 'verified' THEN 2
+                    WHEN 'filled_by_client' THEN 3
+                  END, created_at DESC
+         LIMIT 1`,
+      [params.orgId]
+    )
+    contract = (data?.[0] as { id: string; status: string } | null) ?? null
+  }
 
-    if (!contract || contract.status !== 'signed') {
-      throw new Error('Contract must be in signed status for withdrawal')
-    }
+  if (!contract) {
+    throw new Error('Contract must be in signed status for withdrawal (no active contract found)')
+  }
+  if (contract.status !== 'signed') {
+    throw new Error('Contract must be in signed status for withdrawal')
   }
 
   // Check min withdrawal amount
