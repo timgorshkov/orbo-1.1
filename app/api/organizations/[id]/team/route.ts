@@ -91,9 +91,40 @@ export async function GET(
       if (adminsError) {
         logger.warn({ error: adminsError.message }, 'Error fetching shadow admins')
       }
-      // Filter out bots (orbo_community_bot, etc.)
-      const BOT_USER_IDS = [8355772450] // orbo_community_bot
-      shadowAdmins = (admins || []).filter(a => !BOT_USER_IDS.includes(a.tg_user_id))
+      // Filter out bots. User_id бота — префикс его токена до двоеточия:
+      // токен `1234567890:ABC...` принадлежит боту с user_id=1234567890.
+      // Собираем все известные ботов из env'ов (main/registration/event/etc.)
+      // плюс дополнительный список через TELEGRAM_EXTRA_BOT_USER_IDS
+      // (comma-separated), если какие-то боты не представлены токеном.
+      const BOT_USER_IDS = new Set<string>()
+      const tokenEnvs = [
+        'TELEGRAM_BOT_TOKEN',
+        'TELEGRAM_REGISTRATION_BOT_TOKEN',
+        'TELEGRAM_EVENT_BOT_TOKEN',
+        'TELEGRAM_NOTIFICATIONS_BOT_TOKEN',
+        'TELEGRAM_ASSISTANT_BOT_TOKEN',
+      ]
+      for (const envKey of tokenEnvs) {
+        const token = process.env[envKey]
+        if (!token) continue
+        const botId = token.split(':')[0]?.trim()
+        if (botId && /^\d+$/.test(botId)) BOT_USER_IDS.add(botId)
+      }
+      const extra = (process.env.TELEGRAM_EXTRA_BOT_USER_IDS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => /^\d+$/.test(s))
+      for (const id of extra) BOT_USER_IDS.add(id)
+      // Hardcoded fallback для случаев, когда env не сконфигурирован
+      BOT_USER_IDS.add('8355772450') // orbo_community_bot
+
+      shadowAdmins = (admins || []).filter(
+        (a) => !BOT_USER_IDS.has(String(a.tg_user_id))
+      )
+      logger.debug(
+        { filtered_count: (admins || []).length - shadowAdmins.length, bots: Array.from(BOT_USER_IDS) },
+        'Shadow admins filtered by bot list'
+      )
     }
     
     // Step 3: Get participant info for these admins (for name/username)
