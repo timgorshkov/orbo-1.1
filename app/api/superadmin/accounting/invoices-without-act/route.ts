@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
        LEFT JOIN billing_plans bp ON bp.code = s.plan_code
        WHERE i.status = 'paid'
          AND i.accounting_document_id IS NULL
+         AND COALESCE(i.act_required, TRUE) = TRUE
        ORDER BY i.paid_at DESC NULLS LAST, i.created_at DESC
        LIMIT 100`,
       []

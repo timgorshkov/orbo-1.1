@@ -330,11 +330,9 @@ export default function AccountingDocumentsTable() {
               {rows.map((r) => {
                 const isRetail = r.doc_type === 'retail_act'
                 const isSubscriptionAct = r.doc_type === 'subscription_act'
-                const isIndividualCustomer = r.customer_type === 'individual'
-                // В Эльбу отправляются акты, у которых есть контрагент: ретейл (сводный ФЛ)
-                // и субскрипшн для юрлиц/ИП. Физлица в subscription_act не отправляются.
-                const elbaApplicable =
-                  isRetail || (isSubscriptionAct && !isIndividualCustomer)
+                // В Эльбу отправляются все retail_act (сводный ФЛ «Розничные покупатели»)
+                // и все subscription_act — включая физлица (ФИО+email как контрагент).
+                const elbaApplicable = isRetail || isSubscriptionAct
                 const busy = rowBusyId === r.id
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -361,7 +359,7 @@ export default function AccountingDocumentsTable() {
                     <td className="px-4 py-3 text-xs">{STATUS_LABELS[r.status] || r.status}</td>
                     <td className="px-4 py-3 text-xs">
                       {!elbaApplicable ? (
-                        <span className="text-gray-400" title={isSubscriptionAct && isIndividualCustomer ? 'Физлицу акт в Эльбу не отправляется' : undefined}>—</span>
+                        <span className="text-gray-400">—</span>
                       ) : r.elba_sync_status === 'synced' ? (
                         <span className="inline-flex items-center gap-1 text-green-700">
                           <CheckCircle2 className="h-3.5 w-3.5" /> В Эльбе

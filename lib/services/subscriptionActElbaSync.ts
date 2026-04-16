@@ -99,21 +99,8 @@ export async function sendSubscriptionActToElba(
     }
   }
 
-  // Физлицам АЛ не выставляется — в норме sendToElba для них не вызывается,
-  // но страхуемся от некорректных записей в БД.
-  if (doc.customer_type === 'individual') {
-    logger.warn(
-      { doc_id: documentId, doc_number: doc.doc_number },
-      'Attempt to send individual АЛ to Elba skipped (should not have been created)'
-    )
-    return {
-      status: 'failed',
-      elbaDocumentId: null,
-      elbaUrl: null,
-      error: 'Individual customer: АЛ не должен отправляться в Эльбу',
-    }
-  }
-
+  // АЛ отправляется для всех типов покупателей (вариант А): физлица — контрагент
+  // без ИНН по ФИО+email лицензиата; юрлица/ИП — контрагент с ИНН/КПП.
   const cr = doc.customer_requisites || {}
   const snapshot = {
     name: String(cr.name || '').trim(),
