@@ -306,26 +306,34 @@ function getInvitationTemplate(inviteLink: string, orgName: string, invitedBy: s
   <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
     <h1 style="color: white; margin: 0; font-size: 28px;">Orbo</h1>
   </div>
-  
+
   <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
     <h2 style="color: #1f2937; margin-top: 0; margin-bottom: 20px;">Приглашение в команду</h2>
-    
+
     <p style="font-size: 16px; margin-bottom: 20px;">
-      <strong>${invitedBy}</strong> пригласил вас стать администратором в организации <strong>${orgName}</strong>.
+      <strong>${invitedBy}</strong> приглашает вас стать администратором в организации <strong>${orgName}</strong> на платформе Orbo.
     </p>
-    
+
     <div style="text-align: center; margin: 40px 0;">
       <a href="${inviteLink}" style="display: inline-block; background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
         Принять приглашение
       </a>
     </div>
-    
+
+    <div style="background: #f3f4f6; border-radius: 8px; padding: 16px 20px; margin: 30px 0; font-size: 14px; color: #374151;">
+      <p style="margin: 0 0 8px 0;"><strong>Как это работает:</strong></p>
+      <ul style="margin: 0; padding-left: 20px;">
+        <li>Если у вас <strong>уже есть аккаунт Orbo</strong> на этот email — нажмите кнопку и войдите. Приглашение применится автоматически.</li>
+        <li>Если аккаунта ещё нет — по той же ссылке вы зарегистрируетесь и сразу попадёте в команду.</li>
+      </ul>
+    </div>
+
     <p style="font-size: 13px; color: #9ca3af; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
       Ссылка действительна в течение 7 дней.<br>
       <a href="${inviteLink}" style="color: #667eea; word-break: break-all;">${inviteLink}</a>
     </p>
   </div>
-  
+
   <div style="text-align: center; margin-top: 30px; padding: 20px; color: #9ca3af; font-size: 12px;">
     <p style="margin: 5px 0;">Orbo — CRM участников и событий для Telegram-сообществ</p>
     <p style="margin: 5px 0;"><a href="https://orbo.ru" style="color: #9ca3af;">orbo.ru</a></p>

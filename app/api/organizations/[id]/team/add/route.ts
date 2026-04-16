@@ -90,6 +90,19 @@ export async function POST(
           })
           .eq('id', existingMembership.id)
 
+        // Закрываем «висящие» pending-приглашения на этот email для этой org:
+        // пользователь уже фактически в команде, приглашение сыграло свою роль.
+        // Без этого UI показывает лишние pending и счётчик admin не совпадает.
+        await adminSupabase.raw(
+          `UPDATE invitations
+              SET status = 'accepted',
+                  accepted_at = NOW()
+            WHERE org_id = $1
+              AND LOWER(email) = LOWER($2)
+              AND status = 'pending'`,
+          [orgId, email]
+        )
+
         logAdminAction({
           orgId: orgId!,
           userId: user.id,
@@ -120,6 +133,18 @@ export async function POST(
           }
         })
 
+      // Закрываем «висящие» pending-приглашения на этот email для этой org —
+      // см. комментарий выше в ветке promote.
+      await adminSupabase.raw(
+        `UPDATE invitations
+            SET status = 'accepted',
+                accepted_at = NOW()
+          WHERE org_id = $1
+            AND LOWER(email) = LOWER($2)
+            AND status = 'pending'`,
+        [orgId, email]
+      )
+
       // Отправляем уведомление новому админу (через новый email провайдер)
       const { sendEmail } = await import('@/lib/services/email')
       
@@ -133,15 +158,35 @@ export async function POST(
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
       const orgName = org?.name || 'организации'
       
+      const signInUrl = `${appUrl}/signin?email=${encodeURIComponent(existingUser.email!)}`
       try {
         await sendEmail({
           to: existingUser.email!,
           subject: `Вы добавлены в команду ${orgName}`,
           html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2>Добро пожаловать в команду! 🎉</h2>
-              <p>Вы добавлены в команду организации <strong>${orgName}</strong> с правами администратора.</p>
-              <p><a href="${appUrl}/orgs" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Перейти в Orbo</a></p>
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">Orbo</h1>
+              </div>
+              <div style="background: #ffffff; padding: 32px 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
+                <h2 style="color: #1f2937; margin-top: 0;">Добро пожаловать в команду!</h2>
+                <p style="font-size: 16px;">
+                  Вас добавили в команду организации <strong>${orgName}</strong> как администратора.
+                </p>
+                <p style="font-size: 15px; background: #f3f4f6; border-radius: 8px; padding: 12px 16px; margin: 20px 0;">
+                  <strong>Важно:</strong> у вас уже есть аккаунт в Orbo с этим email.
+                  Регистрироваться заново не нужно — просто войдите.
+                </p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${signInUrl}" style="display: inline-block; background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600;">Войти в Orbo</a>
+                </div>
+                <p style="font-size: 13px; color: #6b7280;">
+                  После входа организация <strong>${orgName}</strong> появится в списке на <a href="${appUrl}/orgs" style="color: #667eea;">${appUrl}/orgs</a>.
+                </p>
+                <p style="font-size: 12px; color: #9ca3af; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                  Ссылка на вход: <a href="${signInUrl}" style="color: #667eea; word-break: break-all;">${signInUrl}</a>
+                </p>
+              </div>
             </div>
           `
         })
