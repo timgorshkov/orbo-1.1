@@ -27,6 +27,11 @@ const RetailActPanel = dynamic(
   }
 )
 
+const InvoicesWithoutActPanel = dynamic(
+  () => import('@/components/superadmin/invoices-without-act-panel'),
+  { ssr: false, loading: () => null }
+)
+
 export default function SuperadminAccountingPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   return (
@@ -40,6 +45,7 @@ export default function SuperadminAccountingPage() {
         </p>
       </div>
       <RetailActPanel onGenerated={() => setRefreshKey((k) => k + 1)} />
+      <InvoicesWithoutActPanel onRegenerated={() => setRefreshKey((k) => k + 1)} />
       <AccountingDocumentsTable key={refreshKey} />
     </div>
   )
