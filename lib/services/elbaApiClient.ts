@@ -241,7 +241,7 @@ async function request<T>(
 // ─── Public endpoints ───────────────────────────────────────────────
 
 /**
- * GET /v{version}/organizations — список организаций, доступных по ключу.
+ * GET /{version}/organizations — список организаций, доступных по ключу.
  */
 export async function listOrganizations(
   params: { offset?: number; limit?: number } = {}
@@ -250,11 +250,11 @@ export async function listOrganizations(
   if (typeof params.offset === 'number') qs.set('offset', String(params.offset))
   if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  return request<ElbaOrganizationsList>('GET', `/v{version}/organizations${suffix}`)
+  return request<ElbaOrganizationsList>('GET', `/{version}/organizations${suffix}`)
 }
 
 /**
- * POST /v{version}/organizations/{organizationId}/contractors — создать контрагента.
+ * POST /{version}/organizations/{organizationId}/contractors — создать контрагента.
  * Для «Розничные покупатели» достаточно только `name` (ИНН/КПП можно опустить).
  */
 export async function createContractor(
@@ -263,13 +263,13 @@ export async function createContractor(
 ): Promise<ElbaCreateContractorResponse> {
   return request<ElbaCreateContractorResponse>(
     'POST',
-    `/v{version}/organizations/${encodeURIComponent(organizationId)}/contractors`,
+    `/{version}/organizations/${encodeURIComponent(organizationId)}/contractors`,
     payload
   )
 }
 
 /**
- * POST /v{version}/organizations/{organizationId}/acts — создать акт об оказании услуг.
+ * POST /{version}/organizations/{organizationId}/acts — создать акт об оказании услуг.
  * Возвращает UUID документа в Эльбе.
  */
 export async function createAct(
@@ -278,13 +278,13 @@ export async function createAct(
 ): Promise<ElbaCreateActResponse> {
   return request<ElbaCreateActResponse>(
     'POST',
-    `/v{version}/organizations/${encodeURIComponent(organizationId)}/acts`,
+    `/{version}/organizations/${encodeURIComponent(organizationId)}/acts`,
     payload
   )
 }
 
 /**
- * POST /v{version}/organizations/{organizationId}/document-links — создать
+ * POST /{version}/organizations/{organizationId}/document-links — создать
  * публичную ссылку на документ в Эльбе (HTML-просмотр, PDF-печать).
  */
 export async function createDocumentLink(
@@ -293,7 +293,7 @@ export async function createDocumentLink(
 ): Promise<ElbaCreateDocumentLinkResponse> {
   return request<ElbaCreateDocumentLinkResponse>(
     'POST',
-    `/v{version}/organizations/${encodeURIComponent(organizationId)}/document-links`,
+    `/{version}/organizations/${encodeURIComponent(organizationId)}/document-links`,
     payload
   )
 }
