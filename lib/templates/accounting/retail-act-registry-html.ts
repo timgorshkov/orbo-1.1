@@ -11,6 +11,8 @@
 
 import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
 
+export type RetailActRegistryFeeType = 'base' | 'full' | 'unknown'
+
 export interface RetailActRegistryPayment {
   income_id: string
   payment_session_id: string | null
@@ -21,6 +23,10 @@ export interface RetailActRegistryPayment {
   org_name: string | null
   amount: number
   created_at: string
+  /** Тип сервисного сбора: 'base' = 5% (юрлица), 'full' = 10% (физлица). */
+  fee_type: RetailActRegistryFeeType
+  /** Ставка-снэпшот на момент оплаты (0.05, 0.10 и т.п.). null для исторических записей. */
+  fee_rate: number | null
 }
 
 export interface RetailActRegistryTemplateData {
@@ -58,6 +64,12 @@ function formatDateTime(iso?: string | null): string {
   })
 }
 
+function feeTypeRegistryLabel(feeType: RetailActRegistryFeeType): string {
+  if (feeType === 'base') return 'базовый (5%)'
+  if (feeType === 'full') return 'полный (10%)'
+  return '—'
+}
+
 function escapeHtml(s: string | number | null | undefined): string {
   if (s === null || s === undefined) return ''
   return String(s)
@@ -90,6 +102,7 @@ export function buildRetailActRegistryHtml(data: RetailActRegistryTemplateData):
         <td>${escapeHtml(formatDateTime(p.created_at))}</td>
         <td>${escapeHtml(p.event_title || '—')}</td>
         <td>${escapeHtml(p.org_name || '—')}</td>
+        <td class="center">${escapeHtml(feeTypeRegistryLabel(p.fee_type))}</td>
         <td class="mono">${escapeHtml(shortSession)}</td>
         <td class="mono">${escapeHtml(shortRegistration)}</td>
         <td class="amount-cell">${formatMoney(p.amount)}</td>
@@ -191,6 +204,7 @@ export function buildRetailActRegistryHtml(data: RetailActRegistryTemplateData):
         <th style="width: 130px;">Дата и время оплаты</th>
         <th>Мероприятие</th>
         <th style="width: 180px;">Организатор</th>
+        <th style="width: 110px;">Тип сбора</th>
         <th style="width: 90px;">Сессия</th>
         <th style="width: 90px;">Регистрация</th>
         <th style="width: 110px;">Сумма сбора, ₽</th>
@@ -199,7 +213,7 @@ export function buildRetailActRegistryHtml(data: RetailActRegistryTemplateData):
     <tbody>
       ${rowsHtml}
       <tr class="total-row">
-        <td colspan="6">Итого</td>
+        <td colspan="7">Итого</td>
         <td class="amount-cell">${formatMoney(totalAmount)}</td>
       </tr>
     </tbody>

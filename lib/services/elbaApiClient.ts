@@ -146,6 +146,32 @@ export class ElbaApiError extends Error {
   }
 }
 
+/**
+ * Собирает человекочитаемое сообщение об ошибке из тела ответа Эльбы.
+ * Эльба возвращает код в `error.code` (например, `BadRequest`), а подробности —
+ * в `error.details[]`, поэтому берём самый конкретный доступный текст.
+ */
+function formatElbaErrorMessage(
+  errBody: ElbaApiErrorBody | null,
+  parsed: unknown,
+  status: number
+): string {
+  if (errBody?.error) {
+    const parts: string[] = []
+    if (errBody.error.message) parts.push(errBody.error.message)
+    if (errBody.error.details && errBody.error.details.length > 0) {
+      for (const d of errBody.error.details) {
+        const detailText = d.message || d.code
+        if (detailText) parts.push(d.target ? `${d.target}: ${detailText}` : detailText)
+      }
+    }
+    if (parts.length === 0 && errBody.error.code) parts.push(errBody.error.code)
+    if (parts.length > 0) return parts.join('; ')
+  }
+  if (typeof parsed === 'string' && parsed.trim()) return parsed
+  return `Elba API ${status}`
+}
+
 // ─── HTTP core ──────────────────────────────────────────────────────
 
 async function request<T>(
@@ -213,10 +239,7 @@ async function request<T>(
     const errBody = (parsed && typeof parsed === 'object' ? (parsed as ElbaApiErrorBody) : null) as
       | ElbaApiErrorBody
       | null
-    const msg =
-      errBody?.error?.message ||
-      errBody?.error?.code ||
-      (typeof parsed === 'string' ? parsed : `Elba API ${res.status}`)
+    const msg = formatElbaErrorMessage(errBody, parsed, res.status)
     logger.error(
       {
         status: res.status,
@@ -224,6 +247,7 @@ async function request<T>(
         path: resolvedPath,
         traceId: errBody?.traceId || traceId,
         error: msg,
+        body: parsed,
       },
       'Elba API error response'
     )

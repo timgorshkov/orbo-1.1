@@ -44,11 +44,19 @@ export async function GET(
     }
 
     const body = new Uint8Array(archive.buffer)
+    // HTTP-заголовки принимают только ByteString (0–255), поэтому кириллицу
+    // в имени файла передаём через RFC 5987 `filename*=UTF-8''...`. ASCII-вариант —
+    // фолбэк для старых клиентов: заменяем все не-ASCII символы на `_`.
+    const asciiFallback = archive.filename.replace(/[^\x20-\x7E]/g, '_')
+    const encoded = encodeURIComponent(archive.filename)
+    const contentDisposition =
+      `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`
+
     return new NextResponse(body, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${archive.filename}"`,
+        'Content-Disposition': contentDisposition,
         'Cache-Control': 'no-store',
       },
     })

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Download, Loader2, Play, RefreshCw, XCircle } from 'lucide-react'
 
+type FeeType = 'base' | 'full' | 'unknown'
+
 interface EventLine {
   eventId: string | null
   eventTitle: string
@@ -10,6 +12,7 @@ interface EventLine {
   paymentsCount: number
   totalAmount: number
   paymentIds: string[]
+  feeType: FeeType
 }
 
 interface PaymentDetail {
@@ -22,6 +25,14 @@ interface PaymentDetail {
   event_title: string | null
   org_id: string
   org_name: string | null
+  fee_rate: number | null
+  fee_type: FeeType
+}
+
+function feeTypeLabel(feeType: FeeType): string {
+  if (feeType === 'base') return 'базовый 5%'
+  if (feeType === 'full') return 'полный 10%'
+  return '—'
 }
 
 interface PreviewResponse {
@@ -412,15 +423,17 @@ export default function RetailActPanel({ onGenerated }: { onGenerated?: () => vo
                     <tr>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Мероприятие</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">Организатор</th>
+                      <th className="px-4 py-2 text-center font-medium text-gray-700">Тип сбора</th>
                       <th className="px-4 py-2 text-center font-medium text-gray-700">Оплат</th>
                       <th className="px-4 py-2 text-right font-medium text-gray-700">Сумма, ₽</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {preview.lines.map((line, idx) => (
-                      <tr key={`${line.eventId || 'no_event'}-${idx}`} className="hover:bg-gray-50">
+                      <tr key={`${line.eventId || 'no_event'}-${line.feeType}-${idx}`} className="hover:bg-gray-50">
                         <td className="px-4 py-2">{line.eventTitle}</td>
                         <td className="px-4 py-2 text-xs text-gray-600">{line.orgName || '—'}</td>
+                        <td className="px-4 py-2 text-center text-xs text-gray-700">{feeTypeLabel(line.feeType)}</td>
                         <td className="px-4 py-2 text-center">{line.paymentsCount}</td>
                         <td className="px-4 py-2 text-right font-medium">
                           {formatMoney(line.totalAmount)}
@@ -442,6 +455,7 @@ export default function RetailActPanel({ onGenerated }: { onGenerated?: () => vo
                         <th className="px-4 py-2 text-left font-medium text-gray-700">Дата/время</th>
                         <th className="px-4 py-2 text-left font-medium text-gray-700">Мероприятие</th>
                         <th className="px-4 py-2 text-left font-medium text-gray-700">Организатор</th>
+                        <th className="px-4 py-2 text-center font-medium text-gray-700">Тип сбора</th>
                         <th className="px-4 py-2 text-right font-medium text-gray-700">Сумма, ₽</th>
                         <th className="px-4 py-2 text-left font-medium text-gray-700">Session</th>
                       </tr>
@@ -454,6 +468,7 @@ export default function RetailActPanel({ onGenerated }: { onGenerated?: () => vo
                           </td>
                           <td className="px-4 py-1.5">{p.event_title || '—'}</td>
                           <td className="px-4 py-1.5 text-gray-600">{p.org_name || '—'}</td>
+                          <td className="px-4 py-1.5 text-center text-[11px] text-gray-600">{feeTypeLabel(p.fee_type)}</td>
                           <td className="px-4 py-1.5 text-right font-medium">
                             {formatMoney(p.amount)}
                           </td>

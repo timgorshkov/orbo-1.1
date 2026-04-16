@@ -12,6 +12,8 @@
 
 import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
 
+export type RetailActFeeType = 'base' | 'full' | 'unknown'
+
 export interface RetailActLine {
   eventId: string | null
   eventTitle: string
@@ -19,6 +21,8 @@ export interface RetailActLine {
   paymentsCount: number
   totalAmount: number
   paymentIds: string[]
+  /** Тип сервисного сбора: 'base' = 5% (юрлица), 'full' = 10% (физлица). */
+  feeType: RetailActFeeType
 }
 
 export interface RetailActTemplateData {
@@ -55,6 +59,12 @@ function amountToWords(amount: number): string {
   return `${formatMoney(amount)} (${rubles} рублей ${kopecks.toString().padStart(2, '0')} копеек)`
 }
 
+function feeTypeLabelForTemplate(feeType: RetailActFeeType): string {
+  if (feeType === 'base') return 'базовый (5%) '
+  if (feeType === 'full') return 'полный (10%) '
+  return ''
+}
+
 function escapeHtml(s: string | number | null | undefined): string {
   if (s === null || s === undefined) return ''
   return String(s)
@@ -75,7 +85,8 @@ export function buildRetailActHtml(data: RetailActTemplateData): string {
 
   const rowsHtml = lines
     .map((line, idx) => {
-      const name = `Сервисный сбор за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.orgName ? ` (организатор: ${line.orgName})` : ''}`
+      const feeLabel = feeTypeLabelForTemplate(line.feeType)
+      const name = `Сервисный сбор ${feeLabel}за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.orgName ? ` (организатор: ${line.orgName})` : ''}`
       return `
       <tr>
         <td>${idx + 1}</td>

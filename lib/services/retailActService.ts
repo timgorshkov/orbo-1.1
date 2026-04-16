@@ -66,6 +66,8 @@ export const RETAIL_CUSTOMER_SNAPSHOT = {
 
 // ─── Types ──────────────────────────────────────────────────────────
 
+export type RetailActFeeType = 'base' | 'full' | 'unknown'
+
 export interface RetailActPaymentDetail {
   income_id: string
   payment_session_id: string | null
@@ -76,6 +78,10 @@ export interface RetailActPaymentDetail {
   event_title: string | null
   org_id: string
   org_name: string | null
+  /** Ставка сервисного сбора на момент оплаты (0.05, 0.10 и т.п.). null для исторических записей без snapshot. */
+  fee_rate: number | null
+  /** Тип сбора по ставке: базовый (5%), полный (10%), unknown для редких случаев. */
+  fee_type: RetailActFeeType
 }
 
 export interface RetailActPreview {
@@ -148,11 +154,13 @@ async function loadPayments(
        er.event_id,
        e.title AS event_title,
        pi.org_id,
-       o.name AS org_name
+       o.name AS org_name,
+       ps.service_fee_rate::numeric AS fee_rate
      FROM platform_income pi
      LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
      LEFT JOIN events e ON e.id = er.event_id
      LEFT JOIN organizations o ON o.id = pi.org_id
+     LEFT JOIN payment_sessions ps ON ps.id = pi.payment_session_id
      WHERE pi.income_type = 'service_fee'
        AND COALESCE((pi.metadata->>'is_test')::boolean, false) = false
        AND pi.created_at >= $1::date
@@ -161,24 +169,50 @@ async function loadPayments(
     [periodStart, periodEnd]
   )
   if (error) throw new Error(`Failed to load service fee payments: ${error.message}`)
-  return (data || []).map((r: any) => ({
-    income_id: r.income_id,
-    payment_session_id: r.payment_session_id,
-    event_registration_id: r.event_registration_id,
-    amount: parseFloat(r.amount),
-    created_at: r.created_at,
-    event_id: r.event_id,
-    event_title: r.event_title,
-    org_id: r.org_id,
-    org_name: r.org_name,
-  }))
+  return (data || []).map((r: any) => {
+    const rate = r.fee_rate != null ? parseFloat(r.fee_rate) : null
+    return {
+      income_id: r.income_id,
+      payment_session_id: r.payment_session_id,
+      event_registration_id: r.event_registration_id,
+      amount: parseFloat(r.amount),
+      created_at: r.created_at,
+      event_id: r.event_id,
+      event_title: r.event_title,
+      org_id: r.org_id,
+      org_name: r.org_name,
+      fee_rate: rate,
+      fee_type: classifyFeeType(rate),
+    }
+  })
+}
+
+/**
+ * Классификация сервисного сбора по ставке-снэпшоту в payment_sessions.
+ * 0.05 (5%) → базовый (юрлица/ИП-организаторы, с них же удерживается агентское).
+ * 0.10 (10%) → полный (физлица-организаторы, без агентского вознаграждения).
+ * Все остальные значения и null — помечаем как unknown.
+ */
+function classifyFeeType(rate: number | null): RetailActFeeType {
+  if (rate == null || isNaN(rate)) return 'unknown'
+  if (Math.abs(rate - 0.05) < 1e-6) return 'base'
+  if (Math.abs(rate - 0.1) < 1e-6) return 'full'
+  return 'unknown'
+}
+
+function feeTypeLabel(feeType: RetailActFeeType): string {
+  if (feeType === 'base') return 'базовый (5%)'
+  if (feeType === 'full') return 'полный (10%)'
+  return ''
 }
 
 function groupPaymentsByEvent(payments: RetailActPaymentDetail[]): RetailActLine[] {
   const map = new Map<string, RetailActLine>()
 
   for (const p of payments) {
-    const key = p.event_id || 'no_event'
+    // Группируем по event_id + fee_type — чтобы платежи разных ставок (5% и 10%)
+    // попадали в отдельные позиции акта даже в рамках одного мероприятия.
+    const key = `${p.event_id || 'no_event'}__${p.fee_type}`
     const title =
       p.event_title ||
       (p.event_id
@@ -198,6 +232,7 @@ function groupPaymentsByEvent(payments: RetailActPaymentDetail[]): RetailActLine
         paymentsCount: 1,
         totalAmount: p.amount,
         paymentIds: [p.income_id],
+        feeType: p.fee_type,
       })
     }
   }
@@ -206,18 +241,23 @@ function groupPaymentsByEvent(payments: RetailActPaymentDetail[]): RetailActLine
 }
 
 function buildDbLines(lines: RetailActLine[]) {
-  return lines.map((line) => ({
-    name: `Сервисный сбор за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} шт.)` : ''}`,
-    unit: 'усл. ед.',
-    unit_code: '796',
-    quantity: 1,
-    price: line.totalAmount,
-    sum: line.totalAmount,
-    vat_rate: 'Без НДС',
-    event_id: line.eventId,
-    event_title: line.eventTitle,
-    payments_count: line.paymentsCount,
-  }))
+  return lines.map((line) => {
+    const feeLabel = feeTypeLabel(line.feeType)
+    const namePrefix = feeLabel ? `Сервисный сбор ${feeLabel}` : 'Сервисный сбор'
+    return {
+      name: `${namePrefix} за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} шт.)` : ''}`,
+      unit: 'усл. ед.',
+      unit_code: '796',
+      quantity: 1,
+      price: line.totalAmount,
+      sum: line.totalAmount,
+      vat_rate: 'Без НДС',
+      event_id: line.eventId,
+      event_title: line.eventTitle,
+      payments_count: line.paymentsCount,
+      fee_type: line.feeType,
+    }
+  })
 }
 
 /**
@@ -226,16 +266,22 @@ function buildDbLines(lines: RetailActLine[]) {
  * единица — «шт.» (Эльба принимает любую строку unitName).
  */
 function buildElbaItems(lines: RetailActLine[]): ElbaActItem[] {
-  return lines.map((line) => ({
-    productName: truncate(
-      `Сервисный сбор Orbo: «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} опл.)` : ''}${line.orgName ? ` / ${line.orgName}` : ''}`,
-      2000
-    ),
-    quantity: 1,
-    unitName: 'шт.',
-    price: round2(line.totalAmount),
-    ndsRate: 'withoutNds',
-  }))
+  return lines.map((line) => {
+    const feeLabel = feeTypeLabel(line.feeType)
+    const namePrefix = feeLabel ? `Сервисный сбор Orbo ${feeLabel}` : 'Сервисный сбор Orbo'
+    return {
+      productName: truncate(
+        `${namePrefix}: «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} опл.)` : ''}${line.orgName ? ` / ${line.orgName}` : ''}`,
+        2000
+      ),
+      quantity: 1,
+      unitName: 'шт.',
+      price: round2(line.totalAmount),
+      // Важно: Эльба требует ndsRate === null для акта с withNDS=false.
+      // Иначе возвращает 400 «Для акта без НДС поле ActItemToCreate.NDSRate должно принимать значение null».
+      ndsRate: null,
+    }
+  })
 }
 
 function truncate(s: string, maxLen: number): string {
@@ -380,6 +426,8 @@ export async function generateRetailAct(
       org_name: p.org_name,
       amount: p.amount,
       created_at: p.created_at,
+      fee_rate: p.fee_rate,
+      fee_type: p.fee_type,
     })),
   }
 
@@ -556,8 +604,13 @@ export async function resendActToElba(documentId: string): Promise<SendActToElba
 
 async function loadPreviewFromDocument(doc: RetailActDocument): Promise<RetailActPreview> {
   const payments = doc.metadata?.payments || []
-  const lines = groupPaymentsByEvent(
-    payments.map((p) => ({
+  const rehydrated: RetailActPaymentDetail[] = payments.map((p) => {
+    // Для исторических записей (до разделения на base/full) — классифицируем
+    // по rate; если rate нет, остаётся unknown.
+    const rate = (p as any).fee_rate != null ? Number((p as any).fee_rate) : null
+    const feeType: RetailActFeeType =
+      (p as any).fee_type ?? classifyFeeType(rate)
+    return {
       income_id: p.income_id,
       payment_session_id: p.payment_session_id,
       event_registration_id: p.event_registration_id,
@@ -567,8 +620,11 @@ async function loadPreviewFromDocument(doc: RetailActDocument): Promise<RetailAc
       event_title: p.event_title,
       org_id: p.org_id || '',
       org_name: p.org_name,
-    }))
-  )
+      fee_rate: rate,
+      fee_type: feeType,
+    }
+  })
+  const lines = groupPaymentsByEvent(rehydrated)
   return {
     periodStart: doc.period_start,
     periodEnd: doc.period_end,
@@ -576,17 +632,7 @@ async function loadPreviewFromDocument(doc: RetailActDocument): Promise<RetailAc
     paymentsCount: doc.metadata?.payments_count || payments.length,
     eventsCount: doc.metadata?.events_count || lines.length,
     lines,
-    payments: payments.map((p) => ({
-      income_id: p.income_id,
-      payment_session_id: p.payment_session_id,
-      event_registration_id: p.event_registration_id,
-      amount: p.amount,
-      created_at: p.created_at,
-      event_id: p.event_id,
-      event_title: p.event_title,
-      org_id: p.org_id || '',
-      org_name: p.org_name,
-    })),
+    payments: rehydrated,
   }
 }
 
@@ -671,6 +717,8 @@ export async function buildActArchive(
       org_name: p.org_name,
       amount: p.amount,
       created_at: p.created_at,
+      fee_rate: p.fee_rate,
+      fee_type: p.fee_type,
     })),
   })
 
