@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { validateInitData } from '@/lib/telegram/webAppAuth'
+import { validateInitDataWithReason } from '@/lib/telegram/webAppAuth'
 import { createAPILogger } from '@/lib/logger'
 
 const supabaseAdmin = createAdminServer()
@@ -19,20 +19,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing initData' }, { status: 400 })
     }
 
-    // Validate against registration bot token first, fall back to community bot
+    // Validate against registration bot token first, fall back to community bot.
+    // Шумим в логах только если обе попытки провалились.
     const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
     const communityBotToken = process.env.TELEGRAM_BOT_TOKEN!
 
-    let parsed = regBotToken ? validateInitData(initDataString, regBotToken) : null
-    if (!parsed) {
-      parsed = validateInitData(initDataString, communityBotToken)
-    }
+    const regResult = regBotToken
+      ? validateInitDataWithReason(initDataString, regBotToken)
+      : { ok: false as const, reason: 'empty' as const }
+    const result = regResult.ok
+      ? regResult
+      : validateInitDataWithReason(initDataString, communityBotToken)
 
-    if (!parsed?.user) {
+    if (!result.ok || !result.data?.user) {
+      logger.warn(
+        {
+          reg_reason: regResult.reason,
+          community_reason: result.reason,
+          init_data_len: initDataString.length,
+          meta: result.meta,
+          reg_bot_configured: !!regBotToken,
+        },
+        'TG registration/check: initData validation failed for both bots'
+      )
       return NextResponse.json({ error: 'Invalid initData' }, { status: 401 })
     }
 
-    const tgUserId = parsed.user.id
+    const parsed = result.data
+    const tgUserId = parsed.user!.id
+    const botUsed = regResult.ok ? 'registration' : 'community'
 
     // Check both auth sources:
     // 1) accounts table: users who registered via Telegram MiniApp
@@ -96,7 +111,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    logger.info({ tg_user_id: tgUserId }, 'New TG user – no existing account')
+    logger.info(
+      { tg_user_id: tgUserId, bot: botUsed },
+      'New TG user – no existing account'
+    )
 
     return NextResponse.json({ exists: false })
   } catch (error) {

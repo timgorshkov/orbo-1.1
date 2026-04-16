@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { validateInitData } from '@/lib/telegram/webAppAuth'
+import { validateInitDataWithReason } from '@/lib/telegram/webAppAuth'
 import { createAPILogger } from '@/lib/logger'
 import { encode } from 'next-auth/jwt'
 import crypto from 'crypto'
@@ -29,20 +29,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Некорректный email' }, { status: 400 })
     }
 
-    // Validate initData
+    // Validate initData. Шумим в логах только если обе попытки провалились.
     const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
     const communityBotToken = process.env.TELEGRAM_BOT_TOKEN!
 
-    let parsed = regBotToken ? validateInitData(initDataString, regBotToken) : null
-    if (!parsed) {
-      parsed = validateInitData(initDataString, communityBotToken)
-    }
+    const regResult = regBotToken
+      ? validateInitDataWithReason(initDataString, regBotToken)
+      : { ok: false as const, reason: 'empty' as const }
+    const result = regResult.ok
+      ? regResult
+      : validateInitDataWithReason(initDataString, communityBotToken)
 
-    if (!parsed?.user) {
+    if (!result.ok || !result.data?.user) {
+      logger.warn(
+        {
+          reg_reason: regResult.reason,
+          community_reason: result.reason,
+          init_data_len: initDataString.length,
+          meta: result.meta,
+          reg_bot_configured: !!regBotToken,
+        },
+        'TG registration/create: initData validation failed for both bots'
+      )
       return NextResponse.json({ error: 'Ошибка авторизации Telegram' }, { status: 401 })
     }
 
-    const tgUser = parsed.user
+    const parsed = result.data
+
+    const tgUser = parsed.user!
     const tgUserId = tgUser.id
     const fullName = `${tgUser.first_name}${tgUser.last_name ? ' ' + tgUser.last_name : ''}`
 

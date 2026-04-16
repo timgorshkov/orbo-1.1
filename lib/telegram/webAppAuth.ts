@@ -39,83 +39,124 @@ export function parseInitData(initDataString: string): Record<string, string> {
   return result;
 }
 
+export type InitDataFailReason =
+  | 'empty'
+  | 'no_hash'
+  | 'expired'
+  | 'hash_mismatch'
+  | 'bad_user_json'
+  | 'exception';
+
+export interface InitDataValidationResult {
+  ok: boolean;
+  data?: TelegramWebAppInitData;
+  reason?: InitDataFailReason;
+  /** Короткие поля для диагностики — не содержат секретов. */
+  meta?: {
+    received_hash_prefix?: string;
+    calculated_hash_prefix?: string;
+    auth_date_diff_sec?: number;
+    param_keys?: string[];
+  };
+}
+
 /**
- * Validate Telegram WebApp initData
- * Returns parsed data if valid, null if invalid
+ * Verbose version: возвращает причину отказа, пригодную для логирования
+ * на уровне вызывающего роута. Сама функция тихая — не пишет в console,
+ * чтобы не шуметь при штатном fallback между несколькими токенами ботов.
+ */
+export function validateInitDataWithReason(
+  initDataString: string,
+  botToken: string
+): InitDataValidationResult {
+  try {
+    if (!initDataString) {
+      return { ok: false, reason: 'empty' };
+    }
+
+    const params = parseInitData(initDataString);
+    const paramKeys = Object.keys(params).sort();
+    const hash = params.hash;
+
+    if (!hash) {
+      return { ok: false, reason: 'no_hash', meta: { param_keys: paramKeys } };
+    }
+
+    const authDate = parseInt(params.auth_date);
+    const now = Math.floor(Date.now() / 1000);
+    const maxAge = 24 * 60 * 60; // 24 часа
+    const diff = now - authDate;
+
+    if (diff > maxAge) {
+      return {
+        ok: false,
+        reason: 'expired',
+        meta: { auth_date_diff_sec: diff },
+      };
+    }
+
+    const dataCheckString = Object.keys(params)
+      .filter((key) => key !== 'hash')
+      .sort()
+      .map((key) => `${key}=${params[key]}`)
+      .join('\n');
+
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+    const calculatedHash = crypto
+      .createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+
+    if (calculatedHash !== hash) {
+      return {
+        ok: false,
+        reason: 'hash_mismatch',
+        meta: {
+          received_hash_prefix: hash.substring(0, 10),
+          calculated_hash_prefix: calculatedHash.substring(0, 10),
+          auth_date_diff_sec: diff,
+        },
+      };
+    }
+
+    let user: TelegramWebAppUser | undefined;
+    if (params.user) {
+      try {
+        user = JSON.parse(params.user);
+      } catch {
+        return { ok: false, reason: 'bad_user_json' };
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        query_id: params.query_id,
+        user,
+        auth_date: authDate,
+        hash,
+        start_param: params.start_param,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'exception',
+      meta: { param_keys: [error instanceof Error ? error.message : String(error)] },
+    };
+  }
+}
+
+/**
+ * Legacy API: `null | TelegramWebAppInitData`. Под капотом использует verbose-
+ * валидатор, но не логирует сам — вызывающий код решает, писать ли в логи.
  */
 export function validateInitData(
   initDataString: string,
   botToken: string
 ): TelegramWebAppInitData | null {
-  try {
-    const params = parseInitData(initDataString);
-    const hash = params.hash;
-    
-    if (!hash) {
-      console.error('[WebAppAuth] No hash in initData');
-      return null;
-    }
-    
-    // Check auth_date is not too old (allow 24 hours)
-    const authDate = parseInt(params.auth_date);
-    const now = Math.floor(Date.now() / 1000);
-    const maxAge = 24 * 60 * 60; // 24 hours
-    
-    if (now - authDate > maxAge) {
-      console.error('[WebAppAuth] initData expired', { authDate, now, diff: now - authDate });
-      return null;
-    }
-    
-    // Create data-check-string
-    // Sort alphabetically and join with \n
-    const dataCheckString = Object.keys(params)
-      .filter(key => key !== 'hash')
-      .sort()
-      .map(key => `${key}=${params[key]}`)
-      .join('\n');
-    
-    // Calculate secret key: HMAC-SHA256(botToken, "WebAppData")
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(botToken)
-      .digest();
-    
-    // Calculate hash: HMAC-SHA256(dataCheckString, secretKey)
-    const calculatedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
-    
-    // Validate hash
-    if (calculatedHash !== hash) {
-      console.error('[WebAppAuth] Hash mismatch', { 
-        calculated: calculatedHash.substring(0, 10) + '...', 
-        received: hash.substring(0, 10) + '...' 
-      });
-      return null;
-    }
-    
-    // Parse user JSON
-    let user: TelegramWebAppUser | undefined;
-    if (params.user) {
-      try {
-        user = JSON.parse(params.user);
-      } catch (e) {
-        console.error('[WebAppAuth] Failed to parse user JSON', e);
-      }
-    }
-    
-    return {
-      query_id: params.query_id,
-      user,
-      auth_date: authDate,
-      hash,
-      start_param: params.start_param,
-    };
-  } catch (error) {
-    console.error('[WebAppAuth] Validation error', error);
-    return null;
-  }
+  const res = validateInitDataWithReason(initDataString, botToken);
+  return res.ok && res.data ? res.data : null;
 }
 
 /**

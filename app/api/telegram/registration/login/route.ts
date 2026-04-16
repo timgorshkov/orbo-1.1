@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { validateInitData } from '@/lib/telegram/webAppAuth'
+import { validateInitDataWithReason } from '@/lib/telegram/webAppAuth'
 import { createAPILogger } from '@/lib/logger'
 import { encode } from 'next-auth/jwt'
 
@@ -25,16 +25,33 @@ export async function POST(request: NextRequest) {
     const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
     const communityBotToken = process.env.TELEGRAM_BOT_TOKEN!
 
-    let parsed = regBotToken ? validateInitData(initDataString, regBotToken) : null
-    if (!parsed) {
-      parsed = validateInitData(initDataString, communityBotToken)
-    }
+    // Пробуем два токена: сначала registration-бот (если задан), потом community-бот.
+    // validateInitDataWithReason тихий — сам не пишет в логи. Шумим только если
+    // обе попытки провалились.
+    const regResult = regBotToken
+      ? validateInitDataWithReason(initDataString, regBotToken)
+      : { ok: false as const, reason: 'empty' as const }
+    const result = regResult.ok
+      ? regResult
+      : validateInitDataWithReason(initDataString, communityBotToken)
 
-    if (!parsed?.user) {
+    if (!result.ok || !result.data?.user) {
+      logger.warn(
+        {
+          reg_reason: regResult.reason,
+          community_reason: result.reason,
+          init_data_len: initDataString.length,
+          meta: result.meta,
+          reg_bot_configured: !!regBotToken,
+        },
+        'TG login: initData validation failed for both bots'
+      )
       return NextResponse.json({ error: 'Invalid initData' }, { status: 401 })
     }
 
-    const tgUser = parsed.user
+    const parsed = result.data
+    const tgUser = parsed.user!
+    const botUsed = regResult.ok ? 'registration' : 'community'
     const tgUserId = tgUser.id
 
     // Find registered users linked to this Telegram ID.
@@ -74,7 +91,10 @@ export async function POST(request: NextRequest) {
     const userIds = Array.from(linkedUserIds)
 
     if (userIds.length === 0) {
-      logger.info({ tg_user_id: tgUserId }, 'TG login: no linked accounts')
+      logger.info(
+        { tg_user_id: tgUserId, bot: botUsed },
+        'TG login: no linked accounts'
+      )
       return NextResponse.json({
         status: 'not_found',
         message: 'Аккаунт не найден. Зарегистрируйтесь на orbo.ru/signup',
@@ -82,7 +102,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (userIds.length > 1) {
-      logger.info({ tg_user_id: tgUserId, user_count: userIds.length }, 'TG login: multiple accounts')
+      logger.info(
+        { tg_user_id: tgUserId, user_count: userIds.length, bot: botUsed },
+        'TG login: multiple accounts'
+      )
       return NextResponse.json({
         status: 'multiple',
         message: 'К этому Telegram привязано несколько аккаунтов. Войдите по email на my.orbo.ru/signin',
@@ -130,7 +153,10 @@ export async function POST(request: NextRequest) {
 
     const loginUrl = `${baseUrl}/api/auth/auto-login?token=${encodeURIComponent(jwtToken)}&redirect=${encodeURIComponent('/orgs')}`
 
-    logger.info({ tg_user_id: tgUserId, user_id: userId }, 'TG login: authorized')
+    logger.info(
+      { tg_user_id: tgUserId, user_id: userId, bot: botUsed },
+      'TG login: authorized'
+    )
 
     return NextResponse.json({
       status: 'ok',
