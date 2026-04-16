@@ -131,16 +131,16 @@ export async function GET(request: NextRequest) {
         })
         .select()
         .single()
-      
+
       if (createError) {
         logger.error({ error: createError.message, email }, 'Failed to create user')
         return NextResponse.redirect(new URL('/signin?error=user_create_failed', baseUrl))
       }
-      
+
       user = newUser
       isNewUser = true
       logger.info({ email, user_id: user.id }, 'Created new user via email')
-      
+
       scheduleOnboardingChain(user.id, 'email').catch((err: unknown) => {
         logger.error({ error: err instanceof Error ? err.message : String(err), user_id: user.id }, 'Failed to schedule onboarding chain')
       })
@@ -148,13 +148,32 @@ export async function GET(request: NextRequest) {
       // Обновляем email_verified
       await supabaseAdmin
         .from('users')
-        .update({ 
+        .update({
           email_verified: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id)
-        
+
       logger.info({ email, user_id: user.id }, 'User signed in via email')
+    }
+
+    // Синхронизируем профиль — view organization_admins читает email_verified_at
+    // именно оттуда. Если profile не существует — создаём, если существует —
+    // обновляем email + email_verified_at. Ошибка не блокирует логин.
+    const { error: profileErr } = await supabaseAdmin.raw(
+      `INSERT INTO profiles (id, email, email_verified_at, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email,
+             email_verified_at = EXCLUDED.email_verified_at,
+             updated_at = NOW()`,
+      [user.id, email]
+    )
+    if (profileErr) {
+      logger.warn(
+        { user_id: user.id, error: profileErr.message },
+        'Failed to sync profile.email_verified_at (non-blocking)'
+      )
     }
     
     // 5. Создаём сессию через account record (для email provider)

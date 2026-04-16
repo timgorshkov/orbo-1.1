@@ -117,15 +117,36 @@ export async function POST(
       })
 
     if (membershipError) {
-      logger.error({ 
+      logger.error({
         error: membershipError.message,
         user_id: user.id,
         org_id: invitation.org_id
       }, 'Error creating membership')
-      
+
       return NextResponse.json(
         { error: 'Ошибка добавления в организацию' },
         { status: 500 }
+      )
+    }
+
+    // Синхронизируем profiles с email + email_verified_at. View organization_admins
+    // читает has_verified_email именно из profiles.email_verified_at, а не из users;
+    // без этого новоиспечённый админ отображается в UI как «email не подтверждён»
+    // и может пропадать при фильтрации в клиентском коде. Ошибка не блокирует
+    // принятие приглашения.
+    const { error: profileErr } = await adminSupabase.raw(
+      `INSERT INTO profiles (id, email, email_verified_at, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET email = EXCLUDED.email,
+             email_verified_at = COALESCE(profiles.email_verified_at, EXCLUDED.email_verified_at),
+             updated_at = NOW()`,
+      [user.id, (user.email || invitation.email).toLowerCase()]
+    )
+    if (profileErr) {
+      logger.warn(
+        { user_id: user.id, error: profileErr.message },
+        'Failed to sync profile.email_verified_at on invite accept (non-blocking)'
       )
     }
 
