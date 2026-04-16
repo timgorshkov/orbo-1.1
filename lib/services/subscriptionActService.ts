@@ -1,9 +1,10 @@
 /**
  * Subscription Licensing Act Service
  *
- * Формирует акт передачи неисключительных прав на ПО Orbo (АЛ-NNN) при оплате
- * тарифа юридическим лицом, ИП или самозанятым. Для физлиц акт не формируется —
- * им достаточно фискального чека (согласовано с пользователем, 2026-04-15).
+ * Формирует акт передачи неисключительных прав на ПО Orbo (АЛ-NNN) для любого
+ * типа покупателя: физлицо, ИП, юрлицо. Для физлица-лицензиата в реквизитах
+ * используется ФИО + email из organizations.licensee_* (запрашиваются при
+ * первой оплате тарифа через CheckoutModal).
  *
  * Ключевые правила:
  * - Акт датирован датой НАЧАЛА периода (ст. 1235, 1286 ГК РФ)
@@ -12,6 +13,8 @@
  *   + рендер HTML в S3 bucket 'documents'
  * - org_invoices.act_number / act_document_url / accounting_document_id заполняются
  *   для обратной совместимости со старыми списками
+ * - После сохранения fire-and-forget отправляется в Контур.Эльбу
+ *   (см. subscriptionActElbaSync.ts).
  */
 
 import { createAdminServer } from '@/lib/server/supabaseServer'
@@ -60,26 +63,41 @@ async function generateActNumber(): Promise<string> {
 async function resolveCustomer(
   invoice: any
 ): Promise<CustomerSnapshot> {
-  // Приоритет: реквизиты из верифицированного контракта → поля инвойса
-  const contract = await getContractByOrgId(invoice.org_id).catch(() => null)
-  const cp = (contract as any)?.counterparty
+  const type: CustomerType = (invoice.customer_type as CustomerType) || 'individual'
 
-  if (cp) {
+  // Юрлица/ИП: приоритет реквизитов из верифицированного контракта → fallback на поля инвойса
+  if (type !== 'individual') {
+    const contract = await getContractByOrgId(invoice.org_id).catch(() => null)
+    const cp = (contract as any)?.counterparty
+    if (cp) {
+      return {
+        type,
+        name: (cp.org_name || cp.full_name || '').trim() || invoice.customer_name || '—',
+        inn: cp.inn || invoice.customer_inn || null,
+        email: invoice.customer_email || cp.email || null,
+        phone: cp.phone || invoice.customer_phone || null,
+        legalAddress: cp.legal_address || null,
+      }
+    }
     return {
-      type: (cp.type as CustomerType) || 'individual',
-      name: cp.type === 'legal_entity' ? (cp.org_name || cp.full_name) : (cp.full_name || ''),
-      inn: cp.inn || null,
-      email: invoice.customer_email || cp.email || null,
-      phone: cp.phone || invoice.customer_phone || null,
-      legalAddress: cp.legal_address || null,
+      type,
+      name: invoice.customer_name || invoice.org_name || '—',
+      inn: invoice.customer_inn || null,
+      email: invoice.customer_email || null,
+      phone: invoice.customer_phone || null,
+      legalAddress: null,
     }
   }
 
+  // Физлицо: приоритет ФИО/email из organizations.licensee_* (сохраняются при
+  // первой оплате тарифа), fallback на поля инвойса. ИНН/адрес не используем.
   return {
-    type: (invoice.customer_type as CustomerType) || 'individual',
-    name: invoice.customer_name || invoice.org_name || '—',
-    inn: invoice.customer_inn || null,
-    email: invoice.customer_email || null,
+    type: 'individual',
+    name:
+      (invoice.licensee_full_name || invoice.customer_name || '').trim() || '—',
+    inn: null,
+    email:
+      invoice.licensee_email || invoice.customer_email || null,
     phone: invoice.customer_phone || null,
     legalAddress: null,
   }
@@ -118,6 +136,7 @@ export async function generateSubscriptionAct(
       i.act_number, i.act_document_url, i.accounting_document_id,
       s.plan_code,
       o.name as org_name,
+      o.licensee_full_name, o.licensee_email,
       bp.name as plan_name
     FROM org_invoices i
     LEFT JOIN org_subscriptions s ON s.id = i.subscription_id
@@ -158,24 +177,12 @@ export async function generateSubscriptionAct(
     }
   }
 
-  // 3. Определить реквизиты покупателя
+  // 3. Определить реквизиты покупателя. АЛ формируется для всех типов:
+  //    - юрлица/ИП — с реквизитами из подписанного договора
+  //    - физлица — с ФИО/email лицензиата из organizations.licensee_*
   const customer = await resolveCustomer(invoice)
 
-  // 4. SKIP для физлиц (ст. 493 ГК РФ: чек подтверждает сделку для физлица)
-  if (customer.type === 'individual') {
-    logger.info(
-      { invoice_id: invoiceId, org_id: invoice.org_id },
-      'Subscription act skipped: individual customer (fiscal receipt is sufficient)'
-    )
-    return {
-      documentId: null,
-      actNumber: null,
-      htmlUrl: null,
-      skipped: 'individual_customer',
-    }
-  }
-
-  // 5. Подготовить данные акта
+  // 4. Подготовить данные акта
   const planName = invoice.plan_name || invoice.plan_code || 'Orbo'
   const amount = parseFloat(invoice.amount) || 0
   const actNumber = invoice.act_number || (await generateActNumber())
@@ -284,6 +291,26 @@ export async function generateSubscriptionAct(
     },
     'Subscription act generated'
   )
+
+  // 10. Отправить в Эльбу (fire-and-forget — ошибка не блокирует ответ,
+  //     failed-документ можно переотправить через /resend или крон).
+  void (async () => {
+    try {
+      const { sendSubscriptionActToElba } = await import('./subscriptionActElbaSync')
+      const result = await sendSubscriptionActToElba(docRow.id)
+      if (result.status === 'failed') {
+        logger.warn(
+          { doc_id: docRow.id, act_number: actNumber, error: result.error },
+          'Subscription act Elba sync failed (will need resend)'
+        )
+      }
+    } catch (e: any) {
+      logger.error(
+        { doc_id: docRow.id, act_number: actNumber, error: e.message },
+        'Unexpected error in Elba sync fire-and-forget'
+      )
+    }
+  })()
 
   return {
     documentId: docRow.id,

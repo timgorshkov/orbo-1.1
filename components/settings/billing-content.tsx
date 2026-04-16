@@ -30,6 +30,8 @@ interface BillingData {
     act_document_url?: string | null
   }>
   ownerEmail?: string | null
+  licenseeFullName?: string | null
+  licenseeEmail?: string | null
 }
 
 interface AllPlans {
@@ -233,8 +235,37 @@ export default function BillingContent() {
           plans={plans.filter(p => p.price_monthly && p.price_monthly > 0)}
           initialPlanCode={checkoutPlanCode}
           ownerEmail={data.ownerEmail || ''}
+          licenseeFullName={data.licenseeFullName || ''}
+          licenseeEmail={data.licenseeEmail || ''}
           onClose={() => setCheckoutPlanCode(null)}
         />
+      )}
+
+      {/* Licensee info (only if filled in — for physical-person licensees) */}
+      {(data.licenseeFullName || data.licenseeEmail) && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Лицензиат</h2>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-purple-600">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                {data.licenseeFullName && (
+                  <div className="text-sm text-gray-900 font-medium">{data.licenseeFullName}</div>
+                )}
+                {data.licenseeEmail && (
+                  <div className="text-xs text-gray-500 mt-0.5">{data.licenseeEmail}</div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  На имя лицензиата оформляются акты передачи неисключительных прав на
+                  ПО «Orbo» по оплачиваемым тарифам. Реквизиты указаны при первой оплате
+                  и используются в каждом акте.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Invoice history */}
@@ -367,18 +398,25 @@ function CheckoutModal({
   plans,
   initialPlanCode,
   ownerEmail,
+  licenseeFullName,
+  licenseeEmail,
   onClose,
 }: {
   orgId: string
   plans: AllPlans[]
   initialPlanCode: string
   ownerEmail: string
+  licenseeFullName: string
+  licenseeEmail: string
   onClose: () => void
 }) {
   const [planCode, setPlanCode] = useState(initialPlanCode)
   const [periodMonths, setPeriodMonths] = useState<1 | 3 | 12>(1)
-  const [customerName, setCustomerName] = useState('')
-  const [customerEmail, setCustomerEmail] = useState(ownerEmail)
+  // Предзаполняем ФИО/email лицензиата из organizations.licensee_*, если уже
+  // сохранены (не первая оплата). Поля остаются редактируемыми.
+  const [customerName, setCustomerName] = useState(licenseeFullName || '')
+  const [customerEmail, setCustomerEmail] = useState(licenseeEmail || ownerEmail)
+  const hasSavedLicensee = !!licenseeFullName
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -467,7 +505,7 @@ function CheckoutModal({
         {/* Customer name */}
         <div>
           <label className="text-sm font-medium block mb-1">
-            ФИО <span className="text-red-500">*</span>
+            ФИО лицензиата <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -476,7 +514,11 @@ function CheckoutModal({
             placeholder="Иванов Иван Иванович"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
           />
-          <p className="text-xs text-gray-500 mt-1">Будет указано в акте передачи прав</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {hasSavedLicensee
+              ? 'Данные лицензиата сохранены. Их можно изменить — новые данные будут использованы в этом и последующих актах.'
+              : 'На это имя будут оформляться акты передачи неисключительных прав по всем оплачиваемым тарифам этой организации.'}
+          </p>
         </div>
 
         {/* Email */}

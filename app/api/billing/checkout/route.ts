@@ -97,6 +97,26 @@ export async function POST(request: NextRequest) {
     const { data: org } = await db.from('organizations').select('name').eq('id', orgId).single()
     const orgName = org?.name || 'организация'
 
+    // Для физлица-покупателя — сохранить/обновить данные лицензиата.
+    // Первая оплата — форма была пустой и пользователь ввёл их впервые; при
+    // повторной оплате поля предзаполнены и пользователь мог их подправить —
+    // новые данные применяются ко всем последующим актам.
+    if (resolvedCustomerType === 'individual') {
+      const { error: licenseeErr } = await db.raw(
+        `UPDATE organizations
+            SET licensee_full_name = $1,
+                licensee_email     = $2
+          WHERE id = $3`,
+        [customerName.trim(), customerEmail.trim(), orgId]
+      )
+      if (licenseeErr) {
+        logger.warn(
+          { org_id: orgId, error: licenseeErr.message },
+          'Failed to save licensee full name/email on checkout'
+        )
+      }
+    }
+
     // Determine return URL
     const appBase = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     const baseReturnUrl = customReturnUrl || `${appBase}/p/${orgId}/pay?sessionId=`

@@ -166,13 +166,17 @@ export default function AccountingDocumentsTable() {
 
   const handleRowResend = useCallback(
     async (row: DocRow) => {
-      if (row.doc_type !== 'retail_act') return
+      const endpoint =
+        row.doc_type === 'retail_act'
+          ? `/api/superadmin/accounting/retail-act/${row.id}/resend`
+          : row.doc_type === 'subscription_act'
+            ? `/api/superadmin/accounting/subscription-act/${row.id}/resend`
+            : null
+      if (!endpoint) return
       setRowBusyId(row.id)
       setError(null)
       try {
-        const res = await fetch(`/api/superadmin/accounting/retail-act/${row.id}/resend`, {
-          method: 'POST',
-        })
+        const res = await fetch(endpoint, { method: 'POST' })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Ошибка переотправки')
         await load()
@@ -325,6 +329,12 @@ export default function AccountingDocumentsTable() {
               )}
               {rows.map((r) => {
                 const isRetail = r.doc_type === 'retail_act'
+                const isSubscriptionAct = r.doc_type === 'subscription_act'
+                const isIndividualCustomer = r.customer_type === 'individual'
+                // В Эльбу отправляются акты, у которых есть контрагент: ретейл (сводный ФЛ)
+                // и субскрипшн для юрлиц/ИП. Физлица в subscription_act не отправляются.
+                const elbaApplicable =
+                  isRetail || (isSubscriptionAct && !isIndividualCustomer)
                 const busy = rowBusyId === r.id
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -350,8 +360,8 @@ export default function AccountingDocumentsTable() {
                     </td>
                     <td className="px-4 py-3 text-xs">{STATUS_LABELS[r.status] || r.status}</td>
                     <td className="px-4 py-3 text-xs">
-                      {!isRetail ? (
-                        <span className="text-gray-400">—</span>
+                      {!elbaApplicable ? (
+                        <span className="text-gray-400" title={isSubscriptionAct && isIndividualCustomer ? 'Физлицу акт в Эльбу не отправляется' : undefined}>—</span>
                       ) : r.elba_sync_status === 'synced' ? (
                         <span className="inline-flex items-center gap-1 text-green-700">
                           <CheckCircle2 className="h-3.5 w-3.5" /> В Эльбе
@@ -373,8 +383,18 @@ export default function AccountingDocumentsTable() {
                             {busy ? '...' : 'повторить'}
                           </button>
                         </div>
-                      ) : (
+                      ) : r.elba_sync_status === 'pending' ? (
                         <span className="text-gray-500">ожидает</span>
+                      ) : (
+                        <button
+                          onClick={() => handleRowResend(r)}
+                          disabled={busy}
+                          className="text-[11px] text-purple-700 hover:underline disabled:opacity-50"
+                          type="button"
+                          title="Отправить в Эльбу"
+                        >
+                          {busy ? '...' : 'отправить'}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3">

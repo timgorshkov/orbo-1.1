@@ -27,11 +27,22 @@ export async function GET(request: NextRequest) {
     getOrgInvoices(orgId),
   ])
 
-  // Get owner's email to pre-fill receipt field
+  // Get owner's email to pre-fill receipt field + сохранённые данные лицензиата
   let ownerEmail: string | null = session.user.email || null
-  if (!ownerEmail || access.role !== 'owner') {
-    try {
-      const db = createAdminServer()
+  let licenseeFullName: string | null = null
+  let licenseeEmail: string | null = null
+  try {
+    const db = createAdminServer()
+    const { data: orgRow } = await db.raw(
+      `SELECT licensee_full_name, licensee_email FROM organizations WHERE id = $1 LIMIT 1`,
+      [orgId]
+    )
+    if (orgRow?.[0]) {
+      licenseeFullName = orgRow[0].licensee_full_name || null
+      licenseeEmail = orgRow[0].licensee_email || null
+    }
+
+    if (!ownerEmail || access.role !== 'owner') {
       const { data: ownerRow } = await db.raw(
         `SELECT u.email FROM memberships m
          JOIN users u ON u.id = m.user_id
@@ -39,8 +50,8 @@ export async function GET(request: NextRequest) {
         [orgId]
       )
       ownerEmail = ownerRow?.[0]?.email || ownerEmail
-    } catch { /* ignore */ }
-  }
+    }
+  } catch { /* ignore */ }
 
   return NextResponse.json({
     plan: status.plan,
@@ -58,5 +69,7 @@ export async function GET(request: NextRequest) {
     trialWarning: status.trialWarning,
     invoices,
     ownerEmail,
+    licenseeFullName,
+    licenseeEmail,
   })
 }
