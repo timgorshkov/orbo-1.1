@@ -1123,8 +1123,8 @@ function EngagementBadge({ participant, events }: { participant: any; events?: a
   let label: string;
   let colorClass: string;
   
-  // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
-  if (daysSinceActivity > 30 || (!realLastActivity && daysSinceJoined > 7)) {
+  // Priority 1: Silent — БЫЛА активность и >30 дней; ИЛИ НИКОГДА не было и joined >7 дней
+  if ((realLastActivity && daysSinceActivity > 30) || (!realLastActivity && daysSinceJoined > 7)) {
     label = 'Молчун';
     colorClass = 'bg-gray-500';
   }
@@ -1143,10 +1143,10 @@ function EngagementBadge({ participant, events }: { participant: any; events?: a
     label = 'Опытный';
     colorClass = 'bg-yellow-500';
   }
-  // Default: Other
+  // Priority 5: Observer
   else {
-    label = 'Остальные';
-    colorClass = 'bg-gray-400';
+    label = 'Наблюдатель';
+    colorClass = 'bg-purple-500';
   }
   
   return (

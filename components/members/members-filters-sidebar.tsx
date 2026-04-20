@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { X, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type AutoCategory = 'newcomer' | 'core' | 'experienced' | 'silent' | 'other' | 'all'
+type AutoCategory = 'newcomer' | 'core' | 'experienced' | 'silent' | 'observer' | 'all'
 
 interface Tag {
   tag_id: string
@@ -19,6 +19,7 @@ interface Participant {
   last_activity_at?: string | null
   real_join_date?: string // Real join date from first message or created_at
   real_last_activity?: string | null // Real last activity from last message or last_activity_at
+  group_joined_at?: string | null // Earliest joined_at from participant_groups (if available)
   activity_score?: number
   tags?: Array<{ id: string; name: string; color: string }>
   is_org_owner?: boolean
@@ -57,17 +58,29 @@ export default function MembersFiltersSidebar({
   // Calculate participant category (shared logic for counts and filtering)
   const getParticipantCategory = (p: Participant): AutoCategory | null => {
     const now = new Date()
-    // Use real join date (from first message or created_at)
-    const joinDate = p.real_join_date ? new Date(p.real_join_date) : (p.created_at ? new Date(p.created_at) : null)
+    // Use real join date: приоритет group_joined_at > real_join_date > created_at
+    const joinDate = p.group_joined_at
+      ? new Date(p.group_joined_at)
+      : p.real_join_date
+        ? new Date(p.real_join_date)
+        : p.created_at
+          ? new Date(p.created_at)
+          : null
     // Use real last activity (from last message or last_activity_at)
-    const lastActivity = p.real_last_activity ? new Date(p.real_last_activity) : (p.last_activity_at ? new Date(p.last_activity_at) : null)
-    
+    const lastActivity = p.real_last_activity
+      ? new Date(p.real_last_activity)
+      : p.last_activity_at
+        ? new Date(p.last_activity_at)
+        : null
+
     const daysSinceJoined = joinDate ? (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24) : 999
     const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
     const activityScore = p.activity_score || 0
 
-    // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
-    if (daysSinceActivity > 30 || (!lastActivity && daysSinceJoined > 7)) {
+    // Priority 1: Silent — БЫЛА активность и прошло >30 дней; ИЛИ НИКОГДА не было и joined >7 дней.
+    // Важно: при null lastActivity → daysSinceActivity = 999, но мы НЕ считаем silent
+    // только по этому — нужна явная проверка, что активность БЫЛА (lastActivity !== null).
+    if ((lastActivity && daysSinceActivity > 30) || (!lastActivity && daysSinceJoined > 7)) {
       return 'silent'
     }
 
@@ -86,8 +99,9 @@ export default function MembersFiltersSidebar({
       return 'experienced'
     }
 
-    // Default: Other category
-    return 'other'
+    // Priority 5: Observer — есть какая-то активность, но score <30.
+    // Это «тихие наблюдатели»: состоят в группе, пишут мало, но присутствуют.
+    return 'observer'
   }
 
   // Calculate auto-category counts
@@ -98,15 +112,13 @@ export default function MembersFiltersSidebar({
       core: 0,
       experienced: 0,
       silent: 0,
-      other: 0,
+      observer: 0,
     }
 
     participants.forEach((p) => {
       const category = getParticipantCategory(p)
-      if (category && category !== 'all') {
-        counts[category]++
-      } else if (!category) {
-        counts.other++
+      if (category && category !== 'all' && category in counts) {
+        counts[category as keyof typeof counts]++
       }
     })
 
@@ -225,11 +237,11 @@ export default function MembersFiltersSidebar({
                 color="#6B7280"
               />
               <FilterOption
-                label="⚪ Остальные"
-                count={categoryCounts.other}
-                active={filters.autoCategories.includes('other')}
-                onClick={() => toggleFilter('autoCategories', 'other')}
-                color="#9CA3AF"
+                label="👁 Наблюдатели"
+                count={categoryCounts.observer}
+                active={filters.autoCategories.includes('observer')}
+                onClick={() => toggleFilter('autoCategories', 'observer')}
+                color="#8B5CF6"
               />
             </div>
           </div>
@@ -367,37 +379,36 @@ export default function MembersFiltersSidebar({
 // Export the category calculation function for use in members-view
 export const getParticipantCategory = (p: Participant): AutoCategory | null => {
   const now = new Date()
-  // Use real join date (from first message or created_at)
-  const joinDate = p.real_join_date ? new Date(p.real_join_date) : (p.created_at ? new Date(p.created_at) : null)
-  // Use real last activity (from last message or last_activity_at)
-  const lastActivity = p.real_last_activity ? new Date(p.real_last_activity) : (p.last_activity_at ? new Date(p.last_activity_at) : null)
-  
+  const joinDate = p.group_joined_at
+    ? new Date(p.group_joined_at)
+    : p.real_join_date
+      ? new Date(p.real_join_date)
+      : p.created_at
+        ? new Date(p.created_at)
+        : null
+  const lastActivity = p.real_last_activity
+    ? new Date(p.real_last_activity)
+    : p.last_activity_at
+      ? new Date(p.last_activity_at)
+      : null
+
   const daysSinceJoined = joinDate ? (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24) : 999
   const daysSinceActivity = lastActivity ? (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24) : 999
   const activityScore = p.activity_score || 0
 
-  // Priority 1: Silent (no activity in 30 days OR never had activity and joined >7 days ago)
-  if (daysSinceActivity > 30 || (!lastActivity && daysSinceJoined > 7)) {
+  if ((lastActivity && daysSinceActivity > 30) || (!lastActivity && daysSinceJoined > 7)) {
     return 'silent'
   }
-
-  // Priority 2: Newcomers (joined <30 days ago AND not silent)
   if (daysSinceJoined < 30) {
     return 'newcomer'
   }
-
-  // Priority 3: Core (activity_score >= 60)
   if (activityScore >= 60) {
     return 'core'
   }
-
-  // Priority 4: Experienced (activity_score >= 30)
   if (activityScore >= 30) {
     return 'experienced'
   }
-
-  // Default: Other category (not fitting into main categories)
-  return 'other'
+  return 'observer'
 }
 
 // Helper component for filter options

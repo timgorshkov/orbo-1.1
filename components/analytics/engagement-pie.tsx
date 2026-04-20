@@ -16,8 +16,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   'core': 'Ядро',
   'experienced': 'Опытные',
   'newcomers': 'Новички',
+  'observers': 'Наблюдатели',
   'silent': 'Молчуны',
-  'other': 'Остальные'
+  // Legacy fallback для старых данных
+  'other': 'Наблюдатели',
 };
 
 // IMPORTANT: These colors MUST match members-filters-sidebar.tsx
@@ -25,8 +27,9 @@ const COLORS: Record<string, string> = {
   'newcomers': '#3B82F6',   // blue (Newcomers)
   'core': '#10B981',        // green (Core)
   'experienced': '#F59E0B', // amber/orange (Experienced)
+  'observers': '#8B5CF6',   // purple (Observers — бывшие «other»)
   'silent': '#6B7280',      // gray (Silent)
-  'other': '#9CA3AF'        // light gray (Other)
+  'other': '#8B5CF6',       // legacy
 };
 
 export default function EngagementPie({ orgId }: Props) {
@@ -137,7 +140,8 @@ export default function EngagementPie({ orgId }: Props) {
         <p><strong>Новички:</strong> Присоединились менее 30 дней назад</p>
         <p><strong>Ядро:</strong> Оценка активности ≥ 60 (самые активные)</p>
         <p><strong>Опытные:</strong> Оценка активности ≥ 30 (умеренно активные)</p>
-        <p><strong>Молчуны:</strong> Нет активности более 30 дней</p>
+        <p><strong>Наблюдатели:</strong> Присутствуют, но пишут мало (активность &lt; 30)</p>
+        <p><strong>Молчуны:</strong> Нет активности более 30 дней или ни разу не писали (joined &gt; 7 дней)</p>
       </div>
     </div>
   );
