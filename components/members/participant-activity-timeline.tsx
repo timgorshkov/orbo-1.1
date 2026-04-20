@@ -20,7 +20,8 @@ const MAX_EVENTS_LOADED = 200; // Server-side limit
 
 export default function ParticipantActivityTimeline({ detail, limit, compact }: ParticipantActivityTimelineProps) {
   const [visibleCount, setVisibleCount] = useState(limit || ITEMS_PER_PAGE);
-  
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null); // null = все группы
+
   // Build a map of chat_id -> group_title from detail.groups
   const groupNamesMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -35,12 +36,47 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
   }, [detail.groups]);
 
   const allEvents = detail.events || [];
-  const events = useMemo(() => {
-    return allEvents.slice(0, visibleCount);
-  }, [allEvents, visibleCount]);
 
-  const hasMore = visibleCount < allEvents.length;
-  const totalLoaded = allEvents.length;
+  // Собрать группы с ненулевой активностью для фильтра
+  const activeGroups = useMemo(() => {
+    const groupCounts = new Map<string, { title: string; count: number }>();
+    for (const e of allEvents) {
+      const chatId = String(e.tg_chat_id || '');
+      if (!chatId || chatId === '0') continue;
+      const source = e.meta?.source as string | undefined;
+      let title = '';
+      if (source === 'whatsapp' || chatId === 'whatsapp') {
+        title = e.meta?.group_name || 'WhatsApp';
+      } else if (source === 'max' || chatId === 'max') {
+        title = e.meta?.group_title || 'MAX';
+      } else {
+        title = groupNamesMap.get(chatId) || e.meta?.group_title || e.meta?.chat?.title || '';
+      }
+      if (!title) continue;
+      const existing = groupCounts.get(chatId);
+      if (existing) {
+        existing.count++;
+      } else {
+        groupCounts.set(chatId, { title, count: 1 });
+      }
+    }
+    return Array.from(groupCounts.entries())
+      .map(([chatId, { title, count }]) => ({ chatId, title, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allEvents, groupNamesMap]);
+
+  // Фильт��уем по выбранной группе
+  const filteredEvents = useMemo(() => {
+    if (!selectedGroup) return allEvents;
+    return allEvents.filter((e) => String(e.tg_chat_id || '') === selectedGroup);
+  }, [allEvents, selectedGroup]);
+
+  const events = useMemo(() => {
+    return filteredEvents.slice(0, visibleCount);
+  }, [filteredEvents, visibleCount]);
+
+  const hasMore = visibleCount < filteredEvents.length;
+  const totalLoaded = filteredEvents.length;
 
   if (allEvents.length === 0) {
     return (
@@ -53,7 +89,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
   }
 
   const loadMore = () => {
-    setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, allEvents.length));
+    setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, filteredEvents.length));
   };
 
   // Get event icon based on type and source
@@ -119,6 +155,36 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
         </CardHeader>
       )}
       <CardContent className="space-y-2 pt-2">
+        {/* Фильтр по группам */}
+        {activeGroups.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 pb-2 border-b border-gray-100 mb-2">
+            <button
+              onClick={() => { setSelectedGroup(null); setVisibleCount(limit || ITEMS_PER_PAGE); }}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                !selectedGroup
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Все группы
+            </button>
+            {activeGroups.map((g) => (
+              <button
+                key={g.chatId}
+                onClick={() => { setSelectedGroup(g.chatId === selectedGroup ? null : g.chatId); setVisibleCount(limit || ITEMS_PER_PAGE); }}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors truncate max-w-48 ${
+                  selectedGroup === g.chatId
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                title={`${g.title} (${g.count})`}
+              >
+                {g.title} <span className="text-gray-400 ml-0.5">{g.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {events.map(event => {
           // Format date: include year if not current year
           let formatted = '';
@@ -237,7 +303,7 @@ export default function ParticipantActivityTimeline({ detail, limit, compact }: 
               className="text-gray-500 hover:text-gray-700"
             >
               <ChevronDown className="h-4 w-4 mr-1" />
-              Показать ещё ({Math.min(ITEMS_PER_PAGE, allEvents.length - visibleCount)})
+              Показать ещё ({Math.min(ITEMS_PER_PAGE, filteredEvents.length - visibleCount)})
             </Button>
           </div>
         )}
