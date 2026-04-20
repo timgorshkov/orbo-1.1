@@ -87,7 +87,7 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
 
   const startPolling = useCallback((codeToCheck: string) => {
     // Подсказка «Бот не ответил?» через 10 секунд
-    slowTimerRef.current = setTimeout(() => setShowSlowHint(true), 10_000);
+    slowTimerRef.current = setTimeout(() => setShowSlowHint(true), 30_000);
 
     pollingRef.current = setInterval(async () => {
       try {

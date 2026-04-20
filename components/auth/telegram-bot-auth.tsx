@@ -96,7 +96,7 @@ export default function TelegramBotAuth({
     // Через 10 секунд показать подсказку «Бот не ответил?»
     slowTimerRef.current = setTimeout(() => {
       setShowSlowHint(true)
-    }, 10_000)
+    }, 30_000)
 
     pollingRef.current = setInterval(async () => {
       if (!authCode) return
