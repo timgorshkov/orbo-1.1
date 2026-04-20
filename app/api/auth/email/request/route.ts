@@ -100,10 +100,14 @@ export async function POST(request: NextRequest) {
     })
     
     if (!emailResult.success) {
-      const isNetworkError = emailResult.error === 'fetch failed' || emailResult.error?.includes('fetch failed')
+      const errorStr = emailResult.error || ''
+      const isNetworkError = errorStr === 'fetch failed' || errorStr.includes('fetch failed')
+      const isInvalidRecipient = errorStr.includes('No valid recipients')
+
       logger.error({
-        error: emailResult.error,
+        error: errorStr,
         is_network_error: isNetworkError,
+        is_invalid_recipient: isInvalidRecipient,
         email: normalizedEmail,
         provider: 'unisender_go',
       }, isNetworkError
@@ -116,9 +120,14 @@ export async function POST(request: NextRequest) {
         .delete()
         .eq('token', token)
 
+      // Понятное сообщение для пользователя в зависимости от типа ошибки
+      const userMessage = isInvalidRecipient
+        ? 'На этот адрес не удаётся доставить письмо — возможно, он не существует или заблокирован почтовым сервисом. Попробуйте другой email или войдите через Google / Яндекс.'
+        : 'Не удалось отправить письмо. Попробуйте через несколько минут или войдите через Google / Яндекс.'
+
       return NextResponse.json(
-        { error: 'Не удалось отправить письмо. Попробуйте позже.' },
-        { status: 500 }
+        { error: userMessage },
+        { status: isInvalidRecipient ? 422 : 500 }
       )
     }
     
