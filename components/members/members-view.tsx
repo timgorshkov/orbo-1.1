@@ -33,6 +33,7 @@ interface Participant {
   source?: string | null
   real_join_date?: string // Real join date from first message or created_at
   real_last_activity?: string | null // Real last activity from last message or last_activity_at
+  group_joined_at?: string | null // Earliest joined_at from participant_groups
   first_message_at?: string | null // Date of first message ever
   tags?: Array<{
     id: string
@@ -465,6 +466,44 @@ export default function MembersView({
         }
       })
     }
+
+    // Контекстная сортировка при фильтрации:
+    // Для каждого фильтра-категории используется наиболее релевантный порядок.
+    const activeCategory =
+      filters.autoCategories.length === 1 ? filters.autoCategories[0] : null
+
+    if (activeCategory === 'newcomer') {
+      // Новички: свежие наверху (по дате входа DESC)
+      result.sort((a, b) => {
+        const aDate = a.group_joined_at || a.real_join_date || a.created_at
+        const bDate = b.group_joined_at || b.real_join_date || b.created_at
+        const aT = aDate ? new Date(aDate).getTime() : 0
+        const bT = bDate ? new Date(bDate).getTime() : 0
+        return bT - aT
+      })
+    } else if (activeCategory === 'silent') {
+      // Молчуны: дольше молчат наверху (по последней активности ASC, null → вверх)
+      result.sort((a, b) => {
+        const aDate = a.real_last_activity || a.last_activity_at
+        const bDate = b.real_last_activity || b.last_activity_at
+        const aT = aDate ? new Date(aDate).getTime() : 0
+        const bT = bDate ? new Date(bDate).getTime() : 0
+        return aT - bT
+      })
+    } else if (activeCategory === 'core' || activeCategory === 'experienced') {
+      // Ядро / Опытные: по score DESC
+      result.sort((a, b) => (b.activity_score || 0) - (a.activity_score || 0))
+    } else if (activeCategory === 'observer') {
+      // Наблюдатели: по дате входа DESC
+      result.sort((a, b) => {
+        const aDate = a.group_joined_at || a.real_join_date || a.created_at
+        const bDate = b.group_joined_at || b.real_join_date || b.created_at
+        const aT = aDate ? new Date(aDate).getTime() : 0
+        const bT = bDate ? new Date(bDate).getTime() : 0
+        return bT - aT
+      })
+    }
+    // Без фильтра или мульти-фильтр: порядок от API (real_last_activity DESC, null вниз)
 
     return result
   }, [participants, searchQuery, filters])

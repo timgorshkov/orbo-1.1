@@ -48,6 +48,23 @@ export async function GET(req: NextRequest) {
 
       if (error) throw error
 
+      // Подтянуть earliest group_joined_at для каждого участника (приоритет для real_join_date)
+      const participantIds = (data || []).map((p: any) => p.id)
+      const groupJoinMap = new Map<string, string>()
+      if (participantIds.length > 0) {
+        const { data: gjRows } = await adminSupabase.raw(
+          `SELECT participant_id, MIN(joined_at) AS gj
+             FROM participant_groups
+            WHERE participant_id = ANY($1::uuid[])
+              AND joined_at IS NOT NULL
+            GROUP BY participant_id`,
+          [participantIds]
+        )
+        for (const r of gjRows || []) {
+          groupJoinMap.set(r.participant_id, r.gj)
+        }
+      }
+
       participants = (data || [])
       .filter((p: any) => !p.tg_user_id || !SYSTEM_TG_IDS.has(Number(p.tg_user_id)))
       .map((p: any) => {
@@ -56,6 +73,13 @@ export async function GET(req: NextRequest) {
         const latestActivity =
           lastMsg > lastAct ? p.last_message_at : p.last_activity_at || p.last_message_at
 
+        // real_join_date: приоритет group_joined_at > first_message_at > created_at
+        const gj = groupJoinMap.get(p.id) || null
+        const candidates = [gj, p.first_message_at, p.created_at].filter(Boolean)
+        const realJoinDate = candidates.length > 0
+          ? candidates.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
+          : p.created_at
+
         return {
           ...p,
           is_org_owner: p.is_org_owner,
@@ -63,16 +87,18 @@ export async function GET(req: NextRequest) {
           is_admin: p.is_org_admin || p.is_group_admin,
           is_owner: p.is_org_owner,
           tags: p.tags || [],
-          real_join_date: p.first_message_at || p.created_at,
+          group_joined_at: gj,
+          real_join_date: realJoinDate,
           real_last_activity: latestActivity,
           activity_score: p.activity_score || 0,
           first_message_at: p.first_message_at,
         }
       })
 
+      // Сортировка по умолчанию: последняя активность DESC, null → вниз
       participants.sort((a: any, b: any) => {
-        const aTime = a.real_last_activity ? new Date(a.real_last_activity).getTime() : 0
-        const bTime = b.real_last_activity ? new Date(b.real_last_activity).getTime() : 0
+        const aTime = a.real_last_activity ? new Date(a.real_last_activity).getTime() : -Infinity
+        const bTime = b.real_last_activity ? new Date(b.real_last_activity).getTime() : -Infinity
         return bTime - aTime
       })
     } catch {
@@ -83,7 +109,7 @@ export async function GET(req: NextRequest) {
         .eq('org_id', orgId)
         .neq('participant_status', 'excluded')
         .is('merged_into', null)
-        .order('last_activity_at', { ascending: false, nullsFirst: true })
+        .order('last_activity_at', { ascending: false, nullsFirst: false })
 
       if (error) throw error
       participants = (data || [])
