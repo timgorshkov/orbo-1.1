@@ -75,7 +75,16 @@ jobs:
             # Health check
             sleep 10
             curl -f http://localhost:3000/api/health || exit 1
-            
+
+            # Restore Telegram/MAX webhooks immediately after deploy
+            # (prevents backoff — Telegram drops webhooks during container restart)
+            CRON_SECRET=\$(grep '^CRON_SECRET=' .env | cut -d= -f2-)
+            if [ -n "\$CRON_SECRET" ]; then
+              echo "Restoring webhooks..."
+              curl -s -H "Authorization: Bearer \$CRON_SECRET" http://localhost:3000/api/cron/check-webhook || true
+              echo "Webhooks restored."
+            fi
+
             echo "Deploy successful!"
           EOF
 
