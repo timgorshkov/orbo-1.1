@@ -134,7 +134,7 @@ cat >> "$CRONTAB_FILE" << CRON
 0 */6 * * * ~/orbo/cron-notification-health-check.sh
 */15 * * * * ~/orbo/cron-send-onboarding.sh
 0 9 * * * ~/orbo/cron-check-billing.sh
-*/30 * * * * ~/orbo/cron-check-webhook.sh
+*/5 * * * * ~/orbo/cron-check-webhook.sh
 0 * * * * ~/orbo/cron-check-memberships.sh
 # Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
 0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1

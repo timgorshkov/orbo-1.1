@@ -74,19 +74,42 @@ function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; 
     }, 1000)
   }
 
+  const [showSlowHint, setShowSlowHint] = useState(false)
+  const [reportSent, setReportSent] = useState(false)
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const startPolling = (codeValue: string) => {
+    // Подсказка «бот не ответил» через 30 секунд
+    if (slowTimer.current) clearTimeout(slowTimer.current)
+    setShowSlowHint(false)
+    slowTimer.current = setTimeout(() => setShowSlowHint(true), 30_000)
+
+    let tick_count = 0
     const tick = async () => {
-      // Stop polling if code expired (generateCode will restart with new code)
       if (Date.now() >= expiresAtRef.current) return
+      tick_count++
       try {
+        // Проверка 1: код подтверждён ботом
         const res = await fetch(`/api/auth/telegram-code/status?code=${codeValue}`)
         if (res.ok) {
           const data = await res.json()
           if (data.linked) {
             setStatus('linked')
+            setShowSlowHint(false)
             ymGoal('telegram_signin_linked', undefined, { once: true })
             const dest = inviteToken ? `/invite/${inviteToken}` : '/orgs'
-            router.push(`/auth/telegram?code=${codeValue}&redirect=${encodeURIComponent(dest)}`)
+            window.location.href = `/auth/telegram-handler?code=${encodeURIComponent(codeValue)}&redirect=${encodeURIComponent(dest)}`
+            return
+          }
+        }
+        // Проверка 2 (каждые 2 тика): живая сессия из другого источника
+        if (tick_count % 2 === 0) {
+          const sessionRes = await fetch('/api/user/me')
+          if (sessionRes.ok) {
+            setStatus('linked')
+            setShowSlowHint(false)
+            const dest = inviteToken ? `/invite/${inviteToken}` : '/orgs'
+            window.location.href = dest
             return
           }
         }
@@ -117,53 +140,85 @@ function TelegramCodeBlock({ botUsername, inviteToken }: { botUsername: string; 
     )
   }
 
+  const handleReportIssue = async () => {
+    if (reportSent || !code) return
+    setReportSent(true)
+    try {
+      await fetch('/api/auth/telegram-code/report-issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, userAgent: navigator.userAgent }),
+      })
+    } catch { /* best-effort */ }
+  }
+
   return (
     <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-      <div className="flex items-center gap-1.5 flex-wrap text-sm text-blue-800">
-        <span>Откройте</span>
-        <span className="font-semibold">@{botUsername}</span>
-        <button
-          onClick={() => { navigator.clipboard.writeText(`@${botUsername}`).catch(() => {}); setBotCopied(true); setTimeout(() => setBotCopied(false), 2000) }}
-          className="inline-flex items-center p-1 rounded text-blue-400 hover:text-blue-600 hover:bg-blue-100 transition-colors"
-          title="Скопировать имя бота"
-        >
-          {botCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-        </button>
-        <span>в Telegram и отправьте этот код:</span>
-      </div>
-      {status === 'loading' ? (
-        <div className="text-sm text-blue-400 text-center py-1">Генерация кода...</div>
-      ) : status === 'error' ? (
-        <div className="text-sm text-red-500 text-center py-1">Не удалось создать код. Обновите страницу.</div>
-      ) : (
-        <div className="flex items-center gap-3 bg-white rounded-lg border border-blue-200 px-4 py-2">
-          <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
-            {code}
-          </span>
-          <button
-            onClick={handleCopy}
-            className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium transition-colors"
-          >
-            {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="hidden sm:inline text-green-600">Скопировано</span></> : <><Copy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Копировать</span></>}
-          </button>
+      {/* Шаг 1: Открыть бота */}
+      {code && (
+        <div className="text-center">
+          <p className="text-sm text-blue-800 mb-2">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-200 text-blue-800 text-xs font-bold mr-1">1</span>
+            Откройте бота в Telegram:
+          </p>
+          <a href={deepLink} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">
+            <ExternalLink className="w-4 h-4" />
+            Открыть @{botUsername}
+          </a>
         </div>
       )}
+
+      {/* Шаг 2: Скопировать и отправить код */}
+      <div>
+        <p className="text-sm text-blue-800 mb-2">
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-200 text-blue-800 text-xs font-bold mr-1">2</span>
+          Скопируйте код и отправьте его боту:
+        </p>
+        {status === 'loading' ? (
+          <div className="text-sm text-blue-400 text-center py-1">Генерация кода...</div>
+        ) : status === 'error' ? (
+          <div className="text-sm text-red-500 text-center py-1">Не удалось создать код. Обновите страницу.</div>
+        ) : (
+          <div className="flex items-center gap-3 bg-white rounded-lg border border-blue-200 px-4 py-2">
+            <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center"
+              onClick={() => { if (code) { navigator.clipboard.writeText(code).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000) } }}>
+              {code}
+            </span>
+            <button
+              onClick={handleCopy}
+              className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium transition-colors"
+            >
+              {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="hidden sm:inline text-green-600">Скопировано</span></> : <><Copy className="w-3.5 h-3.5" /><span className="hidden sm:inline">Копировать</span></>}
+            </button>
+          </div>
+        )}
+      </div>
+
       <p className="text-xs text-blue-600 text-center">
-        Бот отправит ссылку для входа в Telegram
+        После отправки кода вернитесь сюда — вход произойдёт автоматически
+        {status === 'ready' && <span className="inline-flex items-center gap-1 ml-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" /></span>}
       </p>
       {status === 'ready' && secondsLeft > 0 && (
         <p className="text-[10px] text-blue-300 text-center tabular-nums">
           {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
         </p>
       )}
-      {code && (
-        <div className="text-center pt-1">
-          <a href={deepLink} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-600 transition-colors">
-            <ExternalLink className="w-3 h-3" />
-            Открыть бота в один клик
-          </a>
-          <p className="text-xs text-blue-400 mt-0.5">Может не работать при блокировках</p>
+
+      {/* Подсказка «бот не ответил» — через 30 секунд */}
+      {showSlowHint && status === 'ready' && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-xs text-amber-800 font-medium mb-1">Бот не ответил?</p>
+          <p className="text-xs text-amber-700 mb-1.5">
+            Иногда Telegram задерживает доставку сообщений. Попробуйте войти по email выше.
+          </p>
+          {!reportSent ? (
+            <button onClick={handleReportIssue} className="text-xs font-medium text-amber-800 underline hover:text-amber-900">
+              Сообщить о проблеме
+            </button>
+          ) : (
+            <span className="text-xs text-green-700">Спасибо, мы получили сигнал.</span>
+          )}
         </div>
       )}
     </div>
