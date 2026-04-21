@@ -87,7 +87,7 @@ export async function POST(
       .eq('org_id', event.org_id)
       .maybeSingle()
 
-    let participant = null
+    let participant: Record<string, any> | null = null
 
     // Try to find participant by telegram_user_id (only canonical, not merged)
     if (telegramAccount?.telegram_user_id) {
@@ -106,7 +106,7 @@ export async function POST(
     // This prevents creating duplicate participants for users without confirmed Telegram
     if (!participant && user.email) {
       logger.debug({ email: user.email, event_id: eventId }, 'Searching participant by email');
-      
+
       const { data: foundByEmail } = await adminSupabase
         .from('participants')
         .select('id, tg_user_id')
@@ -189,6 +189,11 @@ export async function POST(
       } else {
         participant = newParticipant
       }
+    }
+
+    // Guard: participant should be resolved by this point
+    if (!participant) {
+      return NextResponse.json({ error: 'Failed to resolve participant' }, { status: 500 })
     }
 
     // Re-opt-in: if this is a child instance and the participant previously opted out,
@@ -470,7 +475,7 @@ export async function DELETE(
       .eq('org_id', event.org_id)
       .maybeSingle()
 
-    let participant = null
+    let participant: { id: string } | null = null
 
     // Try to find participant by telegram_user_id
     if (telegramAccount?.telegram_user_id) {
@@ -482,7 +487,7 @@ export async function DELETE(
         .is('merged_into', null)
         .maybeSingle()
 
-      participant = foundParticipant
+      participant = foundParticipant as { id: string } | null
     }
 
     // Also try to find by email if not found by telegram
@@ -495,7 +500,7 @@ export async function DELETE(
         .is('merged_into', null)
         .maybeSingle()
 
-      participant = foundByEmail
+      participant = foundByEmail as { id: string } | null
     }
 
     if (!participant) {

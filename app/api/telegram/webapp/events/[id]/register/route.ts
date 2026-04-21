@@ -92,8 +92,8 @@ export async function POST(
     }
     
     // Find or create participant
-    let participant = null;
-    
+    let participant: Record<string, any> | null = null;
+
     // Try to find existing participant by tg_user_id
     const { data: existingParticipant } = await adminSupabase
       .from('participants')
@@ -102,10 +102,10 @@ export async function POST(
       .eq('tg_user_id', telegramUser.id)
       .is('merged_into', null)
       .maybeSingle();
-    
+
     if (existingParticipant) {
       participant = existingParticipant;
-      
+
       // Update participant info from Telegram
       const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ');
       await adminSupabase
@@ -114,7 +114,7 @@ export async function POST(
           username: telegramUser.username || null,
           full_name: fullName,
         })
-        .eq('id', participant.id);
+        .eq('id', existingParticipant.id);
     } else {
       // Create new participant
       const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ');

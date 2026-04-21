@@ -79,7 +79,7 @@ export async function POST(
     }
 
     // Find or create participant by max_user_id
-    let participant = null;
+    let participant: Record<string, any> | null = null;
     const { data: existingParticipant } = await adminSupabase
       .from('participants')
       .select('id')
@@ -94,7 +94,7 @@ export async function POST(
       await adminSupabase
         .from('participants')
         .update({ username: maxUser.username || null, full_name: fullName })
-        .eq('id', participant.id);
+        .eq('id', existingParticipant.id);
     } else {
       const fullName = [maxUser.first_name, maxUser.last_name].filter(Boolean).join(' ');
       const { data: newParticipant, error: createError } = await adminSupabase
