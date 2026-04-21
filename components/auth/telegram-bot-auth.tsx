@@ -98,30 +98,45 @@ export default function TelegramBotAuth({
       setShowSlowHint(true)
     }, 30_000)
 
+    let tick = 0
     pollingRef.current = setInterval(async () => {
       if (!authCode) return
+      tick++
       try {
+        // Проверка 1: код подтверждён ботом → автовход
         const res = await fetch(
           `/api/auth/telegram-code/status?code=${encodeURIComponent(authCode.code)}`
         )
-        if (!res.ok) return
-        const data = await res.json()
+        if (res.ok) {
+          const data = await res.json()
+          if (data.linked) {
+            stopPolling()
+            setPollingStatus('linked')
+            setShowSlowHint(false)
+            setPollingStatus('redirecting')
+            const appUrl = window.location.origin
+            const redir = redirectUrl || '/orgs'
+            const fullRedirect = redir.startsWith('http') ? redir : `${appUrl}${redir}`
+            window.location.href = `/auth/telegram-handler?code=${encodeURIComponent(
+              authCode.code
+            )}&redirect=${encodeURIComponent(fullRedirect)}`
+            if (onSuccess) onSuccess()
+            return
+          }
+        }
 
-        if (data.linked) {
-          stopPolling()
-          setPollingStatus('linked')
-          setShowSlowHint(false)
-
-          // Автоматический redirect — пользователю не нужно кликать ссылку в боте
-          setPollingStatus('redirecting')
-          const appUrl = window.location.origin
-          const redir = redirectUrl || '/orgs'
-          const fullRedirect = redir.startsWith('http') ? redir : `${appUrl}${redir}`
-          window.location.href = `/auth/telegram-handler?code=${encodeURIComponent(
-            authCode.code
-          )}&redirect=${encodeURIComponent(fullRedirect)}`
-
-          if (onSuccess) onSuccess()
+        // Проверка 2 (каждые 2 тика): живая сессия из другой вкладки (MiniApp и т.п.)
+        if (tick % 2 === 0) {
+          const sessionRes = await fetch('/api/user/me')
+          if (sessionRes.ok) {
+            stopPolling()
+            setPollingStatus('redirecting')
+            setShowSlowHint(false)
+            const redir = redirectUrl || '/orgs'
+            window.location.href = redir
+            if (onSuccess) onSuccess()
+            return
+          }
         }
       } catch {
         // Тихо — сеть может моргать

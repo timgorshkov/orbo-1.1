@@ -86,25 +86,39 @@ export default function MemberAuthClient({ orgId, redirectUrl, eventId: propEven
   };
 
   const startPolling = useCallback((codeToCheck: string) => {
-    // Подсказка «Бот не ответил?» через 10 секунд
     slowTimerRef.current = setTimeout(() => setShowSlowHint(true), 30_000);
 
+    let tick = 0;
     pollingRef.current = setInterval(async () => {
+      tick++;
       try {
+        // Проверка 1: код подтверждён ботом → автовход
         const response = await fetch(`/api/auth/telegram-code/status?code=${codeToCheck}`);
-        if (!response.ok) return;
-        const data = await response.json();
+        if (response.ok) {
+          const data = await response.json();
+          if (data.linked) {
+            stopPolling();
+            setSuccess(true);
+            setShowSlowHint(false);
+            const fullRedirect = redirectUrl.startsWith('http')
+              ? redirectUrl
+              : `${window.location.origin}${redirectUrl}`;
+            window.location.href = `/auth/telegram-handler?code=${encodeURIComponent(codeToCheck)}&redirect=${encodeURIComponent(fullRedirect)}`;
+            return;
+          }
+        }
 
-        // linked = бот обработал код (telegram_user_id записан).
-        // Сразу делаем redirect — пользователю НЕ нужно кликать ссылку в боте.
-        if (data.linked) {
-          stopPolling();
-          setSuccess(true);
-          setShowSlowHint(false);
-          const fullRedirect = redirectUrl.startsWith('http')
-            ? redirectUrl
-            : `${window.location.origin}${redirectUrl}`;
-          window.location.href = `/auth/telegram-handler?code=${encodeURIComponent(codeToCheck)}&redirect=${encodeURIComponent(fullRedirect)}`;
+        // Проверка 2 (каждые 2 тика = ~6с): есть ли уже живая сессия?
+        // Подхватывает авторизацию из другой вкладки (MiniApp, magic link и т.п.).
+        if (tick % 2 === 0) {
+          const sessionRes = await fetch('/api/user/me');
+          if (sessionRes.ok) {
+            stopPolling();
+            setSuccess(true);
+            setShowSlowHint(false);
+            window.location.href = redirectUrl;
+            return;
+          }
         }
       } catch {
         // Тихо — сеть может моргать
