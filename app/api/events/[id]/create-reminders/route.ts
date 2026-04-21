@@ -47,11 +47,11 @@ export async function POST(
     const useMiniAppLink: boolean = body.use_miniapp_link !== false;
 
     // Get default target groups and topics for announcements
-    const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(event.org_id);
+    const { targetGroups, targetTopics, targetMaxGroups } = await getOrgAnnouncementDefaults(event.org_id);
 
-    if (targetGroups.length === 0) {
+    if (targetGroups.length === 0 && targetMaxGroups.length === 0) {
       return NextResponse.json(
-        { error: 'Нет подключённых Telegram-групп. Подключите хотя бы одну группу в разделе «Telegram».' },
+        { error: 'Нет по��ключённых групп. Подключите хотя бы одну группу в Telegram или MAX.' },
         { status: 422 }
       );
     }
@@ -93,7 +93,8 @@ export async function POST(
       targetGroups,
       useMiniAppLink,
       event.event_type ?? 'offline',
-      targetTopics
+      targetTopics,
+      targetMaxGroups
     );
 
     if (reminder24h > now) created.push('за 24 часа');

@@ -466,7 +466,8 @@ export async function createEventReminders(
   targetGroups: string[],
   useMiniAppLink: boolean = true,
   eventType: 'online' | 'offline' = 'offline',
-  targetTopics: Record<string, number> = {}
+  targetTopics: Record<string, number> = {},
+  targetMaxGroups: string[] = []
 ): Promise<void> {
   const supabase = createAdminServer();
   
@@ -515,6 +516,7 @@ export async function createEventReminders(
   
   const now = new Date();
   const topicsPayload = Object.keys(targetTopics).length > 0 ? targetTopics : undefined;
+  const maxGroupsPayload = targetMaxGroups.length > 0 ? targetMaxGroups : undefined;
   const announcements: Array<{
     org_id: string;
     title: string;
@@ -523,6 +525,7 @@ export async function createEventReminders(
     reminder_type: string;
     target_groups: string[];
     target_topics?: Record<string, number>;
+    target_max_groups?: string[];
     scheduled_at: string;
     created_by_name: string;
   }> = [];
@@ -538,6 +541,7 @@ export async function createEventReminders(
       reminder_type: '24h',
       target_groups: targetGroups,
       ...(topicsPayload ? { target_topics: topicsPayload } : {}),
+      ...(maxGroupsPayload ? { target_max_groups: maxGroupsPayload } : {}),
       scheduled_at: reminder24h.toISOString(),
       created_by_name: 'автоматически'
     });
@@ -554,6 +558,7 @@ export async function createEventReminders(
       reminder_type: '1h',
       target_groups: targetGroups,
       ...(topicsPayload ? { target_topics: topicsPayload } : {}),
+      ...(maxGroupsPayload ? { target_max_groups: maxGroupsPayload } : {}),
       scheduled_at: reminder1h.toISOString(),
       created_by_name: 'автоматически'
     });

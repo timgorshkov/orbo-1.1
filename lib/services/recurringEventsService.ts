@@ -397,6 +397,7 @@ export async function getNextInstanceByIndex(
 export async function getOrgAnnouncementDefaults(orgId: string): Promise<{
   targetGroups: string[];
   targetTopics: Record<string, number>;
+  targetMaxGroups: string[];
 }> {
   const db = createAdminServer()
 
@@ -407,14 +408,18 @@ export async function getOrgAnnouncementDefaults(orgId: string): Promise<{
     .single()
 
   const defaults = org?.announcement_defaults as {
-    target_groups?: number[];
+    target_groups?: (number | string)[];
     target_topics?: Record<string, number>;
+    target_max_groups?: (number | string)[];
   } | null
+
+  const targetMaxGroups = (defaults?.target_max_groups ?? []).map(String)
 
   if (defaults?.target_groups && defaults.target_groups.length > 0) {
     return {
       targetGroups: defaults.target_groups.map(String),
       targetTopics: defaults.target_topics ?? {},
+      targetMaxGroups,
     }
   }
 
@@ -428,6 +433,7 @@ export async function getOrgAnnouncementDefaults(orgId: string): Promise<{
   return {
     targetGroups: (orgGroups ?? []).map(g => String(g.tg_chat_id)),
     targetTopics: {},
+    targetMaxGroups,
   }
 }
 

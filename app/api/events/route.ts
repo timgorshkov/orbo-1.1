@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
 
     if (event?.id && event.event_date && shouldCreateAnnouncements) {
       try {
-        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(orgId);
+        const { targetGroups, targetTopics, targetMaxGroups } = await getOrgAnnouncementDefaults(orgId);
 
         if (event.is_recurring && recurrenceRule) {
           // Recurring: generate child instances for the next 4 weeks from first occurrence
@@ -362,7 +362,7 @@ export async function POST(request: NextRequest) {
           const timeStr = event.start_time?.substring(0, 5) ?? '10:00'
           const eventStartTime = new Date(`${dateStr}T${timeStr}:00+03:00`)
 
-          if (!isNaN(eventStartTime.getTime()) && targetGroups.length > 0) {
+          if (!isNaN(eventStartTime.getTime()) && (targetGroups.length > 0 || targetMaxGroups.length > 0)) {
             await createEventReminders(
               event.id,
               orgId,
@@ -373,7 +373,8 @@ export async function POST(request: NextRequest) {
               targetGroups,
               useMiniAppLink,
               event.event_type ?? 'offline',
-              targetTopics
+              targetTopics,
+              targetMaxGroups
             )
             logger.info({ event_id: event.id, targetGroupsCount: targetGroups.length }, 'Event reminders created')
           }

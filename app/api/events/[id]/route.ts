@@ -353,7 +353,7 @@ export async function PUT(
 
       // Reschedule announcements for affected future siblings if time/location changed
       if (timeOrLocationChanged) {
-        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(existingEvent.org_id)
+        const { targetGroups, targetTopics, targetMaxGroups } = await getOrgAnnouncementDefaults(existingEvent.org_id)
         if (targetGroups.length > 0) {
           let siblingsQuery = adminSupabase
             .from('events')
@@ -394,7 +394,7 @@ export async function PUT(
     // Reschedule announcements for the edited event itself if time/location changed
     if (timeOrLocationChanged) {
       try {
-        const { targetGroups, targetTopics } = await getOrgAnnouncementDefaults(existingEvent.org_id)
+        const { targetGroups, targetTopics, targetMaxGroups } = await getOrgAnnouncementDefaults(existingEvent.org_id)
         if (targetGroups.length > 0) {
           const dateStr = (eventDate ?? existingEvent.event_date ?? '').split('T')[0]
           const timeStr = (startTime ?? existingEvent.start_time ?? '10:00').substring(0, 5)

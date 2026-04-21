@@ -522,9 +522,9 @@ export default function ParticipantProfileCard({
 
           {/* Contact Info - Compact vertical list */}
           <div className="space-y-2">
-            {/* Telegram */}
+            {/* Telegram — иконка Send (бумажный самолётик, символ Telegram) */}
             <div className="flex items-start gap-3">
-              <MessageCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <Send className="h-4 w-4 text-[#2AABEE] flex-shrink-0 mt-0.5" />
               <span className="text-sm text-gray-500 w-20">Telegram</span>
               <div className="flex-1 space-y-1">
                 {participant.username ? (
@@ -572,25 +572,17 @@ export default function ParticipantProfileCard({
               </div>
             </div>
 
-            {/* MAX */}
+            {/* MAX — иконка MessageCircle (пузырёк, похож на лого MAX) */}
             {(participant.max_user_id || participant.max_username) && (
               <div className="flex items-start gap-3">
-                <Send className="h-4 w-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                <MessageCircle className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
                 <span className="text-sm text-gray-500 w-20">MAX</span>
                 <div className="flex-1 space-y-1">
                   {participant.max_username ? (
-                    <a
-                      href={`https://max.ru/@${participant.max_username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline block"
-                    >
-                      @{participant.max_username}
-                    </a>
+                    <MaxNameWithCopy value={`@${participant.max_username}`} />
+                  ) : participant.full_name ? (
+                    <MaxNameWithCopy value={participant.full_name} label="Имя в MAX" />
                   ) : null}
-                  {participant.max_user_id && (
-                    <span className="text-xs text-gray-400">ID: {participant.max_user_id}</span>
-                  )}
                 </div>
               </div>
             )}
@@ -1086,6 +1078,23 @@ export default function ParticipantProfileCard({
 
 // Engagement Badge Component - unified logic matching members-filters-sidebar.tsx
 // Uses events array to calculate real_join_date and real_last_activity (same as members list)
+function MaxNameWithCopy({ value, label }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex items-center gap-1.5">
+      {label && <span className="text-xs text-gray-400">{label}:</span>}
+      <span className="text-sm font-medium text-purple-600">{value}</span>
+      <button
+        onClick={() => { navigator.clipboard.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+        className="p-0.5 rounded text-gray-400 hover:text-gray-600 transition-colors"
+        title="Скопировать"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  )
+}
+
 function EngagementBadge({ participant, events }: { participant: any; events?: any[] }) {
   const now = new Date();
   const createdAt = new Date(participant.created_at);
