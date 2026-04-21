@@ -4,9 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Check, AlertTriangle, MessageCircle, Clock, Users, Calendar, Loader2, UserMinus, UserX } from 'lucide-react';
+import { Check, AlertTriangle, MessageCircle, Clock, Users, Calendar, Loader2, UserMinus, UserX, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { createClientLogger } from '@/lib/logger';
 
 const logger = createClientLogger('NotificationCard');
@@ -33,85 +32,72 @@ interface NotificationCardProps {
   onResolve: (id: string, sourceType: string) => Promise<void>;
 }
 
-// Unified 3-color scheme:
-// 🔴 Red = Critical (negative, critical events) 
-// 🟠 Amber = Warning (questions, inactivity, churning)
-// 🔵 Blue = Info (newcomers)
 const NOTIFICATION_CONFIG: Record<string, {
   icon: React.ReactNode;
   label: string;
-  borderColor: string;
+  accentColor: string;
   bgColor: string;
   iconColor: string;
-  hint?: string;
 }> = {
   negative_discussion: {
-    icon: <AlertTriangle className="h-5 w-5" />,
+    icon: <AlertTriangle className="h-4 w-4" />,
     label: 'Негатив в группе',
-    borderColor: 'border-l-red-500',
-    bgColor: 'bg-red-50',
+    accentColor: 'border-l-red-500',
+    bgColor: 'bg-red-50/60',
     iconColor: 'text-red-600',
-    hint: 'Обнаружена негативная дискуссия',
   },
   critical_event: {
-    icon: <Calendar className="h-5 w-5" />,
-    label: 'Критичное событие',
-    borderColor: 'border-l-red-500',
-    bgColor: 'bg-red-50',
+    icon: <Calendar className="h-4 w-4" />,
+    label: 'Низкая регистрация',
+    accentColor: 'border-l-red-500',
+    bgColor: 'bg-red-50/60',
     iconColor: 'text-red-600',
-    hint: 'Низкая регистрация',
   },
   unanswered_question: {
-    icon: <MessageCircle className="h-5 w-5" />,
+    icon: <MessageCircle className="h-4 w-4" />,
     label: 'Неотвеченный вопрос',
-    borderColor: 'border-l-amber-500',
-    bgColor: 'bg-amber-50',
+    accentColor: 'border-l-amber-500',
+    bgColor: 'bg-amber-50/60',
     iconColor: 'text-amber-600',
-    hint: 'Вопрос ожидает ответа',
   },
   group_inactive: {
-    icon: <Clock className="h-5 w-5" />,
+    icon: <Clock className="h-4 w-4" />,
     label: 'Неактивность группы',
-    borderColor: 'border-l-amber-500',
-    bgColor: 'bg-amber-50',
+    accentColor: 'border-l-amber-500',
+    bgColor: 'bg-amber-50/60',
     iconColor: 'text-amber-600',
-    hint: 'В группе нет сообщений',
   },
   churning_participant: {
-    icon: <UserMinus className="h-5 w-5" />,
+    icon: <UserMinus className="h-4 w-4" />,
     label: 'На грани оттока',
-    borderColor: 'border-l-amber-500',
-    bgColor: 'bg-amber-50',
+    accentColor: 'border-l-amber-500',
+    bgColor: 'bg-amber-50/60',
     iconColor: 'text-amber-600',
-    hint: 'Молчит более 14 дней',
   },
   inactive_newcomer: {
-    icon: <UserX className="h-5 w-5" />,
+    icon: <UserX className="h-4 w-4" />,
     label: 'Неактивный новичок',
-    borderColor: 'border-l-blue-500',
-    bgColor: 'bg-blue-50',
+    accentColor: 'border-l-blue-500',
+    bgColor: 'bg-blue-50/60',
     iconColor: 'text-blue-600',
-    hint: 'Нет активности после вступления',
   },
 };
 
 const DEFAULT_CONFIG = {
-  icon: <AlertTriangle className="h-5 w-5" />,
+  icon: <AlertTriangle className="h-4 w-4" />,
   label: 'Уведомление',
-  borderColor: 'border-l-amber-500',
-  bgColor: 'bg-amber-50',
-  iconColor: 'text-amber-600',
+  accentColor: 'border-l-gray-400',
+  bgColor: 'bg-gray-50',
+  iconColor: 'text-gray-600',
 };
 
 export default function NotificationCard({ notification, orgId, onResolve }: NotificationCardProps) {
   const [isResolving, setIsResolving] = useState(false);
   const isResolved = !!notification.resolved_at;
-  
   const config = NOTIFICATION_CONFIG[notification.notification_type] || DEFAULT_CONFIG;
-  
+
   const handleResolve = async () => {
     if (isResolved || isResolving) return;
-    
     setIsResolving(true);
     try {
       await onResolve(notification.id, notification.source_type);
@@ -121,114 +107,135 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
       setIsResolving(false);
     }
   };
-  
+
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), {
     addSuffix: true,
     locale: ru,
   });
-  
-  // Определяем что показывать как основной текст
-  // Для attention_zone (молчуны, новички) - description это имя участника
-  // Для notification_rule (AI) - description это summary анализа
-  const isAttentionZone = notification.source_type === 'attention_zone';
-  const primaryText = notification.description;
-  
-  // Подсказка из metadata или конфига
-  const hint = isAttentionZone 
-    ? config.hint 
-    : (notification.metadata?.summary as string) || config.hint;
-  
+
+  const meta = notification.metadata || {};
+  const isAI = notification.source_type === 'notification_rule';
+
+  // Контекст/цитата из metadata
+  const sampleMessages = Array.isArray(meta.sample_messages) ? meta.sample_messages as string[] : [];
+  const questionText = (meta.question_text || meta.question) as string | undefined;
+  const questionAuthor = meta.question_author as string | undefined;
+  const inactiveHours = meta.inactive_hours as number | undefined;
+  const groupTitle = meta.group_title as string | undefined;
+  const severity = meta.severity as string | undefined;
+
+  // Ссылка
+  const linkUrl = notification.link_url;
+  const isExternalLink = linkUrl?.startsWith('https://t.me');
+
   return (
-    <Card 
-      className={`border-l-4 transition-all ${config.borderColor} ${config.bgColor} ${
-        isResolved ? 'opacity-50' : ''
-      }`}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          {/* Icon */}
-          <div className={`flex-shrink-0 mt-0.5 ${config.iconColor}`}>
-            {config.icon}
-          </div>
-          
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            {/* Header with type label and time */}
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-xs font-semibold ${config.iconColor}`}>
-                {config.label}
+    <div className={`border-l-4 rounded-lg ${config.accentColor} ${config.bgColor} ${
+      isResolved ? 'opacity-50' : ''
+    } p-3`}>
+      <div className="flex items-start gap-2.5">
+        {/* Icon */}
+        <div className={`flex-shrink-0 mt-0.5 ${config.iconColor}`}>
+          {config.icon}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Header: type + time + link */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs font-semibold ${config.iconColor}`}>
+              {config.label}
+            </span>
+            {groupTitle && (
+              <span className="text-xs text-gray-500">
+                {groupTitle}
               </span>
-              <span className="text-xs text-gray-400">•</span>
-              <span className="text-xs text-gray-500">{timeAgo}</span>
-            </div>
-            
-            {/* Primary text (name or summary) */}
-            <h3 className="text-sm font-medium text-gray-900 mb-1">
-              {primaryText}
-            </h3>
-            
-            {/* Hint text (only for AI notifications with different summary) */}
-            {!isAttentionZone && hint && hint !== primaryText && (
-              <p className="text-xs text-gray-500 line-clamp-2 mb-2">
-                {hint}
-              </p>
             )}
-            
-            {/* Link to participant/group/message */}
-            {notification.link_url && notification.link_url.startsWith('https://t.me') ? (
-              <a 
-                href={notification.link_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-              >
-                {notification.notification_type === 'group_inactive' ? 'Открыть группу →' : 'Открыть в Telegram →'}
-              </a>
-            ) : notification.link_url ? (
-              <Link 
-                href={notification.link_url}
-                className="text-sm text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-              >
-                {notification.notification_type === 'critical_event' ? 'Открыть событие →' :
-                 notification.source_type === 'attention_zone' ? 'Открыть профиль →' : 'Подробнее →'}
-              </Link>
-            ) : null}
-            
-            {/* Resolved info */}
-            {isResolved && (
-              <div className="mt-2 text-xs text-green-700 flex items-center gap-1 bg-green-100 rounded px-2 py-1 w-fit">
-                <Check className="h-3 w-3" />
-                {notification.resolved_by_name 
-                  ? `Решено: ${notification.resolved_by_name}` 
-                  : 'Решено'}
-              </div>
+            <span className="text-xs text-gray-400">{timeAgo}</span>
+            {severity && severity !== 'low' && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                severity === 'high' ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'
+              }`}>
+                {severity === 'high' ? 'высокая' : 'средняя'}
+              </span>
+            )}
+            {/* Ссылка — компактно справа */}
+            {linkUrl && (
+              <span className="ml-auto flex-shrink-0">
+                {isExternalLink ? (
+                  <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-0.5">
+                    <ExternalLink className="w-3 h-3" /> Telegram
+                  </a>
+                ) : (
+                  <Link href={linkUrl}
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                    Открыть →
+                  </Link>
+                )}
+              </span>
             )}
           </div>
-          
-          {/* Resolve button */}
-          {!isResolved && (
-            <div className="flex-shrink-0">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResolve}
-                disabled={isResolving}
-                className="text-xs bg-white hover:bg-gray-50"
-              >
-                {isResolving ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <>
-                    <Check className="h-3 w-3 mr-1" />
-                    Решено
-                  </>
-                )}
-              </Button>
+
+          {/* Description — summary от AI или имя участника */}
+          <p className="text-sm text-gray-800 mt-0.5 leading-snug">
+            {notification.description}
+          </p>
+
+          {/* Контекст: цитата вопроса */}
+          {questionText && (
+            <div className="mt-1.5 pl-2 border-l-2 border-amber-300">
+              <p className="text-xs text-gray-700 italic line-clamp-2">«{questionText}»</p>
+              {questionAuthor && (
+                <span className="text-[11px] text-gray-500">— {questionAuthor}</span>
+              )}
             </div>
           )}
+
+          {/* Контекст: примеры сообщений (негатив) */}
+          {sampleMessages.length > 0 && (
+            <div className="mt-1.5 pl-2 border-l-2 border-red-300 space-y-0.5">
+              {sampleMessages.slice(0, 2).map((msg, i) => (
+                <p key={i} className="text-xs text-gray-700 italic line-clamp-1">«{msg}»</p>
+              ))}
+              {sampleMessages.length > 2 && (
+                <span className="text-[11px] text-gray-400">+{sampleMessages.length - 2} ещё</span>
+              )}
+            </div>
+          )}
+
+          {/* Контекст: часы неактивности */}
+          {inactiveHours && (
+            <span className="text-xs text-gray-500 mt-0.5 block">
+              Молчит {inactiveHours} ч.
+            </span>
+          )}
+
+          {/* Resolved info */}
+          {isResolved && notification.resolved_by_name && (
+            <span className="text-[11px] text-green-700 mt-1 inline-flex items-center gap-1">
+              <Check className="h-3 w-3" /> {notification.resolved_by_name}
+            </span>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Resolve button */}
+        {!isResolved && (
+          <div className="flex-shrink-0">
+            <button
+              onClick={handleResolve}
+              disabled={isResolving}
+              className="p-1.5 rounded-md hover:bg-white/80 text-gray-400 hover:text-green-600 transition-colors disabled:opacity-50"
+              title="Отметить как решённое"
+            >
+              {isResolving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
-
