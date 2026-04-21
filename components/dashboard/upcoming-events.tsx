@@ -57,11 +57,19 @@ export default function UpcomingEvents({ orgId, events }: UpcomingEventsProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Ближайшие события</CardTitle>
-        <Link href={`/p/${orgId}/events`}>
-          <Button variant="outline">Все события</Button>
-        </Link>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Ближайшие события</span>
+          <Link
+            href={`/p/${orgId}/events`}
+            className="text-sm text-blue-600 hover:underline flex items-center gap-1 font-normal"
+          >
+            Все события
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {events.map(event => (

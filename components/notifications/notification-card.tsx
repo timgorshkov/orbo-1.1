@@ -158,11 +158,11 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
             )}
           </div>
 
-          {/* Description */}
+          {/* Description: для attention_zone — description = имя участника */}
           {participantNameAsLink ? (
             <div className="mt-0.5 text-sm">
               <Link href={linkUrl} className="font-medium text-blue-700 hover:underline">
-                {notification.title || notification.description.split(' — ')[0]}
+                {notification.description.split(' — ')[0]}
               </Link>
               {notification.description.includes(' — ') && (
                 <span className="text-gray-500"> — {notification.description.split(' — ').slice(1).join(' — ')}</span>

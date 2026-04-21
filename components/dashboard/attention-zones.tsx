@@ -82,8 +82,17 @@ export default function AttentionZones({
 
   const items: DashboardItem[] = []
 
+  // Исключить AI-алерты старше 24ч (авторезо��в на дашборде)
+  const AUTO_RESOLVE_EXCLUDED_TYPES = new Set(['churning_participant', 'inactive_newcomer'])
+  const now = Date.now()
+  const AUTO_RESOLVE_MS = 24 * 60 * 60 * 1000
+  const freshAiAlerts = aiAlerts.filter(a => {
+    if (AUTO_RESOLVE_EXCLUDED_TYPES.has(a.type)) return true // Эти не авторезолвятся
+    return (now - new Date(a.created_at).getTime()) <= AUTO_RESOLVE_MS
+  })
+
   // 1. Негатив (highest priority)
-  aiAlerts
+  freshAiAlerts
     .filter(a => a.type === 'negative_discussion')
     .forEach(a => items.push({
       key: `neg-${a.id}`,
@@ -100,7 +109,7 @@ export default function AttentionZones({
     }))
 
   // 2. Неотвеченные вопросы
-  aiAlerts
+  freshAiAlerts
     .filter(a => a.type === 'unanswered_question')
     .forEach(a => items.push({
       key: `q-${a.id}`,
@@ -131,7 +140,7 @@ export default function AttentionZones({
   }))
 
   // 4. Неактивность группы
-  aiAlerts
+  freshAiAlerts
     .filter(a => a.type === 'group_inactive')
     .forEach(a => items.push({
       key: `inact-${a.id}`,
