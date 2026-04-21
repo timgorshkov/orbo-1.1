@@ -272,7 +272,7 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
                         </span>
                       )}
                       <p className="text-gray-600 font-medium">
-                        {needsPro ? 'Доступно в тарифе Профессиональный' : 'Правило не нас��роено'}
+                        {needsPro ? 'Доступно в тарифе Профессиональный' : 'Правило не настроено'}
                       </p>
                       <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
                         {needsPro
