@@ -58,6 +58,7 @@ type ProfileData = {
     phone: string | null
     custom_attributes: any
     tg_user_id: string | null
+    max_user_id: number | null
     participant_status: string
     source: string | null
     last_activity_at: string | null
@@ -934,80 +935,121 @@ export default function ProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Основная информация - данные из Telegram */}
-                {profile.participant && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Основная информация</h3>
-                    <div className="space-y-2">
-                      {/* Telegram username */}
-                      {profile.participant.username && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <MessageSquare className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600">Telegram:</span>
-                          <span className="font-medium text-gray-900">@{profile.participant.username}</span>
-                        </div>
-                      )}
-                      
-                      {/* Telegram ID */}
-                      {profile.participant.tg_user_id && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Telegram ID:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.tg_user_id}</span>
-                        </div>
-                      )}
-                      
-                      {/* Имя и Фамилия из Telegram (если есть и не совпадает с email) */}
-                      {(() => {
-                        // Show Telegram name if available and not an email (auto-generated names are often emails)
-                        const telegramName = [profile.participant.first_name, profile.participant.last_name].filter(Boolean).join(' ');
-                        const participantName = profile.participant.full_name;
-                        const nameToShow = telegramName || (participantName && !participantName.includes('@') ? participantName : null);
-                        
-                        if (!nameToShow) return null;
-                        
-                        return (
-                          <div className="flex items-center gap-2 text-sm">
-                            <User className="h-4 w-4 text-gray-400" />
-                            <span className="text-gray-600">Полное имя (Telegram):</span>
-                            <span className="font-medium text-gray-900">{nameToShow}</span>
-                          </div>
-                        );
-                      })()}
-                      
-                      {/* Последняя активность */}
-                      {profile.participant.last_activity_at && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-600">Последняя активность:</span>
-                          <span className="font-medium text-gray-900">
-                            {new Date(profile.participant.last_activity_at).toLocaleString('ru')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
+              <div className="space-y-2">
                 {/* Bio */}
                 {profile.participant?.bio && (
-                  <div className="border-t pt-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">О себе</h3>
-                    <p className="text-sm text-gray-600">{profile.participant.bio}</p>
-                  </div>
+                  <p className="text-base text-gray-700 mb-2">{profile.participant.bio}</p>
                 )}
 
-                {/* Goals & Offers (user-editable) */}
-                {profile.participant?.custom_attributes && (() => {
-                  const attrs = profile.participant.custom_attributes || {}
-                  const hasGoalsOffers = attrs.goals_self || 
-                    (Array.isArray(attrs.offers) && attrs.offers.length > 0) || 
-                    (Array.isArray(attrs.asks) && attrs.asks.length > 0)
-                  
-                  if (!hasGoalsOffers) return null
-                  
-                  return (
-                    <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Цели и Предложения</h3>
+                {/* ─── Контакты (стиль карточки участника) ─── */}
+                <div className="space-y-2">
+                  {/* Telegram */}
+                  <div className="flex items-center gap-3">
+                    <svg className="h-4 w-4 text-[#2AABEE] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.717-.962 3.928-1.36 5.214-.168.543-.5.725-.819.743-.695.03-1.223-.46-1.895-.9-1.054-.69-1.648-1.12-2.671-1.795-1.182-.78-.416-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212-.07-.062-.174-.041-.248-.024-.106.024-1.793 1.14-5.062 3.345-.479.331-.913.492-1.302.484-.428-.01-1.252-.242-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.324-.437.892-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.001.321.023.465.14.121.099.155.232.171.325.016.094.036.308.02.475z"/>
+                    </svg>
+                    <span className="text-sm text-gray-500 w-20">Telegram</span>
+                    <div className="flex-1 flex items-center gap-2">
+                      {profile.participant?.username ? (
+                        <a href={`https://t.me/${profile.participant.username}`} target="_blank" rel="noopener noreferrer"
+                          className="text-sm font-medium text-blue-600 hover:underline">
+                          @{profile.participant.username}
+                        </a>
+                      ) : profile.participant?.tg_user_id ? (
+                        <span className="text-sm text-gray-400">Username не указан</span>
+                      ) : (
+                        <span className="text-sm text-gray-400">Не привязан</span>
+                      )}
+                      {profile.telegram?.is_verified ? (
+                        <span className="text-xs text-green-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Верифицирован
+                        </span>
+                      ) : profile.participant?.tg_user_id ? (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не верифицирован
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* MAX */}
+                  {(profile.maxAccount || profile.participant?.max_user_id) && (
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                      <span className="text-sm text-gray-500 w-20">MAX</span>
+                      <div className="flex-1 flex items-center gap-2">
+                        {profile.maxAccount?.max_username ? (
+                          <span className="text-sm font-medium text-purple-600">@{profile.maxAccount.max_username}</span>
+                        ) : profile.maxAccount?.max_first_name ? (
+                          <span className="text-sm font-medium text-purple-600">
+                            {[profile.maxAccount.max_first_name, profile.maxAccount.max_last_name].filter(Boolean).join(' ')}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Привязан</span>
+                        )}
+                        {profile.maxAccount?.is_verified ? (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Верифицирован
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  <div className="flex items-center gap-3">
+                    <Mail className="h-4 w-4 text-green-600 flex-shrink-0" />
+                    <span className="text-sm text-gray-500 w-20">Email</span>
+                    <div className="flex-1 flex items-center gap-2">
+                      {profile.user.email ? (
+                        <span className="text-sm font-medium text-gray-900">{profile.user.email}</span>
+                      ) : (
+                        <span className="text-sm text-gray-400">Не указан</span>
+                      )}
+                      {profile.user.email && profile.user.email_confirmed ? (
+                        <span className="text-xs text-green-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Подтверждён
+                        </span>
+                      ) : profile.user.email ? (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не подтверждён
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Phone */}
+                  <div className="flex items-center gap-3">
+                    <svg className="h-4 w-4 text-purple-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                    </svg>
+                    <span className="text-sm text-gray-500 w-20">Телефон</span>
+                    {profile.participant?.phone ? (
+                      <a href={`tel:${profile.participant.phone}`} className="text-sm font-medium text-purple-600 hover:underline">
+                        {profile.participant.phone}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-gray-400">Не указан</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ─── Goals & Offers (всегда показываем) ─── */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Цели и Предложения</h3>
+                  {(() => {
+                    const attrs = profile.participant?.custom_attributes || {}
+                    const hasGoals = !!attrs.goals_self
+                    const hasOffers = Array.isArray(attrs.offers) && attrs.offers.length > 0
+                    const hasAsks = Array.isArray(attrs.asks) && attrs.asks.length > 0
+                    if (!hasGoals && !hasOffers && !hasAsks) {
+                      return (
+                        <p className="text-sm text-gray-400 italic">
+                          Не заполнены. Нажмите «Редактировать», чтобы рассказать о себе.
+                        </p>
+                      )
+                    }
+                    return (
                       <div className="space-y-3">
                         {attrs.goals_self && (
                           <div>
@@ -1015,59 +1057,69 @@ export default function ProfilePage() {
                             <p className="text-sm text-gray-800 mt-1">{attrs.goals_self}</p>
                           </div>
                         )}
-                        {Array.isArray(attrs.offers) && attrs.offers.length > 0 && (
+                        {hasOffers && (
                           <div>
                             <span className="text-xs font-medium text-gray-500 uppercase">Могу предложить</span>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {attrs.offers.map((offer: string, i: number) => (
-                                <span key={i} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full">
-                                  {offer}
-                                </span>
+                                <span key={i} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full">{offer}</span>
                               ))}
                             </div>
                           </div>
                         )}
-                        {Array.isArray(attrs.asks) && attrs.asks.length > 0 && (
+                        {hasAsks && (
                           <div>
                             <span className="text-xs font-medium text-gray-500 uppercase">Ищу</span>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {attrs.asks.map((ask: string, i: number) => (
-                                <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
-                                  {ask}
-                                </span>
+                                <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">{ask}</span>
                               ))}
                             </div>
                           </div>
                         )}
                       </div>
+                    )
+                  })()}
+                </div>
+
+                {/* ─── Дополнительные атрибуты (не системные) ─── */}
+                {(() => {
+                  const attrs = profile.participant?.custom_attributes || {}
+                  const visibleAttrs = Object.entries(attrs)
+                    .filter(([key]) => !systemFields.includes(key))
+                  if (visibleAttrs.length === 0) return null
+                  return (
+                    <div className="border-t pt-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Дополнительная информация</h3>
+                      <div className="space-y-1.5">
+                        {visibleAttrs.map(([key, value]) => (
+                          <div key={key} className="flex items-start gap-2 text-sm">
+                            <span className="text-gray-500 min-w-[100px]">{key}</span>
+                            <span className="text-gray-900 font-medium">{String(value)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )
                 })()}
 
-                {/* Contact Information */}
-                {(profile.participant?.email || profile.participant?.phone) && (
+                {/* ─── Группы ─── */}
+                {profile.membership.admin_groups && profile.membership.admin_groups.length > 0 && (
                   <div className="border-t pt-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Контактная информация</h3>
-                    <div className="space-y-2">
-                      {profile.participant.email && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Mail className="h-4 w-4 text-gray-400" />
-                          <span className="text-gray-600">Email:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.email}</span>
-                        </div>
-                      )}
-                      {profile.participant.phone && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-gray-400">📞</span>
-                          <span className="text-gray-600">Телефон:</span>
-                          <span className="font-medium text-gray-900">{profile.participant.phone}</span>
-                        </div>
-                      )}
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">Группы</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {profile.membership.admin_groups.map((group) => (
+                        <span key={group.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          {group.title}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {/* Announcements consent */}
+                {/* ─── Согласия ─── */}
                 {profile.participant?.announcements_consent_granted_at && (
                   <div className="border-t pt-4">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Согласия</h3>
@@ -1089,27 +1141,6 @@ export default function ProfilePage() {
                           {revokingConsent ? 'Отзыв...' : 'Отозвать согласие'}
                         </button>
                       )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Custom attributes: hidden from participant view (system/org fields) */}
-
-                {/* Admin groups */}
-                {profile.membership.admin_groups && profile.membership.admin_groups.length > 0 && (
-                  <div className="border-t pt-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                      Администратор в группах ({profile.membership.admin_groups.length})
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {profile.membership.admin_groups.map((group) => (
-                        <span
-                          key={group.id}
-                          className="inline-flex items-center px-2 py-1 rounded-md text-sm bg-white border border-neutral-200 text-neutral-700"
-                        >
-                          {group.title}
-                        </span>
-                      ))}
                     </div>
                   </div>
                 )}
