@@ -281,6 +281,11 @@ export default async function OrganizationSettingsPage({
       </div>
     )
   } catch (error) {
+    // redirect() и notFound() в Next.js App Router работают через throw —
+    // их нужно пробросить, иначе catch их «съедает» и возвращает 404.
+    if (error instanceof Error && (error.message === 'NEXT_REDIRECT' || error.message === 'NEXT_NOT_FOUND')) {
+      throw error
+    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       redirect(`/p/${orgId}/auth`)
     }

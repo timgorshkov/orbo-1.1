@@ -541,6 +541,16 @@ export async function DELETE(
     } else {
       // Cancel the series (parent) registration or standalone
       const regEventId = (event as any).parent_event_id || eventId
+
+      // Сначала найдём регистрацию — нужен id для отмены payment_session
+      const { data: regToCancel } = await adminSupabase
+        .from('event_registrations')
+        .select('id')
+        .eq('event_id', regEventId)
+        .eq('participant_id', participant.id)
+        .eq('status', 'registered')
+        .maybeSingle()
+
       const { error: cancelError } = await adminSupabase
         .from('event_registrations')
         .update({ status: 'cancelled' })
@@ -551,6 +561,20 @@ export async function DELETE(
       if (cancelError) {
         logger.error({ error: cancelError.message, event_id: eventId }, 'Error cancelling registration');
         return NextResponse.json({ error: cancelError.message }, { status: 500 })
+      }
+
+      // Отменить pending payment_session для этой регистрации, чтобы при
+      // повторной регистрации создалась свежая сессия (а не переиспользовался
+      // старый URL платёжного шлюза, который уже «протух»).
+      if (regToCancel?.id) {
+        await adminSupabase.raw(
+          `UPDATE payment_sessions
+              SET status = 'cancelled',
+                  idempotency_key = NULL
+            WHERE event_registration_id = $1
+              AND status IN ('pending', 'processing')`,
+          [regToCancel.id]
+        ).catch(() => { /* non-critical */ })
       }
     }
 
