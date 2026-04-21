@@ -24,14 +24,28 @@ interface NotificationsResponse {
   };
 }
 
-const NOTIFICATION_TYPES: Array<{ value: string; label: string; icon: string; emptyHint: string }> = [
-  { value: '', label: 'Все', icon: '📋', emptyHint: 'Нет уведомлений, требующих внимания' },
-  { value: 'negative_discussion', label: 'Негатив', icon: '🔴', emptyHint: 'AI анализирует сообщения и уведомляет о конфликтах и токсичном поведении. Настройте чувствительность в Настройках.' },
-  { value: 'unanswered_question', label: 'Вопросы', icon: '❓', emptyHint: 'AI находит вопросы участников, оставшиеся без ответа дольше заданного порога. Настройте время ожидания в Настройках.' },
-  { value: 'group_inactive', label: 'Неактивность', icon: '💤', emptyHint: 'Уведомления появятся, если в группе нет сообщений дольше настроенного порога.' },
-  { value: 'churning_participant', label: 'Отток', icon: '📉', emptyHint: 'Участники, которые были активны, но резко замолчали (>14 дней). Определяются автоматически.' },
-  { value: 'inactive_newcomer', label: 'Новички', icon: '🆕', emptyHint: 'Участники, присоединившиеся менее 14 дней назад и ни разу не написавшие в группу.' },
-  { value: 'critical_event', label: 'Регистрация', icon: '📅', emptyHint: 'Уведомления о событиях с низкой регистрацией (<30% от лимита).' },
+// Типы, которые требуют настроенного правила (AI-based)
+const RULE_BASED_TYPES = new Set(['negative_discussion', 'unanswered_question', 'group_inactive']);
+// Типы, которые требуют тарифов PRO/Club
+const PRO_TYPES = new Set(['negative_discussion', 'unanswered_question']);
+
+const NOTIFICATION_TYPES: Array<{ value: string; label: string; icon: string; emptyHint: string; noRuleHint: string; isPro: boolean }> = [
+  { value: '', label: 'Все', icon: '📋', emptyHint: 'Нет уведомлений, требующих внимания', noRuleHint: '', isPro: false },
+  { value: 'negative_discussion', label: 'Негатив', icon: '🔴', isPro: true,
+    emptyHint: 'AI анализирует сообщения и уведомляет о конфликтах и токсичном поведении.',
+    noRuleHint: 'Правило мониторинга негатива не настроено. Добавьте его в Настройках уведомлений.' },
+  { value: 'unanswered_question', label: 'Вопросы', icon: '❓', isPro: true,
+    emptyHint: 'AI находит вопросы участников, оставшиеся без ответа дольше заданного порога.',
+    noRuleHint: 'Правило мониторинга вопросов не настроено. Добавьте его в Настройках уведомлений.' },
+  { value: 'group_inactive', label: 'Неактивность', icon: '💤', isPro: false,
+    emptyHint: 'Уведомления появятся, если в группе нет сообщений дольше настроенного порога.',
+    noRuleHint: 'Правило мониторинга неактивности не настроено. Добавьте его в Настройках уведомлений.' },
+  { value: 'churning_participant', label: 'Отток', icon: '📉', isPro: false,
+    emptyHint: 'Участники, которые были активны, но резко замолчали (>14 дней). Определяются автоматически.', noRuleHint: '' },
+  { value: 'inactive_newcomer', label: 'Новички', icon: '🆕', isPro: false,
+    emptyHint: 'Участники, присоединившиеся менее 14 дней назад и ни разу не написавшие в группу.', noRuleHint: '' },
+  { value: 'critical_event', label: 'Регистрация', icon: '📅', isPro: false,
+    emptyHint: 'Уведомления о событиях с низкой регистрацией (<30% от лимита).', noRuleHint: '' },
 ];
 
 // Авторезолв: уведомления старше 24ч считаем решёнными автоматически
@@ -43,6 +57,9 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterType, setFilterType] = useState('');
+  // Множество rule_type для которых есть хотя бы одно включённое правило
+  const [enabledRuleTypes, setEnabledRuleTypes] = useState<Set<string>>(new Set());
+  const [planCode, setPlanCode] = useState<string | null>(null);
   const [showResolved, setShowResolvedRaw] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('orbo_notif_show_resolved')
@@ -54,6 +71,30 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
     setShowResolvedRaw(v)
     if (typeof window !== 'undefined') localStorage.setItem('orbo_notif_show_resolved', String(v))
   };
+
+  // Загрузка правил и плана (один раз)
+  useEffect(() => {
+    (async () => {
+      try {
+        const [rulesRes, statusRes] = await Promise.all([
+          fetch(`/api/notifications/rules?orgId=${orgId}`),
+          fetch(`/api/billing/status?orgId=${orgId}`),
+        ])
+        if (rulesRes.ok) {
+          const { rules } = await rulesRes.json()
+          const enabled = new Set<string>()
+          for (const r of rules || []) {
+            if (r.is_enabled) enabled.add(r.rule_type)
+          }
+          setEnabledRuleTypes(enabled)
+        }
+        if (statusRes.ok) {
+          const data = await statusRes.json()
+          setPlanCode(data.plan?.code || 'free')
+        }
+      } catch { /* non-critical */ }
+    })()
+  }, [orgId])
 
   const fetchNotifications = useCallback(async (refresh = false) => {
     if (refresh) setIsRefreshing(true);
@@ -186,6 +227,9 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
               }`}
             >
               {type.icon} {type.label}
+              {type.isPro && planCode && !['pro', 'club', 'enterprise'].includes(planCode) && (
+                <span className="ml-0.5 text-[9px] font-bold text-purple-600">PRO</span>
+              )}
               {count > 0 && <span className="ml-1 opacity-70">{count}</span>}
             </button>
           );
@@ -211,13 +255,49 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
               <NotificationCard key={n.id} notification={n} orgId={orgId} onResolve={handleResolve} />
             ))
           ) : (
-            <div className="text-center py-8">
-              <div className="text-3xl mb-2">✨</div>
-              <p className="text-gray-600 font-medium">Всё в порядке</p>
-              <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
-                {NOTIFICATION_TYPES.find(t => t.value === filterType)?.emptyHint || 'Нет уведомлений, требующих внимания'}
-              </p>
-            </div>
+            (() => {
+              const typeConfig = NOTIFICATION_TYPES.find(t => t.value === filterType)
+              const isRuleBased = filterType && RULE_BASED_TYPES.has(filterType)
+              const hasRule = isRuleBased && enabledRuleTypes.has(filterType)
+              const needsPro = typeConfig?.isPro && planCode && !['pro', 'club', 'enterprise'].includes(planCode)
+
+              return (
+                <div className="text-center py-8">
+                  {isRuleBased && !hasRule ? (
+                    <>
+                      <div className="text-3xl mb-2">⚙️</div>
+                      {needsPro && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 mb-2">
+                          PRO
+                        </span>
+                      )}
+                      <p className="text-gray-600 font-medium">
+                        {needsPro ? 'Доступно в тарифе Профессиональный' : 'Правило не нас��роено'}
+                      </p>
+                      <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
+                        {needsPro
+                          ? `${typeConfig?.emptyHint || ''} Для активации перейдите на тариф Профессиональный или Клубный.`
+                          : typeConfig?.noRuleHint || 'Добавьте правило в Настрой��ах уведомлений.'}
+                      </p>
+                      <Link
+                        href={needsPro ? `/p/${orgId}/settings?tab=billing` : `/p/${orgId}/settings?tab=notifications`}
+                        className="inline-flex items-center gap-1 mt-3 text-sm text-blue-600 hover:underline"
+                      >
+                        {needsPro ? 'Тарифы →' : 'Настройки уведомлений →'}
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-3xl mb-2">✨</div>
+                      <p className="text-gray-600 font-medium">Всё в порядке</p>
+                      <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
+                        {typeConfig?.emptyHint || 'Нет уведомлений, требующих внимания'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )
+            })()
           )}
         </div>
 
