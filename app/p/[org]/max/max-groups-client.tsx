@@ -120,7 +120,7 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups, 
         body: JSON.stringify({ org_id: orgId, max_chat_id: group.max_chat_id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!res.ok || data.ok === false) throw new Error(data.error || 'Failed');
 
       setSuccess(`Синхронизировано: ${data.synced} новых, ${data.skipped} пропущено из ${data.total}`);
       setTimeout(() => setSuccess(null), 5000);
@@ -313,17 +313,18 @@ export default function MaxGroupsClient({ orgId, linkedGroups, availableGroups, 
           <CardTitle className="text-lg">Как подключить группу MAX</CardTitle>
         </CardHeader>
         <CardContent>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
-            <li>Откройте MAX и перейдите в нужную группу</li>
-            <li>Добавьте бота{mainBotUsername ? ` @${mainBotUsername}` : ' Orbo'} в группу как участника</li>
-            <li>На��начьте бота администратором для полного доступа (анонсы, список участников)</li>
-            <li>Бот автоматически появится в списке доступных групп выше</li>
-            <li>Нажмите «Привязать» для подключения группы к организации</li>
-            <li>Нажмите «Синхр» для импорта участников</li>
+          <ol className="list-decimal list-inside space-y-2.5 text-sm text-gray-600">
+            <li><strong>Найдите и запустите бота</strong> — в MAX найдите{mainBotUsername ? ` @${mainBotUsername}` : ' бота Orbo'} через поиск и нажмите «Начать».</li>
+            <li><strong>Добавьте бота в группу</strong> — откройте группу → Настройки → Участники → Добавить → выберите бота.</li>
+            <li><strong>Назначьте бота администратором</strong> — Участники → нажмите на бота → «Назначить администратором». Без этого бот не сможет читать участников и отправлять анонсы.</li>
+            <li>Обновите эту страницу — группа появится в «Доступные группы» → нажмите «Привязать».</li>
+            <li>Нажмите «Синхр» для импорта участников.</li>
           </ol>
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+            <strong>Важно:</strong> если вы заменили бота — убедитесь, что токен нового бота указан в настройках сервера (<code className="bg-amber-100 px-1 rounded">MAX_MAIN_BOT_TOKEN</code>) и приложение перезапущено.
+          </div>
           <p className="text-xs text-gray-400 mt-3">
-            Статус бота и admin-прав проверяется автоматически при открытии этой страницы.
-            Нажмите 🛡 для ручной перепроверки конкретной группы.
+            Статус бота проверяется при открытии страницы (🛡). Если синхронизация показывает ошибку — проверьте, что бот является администратором.
           </p>
         </CardContent>
       </Card>

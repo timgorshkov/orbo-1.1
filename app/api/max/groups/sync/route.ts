@@ -60,16 +60,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'MAX Main bot not configured' }, { status: 500 });
     }
 
+    // Получить ID бота, чтобы отфильтровать его из списка участников
+    let botUserId: number | null = null;
+    try {
+      const meRes = await maxService.getMe();
+      if (meRes.ok) botUserId = meRes.data?.user_id ?? null;
+    } catch { /* ignore */ }
+
     let allMembers: any[] = [];
     let marker: number | undefined;
+    let fetchError: string | null = null;
 
     // Paginated fetch
     for (let i = 0; i < 50; i++) {
       const result = await maxService.getChatMembers(max_chat_id, { marker, count: 100 });
-      if (!result.ok || !result.data?.members) break;
+      if (!result.ok || !result.data?.members) {
+        // Первая страница не загрузилась → скорее всего бот не в группе или не админ
+        if (i === 0) {
+          fetchError = result.error?.message || result.error?.code || 'Не удалось получить список участников';
+          // Обновить статус группы
+          await adminSupabase
+            .from('max_groups')
+            .update({ bot_status: 'inactive', last_sync_at: new Date().toISOString() })
+            .eq('max_chat_id', max_chat_id);
+        }
+        break;
+      }
       allMembers = allMembers.concat(result.data.members);
       marker = result.data.marker;
       if (!marker) break;
+    }
+
+    // Если не удалось загрузить участников — сообщить об ошибке
+    if (fetchError) {
+      return NextResponse.json({
+        ok: false,
+        error: `Бот не смог получить список участников группы: ${fetchError}. Убедитесь, что бот добавлен в группу и назначен администратором.`,
+        total: 0,
+        synced: 0,
+        skipped: 0,
+      }, { status: 422 });
     }
 
     let synced = 0;
@@ -80,7 +110,8 @@ export async function POST(request: NextRequest) {
       const userName = member.name || `User ${maxUserId}`;
       const username = member.username || null;
 
-      if (member.is_bot) {
+      // Фильтр ботов: по флагу is_bot ИЛИ по user_id нашего бота
+      if (member.is_bot || (botUserId && maxUserId === botUserId)) {
         skipped++;
         continue;
       }
