@@ -61,10 +61,16 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
 
       const data: NotificationsResponse = await response.json();
 
-      // Авторезолв старых уведомлений (>24ч без решения)
+      // Авторезолв старых уведомлений (>24ч без решения).
+      // Исключения: churning_participant и inactive_newcomer — не требуют оперативности,
+      // комьюнити-менеджер может отработать их в течение нескольких дней.
+      const AUTO_RESOLVE_EXCLUDED = new Set(['churning_participant', 'inactive_newcomer']);
       const now = Date.now();
       const processed = data.notifications.map(n => {
-        if (!n.resolved_at && (now - new Date(n.created_at).getTime()) > AUTO_RESOLVE_MS) {
+        if (!n.resolved_at
+          && !AUTO_RESOLVE_EXCLUDED.has(n.notification_type)
+          && (now - new Date(n.created_at).getTime()) > AUTO_RESOLVE_MS
+        ) {
           return { ...n, resolved_at: new Date(now).toISOString(), resolved_by_name: 'авто (24ч)' };
         }
         return n;
