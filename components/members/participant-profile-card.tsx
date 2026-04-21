@@ -568,9 +568,7 @@ export default function ParticipantProfileCard({
                 ) : (
                   <span className="text-sm text-gray-400">Не указан</span>
                 )}
-                {participant.tg_user_id && (
-                  <span className="text-xs text-gray-400">ID: {participant.tg_user_id}</span>
-                )}
+                {/* Telegram ID скрыт — не полезен для комьюнити-менеджера */}
               </div>
             </div>
 
@@ -647,7 +645,35 @@ export default function ParticipantProfileCard({
               )}
             </div>
 
-            {/* AI-extracted contacts (admin-only) */}
+            {/* Created At — используем наиболее раннюю из известных дат */}
+            <div className="flex items-center gap-3">
+              <Calendar className="h-4 w-4 text-orange-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Добавлен</span>
+              <span className="text-sm font-medium text-gray-900">
+                {(() => {
+                  // Приоритет: group_joined_at > first_message_at (из events) > created_at
+                  const candidates = [
+                    detail.groups?.[0]?.joined_at,
+                    detail.events?.find(e => e.event_type === 'join')?.created_at,
+                    (detail as any).first_message_at,
+                    participant.created_at,
+                  ].filter(Boolean) as string[];
+                  const earliest = candidates.length > 0
+                    ? candidates.reduce((a, b) => (new Date(a) < new Date(b) ? a : b))
+                    : participant.created_at;
+                  return formatDate(earliest);
+                })()}
+              </span>
+            </div>
+
+            {/* Engagement Category */}
+            <div className="flex items-center gap-3">
+              <Activity className="h-4 w-4 text-indigo-600 flex-shrink-0" />
+              <span className="text-sm text-gray-500 w-20">Категория</span>
+              <EngagementBadge participant={participant} events={detail.events} />
+            </div>
+
+            {/* AI-extracted contacts (admin-only) — ниже основных контактов */}
             {isAdmin && !editing && (() => {
               const ec = participant.custom_attributes?.ai_extracted_contacts;
               if (!ec) return null;
@@ -729,22 +755,6 @@ export default function ParticipantProfileCard({
                 {contactsError && <p className="text-xs text-red-500 mt-0.5">{contactsError}</p>}
               </div>
             )}
-
-            {/* Created At */}
-            <div className="flex items-center gap-3">
-              <Calendar className="h-4 w-4 text-orange-600 flex-shrink-0" />
-              <span className="text-sm text-gray-500 w-20">Добавлен</span>
-              <span className="text-sm font-medium text-gray-900">
-                {formatDate(participant.created_at)}
-              </span>
-            </div>
-
-            {/* Engagement Category */}
-            <div className="flex items-center gap-3">
-              <Activity className="h-4 w-4 text-indigo-600 flex-shrink-0" />
-              <span className="text-sm text-gray-500 w-20">Категория</span>
-              <EngagementBadge participant={participant} events={detail.events} />
-            </div>
           </div>
 
           {/* AI Enrichment Data (if available) - now includes AI analysis button */}
@@ -999,32 +1009,24 @@ export default function ParticipantProfileCard({
             />
           </div>
 
-          {/* Groups - только для админа или самого участника */}
+          {/* Группы, в которых состоит участник */}
           {(isAdmin || canEdit) && detail.groups.length > 0 && (
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Telegram группы</h3>
-              <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Группы, в которых состоит участник</h3>
+              <div className="flex flex-wrap gap-1.5">
                 {detail.groups.map(group => (
-                  <div 
-                    key={group.tg_group_id} 
-                    className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
+                  <span
+                    key={group.tg_group_id}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs ${
+                      group.is_active
+                        ? 'bg-gray-100 text-gray-700'
+                        : 'bg-gray-50 text-gray-400 line-through'
+                    }`}
+                    title={group.is_active ? 'Активен' : 'Покинул группу'}
                   >
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        {group.title || `Группа ${group.tg_chat_id}`}
-                      </div>
-                      <div className="text-xs text-gray-500">ID: {group.tg_chat_id}</div>
-                    </div>
-                    <span 
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        group.is_active 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {group.is_active ? 'Активен' : 'Неактивен'}
-                    </span>
-                  </div>
+                    <span className={`w-1.5 h-1.5 rounded-full ${group.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    {group.title || 'Группа'}
+                  </span>
                 ))}
               </div>
             </div>

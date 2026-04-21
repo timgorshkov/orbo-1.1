@@ -665,14 +665,18 @@ export default function MembersView({
           </div>
         )
       ) : /* Контент */ filteredParticipants.length === 0 ? (
-        searchQuery ? (
+        (searchQuery || activeFiltersCount > 0) ? (
           <div className="flex h-64 items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
             <div className="text-center px-4">
-              <p className="text-lg font-medium text-gray-900">Участники не найдены</p>
+              <p className="text-lg font-medium text-gray-900">
+                {searchQuery ? 'Участники не найдены' : 'Нет участников по фильтру'}
+              </p>
               <p className="mt-1 text-sm text-gray-500">
                 {backgroundLoading
                   ? 'Полный список ещё загружается, попробуйте снова через секунду'
-                  : 'Попробуйте изменить поисковый запрос'}
+                  : searchQuery
+                    ? 'Попробуйте изменить поисковый запрос'
+                    : 'Нет участников, соответствующих выбранным критериям. Попробуйте другой фильтр.'}
               </p>
             </div>
           </div>
