@@ -960,34 +960,79 @@ export default function ProfilePage() {
                   <p className="text-base text-gray-700 mb-2">{profile.participant.bio}</p>
                 )}
 
-                {/* ─── Контакты (стиль карточки участника) ─── */}
-                <div className="space-y-2">
+                {/* ─── Контакты с inline-действиями ─── */}
+                <div className="space-y-2.5">
                   {/* Telegram */}
-                  <div className="flex items-center gap-3">
-                    <svg className="h-4 w-4 text-[#2AABEE] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <div className="flex items-start gap-3">
+                    <svg className="h-4 w-4 text-[#2AABEE] flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.717-.962 3.928-1.36 5.214-.168.543-.5.725-.819.743-.695.03-1.223-.46-1.895-.9-1.054-.69-1.648-1.12-2.671-1.795-1.182-.78-.416-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212-.07-.062-.174-.041-.248-.024-.106.024-1.793 1.14-5.062 3.345-.479.331-.913.492-1.302.484-.428-.01-1.252-.242-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.324-.437.892-.663 3.498-1.524 5.831-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635.099-.001.321.023.465.14.121.099.155.232.171.325.016.094.036.308.02.475z"/>
                     </svg>
-                    <span className="text-sm text-gray-500 w-20">Telegram</span>
-                    <div className="flex-1 flex items-center gap-2">
-                      {profile.participant?.username ? (
-                        <a href={`https://t.me/${profile.participant.username}`} target="_blank" rel="noopener noreferrer"
-                          className="text-sm font-medium text-blue-600 hover:underline">
-                          @{profile.participant.username}
-                        </a>
-                      ) : profile.participant?.tg_user_id ? (
-                        <span className="text-sm text-gray-400">Username не указан</span>
-                      ) : (
-                        <span className="text-sm text-gray-400">Не привязан</span>
+                    <span className="text-sm text-gray-500 w-20 mt-0.5">Telegram</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {profile.participant?.username ? (
+                          <a href={`https://t.me/${profile.participant.username}`} target="_blank" rel="noopener noreferrer"
+                            className="text-sm font-medium text-blue-600 hover:underline">
+                            @{profile.participant.username}
+                          </a>
+                        ) : profile.participant?.tg_user_id ? (
+                          <span className="text-sm text-gray-400">Username не указан</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Не привязан</span>
+                        )}
+                        {profile.telegram?.is_verified ? (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Верифицирован
+                          </span>
+                        ) : profile.participant?.tg_user_id ? (
+                          <span className="text-xs text-amber-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не верифицирован
+                          </span>
+                        ) : null}
+                      </div>
+                      {/* Привязка Telegram */}
+                      {!profile.participant?.tg_user_id && !profile.telegram && (
+                        <div className="mt-2">
+                          {tgLinkStatus === 'idle' && (
+                            <button
+                              onClick={startTgLink}
+                              className="text-xs text-blue-600 hover:text-blue-800 underline"
+                            >
+                              Привязать Telegram-аккаунт
+                            </button>
+                          )}
+                          {tgLinkStatus === 'generating' && (
+                            <span className="text-xs text-gray-500">Генерация кода...</span>
+                          )}
+                          {(tgLinkStatus === 'waiting' && tgLinkCode) && (
+                            <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg space-y-1.5">
+                              <p className="text-xs text-blue-800">
+                                Откройте бота <strong>@{tgLinkBotUsername}</strong> в Telegram и отправьте код:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <code className="bg-white border border-blue-300 px-3 py-1 rounded font-mono text-lg font-bold text-blue-700">
+                                  {tgLinkCode}
+                                </code>
+                                <button
+                                  onClick={() => { navigator.clipboard.writeText(tgLinkCode).catch(() => {}); setTgCodeCopied(true); setTimeout(() => setTgCodeCopied(false), 2000) }}
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  {tgCodeCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                              <span className="text-[11px] text-blue-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" /> ожидаем подтверждение
+                              </span>
+                            </div>
+                          )}
+                          {tgLinkStatus === 'linked' && (
+                            <span className="text-xs text-green-600 font-medium">Telegram привязан!</span>
+                          )}
+                          {tgLinkError && (
+                            <p className="text-xs text-red-600 mt-1">{tgLinkError}</p>
+                          )}
+                        </div>
                       )}
-                      {profile.telegram?.is_verified ? (
-                        <span className="text-xs text-green-600 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Верифицирован
-                        </span>
-                      ) : profile.participant?.tg_user_id ? (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не верифицирован
-                        </span>
-                      ) : null}
                     </div>
                   </div>
 
@@ -1016,24 +1061,80 @@ export default function ProfilePage() {
                   )}
 
                   {/* Email */}
-                  <div className="flex items-center gap-3">
-                    <Mail className="h-4 w-4 text-green-600 flex-shrink-0" />
-                    <span className="text-sm text-gray-500 w-20">Email</span>
-                    <div className="flex-1 flex items-center gap-2">
-                      {profile.user.email ? (
-                        <span className="text-sm font-medium text-gray-900">{profile.user.email}</span>
-                      ) : (
-                        <span className="text-sm text-gray-400">Не указан</span>
+                  <div className="flex items-start gap-3">
+                    <Mail className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-500 w-20 mt-0.5">Email</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {profile.user.email ? (
+                          <span className="text-sm font-medium text-gray-900">{profile.user.email}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Не указан</span>
+                        )}
+                        {profile.user.email && profile.user.email_confirmed ? (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Подтверждён
+                          </span>
+                        ) : profile.user.email ? (
+                          <span className="text-xs text-amber-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не подтверждён
+                          </span>
+                        ) : null}
+                      </div>
+                      {/* Добавление email (для участников без email) */}
+                      {!profile.user.email && !showEmailForm && (
+                        <button
+                          onClick={() => setShowEmailForm(true)}
+                          className="text-xs text-green-600 hover:text-green-800 underline mt-1"
+                        >
+                          Добавить email
+                        </button>
                       )}
-                      {profile.user.email && profile.user.email_confirmed ? (
-                        <span className="text-xs text-green-600 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Подтверждён
-                        </span>
-                      ) : profile.user.email ? (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Не подтверждён
-                        </span>
-                      ) : null}
+                      {!profile.user.email && showEmailForm && (
+                        <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                          <Input
+                            type="email"
+                            value={activationEmail}
+                            onChange={(e) => setActivationEmail(e.target.value)}
+                            placeholder="your@email.com"
+                            className="h-8 text-sm"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              disabled={sendingCode || !activationEmail}
+                              onClick={handleSendActivationCode}
+                              className="h-7 text-xs"
+                            >
+                              {sendingCode ? 'Отправка...' : 'Отправить код'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setShowEmailForm(false); setActivationEmail(''); setEmailError(null) }}
+                              className="h-7 text-xs"
+                            >
+                              Отмена
+                            </Button>
+                          </div>
+                          {activationCode && (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="text"
+                                value={activationCode}
+                                onChange={(e) => setActivationCode(e.target.value)}
+                                placeholder="Код из письма"
+                                className="h-8 text-sm flex-1"
+                              />
+                              <Button size="sm" disabled={activating} onClick={handleActivateProfile} className="h-7 text-xs">
+                                {activating ? '...' : 'Подтвердить'}
+                              </Button>
+                            </div>
+                          )}
+                          {emailError && <p className="text-xs text-red-600">{emailError}</p>}
+                          {emailSuccess && <p className="text-xs text-green-600">{emailSuccess}</p>}
+                        </div>
+                      )}
                     </div>
                   </div>
 
