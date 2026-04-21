@@ -242,16 +242,26 @@ export async function processMessage(
 ): Promise<ProcessingResult> {
   const from = message.from;
   
-  // System accounts to skip (Telegram service, bots, anonymous)
-  const SYSTEM_ACCOUNT_IDS = [
+  // Пропускаем: нет отправителя, служебные аккаунты Telegram, обычные боты.
+  // НЕ пропускаем 1087968824 (Group Anonymous Bot) — это реальные сообщения от
+  // админов, пишущих от имени группы. Учитываем как активность.
+  const ANONYMOUS_GROUP_BOT_ID = 1087968824;
+  const SKIP_ACCOUNT_IDS = new Set([
     777000,      // Telegram Service Notifications
     136817688,   // @Channel_Bot
-    1087968824   // Group Anonymous Bot
-  ];
-  
-  if (!from || from.is_bot || SYSTEM_ACCOUNT_IDS.includes(from.id)) {
-    logger.debug({ user_id: from?.id, is_bot: from?.is_bot }, 'Skipping system account or bot');
-    return { success: true }; // Skip bots and system accounts
+  ]);
+
+  if (!from) {
+    logger.debug({}, 'Skipping message without from');
+    return { success: true };
+  }
+  if (SKIP_ACCOUNT_IDS.has(from.id)) {
+    logger.debug({ user_id: from.id }, 'Skipping system account');
+    return { success: true };
+  }
+  if (from.is_bot && from.id !== ANONYMOUS_GROUP_BOT_ID) {
+    logger.debug({ user_id: from.id, username: from.username }, 'Skipping bot');
+    return { success: true };
   }
   
   // Check idempotency if updateId provided
