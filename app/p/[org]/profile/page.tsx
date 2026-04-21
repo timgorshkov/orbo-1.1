@@ -787,7 +787,24 @@ export default function ProfilePage() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Мои цели
+                        О себе (кратко)
+                      </label>
+                      <textarea
+                        value={editForm.custom_attributes.bio_custom || ''}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          custom_attributes: {
+                            ...editForm.custom_attributes,
+                            bio_custom: e.target.value
+                          }
+                        })}
+                        placeholder="Расскажите кратко о себе: род занятий, опыт, интересы"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">
+                        Мои цели в сообществе
                       </label>
                       <textarea
                         value={editForm.custom_attributes.goals_self || ''}
@@ -804,11 +821,11 @@ export default function ProfilePage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Могу предложить (через запятую)
+                        Чем могу помочь (через запятую)
                       </label>
                       <Input
                         type="text"
-                        value={Array.isArray(editForm.custom_attributes.offers) 
+                        value={Array.isArray(editForm.custom_attributes.offers)
                           ? editForm.custom_attributes.offers.join(', ')
                           : editForm.custom_attributes.offers || ''}
                         onChange={(e) => setEditForm({
@@ -823,11 +840,11 @@ export default function ProfilePage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-600 mb-1">
-                        Ищу (через запятую)
+                        Что мне нужно (через запятую)
                       </label>
                       <Input
                         type="text"
-                        value={Array.isArray(editForm.custom_attributes.asks) 
+                        value={Array.isArray(editForm.custom_attributes.asks)
                           ? editForm.custom_attributes.asks.join(', ')
                           : editForm.custom_attributes.asks || ''}
                         onChange={(e) => setEditForm({
@@ -1041,27 +1058,35 @@ export default function ProfilePage() {
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Цели и Предложения</h3>
                   {(() => {
                     const attrs = profile.participant?.custom_attributes || {}
+                    const hasBioCustom = !!attrs.bio_custom
                     const hasGoals = !!attrs.goals_self
                     const hasOffers = Array.isArray(attrs.offers) && attrs.offers.length > 0
                     const hasAsks = Array.isArray(attrs.asks) && attrs.asks.length > 0
                     const introRaw = attrs.introduction_raw as string | undefined
+                    const hasAnything = hasBioCustom || hasGoals || hasOffers || hasAsks
 
                     return (
                       <div className="space-y-3">
-                        {!hasGoals && !hasOffers && !hasAsks && (
+                        {!hasAnything && (
                           <p className="text-sm text-gray-400 italic">
                             Не заполнены. Нажмите «Редактировать», чтобы рассказать о себе.
                           </p>
                         )}
+                        {attrs.bio_custom && (
+                          <div>
+                            <span className="text-xs font-medium text-gray-500 uppercase">О себе</span>
+                            <p className="text-sm text-gray-800 mt-1">{attrs.bio_custom}</p>
+                          </div>
+                        )}
                         {attrs.goals_self && (
                           <div>
-                            <span className="text-xs font-medium text-gray-500 uppercase">Цели</span>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Мои цели в сообществе</span>
                             <p className="text-sm text-gray-800 mt-1">{attrs.goals_self}</p>
                           </div>
                         )}
                         {hasOffers && (
                           <div>
-                            <span className="text-xs font-medium text-gray-500 uppercase">Могу предложить</span>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Чем могу помочь</span>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {attrs.offers.map((offer: string, i: number) => (
                                 <span key={i} className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full">{offer}</span>
@@ -1071,7 +1096,7 @@ export default function ProfilePage() {
                         )}
                         {hasAsks && (
                           <div>
-                            <span className="text-xs font-medium text-gray-500 uppercase">Ищу</span>
+                            <span className="text-xs font-medium text-gray-500 uppercase">Что мне нужно</span>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {attrs.asks.map((ask: string, i: number) => (
                                 <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">{ask}</span>
