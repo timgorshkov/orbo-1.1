@@ -184,6 +184,22 @@ export default function BillingContent() {
                 до {new Date(data.subscription.expires_at).toLocaleDateString('ru-RU')}
               </div>
             )}
+            {data.subscription?.status === 'active' && !data.isTrial && (
+              <button
+                onClick={() => setCheckoutPlanCode(data.plan.code)}
+                className="mt-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                Продлить
+              </button>
+            )}
+            {data.isTrial && !data.trialExpired && (
+              <button
+                onClick={() => setCheckoutPlanCode(plans.find(p => p.price_monthly && p.price_monthly > 0)?.code || 'pro')}
+                className="mt-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                Оплатить
+              </button>
+            )}
           </div>
         </div>
 
@@ -203,20 +219,6 @@ export default function BillingContent() {
           </div>
         )}
       </div>
-
-      {/* Payment section */}
-      <PaymentSection
-        orgId={orgId}
-        planCode={data.plan.code}
-        planName={data.plan.name}
-        priceMonthly={data.plan.price_monthly}
-        currentExpiresAt={data.subscription?.expires_at || null}
-        isTrial={data.isTrial}
-        trialExpired={data.trialExpired}
-        ownerEmail={data.ownerEmail || null}
-        plans={plans}
-        onSelectPlan={(code) => setCheckoutPlanCode(code)}
-      />
 
       {/* Plan cards */}
       <div>
@@ -320,74 +322,6 @@ export default function BillingContent() {
             </table>
           </div>
         </div>
-      )}
-    </div>
-  )
-}
-
-function PaymentSection({
-  orgId,
-  planCode,
-  planName,
-  priceMonthly,
-  currentExpiresAt,
-  isTrial,
-  trialExpired,
-  ownerEmail,
-  plans,
-}: {
-  orgId: string
-  planCode: string
-  planName?: string
-  priceMonthly: number | null
-  currentExpiresAt: string | null
-  isTrial: boolean
-  trialExpired: boolean
-  ownerEmail?: string | null
-  plans: AllPlans[]
-  onSelectPlan: (code: string) => void
-}) {
-  const paidPlans = plans.filter(p => p.price_monthly && p.price_monthly > 0)
-  const isExtension = currentExpiresAt && new Date(currentExpiresAt) > new Date() && !isTrial
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <CreditCard className="h-6 w-6 text-purple-600" />
-        <h2 className="text-xl font-semibold">Оплата</h2>
-      </div>
-
-      {paidPlans.length === 0 ? (
-        <p className="text-sm text-gray-500">Платные тарифы временно недоступны</p>
-      ) : (
-        <>
-          {/* Quick actions for each paid plan */}
-          <div className="space-y-3">
-            {paidPlans.map(p => (
-              <div
-                key={p.code}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
-                  p.code === planCode ? 'border-purple-300 bg-purple-50' : 'border-gray-200'
-                }`}
-              >
-                <div>
-                  <div className="font-medium">Тариф «{p.name}»</div>
-                  <div className="text-sm text-gray-500">{p.price_monthly?.toLocaleString('ru-RU')} ₽ / мес</div>
-                </div>
-                <button
-                  onClick={() => onSelectPlan(p.code)}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition"
-                >
-                  {p.code === planCode ? (isExtension ? 'Продлить' : 'Оплатить') : 'Выбрать'}
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs text-gray-500 mt-4">
-            Оплата картой через защищённую форму T-Bank. После оплаты подписка активируется автоматически, чек и акт придут на email.
-          </p>
-        </>
       )}
     </div>
   )
