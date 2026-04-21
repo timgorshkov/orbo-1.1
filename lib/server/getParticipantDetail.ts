@@ -587,6 +587,33 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     real_last_activity: realLastActivity
   } as ParticipantRecord;
 
+  // MAX-группы: если участник (или merged-дубликат) имеет max_user_id,
+  // подтянуть MAX-группы организации (с проверкой активности по activity_events).
+  let maxGroups: Array<{ max_chat_id: string; title: string | null; is_active: boolean }> = [];
+  const effectiveMaxUserId =
+    participantRecord.max_user_id ||
+    (duplicates || []).find((d: any) => d.max_user_id)?.max_user_id;
+
+  if (effectiveMaxUserId) {
+    try {
+      const { data: orgMaxGroups } = await supabase.raw(
+        `SELECT omg.max_chat_id, mg.title, mg.bot_status
+           FROM org_max_groups omg
+           JOIN max_groups mg ON mg.max_chat_id::text = omg.max_chat_id::text
+          WHERE omg.org_id = $1
+            AND omg.status = 'active'`,
+        [orgId]
+      );
+      maxGroups = (orgMaxGroups || []).map((g: any) => ({
+        max_chat_id: String(g.max_chat_id),
+        title: g.title,
+        is_active: g.bot_status === 'connected',
+      }));
+    } catch {
+      // non-critical
+    }
+  }
+
   return {
     participant: enrichedParticipant,
     canonicalParticipantId: canonicalId,
@@ -594,6 +621,7 @@ export async function getParticipantDetail(orgId: string, participantId: string)
     duplicates: (duplicates || []) as ParticipantRecord[],
     traits: (traitsData || []) as ParticipantTrait[],
     groups,
+    maxGroups,
     events: eventsData,
     eventRegistrations,
     externalIds,

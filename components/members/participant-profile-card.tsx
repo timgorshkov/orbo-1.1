@@ -573,19 +573,25 @@ export default function ParticipantProfileCard({
             </div>
 
             {/* MAX — иконка MessageCircle (пузырёк, похож на лого MAX) */}
-            {(participant.max_user_id || participant.max_username) && (
-              <div className="flex items-start gap-3">
-                <MessageCircle className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-gray-500 w-20">MAX</span>
-                <div className="flex-1 space-y-1">
-                  {participant.max_username ? (
-                    <MaxNameWithCopy value={`@${participant.max_username}`} />
-                  ) : participant.full_name ? (
-                    <MaxNameWithCopy value={participant.full_name} label="Имя в MAX" />
-                  ) : null}
+            {(participant.max_user_id || participant.max_username) && (() => {
+              // Имя в MAX может отличаться от основного (если был merge TG+MAX профилей).
+              // Ищем в прикреплённых дубликатах запись с max_user_id — её full_name = имя в MAX.
+              const maxDuplicate = detail.duplicates?.find((d: any) => d.max_user_id)
+              const maxName = maxDuplicate?.full_name || participant.max_username || null
+              return (
+                <div className="flex items-start gap-3">
+                  <MessageCircle className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-500 w-20">MAX</span>
+                  <div className="flex-1 space-y-1">
+                    {participant.max_username ? (
+                      <MaxNameWithCopy value={`@${participant.max_username}`} />
+                    ) : maxName ? (
+                      <MaxNameWithCopy value={maxName} />
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Email */}
             <div className="flex items-center gap-3">
@@ -1001,8 +1007,8 @@ export default function ParticipantProfileCard({
             />
           </div>
 
-          {/* Группы, в которых состоит участник */}
-          {(isAdmin || canEdit) && detail.groups.length > 0 && (
+          {/* Группы, в которых состоит участник (Telegram + MAX) */}
+          {(isAdmin || canEdit) && (detail.groups.length > 0 || (detail.maxGroups && detail.maxGroups.length > 0)) && (
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">Группы, в которых состоит участник</h3>
               <div className="flex flex-wrap gap-1.5">
@@ -1014,10 +1020,24 @@ export default function ParticipantProfileCard({
                         ? 'bg-gray-100 text-gray-700'
                         : 'bg-gray-50 text-gray-400 line-through'
                     }`}
-                    title={group.is_active ? 'Активен' : 'Покинул группу'}
+                    title={group.is_active ? 'Telegram · Активен' : 'Telegram · Покинул группу'}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${group.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
                     {group.title || 'Группа'}
+                  </span>
+                ))}
+                {(detail.maxGroups || []).map(mg => (
+                  <span
+                    key={mg.max_chat_id}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs ${
+                      mg.is_active
+                        ? 'bg-purple-50 text-purple-700'
+                        : 'bg-gray-50 text-gray-400'
+                    }`}
+                    title={mg.is_active ? 'MAX · Подключена' : 'MAX · Бот неактивен'}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${mg.is_active ? 'bg-purple-500' : 'bg-gray-300'}`} />
+                    {mg.title || 'MAX-группа'}
                   </span>
                 ))}
               </div>

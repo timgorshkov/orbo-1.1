@@ -114,6 +114,12 @@ export interface ParticipantEventRegistration {
   } | null;
 }
 
+export interface MaxGroupLink {
+  max_chat_id: string;
+  title: string | null;
+  is_active: boolean;
+}
+
 export interface ParticipantDetailResult {
   participant: ParticipantRecord;
   canonicalParticipantId: string;
@@ -121,6 +127,7 @@ export interface ParticipantDetailResult {
   duplicates: ParticipantRecord[];
   traits: ParticipantTrait[];
   groups: ParticipantGroupLink[];
+  maxGroups?: MaxGroupLink[];
   events: ParticipantTimelineEvent[];
   eventRegistrations?: ParticipantEventRegistration[];
   externalIds?: ParticipantExternalId[];
