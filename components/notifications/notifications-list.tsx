@@ -24,14 +24,14 @@ interface NotificationsResponse {
   };
 }
 
-const NOTIFICATION_TYPES = [
-  { value: '', label: 'Все', icon: '📋' },
-  { value: 'negative_discussion', label: 'Негатив', icon: '🔴' },
-  { value: 'unanswered_question', label: 'Вопросы', icon: '❓' },
-  { value: 'group_inactive', label: 'Неактивность', icon: '💤' },
-  { value: 'churning_participant', label: 'Отток', icon: '📉' },
-  { value: 'inactive_newcomer', label: 'Новички', icon: '🆕' },
-  { value: 'critical_event', label: 'Регистрация', icon: '📅' },
+const NOTIFICATION_TYPES: Array<{ value: string; label: string; icon: string; emptyHint: string }> = [
+  { value: '', label: 'Все', icon: '📋', emptyHint: 'Нет уведомлений, требующих внимания' },
+  { value: 'negative_discussion', label: 'Негатив', icon: '🔴', emptyHint: 'AI анализирует сообщения и уведомляет о конфликтах и токсичном поведении. Настройте чувствительность в Настройках.' },
+  { value: 'unanswered_question', label: 'Вопросы', icon: '❓', emptyHint: 'AI находит вопросы участников, оставшиеся без ответа дольше заданного порога. Настройте время ожидания в Настройках.' },
+  { value: 'group_inactive', label: 'Неактивность', icon: '💤', emptyHint: 'Уведомления появятся, если в группе нет сообщений дольше настроенного порога.' },
+  { value: 'churning_participant', label: 'Отток', icon: '📉', emptyHint: 'Участники, которые были активны, но резко замолчали (>14 дней). Определяются автоматически.' },
+  { value: 'inactive_newcomer', label: 'Новички', icon: '🆕', emptyHint: 'Участники, присоединившиеся менее 14 дней назад и ни разу не написавшие в группу.' },
+  { value: 'critical_event', label: 'Регистрация', icon: '📅', emptyHint: 'Уведомления о событиях с низкой регистрацией (<30% от лимита).' },
 ];
 
 // Авторезолв: уведомления старше 24ч считаем решёнными автоматически
@@ -192,11 +192,8 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
         </button>
       </div>
 
-      {/* Двухколоночный layout: active | resolved */}
-      <div className={showResolved && resolvedNotifications.length > 0
-        ? 'grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start'
-        : ''
-      }>
+      {/* Layout: active (max-width) | resolved (справа на десктопе) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,640px)_1fr] gap-6 items-start">
         {/* Active */}
         <div className="space-y-2">
           {activeNotifications.length > 0 ? (
@@ -207,21 +204,23 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
             <div className="text-center py-8">
               <div className="text-3xl mb-2">✨</div>
               <p className="text-gray-600 font-medium">Всё в порядке</p>
-              <p className="text-sm text-gray-400 mt-1">
-                {filterType ? 'Нет активных уведомлений по этому фильтру' : 'Нет уведомлений, требующих внимания'}
+              <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
+                {NOTIFICATION_TYPES.find(t => t.value === filterType)?.emptyHint || 'Нет уведомлений, требующих внимания'}
               </p>
             </div>
           )}
         </div>
 
-        {/* Resolved (на десктопе справа, на мобилке ниже) */}
-        {showResolved && resolvedNotifications.length > 0 && (
+        {/* Resolved — справа на десктопе, ниже на мобилке */}
+        {showResolved && resolvedNotifications.length > 0 ? (
           <div className="space-y-2">
             <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">Решённые</h3>
             {resolvedNotifications.map(n => (
               <NotificationCard key={n.id} notification={n} orgId={orgId} onResolve={handleResolve} />
             ))}
           </div>
+        ) : (
+          <div className="hidden lg:block" /> /* Пустая колонка для сохранения layout */
         )}
       </div>
     </div>
