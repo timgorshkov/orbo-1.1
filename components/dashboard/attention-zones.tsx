@@ -55,7 +55,7 @@ interface AttentionZonesProps {
   aiAlerts?: AIAlert[]
 }
 
-const MAX_DASHBOARD_ITEMS = 4
+const MAX_DASHBOARD_ITEMS = 6
 
 export default function AttentionZones({
   orgId,
@@ -139,9 +139,9 @@ export default function AttentionZones({
       label: 'Неактивность',
       text: a.group_name || 'Группа без сообщений',
       href: `/p/${orgId}/notifications`,
-      accentColor: 'border-l-gray-300',
-      bgColor: 'bg-gray-50',
-      iconColor: 'text-gray-400',
+      accentColor: 'border-l-orange-200',
+      bgColor: 'bg-orange-50/50',
+      iconColor: 'text-orange-400',
       priority: 4,
     }))
 
@@ -194,23 +194,23 @@ export default function AttentionZones({
 
   return (
     <Card className="border-gray-200">
-      <CardHeader className="pb-2">
+      <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-base">
-            <span className="text-xl">🔥</span>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🔥</span>
             Зоны внимания
           </div>
           <Link
             href={`/p/${orgId}/notifications`}
-            className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-normal"
+            className="text-sm text-blue-600 hover:underline flex items-center gap-1 font-normal"
           >
-            <Bell className="h-3.5 w-3.5" />
+            <Bell className="h-4 w-4" />
             Все уведомления
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ChevronRight className="h-4 w-4" />
           </Link>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1.5 pt-0">
+      <CardContent className="space-y-1.5">
         {visibleItems.map(item => (
           <div
             key={item.key}

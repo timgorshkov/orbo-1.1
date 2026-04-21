@@ -62,23 +62,23 @@ const NOTIFICATION_CONFIG: Record<string, {
   group_inactive: {
     icon: <Clock className="h-4 w-4" />,
     label: 'Неактивность',
-    accentColor: 'border-l-gray-300',
-    bgColor: 'bg-gray-50/80',
-    iconColor: 'text-gray-400',
+    accentColor: 'border-l-orange-200',
+    bgColor: 'bg-orange-50/50',
+    iconColor: 'text-orange-400',
   },
   churning_participant: {
     icon: <UserMinus className="h-4 w-4" />,
     label: 'Отток',
-    accentColor: 'border-l-gray-300',
-    bgColor: 'bg-gray-50/80',
-    iconColor: 'text-gray-400',
+    accentColor: 'border-l-orange-200',
+    bgColor: 'bg-orange-50/50',
+    iconColor: 'text-orange-400',
   },
   inactive_newcomer: {
     icon: <UserX className="h-4 w-4" />,
     label: 'Новичок',
-    accentColor: 'border-l-gray-300',
-    bgColor: 'bg-gray-50/80',
-    iconColor: 'text-gray-400',
+    accentColor: 'border-l-orange-200',
+    bgColor: 'bg-orange-50/50',
+    iconColor: 'text-orange-400',
   },
 };
 
@@ -129,7 +129,7 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
 
   return (
     <div className={`border-l-4 rounded-lg ${config.accentColor} ${config.bgColor} ${
-      isResolved ? 'opacity-40' : ''
+      isResolved ? 'opacity-60' : ''
     } p-3`}>
       <div className="flex items-start gap-2.5">
         <div className={`flex-shrink-0 mt-0.5 ${config.iconColor}`}>
@@ -149,7 +149,8 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
                 {severity === 'high' ? 'высокая' : 'средняя'}
               </span>
             )}
-            {isExternalLink && (
+            {/* TG-ссылка в header: не для вопросов (у них — inline с автором) */}
+            {isExternalLink && notification.notification_type !== 'unanswered_question' && (
               <a href={linkUrl} target="_blank" rel="noopener noreferrer"
                 className="ml-auto text-xs text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-0.5 flex-shrink-0">
                 <ExternalLink className="w-3 h-3" /> Telegram
@@ -157,26 +158,42 @@ export default function NotificationCard({ notification, orgId, onResolve }: Not
             )}
           </div>
 
-          {/* Description: для attention_zone — имя как ссылка на профиль */}
+          {/* Description */}
           {participantNameAsLink ? (
-            <Link href={linkUrl} className="text-sm font-medium text-blue-700 hover:underline mt-0.5 block">
-              {notification.description}
-            </Link>
+            <div className="mt-0.5 text-sm">
+              <Link href={linkUrl} className="font-medium text-blue-700 hover:underline">
+                {notification.title || notification.description.split(' — ')[0]}
+              </Link>
+              {notification.description.includes(' — ') && (
+                <span className="text-gray-500"> — {notification.description.split(' — ').slice(1).join(' — ')}</span>
+              )}
+            </div>
           ) : (
             <p className="text-sm text-gray-800 mt-0.5 leading-snug">
               {notification.description}
             </p>
           )}
 
-          {/* Вопрос: автор (ссылка на профиль если есть id) */}
+          {/* Вопрос: автор + ссылка на сообщение через тире */}
           {notification.notification_type === 'unanswered_question' && questionAuthor && (
-            <span className="text-xs text-gray-500 mt-0.5 block">
+            <div className="text-sm text-gray-600 mt-0.5">
               {questionAuthorId ? (
                 <Link href={`/p/${orgId}/members/${questionAuthorId}`} className="text-blue-600 hover:underline">
                   {questionAuthor}
                 </Link>
-              ) : questionAuthor}
-            </span>
+              ) : (
+                <span>{questionAuthor}</span>
+              )}
+              {isExternalLink && (
+                <>
+                  <span className="text-gray-400 mx-1">—</span>
+                  <a href={linkUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline inline-flex items-center gap-0.5">
+                    <ExternalLink className="w-3 h-3" /> сообщение
+                  </a>
+                </>
+              )}
+            </div>
           )}
 
           {/* Негатив: цитаты */}

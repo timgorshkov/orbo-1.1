@@ -43,7 +43,17 @@ export default function NotificationsList({ orgId }: NotificationsListProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterType, setFilterType] = useState('');
-  const [showResolved, setShowResolved] = useState(false);
+  const [showResolved, setShowResolvedRaw] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('orbo_notif_show_resolved')
+      return saved !== null ? saved === 'true' : true
+    }
+    return true
+  });
+  const setShowResolved = (v: boolean) => {
+    setShowResolvedRaw(v)
+    if (typeof window !== 'undefined') localStorage.setItem('orbo_notif_show_resolved', String(v))
+  };
 
   const fetchNotifications = useCallback(async (refresh = false) => {
     if (refresh) setIsRefreshing(true);
