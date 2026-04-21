@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 
 export async function GET(
   request: NextRequest,
@@ -25,15 +26,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check permissions
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    // Check permissions (owner/admin, with superadmin fallback)
+    const access = await getEffectiveOrgRole(user.id, orgId);
+    if (!access || !['owner', 'admin'].includes(access.role)) {
       return NextResponse.json({ error: 'Forbidden: owner/admin only' }, { status: 403 });
     }
 
@@ -91,16 +86,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check permissions (owner only for settings)
-    const { data: membership } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership || membership.role !== 'owner') {
-      return NextResponse.json({ error: 'Forbidden: owner only' }, { status: 403 });
+    // Check permissions (owner/admin, with superadmin fallback)
+    const access = await getEffectiveOrgRole(user.id, orgId);
+    if (!access || !['owner', 'admin'].includes(access.role)) {
+      return NextResponse.json({ error: 'Forbidden: owner/admin only' }, { status: 403 });
     }
 
     // Validate inputs

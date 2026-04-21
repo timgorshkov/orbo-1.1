@@ -559,6 +559,7 @@ function DigestInlineSettings({ orgId }: { orgId: string }) {
   const [time, setTime] = useState('09:00:00')
   const [lastSent, setLastSent] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const DAYS = [
     { value: 0, label: 'Вс' },
@@ -579,10 +580,10 @@ function DigestInlineSettings({ orgId }: { orgId: string }) {
       const res = await fetch(`/api/organizations/${orgId}/digest-settings`)
       if (res.ok) {
         const data = await res.json()
-        setEnabled(data.digest_enabled || false)
-        setDay(data.digest_day ?? 1)
-        setTime(data.digest_time || '09:00:00')
-        setLastSent(data.last_digest_sent_at)
+        setEnabled(data.enabled || false)
+        setDay(data.day ?? 1)
+        setTime(data.time || '09:00:00')
+        setLastSent(data.lastSentAt)
       }
     } catch {
       // ignore
@@ -593,14 +594,19 @@ function DigestInlineSettings({ orgId }: { orgId: string }) {
 
   const handleSave = async (updates: Record<string, unknown>) => {
     setSaving(true)
+    setSaveError(null)
     try {
-      await fetch(`/api/organizations/${orgId}/digest-settings`, {
+      const res = await fetch(`/api/organizations/${orgId}/digest-settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setSaveError(data.error || 'Ошибка сохранения')
+      }
     } catch {
-      // ignore
+      setSaveError('Ошибка сети')
     } finally {
       setSaving(false)
     }
@@ -686,6 +692,9 @@ function DigestInlineSettings({ orgId }: { orgId: string }) {
           {enabled ? 'Включено' : 'Включить'}
         </button>
       </div>
+      {saveError && (
+        <p className="text-xs text-red-600 mt-2">{saveError}</p>
+      )}
     </div>
   )
 }

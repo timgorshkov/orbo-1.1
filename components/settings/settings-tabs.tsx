@@ -29,14 +29,14 @@ export default function SettingsTabs({ activeTab, orgId }: SettingsTabsProps) {
   }
 
   return (
-    <div className="px-6">
-      <div className="flex gap-6 border-b border-gray-200">
+    <div className="px-6 overflow-x-auto">
+      <div className="flex gap-6 border-b border-gray-200 min-w-max">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
-              'pb-3 text-sm font-medium transition-colors relative',
+              'pb-3 text-sm font-medium transition-colors relative whitespace-nowrap',
               'focus-visible:outline-none',
               activeTab === tab.id
                 ? 'text-gray-900'
