@@ -103,9 +103,11 @@ export default function ProfilePage() {
     // User-defined fields (shown in "Goals & Offers" section separately)
     'goals_self', 'offers', 'asks', 'city_confirmed', 'bio_custom',
     // Technical/meta fields (should only be in logs)
-    'last_enriched_at', 'enrichment_source', 'enrichment_version', 
+    'last_enriched_at', 'enrichment_source', 'enrichment_version',
     'cost_estimate_usd', 'tokens_used', 'cost_usd', 'analysis_date',
     'ai_analysis_cost', 'ai_analysis_tokens', // Additional AI cost fields
+    // AI-extracted data (system, not user-editable)
+    'ai_extracted_contacts', 'introduction_raw',
     // Event behavior (shown in separate section)
     'event_attendance',
     // Import metadata (hidden)
@@ -1042,15 +1044,15 @@ export default function ProfilePage() {
                     const hasGoals = !!attrs.goals_self
                     const hasOffers = Array.isArray(attrs.offers) && attrs.offers.length > 0
                     const hasAsks = Array.isArray(attrs.asks) && attrs.asks.length > 0
-                    if (!hasGoals && !hasOffers && !hasAsks) {
-                      return (
-                        <p className="text-sm text-gray-400 italic">
-                          Не заполнены. Нажмите «Редактировать», чтобы рассказать о себе.
-                        </p>
-                      )
-                    }
+                    const introRaw = attrs.introduction_raw as string | undefined
+
                     return (
                       <div className="space-y-3">
+                        {!hasGoals && !hasOffers && !hasAsks && (
+                          <p className="text-sm text-gray-400 italic">
+                            Не заполнены. Нажмите «Редактировать», чтобы рассказать о себе.
+                          </p>
+                        )}
                         {attrs.goals_self && (
                           <div>
                             <span className="text-xs font-medium text-gray-500 uppercase">Цели</span>
@@ -1076,6 +1078,20 @@ export default function ProfilePage() {
                               ))}
                             </div>
                           </div>
+                        )}
+                        {/* Автоматически найденное сообщение-визитка */}
+                        {introRaw && (
+                          <details className="mt-2">
+                            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                              📝 Автоматически найденное сообщение-визитка
+                            </summary>
+                            <div className="mt-2 p-3 bg-gray-50 rounded-lg text-sm text-gray-700 whitespace-pre-line">
+                              {introRaw}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1.5 italic">
+                              Это сообщение найдено автоматически. Рекомендуем заполнить цели и предложения вручную через «Редактировать».
+                            </p>
+                          </details>
                         )}
                       </div>
                     )
@@ -1149,306 +1165,15 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Email Section */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5" />
-              Email аккаунт
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {profile.user.email ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Email:</span>
-                  <span className="font-medium">{profile.user.email}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Статус:</span>
-                  {profile.user.email_confirmed ? (
-                    <span className="text-sm text-green-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span>
-                      Подтвержден
-                    </span>
-                  ) : (
-                    <span className="text-sm text-amber-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-amber-600 rounded-full"></span>
-                      Не подтвержден
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-amber-600 mb-4">⚠️ Email не привязан</p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Для получения полного доступа добавьте и подтвердите email адрес.
-                </p>
-                <Button onClick={() => setShowEmailForm(true)}>
-                  Добавить email
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Telegram Section */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              Telegram аккаунт
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Admin TG account (user_telegram_accounts) — for owners/admins syncing groups */}
-            {profile.telegram ? (
-              <div className="space-y-3">
-                {profile.telegram.telegram_username && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Username:</span>
-                    <span className="font-medium">@{profile.telegram.telegram_username}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">User ID:</span>
-                  <span className="font-medium">{profile.telegram.telegram_user_id}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Статус:</span>
-                  {profile.telegram.is_verified ? (
-                    <span className="text-sm text-green-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span>
-                      Верифицирован {profile.telegram.verified_at && `(${new Date(profile.telegram.verified_at).toLocaleDateString('ru')})`}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-amber-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-amber-600 rounded-full"></span>
-                      Требуется верификация
-                    </span>
-                  )}
-                </div>
-              </div>
-
-            ) : profile.participant?.tg_user_id ? (
-              /* Participant TG identity linked (from group activity or previous linking) */
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <span className="font-medium">Telegram подключён</span>
-                </div>
-                {profile.participant.username && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Username:</span>
-                    <span className="font-medium">@{profile.participant.username}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">User ID:</span>
-                  <span className="font-medium font-mono text-sm">{profile.participant.tg_user_id}</span>
-                </div>
-                {tgMergedName && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                    ✅ Профили объединены: история сообщений из профиля «{tgMergedName}» добавлена к вашему аккаунту.
-                  </div>
-                )}
-              </div>
-
-            ) : tgLinkStatus === 'linked' ? (
-              /* Just linked in this session */
-              <div className="flex items-center gap-2 text-green-700 py-2">
-                <CheckCircle2 className="h-5 w-5" />
-                <span className="font-medium">Telegram успешно привязан!</span>
-              </div>
-
-            ) : tgLinkCode && tgLinkStatus !== 'idle' ? (
-              /* 6-digit code flow active */
-              <div className="space-y-4">
-                <div className="flex items-center gap-1.5 flex-wrap text-sm text-gray-700">
-                  <span>Откройте</span>
-                  <span className="font-semibold">@{tgLinkBotUsername}</span>
-                  <span>в Telegram и отправьте этот код:</span>
-                </div>
-
-                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex-1 font-mono text-2xl font-bold tracking-widest text-blue-700 select-all text-center">
-                      {tgLinkCode}
-                    </span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(tgLinkCode).catch(() => {})
-                        setTgCodeCopied(true)
-                        setTimeout(() => setTgCodeCopied(false), 2000)
-                      }}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 hover:border-blue-400 text-blue-600 text-sm font-medium transition-colors"
-                    >
-                      {tgCodeCopied
-                        ? <><Check className="w-4 h-4 text-green-500" /><span className="hidden sm:inline text-green-600">Скопировано</span></>
-                        : <><Copy className="w-4 h-4" /><span className="hidden sm:inline">Копировать</span></>
-                      }
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-center">
-                  <a
-                    href={`https://t.me/${tgLinkBotUsername}?start=${tgLinkCode}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-500 transition-colors"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Открыть бота в один клик
-                  </a>
-                </div>
-
-                {tgLinkStatus === 'waiting' && (
-                  <p className="text-xs text-gray-500 text-center">Ожидаем подтверждение от бота...</p>
-                )}
-                {tgLinkError && (
-                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800">
-                    {tgLinkError}
-                  </div>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (tgPollTimer.current) clearTimeout(tgPollTimer.current)
-                    setTgLinkCode(null)
-                    setTgLinkStatus('idle')
-                    setTgLinkError(null)
-                  }}
-                >
-                  Отмена
-                </Button>
-              </div>
-
-            ) : (
-              /* No TG linked yet — show connect button */
-              <div className="text-center py-4">
-                <p className="text-gray-600 mb-1">Telegram не привязан</p>
-                <p className="text-xs text-gray-400 mb-4">
-                  Привяжите Telegram, чтобы ваш профиль объединился с историей сообщений в группе.
-                </p>
-                {tgLinkError && (
-                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800 mb-3">
-                    {tgLinkError}
-                  </div>
-                )}
-                <Button
-                  onClick={startTgLink}
-                  disabled={tgLinkStatus === 'generating'}
-                >
-                  {tgLinkStatus === 'generating' ? 'Генерация кода...' : 'Привязать Telegram'}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* MAX Section — only for owners/admins */}
-        {profile.membership.role !== 'member' && <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-indigo-600" />
-              MAX аккаунт в этой организации
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {profile.maxAccount ? (
-              <div className="space-y-3">
-                {profile.maxAccount.max_username && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Username:</span>
-                    <span className="font-medium">@{profile.maxAccount.max_username}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">User ID:</span>
-                  <span className="font-medium">{profile.maxAccount.max_user_id}</span>
-                </div>
-                {(profile.maxAccount.max_first_name || profile.maxAccount.max_last_name) && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Имя:</span>
-                    <span className="font-medium">
-                      {[profile.maxAccount.max_first_name, profile.maxAccount.max_last_name].filter(Boolean).join(' ')}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Статус:</span>
-                  {profile.maxAccount.is_verified ? (
-                    <span className="text-sm text-green-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span>
-                      Верифицирован {profile.maxAccount.verified_at && `(${new Date(profile.maxAccount.verified_at).toLocaleDateString('ru')})`}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-amber-600 flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 bg-amber-600 rounded-full"></span>
-                      Требуется верификация
-                    </span>
-                  )}
-                </div>
-
-                {!profile.maxAccount.is_verified && (
-                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-sm text-amber-800 mb-3">
-                      Введите код верификации из MAX-бота:
-                    </p>
-                    {maxError && (
-                      <div className="bg-red-50 border border-red-200 rounded p-2 text-sm text-red-800 mb-3">
-                        {maxError}
-                      </div>
-                    )}
-                    {maxSuccess && (
-                      <div className="bg-green-50 border border-green-200 rounded p-2 text-sm text-green-800 mb-3">
-                        {maxSuccess}
-                      </div>
-                    )}
-                    <Input
-                      type="text"
-                      value={maxVerificationCode}
-                      onChange={(e) => setMaxVerificationCode(e.target.value.toUpperCase())}
-                      placeholder="Например: A1B2C3D4"
-                      maxLength={8}
-                      className="mb-3"
-                      disabled={verifyingMax}
-                    />
-                    <Button
-                      onClick={handleVerifyMax}
-                      disabled={verifyingMax || !maxVerificationCode}
-                      className="w-full"
-                    >
-                      {verifyingMax ? 'Верификация...' : 'Верифицировать'}
-                    </Button>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Для получения кода перейдите в{' '}
-                      <a href={`/p/${org}/telegram/max`} className="text-blue-600 hover:underline">
-                        настройки MAX
-                      </a>
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-gray-600 mb-4">MAX-аккаунт не привязан</p>
-                <p className="text-sm text-gray-500 mb-4">
-                  Привяжите MAX-аккаунт для управления MAX-группами организации.
-                </p>
-                <Button variant="outline" onClick={() => router.push(`/p/${org}/telegram/max`)}>
-                  Привязать MAX-аккаунт
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>}
+        {/* Секции верификации Email/Telegram/MAX удалены. */}
+        {/*
+          Статусы отображаются inline в блоке контактов выше.
+          Формы привязки Email/Telegram/MAX восстанавливаются из git при необходимости.
+          См. коммит до "переработка profile page в стиле карточки участника".
+        */}
 
     </div>
   )
 }
+
 
