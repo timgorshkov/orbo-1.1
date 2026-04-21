@@ -38,33 +38,43 @@ export default function DigestSettingsForm({ orgId, initialSettings }: DigestSet
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const handleSave = async () => {
-    setSaving(true);
-    setTestResult(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+  const saveSettings = async (newSettings: DigestSettings) => {
+    setSaving(true);
+    setSaveStatus('saving');
+    setTestResult(null);
     try {
       const response = await fetch(`/api/organizations/${orgId}/digest-settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          digest_enabled: settings.enabled,
-          digest_day: settings.day,
-          digest_time: settings.time,
+          digest_enabled: newSettings.enabled,
+          digest_day: newSettings.day,
+          digest_time: newSettings.time,
         }),
       });
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || 'Failed to save settings');
       }
-
-      alert('Настройки сохранены');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
       console.error('Failed to save digest settings:', error);
-      alert('Ошибка сохранения: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setSaveStatus('error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => saveSettings(settings);
+
+  // Автосохранение при переключении toggle
+  const handleToggle = (enabled: boolean) => {
+    const updated = { ...settings, enabled };
+    setSettings(updated);
+    saveSettings(updated);
   };
 
   const handleTestSend = async () => {
@@ -123,7 +133,7 @@ export default function DigestSettingsForm({ orgId, initialSettings }: DigestSet
               <input
                 type="checkbox"
                 checked={settings.enabled}
-                onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                onChange={(e) => handleToggle(e.target.checked)}
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -161,9 +171,13 @@ export default function DigestSettingsForm({ orgId, initialSettings }: DigestSet
           </div>
 
           {/* Save Button */}
-          <Button onClick={handleSave} disabled={saving} className="w-full">
-            {saving ? 'Сохранение...' : 'Сохранить настройки'}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={saving} className="flex-1">
+              {saving ? 'Сохранение...' : 'Сохранить настройки'}
+            </Button>
+            {saveStatus === 'saved' && <span className="text-xs text-green-600">Сохранено</span>}
+            {saveStatus === 'error' && <span className="text-xs text-red-600">Ошибка сохранения</span>}
+          </div>
         </CardContent>
       </Card>
 

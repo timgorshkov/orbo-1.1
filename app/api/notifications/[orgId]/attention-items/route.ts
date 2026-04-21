@@ -119,20 +119,31 @@ export async function GET(
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const includeResolved = url.searchParams.get('includeResolved') === 'true';
     
-    // Fetch from RPC functions based on type
+    // Проверяем какие системные правила включены (отключённые → не показывать)
+    const { data: orgRules } = await adminSupabase
+      .from('notification_rules')
+      .select('rule_type, is_enabled')
+      .eq('org_id', orgId)
+      .in('rule_type', ['churning_participant', 'inactive_newcomer', 'critical_event']);
+
+    const enabledTypes = new Set(
+      (orgRules || []).filter((r: any) => r.is_enabled).map((r: any) => r.rule_type)
+    );
+
+    // Fetch from RPC functions — только для включённых правил
     let churningData: any[] = [];
     let newcomersData: any[] = [];
     let eventsData: any[] = [];
-    
-    if (!type || type === 'churning_participant') {
+
+    if ((!type || type === 'churning_participant') && enabledTypes.has('churning_participant')) {
       const { data } = await adminSupabase.rpc('get_churning_participants', {
         p_org_id: orgId,
         p_days_silent: 14,
       });
       churningData = data || [];
     }
-    
-    if (!type || type === 'inactive_newcomer') {
+
+    if ((!type || type === 'inactive_newcomer') && enabledTypes.has('inactive_newcomer')) {
       const { data } = await adminSupabase.rpc('get_inactive_newcomers', {
         p_org_id: orgId,
         p_days_since_first: 14,
