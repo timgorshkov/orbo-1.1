@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -70,6 +70,7 @@ function ToggleRow({ label, description, checked, onChange, disabled }: ToggleRo
 
 export default function PortalSettingsForm({ organizationId, initialSettings, userRole, organization }: Props) {
   const [settings, setSettings] = useState<PortalSettings>(initialSettings)
+  const [savedSettings, setSavedSettings] = useState<PortalSettings>(initialSettings)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
@@ -87,6 +88,54 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
 
   const isOwner = userRole === 'owner'
 
+  // --- Unsaved changes detection ---
+  const isOrgDirty = organization
+    ? orgName.trim() !== organization.name || !!logoFile
+    : false
+
+  const isPortalDirty = useMemo(() => {
+    const keys = Object.keys(savedSettings) as (keyof PortalSettings)[]
+    return keys.some(k => {
+      // skip cover — it saves separately
+      if (k === 'portal_cover_url') return false
+      const saved = savedSettings[k]
+      const current = settings[k]
+      // treat null/undefined/'' as equal
+      if (!saved && !current) return false
+      return saved !== current
+    })
+  }, [settings, savedSettings])
+
+  const isDirty = isOrgDirty || isPortalDirty
+
+  // Browser-level navigation (close tab, refresh, external URL)
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
+  // Client-side navigation (Next.js router.push → tab switching, sidebar links)
+  useEffect(() => {
+    if (!isDirty) return
+
+    const originalPushState = window.history.pushState.bind(window.history)
+
+    window.history.pushState = function (data: any, unused: string, url?: string | URL | null) {
+      const confirmed = window.confirm('У вас есть несохранённые изменения. Покинуть страницу?')
+      if (!confirmed) return
+      return originalPushState.call(this, data, unused, url)
+    }
+
+    return () => {
+      window.history.pushState = originalPushState
+    }
+  }, [isDirty])
+
   const handleSave = async () => {
     setIsSaving(true)
     setMessage(null)
@@ -101,6 +150,7 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
       if (!res.ok) {
         setMessage({ type: 'error', text: data.error || 'Не удалось сохранить' })
       } else {
+        setSavedSettings({ ...settings })
         setMessage({ type: 'success', text: 'Настройки сохранены' })
       }
     } catch {
