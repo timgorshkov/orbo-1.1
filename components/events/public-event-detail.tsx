@@ -172,7 +172,40 @@ export default function PublicEventDetail({ event, org, isAuthenticated = false,
           <h1 className="text-4xl font-bold mb-2">{event.title}</h1>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className={`grid grid-cols-1 lg:grid-cols-3 gap-8 ${isRegistered ? 'flex flex-col lg:grid' : ''}`}>
+          {/* Registration status — shown above description on mobile when registered */}
+          {isRegistered && (
+            <div className="lg:hidden order-first">
+              <Card>
+                <CardContent className="pt-6 space-y-3">
+                  {(!(event.requires_payment || event.is_paid) ||
+                    event.user_payment_status === 'paid' ||
+                    event.user_payment_status === 'refunded') ? (
+                    <div className="text-center py-2">
+                      <div className="text-green-600 font-medium mb-1">
+                        ✓ Вы зарегистрированы
+                      </div>
+                      <div className="text-sm text-neutral-600">
+                        Мы напомним вам о событии
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                      <div className="text-center">
+                        <div className="text-sm text-amber-800 mb-2">
+                          Вы ввели данные для регистрации
+                        </div>
+                        <div className="text-amber-700 font-medium">
+                          💳 Требуется оплата
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {event.description && (

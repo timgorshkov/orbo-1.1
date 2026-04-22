@@ -701,6 +701,40 @@ export default function MaxEventPage() {
             )}
           </div>
 
+          {/* Registration status — shown above description when registered */}
+          {isRegistered && (
+            <div className="px-4 pb-2">
+              <div className="border-t border-gray-100 pt-4">
+                {event?.requires_payment && paymentStatus !== 'paid' ? (
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                    <div className="text-sm text-orange-800">
+                      Вы ввели данные для регистрации. Для подтверждения участия необходимо оплатить.
+                    </div>
+                    {hasOrboPayments && registrationId ? (
+                      <a href={`/p/${event?.org_id}/pay?type=event&registrationId=${registrationId}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-sm">
+                        Оплатить
+                      </a>
+                    ) : event?.payment_link ? (
+                      <a href={event.payment_link} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg text-sm">
+                        Перейти к оплате
+                      </a>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                    <div className="flex items-center justify-center gap-2 text-green-700 font-medium">
+                      <CheckCircle2 className="w-5 h-5" />
+                      Вы зарегистрированы
+                    </div>
+                    <div className="text-xs text-green-600 mt-1">Мы напомним вам о событии</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {event?.description && (
             <div className="px-4 pb-4">
               <div className="border-t border-gray-100 pt-4">
@@ -715,31 +749,8 @@ export default function MaxEventPage() {
         <div className="flex-shrink-0 p-4 border-t border-gray-100 bg-white safe-area-bottom">
           {isRegistered ? (
             <div className="text-center">
-              {event?.requires_payment && paymentStatus !== 'paid' ? (
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg mb-2">
-                  <div className="text-sm text-orange-800 mb-2">
-                    Вы ввели данные для регистрации. Для подтверждения участия необходимо оплатить.
-                  </div>
-                  {hasOrboPayments && registrationId ? (
-                    <a href={`/p/${event.org_id}/pay?type=event&registrationId=${registrationId}`} target="_blank" rel="noopener noreferrer"
-                      className="inline-block py-2 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-sm">
-                      Оплатить
-                    </a>
-                  ) : event?.payment_link ? (
-                    <a href={event.payment_link} target="_blank" rel="noopener noreferrer"
-                      className="inline-block py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg text-sm">
-                      Перейти к оплате
-                    </a>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2 text-green-600 font-medium mb-2">
-                  <CheckCircle2 className="w-5 h-5" />
-                  Вы зарегистрированы
-                </div>
-              )}
               <button onClick={handleCancelRegistration} disabled={isCancelling}
-                className="mt-3 text-gray-400 text-xs hover:text-red-500 transition-colors">
+                className="text-gray-400 text-xs hover:text-red-500 transition-colors">
                 {isCancelling ? 'Отмена...' : 'Отменить регистрацию'}
               </button>
             </div>

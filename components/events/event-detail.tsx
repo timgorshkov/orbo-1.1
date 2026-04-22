@@ -694,8 +694,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
 
           <TabsContent value="overview">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Content - Left */}
-            <div className="lg:col-span-2 space-y-6">
+            {/* Main Content - Left. Flex + order swaps registration above description when registered */}
+            <div className={`lg:col-span-2 flex flex-col gap-6`}>
+              <div className={isRegistered ? 'order-2' : ''}>
               {event.description && (
                 <Card>
                   <CardHeader>
@@ -708,8 +709,10 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardContent>
                 </Card>
               )}
+              </div>
 
-              {/* Registration Card - Moved to left, prominent */}
+              <div className={isRegistered ? 'order-1' : ''}>
+              {/* Registration Card */}
               {event.status === 'published' && (
                 <Card id="registration">
                   <CardHeader>
@@ -913,6 +916,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardContent>
                 </Card>
               )}
+              </div>
             </div>
 
             {/* Sidebar - Right */}
@@ -1265,8 +1269,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
         /* Non-admin view: show content directly without tabs */
         <div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Content - Left */}
-            <div className="lg:col-span-2 space-y-6">
+            {/* Main Content - Left. Flex + order swaps registration above description when registered */}
+            <div className={`lg:col-span-2 flex flex-col gap-6`}>
+              <div className={isRegistered ? 'order-2' : ''}>
               {event.description && (
                 <Card>
                   <CardHeader>
@@ -1279,7 +1284,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardContent>
                 </Card>
               )}
+              </div>
 
+              <div className={isRegistered ? 'order-1' : ''}>
               {/* Registration Card */}
               {event.status === 'published' && (
                 <Card id="registration">
@@ -1482,6 +1489,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                   </CardContent>
                 </Card>
               )}
+              </div>
             </div>
 
             {/* Sidebar - Right */}
