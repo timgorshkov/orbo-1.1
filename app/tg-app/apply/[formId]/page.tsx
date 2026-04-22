@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Send
 } from 'lucide-react';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 
 // Telegram WebApp types are defined in @/lib/types/telegram-webapp.d.ts
 
@@ -589,7 +590,7 @@ export default function ApplicationFormPage() {
 
             {/* Description — before benefits */}
             {landing.description && (
-              <p className="text-sm opacity-70 mt-2 whitespace-pre-line">{landing.description}</p>
+              <div className="text-sm opacity-70 mt-2">{renderTelegramContent(landing.description)}</div>
             )}
 
             {/* Benefits */}

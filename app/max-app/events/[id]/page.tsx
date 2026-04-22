@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
-import ReactMarkdown from 'react-markdown';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, AlertCircle, Download } from 'lucide-react';
 
 interface Event {
@@ -705,7 +705,7 @@ export default function MaxEventPage() {
             <div className="px-4 pb-4">
               <div className="border-t border-gray-100 pt-4">
                 <div className="prose prose-sm max-w-none text-gray-700 prose-p:my-2 prose-p:leading-relaxed prose-strong:font-semibold prose-a:text-blue-500">
-                  <ReactMarkdown>{event.description}</ReactMarkdown>
+                  {renderTelegramContent(event.description)}
                 </div>
               </div>
             </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Users, CheckCircle2, Loader2, ChevronRight, AlertCircle, ArrowLeft } from 'lucide-react';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 
 interface FormField {
   id: string;
@@ -398,7 +399,7 @@ export default function MaxApplyPage() {
 
           {/* Description — before benefits */}
           {landing.description && (
-            <p className="text-sm opacity-70 mt-2 whitespace-pre-line">{landing.description}</p>
+            <div className="text-sm opacity-70 mt-2">{renderTelegramContent(landing.description)}</div>
           )}
 
           {landing.benefits && landing.benefits.length > 0 && (

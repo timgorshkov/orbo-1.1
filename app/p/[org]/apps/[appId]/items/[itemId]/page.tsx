@@ -7,6 +7,7 @@ import Head from 'next/head';
 import { ArrowLeft, Calendar, MapPin, User, Tag, Trash2, Loader2, AlertCircle, Share2, Copy, Check, List, Edit } from 'lucide-react';
 import { getAppItemOGImage, getAbsoluteOGImageUrl, extractItemImageUrl } from '@/lib/utils/ogImageFallback';
 import { createClientLogger } from '@/lib/logger';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 
 interface App {
   id: string;
@@ -496,10 +497,8 @@ export default function ItemDetailPage() {
 
             {/* Description */}
             {description && (
-              <div>
-                <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-line">
-                  {description}
-                </p>
+              <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                {typeof description === 'string' ? renderTelegramContent(description) : description}
               </div>
             )}
 

@@ -130,7 +130,7 @@ export default function DynamicItemCard({
 
             {description && (
               <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
-                {description}
+                {typeof description === 'string' ? description.replace(/<[^>]+>/g, '') : description}
               </p>
             )}
 

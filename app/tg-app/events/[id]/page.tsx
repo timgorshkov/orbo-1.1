@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
-import ReactMarkdown from 'react-markdown';
+import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X, Download } from 'lucide-react';
 
@@ -966,9 +966,7 @@ export default function TelegramEventPage() {
                   prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:text-gray-800
                   prose-pre:bg-gray-100 prose-pre:p-3 prose-pre:rounded-lg prose-pre:overflow-x-auto
                 ">
-                  <ReactMarkdown>
-                    {event.description}
-                  </ReactMarkdown>
+                  {renderTelegramContent(event.description)}
                 </div>
               </div>
             </div>
