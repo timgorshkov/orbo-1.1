@@ -443,15 +443,14 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
     const eventData = buildEventData()
 
     // For create mode, show announcement confirmation dialog
-    // (skip for recurring: API creates per-instance announcements automatically)
-    if (mode === 'create' && !isRecurring) {
+    if (mode === 'create') {
       setPendingEventData(eventData)
       setShowAnnouncementDialog(true)
       return
     }
 
-    // For recurring create or edit mode, submit directly
-    await submitEvent(eventData, mode === 'create')
+    // For edit mode, submit directly
+    await submitEvent(eventData, false)
   }
 
   return (
@@ -1321,36 +1320,46 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <h3 className="text-lg font-semibold mb-3">Автоматические напоминания</h3>
           <p className="text-sm text-gray-600 mb-4">
-            При создании события можно автоматически запланировать напоминания участникам:
+            {isRecurring
+              ? 'Для каждого занятия в серии будут автоматически созданы напоминания:'
+              : 'При создании события можно автоматически запланировать напоминания участникам:'}
           </p>
           <div className="bg-blue-50 rounded-lg p-3 mb-4 text-sm space-y-2">
             <div className="flex items-center gap-2">
               <span>🔔</span>
               <span>
-                <strong>За 24 часа</strong> — {pendingEventData.eventDate && pendingEventData.startTime 
+                <strong>За 24 часа</strong>{!isRecurring && pendingEventData.eventDate && pendingEventData.startTime
                   ? (() => {
                       const d = new Date(`${pendingEventData.eventDate}T${pendingEventData.startTime}:00+03:00`);
                       d.setDate(d.getDate() - 1);
-                      return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                      return ' — ' + d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
                     })()
-                  : '—'}
+                  : ' до каждого занятия'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span>⏰</span>
               <span>
-                <strong>За 1 час</strong> — {pendingEventData.eventDate && pendingEventData.startTime 
+                <strong>За 1 час</strong>{!isRecurring && pendingEventData.eventDate && pendingEventData.startTime
                   ? (() => {
                       const d = new Date(`${pendingEventData.eventDate}T${pendingEventData.startTime}:00+03:00`);
                       d.setHours(d.getHours() - 1);
-                      return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+                      return ' — ' + d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
                     })()
-                  : '—'}
+                  : ' до каждого занятия'}
               </span>
             </div>
           </div>
+          {isRecurring && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800">
+              Напоминания будут созданы для всех занятий серии (ближайшие 4 недели).
+              Каждое можно отредактировать или отменить отдельно в разделе «Анонсы».
+            </div>
+          )}
           <p className="text-xs text-gray-500 mb-4">
-            Вы сможете отредактировать текст анонсов, выбрать конкретные группы для отправки или отменить напоминания в разделе «Анонсы».
+            {isRecurring
+              ? 'Группы для отправки берутся из настроек анонсов организации по умолчанию.'
+              : 'Вы сможете отредактировать текст анонсов, выбрать конкретные группы для отправки или отменить напоминания в разделе «Анонсы».'}
           </p>
           
           {/* Link Type Selection */}
