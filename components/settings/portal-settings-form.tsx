@@ -26,10 +26,18 @@ interface PortalSettings {
   privacy_policy_html: string | null
 }
 
+interface OrganizationInfo {
+  id: string
+  name: string
+  slug: string
+  logo_url: string | null
+}
+
 interface Props {
   organizationId: string
   initialSettings: PortalSettings
   userRole: 'owner' | 'admin'
+  organization?: OrganizationInfo
 }
 
 interface ToggleRowProps {
@@ -60,7 +68,7 @@ function ToggleRow({ label, description, checked, onChange, disabled }: ToggleRo
   )
 }
 
-export default function PortalSettingsForm({ organizationId, initialSettings, userRole }: Props) {
+export default function PortalSettingsForm({ organizationId, initialSettings, userRole, organization }: Props) {
   const [settings, setSettings] = useState<PortalSettings>(initialSettings)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -68,6 +76,14 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [isUploadingCover, setIsUploadingCover] = useState(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
+
+  // Organization name & logo state
+  const [orgName, setOrgName] = useState(organization?.name || '')
+  const [logoUrl, setLogoUrl] = useState(organization?.logo_url || null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [isSavingOrg, setIsSavingOrg] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const isOwner = userRole === 'owner'
 
@@ -164,10 +180,179 @@ export default function PortalSettingsForm({ organizationId, initialSettings, us
   const set = (key: keyof PortalSettings) => (value: boolean | string | null) =>
     setSettings((prev) => ({ ...prev, [key]: value }))
 
+  // --- Organization name & logo handlers ---
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      setMessage({ type: 'error', text: 'Только JPG и PNG файлы разрешены' })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Размер файла должен быть меньше 5MB' })
+      return
+    }
+    setLogoFile(file)
+    setMessage(null)
+    const reader = new FileReader()
+    reader.onloadend = () => setLogoPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveLogo = async () => {
+    setIsSavingOrg(true)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/organizations/${organizationId}/logo`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        setMessage({ type: 'error', text: data.error || 'Не удалось удалить логотип' })
+      } else {
+        setLogoUrl(null)
+        setLogoPreview(null)
+        setLogoFile(null)
+        setMessage({ type: 'success', text: 'Логотип удалён' })
+        setTimeout(() => window.location.reload(), 1000)
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Ошибка сети' })
+    } finally {
+      setIsSavingOrg(false)
+    }
+  }
+
+  const handleSaveOrg = async () => {
+    if (!organization) return
+    setIsSavingOrg(true)
+    setMessage(null)
+    try {
+      let newLogoUrl = logoUrl
+      if (logoFile) {
+        const formData = new FormData()
+        formData.append('file', logoFile)
+        const uploadRes = await fetch(`/api/organizations/${organizationId}/logo`, {
+          method: 'POST',
+          body: formData,
+        })
+        if (!uploadRes.ok) {
+          const data = await uploadRes.json()
+          throw new Error(data.error || 'Не удалось загрузить логотип')
+        }
+        const uploadData = await uploadRes.json()
+        newLogoUrl = uploadData.logo_url
+        setLogoUrl(newLogoUrl)
+      }
+      if (orgName.trim() !== organization.name || logoFile) {
+        const res = await fetch(`/api/organizations/${organizationId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: orgName.trim(), logo_url: newLogoUrl }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Не удалось обновить настройки')
+        }
+      }
+      setLogoFile(null)
+      setLogoPreview(null)
+      setMessage({ type: 'success', text: 'Основные настройки сохранены' })
+      setTimeout(() => window.location.reload(), 1000)
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setIsSavingOrg(false)
+    }
+  }
+
+  const currentLogo = logoPreview || logoUrl
+
   const currentCover = coverPreview || settings.portal_cover_url
 
   return (
     <div className="space-y-6">
+      {/* Основные настройки (название + логотип) */}
+      {organization && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Основные настройки</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Название пространства
+              </label>
+              <Input
+                type="text"
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                disabled={isSavingOrg}
+                required
+                className="max-w-md"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                URL: /app/{organization.slug}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">
+                Логотип
+              </label>
+              <p className="text-xs text-neutral-500 mb-2">
+                Квадратное изображение, JPG или PNG, до 5MB
+              </p>
+              <div className="flex items-start gap-4">
+                {currentLogo && (
+                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-neutral-200">
+                    <img src={currentLogo} alt="Логотип" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    onChange={handleLogoFileChange}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={isSavingOrg}
+                  >
+                    {currentLogo ? 'Изменить' : 'Загрузить логотип'}
+                  </Button>
+                  {currentLogo && !logoFile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveLogo}
+                      disabled={isSavingOrg}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      Удалить
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Button
+                onClick={handleSaveOrg}
+                disabled={isSavingOrg || (orgName.trim() === organization.name && !logoFile)}
+                size="sm"
+              >
+                {isSavingOrg ? 'Сохранение...' : 'Сохранить'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Публичное описание */}
       <Card>
         <CardHeader>

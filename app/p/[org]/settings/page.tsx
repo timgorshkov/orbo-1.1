@@ -4,10 +4,10 @@ import { notFound, redirect } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 // Supabase removed — using createAdminServer() for all DB operations
 import SettingsTabs, { SettingsTab } from '@/components/settings/settings-tabs'
-import OrganizationSettingsForm from '@/components/settings/organization-settings-form'
 import OrganizationTeam from '@/components/settings/organization-team'
 // InvitesManager moved to /p/[org]/members page
 // Digest settings are now in the Notifications tab (notification-rules-content.tsx)
+// OrganizationSettingsForm merged into PortalSettingsForm (April 2026)
 import dynamic from 'next/dynamic'
 import PortalSettingsForm from '@/components/settings/portal-settings-form'
 import { createServiceLogger } from '@/lib/logger'
@@ -136,15 +136,8 @@ export default async function OrganizationSettingsPage({
       }
 
       case 'general': {
-        tabContent = (
-          <div className="p-6">
-            <OrganizationSettingsForm
-              organization={organization}
-              userRole={membership.role as 'owner' | 'admin'}
-            />
-          </div>
-        )
-        break
+        // Merged into "portal" tab (April 2026)
+        redirect(`/p/${orgId}/settings?tab=portal`)
       }
 
       case 'tags': {
@@ -195,7 +188,7 @@ export default async function OrganizationSettingsPage({
             <div className="mb-6">
               <h2 className="text-2xl font-semibold">Портал пространства</h2>
               <p className="text-gray-600 mt-1">
-                Настройте, какие разделы видят участники в меню и на главной странице
+                Основные настройки и внешний вид для участников
               </p>
             </div>
             <PortalSettingsForm
@@ -214,6 +207,12 @@ export default async function OrganizationSettingsPage({
                 privacy_policy_html:          organization.privacy_policy_html          ?? null,
               }}
               userRole={membership.role as 'owner' | 'admin'}
+              organization={{
+                id: organization.id,
+                name: organization.name,
+                slug: organization.slug,
+                logo_url: organization.logo_url,
+              }}
             />
           </div>
         )

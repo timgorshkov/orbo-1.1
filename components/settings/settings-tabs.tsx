@@ -12,7 +12,6 @@ interface SettingsTabsProps {
 
 const TABS = [
   { id: 'team', label: 'Команда' },
-  { id: 'general', label: 'Основные' },
   { id: 'portal', label: 'Портал пространства' },
   { id: 'tags', label: 'Теги участников' },
   { id: 'notifications', label: 'Уведомления' },
