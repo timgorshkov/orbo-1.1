@@ -562,6 +562,27 @@ export async function DELETE(
       )
     }
 
+    // Check for completed payments — block deletion if real money was involved
+    const { data: paidSessions } = await adminSupabase
+      .from('payment_sessions')
+      .select('id')
+      .eq('event_id', eventId)
+      .in('status', ['succeeded', 'processing', 'refunded'])
+      .limit(1)
+
+    if (paidSessions && paidSessions.length > 0) {
+      return NextResponse.json(
+        { error: 'Нельзя удалить событие с оплаченными регистрациями. Сначала выполните возврат средств.' },
+        { status: 400 }
+      )
+    }
+
+    // Clear incomplete payment sessions (pending/failed/cancelled) — no real money involved
+    await adminSupabase
+      .from('payment_sessions')
+      .update({ event_id: null, event_registration_id: null })
+      .eq('event_id', eventId)
+
     // Delete event-related announcements first (no foreign key constraint)
     await adminSupabase
       .from('announcements')
