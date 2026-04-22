@@ -109,7 +109,7 @@ export async function GET(
         .neq('source', 'bot'),
       adminSupabase
         .from('organizations')
-        .select('name')
+        .select('name, timezone')
         .eq('id', orgId)
         .single()
     ])
@@ -121,6 +121,7 @@ export async function GET(
     const eventsCount = eventsCountResult.count
     const totalParticipants = totalParticipantsResult.count
     const orgName = orgNameResult.data?.name || ''
+    const orgTimezone = (orgNameResult.data?.timezone as string) || 'Europe/Moscow'
     const hasCustomOrgName = !!orgName && orgName !== 'Моё сообщество'
     
     const connectedGroupsCount = orgGroupsForCount?.filter(
@@ -129,12 +130,11 @@ export async function GET(
     // For onboarding: any linked group counts (even pending)
     const linkedGroupsCount = orgGroupsForCount?.length || 0
 
-    // PARALLEL BLOCK 2: hasSharedEvent, org timezone, MAX groups, AI alerts, upcoming events
-    // assistBotStarted runs separately (external Telegram API call) so it doesn't block DB queries.
+    // All remaining queries run in ONE parallel block.
+    // Dependencies from Block 1: telegramAccount, eventsCount, orgId, chatIds, connectedGroupsCount
     const chatIds = orgGroupsForCount?.map(g => String(g.tg_chat_id)) || []
 
-    // Start assistBotStarted check in background — will be awaited later after DB work is done.
-    // Uses 1.5s timeout so it overlaps with activity/attention-zones queries instead of adding to them.
+    // assistBotStarted check — runs in background with 1.5s timeout
     const assistBotPromise: Promise<boolean> = (async () => {
       if (!telegramAccount) return false;
       try {
@@ -170,38 +170,41 @@ export async function GET(
       } catch { return false; }
     })();
 
+    // Pre-compute values needed by multiple parallel tasks
+    const fourteenDaysAgo = new Date()
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+    fourteenDaysAgo.setHours(0, 0, 0, 0)
+    const startIso = fourteenDaysAgo.toISOString()
+    const last14Days: string[] = []
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      last14Days.push(d.toLocaleDateString('en-CA', { timeZone: orgTimezone }))
+    }
+    const numericChatIds = chatIds.map(Number).filter(Number.isFinite);
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
+    const threeDaysFromNow = new Date()
+    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
+
+    // SINGLE PARALLEL BLOCK: hasSharedEvent, MAX groups, AI alerts, upcoming events, activity chart, attention zones
     const [
       hasSharedEventResult,
-      assistBotResult,
-      orgTimezoneResult,
       orgMaxLinksResult,
       aiAlertsResult,
-      upcomingEventsResult
+      upcomingEventsResult,
+      activityResult,
+      attentionZonesResult,
     ] = await Promise.all([
-      // hasSharedEvent
+      // hasSharedEvent — single query instead of 2
       (async () => {
         if ((eventsCount || 0) === 0) return false;
-        const { data: orgEvents } = await adminSupabase
-          .from('events')
-          .select('id')
-          .eq('org_id', orgId)
-          .limit(50);
-        if (!orgEvents || orgEvents.length === 0) return false;
-        const { count: regCount } = await adminSupabase
+        const { count } = await adminSupabase
           .from('event_registrations')
           .select('*', { count: 'exact', head: true })
-          .in('event_id', orgEvents.map((e: any) => e.id))
+          .eq('org_id', orgId)
           .limit(1);
-        return (regCount || 0) > 0;
+        return (count || 0) > 0;
       })(),
-      // assistBotStarted — resolved separately after this block to avoid blocking DB queries
-      Promise.resolve(false),
-      // org timezone
-      adminSupabase
-        .from('organizations')
-        .select('timezone')
-        .eq('id', orgId)
-        .maybeSingle(),
       // MAX groups
       adminSupabase
         .from('org_max_groups')
@@ -266,109 +269,130 @@ export async function GET(
             registeredCount, registrationRate: Math.round(registrationRate)
           };
         });
+      })(),
+      // Activity chart — SQL-side aggregation
+      (async () => {
+        const activityByDay: Record<string, number> = {}
+        last14Days.forEach(date => { activityByDay[date] = 0 })
+        const queries: Promise<void>[] = [];
+
+        if (numericChatIds.length > 0) {
+          queries.push((async () => {
+            const { data: rows } = await adminSupabase.raw<{ date: string; cnt: string }>(
+              `SELECT (created_at AT TIME ZONE $1)::date::text AS date, COUNT(*) AS cnt
+               FROM activity_events
+               WHERE org_id = $2 AND event_type = 'message' AND created_at >= $3
+                 AND tg_chat_id = ANY($4)
+               GROUP BY 1`,
+              [orgTimezone, orgId, startIso, numericChatIds]
+            );
+            rows?.forEach(r => { if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0 });
+          })());
+        }
+        queries.push((async () => {
+          const { data: rows } = await adminSupabase.raw<{ date: string; cnt: string }>(
+            `SELECT (created_at AT TIME ZONE $1)::date::text AS date, COUNT(*) AS cnt
+             FROM activity_events
+             WHERE org_id = $2 AND tg_chat_id = 0 AND event_type = 'message' AND created_at >= $3
+             GROUP BY 1`,
+            [orgTimezone, orgId, startIso]
+          );
+          rows?.forEach(r => { if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0 });
+        })());
+        // MAX activity query will be added after maxChatIds are available — runs in main block instead
+
+        await Promise.all(queries);
+        return activityByDay;
+      })(),
+      // Attention zones (with 4s timeout, includes event_registrations inside)
+      (async () => {
+        if (connectedGroupsCount === 0) return null;
+        try {
+          const result = await Promise.race([
+            Promise.all([
+              adminSupabase
+                .from('events')
+                .select('id, title, event_date, start_time, capacity')
+                .eq('org_id', orgId)
+                .eq('status', 'published')
+                .gte('event_date', new Date().toISOString())
+                .lte('event_date', threeDaysFromNow.toISOString()),
+              adminSupabase.rpc('get_churning_participants', { p_org_id: orgId, p_days_silent: 14 }),
+              adminSupabase.rpc('get_inactive_newcomers', { p_org_id: orgId, p_days_since_first: 14 }),
+              adminSupabase
+                .from('attention_zone_items')
+                .select('item_id, item_type')
+                .eq('org_id', orgId)
+                .not('resolved_at', 'is', null)
+                .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            ]),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000))
+          ]);
+          if (!result) {
+            logger.warn({ org_id: orgId }, 'Attention zones timeout (4s)');
+            return null;
+          }
+          const [critEvents, churning, inactive, resolved] = result;
+
+          // Fetch registrations for critical events (inside the same async block, not sequential)
+          const criticalEventIds = critEvents.data?.map(e => e.id) || [];
+          const regsMap = new Map<string, any[]>();
+          if (criticalEventIds.length > 0) {
+            const { data: regs } = await adminSupabase
+              .from('event_registrations')
+              .select('id, status, event_id')
+              .in('event_id', criticalEventIds);
+            for (const reg of regs || []) {
+              const existing = regsMap.get(reg.event_id) || [];
+              existing.push(reg);
+              regsMap.set(reg.event_id, existing);
+            }
+          }
+          return { critEvents, churning, inactive, resolved, regsMap };
+        } catch (err) {
+          logger.warn({ org_id: orgId, error: String(err) }, 'Attention zones error');
+          return null;
+        }
       })()
     ]);
 
     const hasSharedEvent = hasSharedEventResult;
-    const assistBotStarted = assistBotResult;
-    const orgTimezone = (orgTimezoneResult.data?.timezone as string) || 'Europe/Moscow';
     const maxChatIds = (orgMaxLinksResult.data ?? []).map((r: any) => String(r.max_chat_id));
     const aiAlerts: any[] = aiAlertsResult;
     const upcomingEventsData = upcomingEventsResult;
 
-    const onboardingStatus = {
-      hasTelegramAccount: !!telegramAccount,
-      hasCustomOrgName,
-      hasGroups: linkedGroupsCount > 0,
-      hasEvents: (eventsCount || 0) > 0,
-      hasSharedEvent,
-      assistBotStarted,
-      progress: [
-        true,
-        hasCustomOrgName,
-        (eventsCount || 0) > 0,
-        !!telegramAccount,
-        assistBotStarted,
-        hasSharedEvent,
-        linkedGroupsCount > 0
-      ].filter(Boolean).length * (100 / 7)
-    }
-
-    const isOnboarding = onboardingStatus.progress < 60
-
-    // 2. Activity chart — SQL-side aggregation (returns ~14 rows instead of thousands)
-    const fourteenDaysAgo = new Date()
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-    fourteenDaysAgo.setHours(0, 0, 0, 0)
-    const startIso = fourteenDaysAgo.toISOString()
-
-    const last14Days: string[] = []
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      last14Days.push(d.toLocaleDateString('en-CA', { timeZone: orgTimezone }))
-    }
-    const activityByDay: Record<string, number> = {}
-    last14Days.forEach(date => { activityByDay[date] = 0 })
-
-    const numericChatIds = chatIds.map(Number).filter(Number.isFinite);
+    // Add MAX activity data (needs maxChatIds which were fetched in parallel)
+    const activityByDay = activityResult;
     const numericMaxChatIds = maxChatIds.map(Number).filter(Number.isFinite);
-
-    const activityQueries: Promise<void>[] = [];
-
-    if (numericChatIds.length > 0) {
-      activityQueries.push((async () => {
-        const { data: rows } = await adminSupabase.raw<{ date: string; cnt: string }>(
-          `SELECT (created_at AT TIME ZONE $1)::date::text AS date, COUNT(*) AS cnt
-           FROM activity_events
-           WHERE org_id = $2 AND event_type = 'message' AND created_at >= $3
-             AND tg_chat_id = ANY($4)
-           GROUP BY 1`,
-          [orgTimezone, orgId, startIso, numericChatIds]
-        );
-        rows?.forEach(r => {
-          if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0;
-        });
-      })());
-    }
-
-    activityQueries.push((async () => {
+    if (numericMaxChatIds.length > 0) {
       const { data: rows } = await adminSupabase.raw<{ date: string; cnt: string }>(
         `SELECT (created_at AT TIME ZONE $1)::date::text AS date, COUNT(*) AS cnt
          FROM activity_events
-         WHERE org_id = $2 AND tg_chat_id = 0 AND event_type = 'message' AND created_at >= $3
+         WHERE org_id = $2 AND event_type = 'message' AND messenger_type = 'max'
+           AND created_at >= $3 AND max_chat_id = ANY($4)
          GROUP BY 1`,
-        [orgTimezone, orgId, startIso]
+        [orgTimezone, orgId, startIso, numericMaxChatIds]
       );
-      rows?.forEach(r => {
-        if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0;
-      });
-    })());
-
-    if (numericMaxChatIds.length > 0) {
-      activityQueries.push((async () => {
-        const { data: rows } = await adminSupabase.raw<{ date: string; cnt: string }>(
-          `SELECT (created_at AT TIME ZONE $1)::date::text AS date, COUNT(*) AS cnt
-           FROM activity_events
-           WHERE org_id = $2 AND event_type = 'message' AND messenger_type = 'max'
-             AND created_at >= $3 AND max_chat_id = ANY($4)
-           GROUP BY 1`,
-          [orgTimezone, orgId, startIso, numericMaxChatIds]
-        );
-        rows?.forEach(r => {
-          if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0;
-        });
-      })());
+      rows?.forEach(r => { if (activityByDay[r.date] !== undefined) activityByDay[r.date] += Number(r.cnt) || 0 });
     }
-
-    await Promise.all(activityQueries);
 
     const activityChart = last14Days.map(date => ({
       date,
       messages: activityByDay[date] || 0
     }))
 
-    // 4. Attention zones (only for non-onboarding users)
+    // Build onboarding status
+    const onboardingStatus = {
+      hasTelegramAccount: !!telegramAccount,
+      hasCustomOrgName,
+      hasGroups: linkedGroupsCount > 0,
+      hasEvents: (eventsCount || 0) > 0,
+      hasSharedEvent,
+      assistBotStarted: false,
+      progress: 0
+    }
+
+    // Process attention zones
     let attentionZones = {
       criticalEvents: [] as any[],
       churningParticipants: [] as any[],
@@ -376,115 +400,72 @@ export async function GET(
       hasMore: { churning: 0, newcomers: 0, events: 0 }
     }
 
-    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24))
+    const isOnboarding = [
+      true, hasCustomOrgName, (eventsCount || 0) > 0, !!telegramAccount,
+      false, hasSharedEvent, linkedGroupsCount > 0
+    ].filter(Boolean).length * (100 / 7) < 60
 
-    if (!isOnboarding && connectedGroupsCount > 0) {
-      const attentionZonesTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
-      const threeDaysFromNow = new Date()
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3)
+    if (!isOnboarding && attentionZonesResult) {
+      const { critEvents, churning, inactive, resolved, regsMap } = attentionZonesResult
 
-      const attentionZonesData = await Promise.race([
-        Promise.all([
-          adminSupabase
-            .from('events')
-            .select('id, title, event_date, start_time, capacity')
-            .eq('org_id', orgId)
-            .eq('status', 'published')
-            .gte('event_date', new Date().toISOString())
-            .lte('event_date', threeDaysFromNow.toISOString()),
-          adminSupabase.rpc('get_churning_participants', { p_org_id: orgId, p_days_silent: 14 }),
-          adminSupabase.rpc('get_inactive_newcomers', { p_org_id: orgId, p_days_since_first: 14 }),
-          adminSupabase
-            .from('attention_zone_items')
-            .select('item_id, item_type')
-            .eq('org_id', orgId)
-            .not('resolved_at', 'is', null)
-            .gte('resolved_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        ]),
-        attentionZonesTimeout
-      ])
-
-      if (!attentionZonesData) {
-        logger.warn({ org_id: orgId }, 'Attention zones timeout (5s), returning empty')
-      } else {
-        const [criticalEventsResult, churningResult, inactiveResult, resolvedItemsResult] = attentionZonesData
-
-        const criticalEventIds = criticalEventsResult.data?.map(e => e.id) || [];
-        const criticalEventsRegistrationsMap = new Map<string, any[]>();
-        if (criticalEventIds.length > 0) {
-          const { data: regs } = await adminSupabase
-            .from('event_registrations')
-            .select('id, status, event_id')
-            .in('event_id', criticalEventIds);
-          for (const reg of regs || []) {
-            const existing = criticalEventsRegistrationsMap.get(reg.event_id) || [];
-            existing.push(reg);
-            criticalEventsRegistrationsMap.set(reg.event_id, existing);
-          }
-        }
-
-        const resolvedIds = new Map<string, Set<string>>()
-        for (const item of resolvedItemsResult.data || []) {
-          if (!resolvedIds.has(item.item_type)) resolvedIds.set(item.item_type, new Set())
-          resolvedIds.get(item.item_type)!.add(item.item_id)
-        }
-
-        const criticalEvents = (criticalEventsResult.data || [])
-          .map(event => {
-            const eventRegs = criticalEventsRegistrationsMap.get(event.id) || [];
-            const registeredCount = eventRegs.filter((r: any) => r.status === 'registered').length || 0
-            const registrationRate = event.capacity ? (registeredCount / event.capacity) * 100 : 0
-            return {
-              id: event.id, title: event.title, event_date: event.event_date,
-              start_time: event.start_time, registeredCount,
-              capacity: event.capacity, registrationRate: Math.round(registrationRate)
-            }
-          })
-          .filter(e => e.registrationRate < 30 && e.capacity)
-          .filter(e => !resolvedIds.get('critical_event')?.has(e.id))
-
-        const eventsOffset = dayOfYear % Math.max(1, criticalEvents.length)
-        attentionZones.criticalEvents = criticalEvents.length <= 3
-          ? criticalEvents
-          : criticalEvents.slice(eventsOffset, eventsOffset + 3).concat(
-              criticalEvents.slice(0, Math.max(0, 3 - (criticalEvents.length - eventsOffset)))
-            ).slice(0, 3)
-        attentionZones.hasMore.events = Math.max(0, criticalEvents.length - 3)
-
-        const churningParticipants = (churningResult.data || [])
-          .filter((p: any) => !resolvedIds.get('churning_participant')?.has(p.participant_id))
-        const inactiveNewcomers = (inactiveResult.data || [])
-          .filter((p: any) => !resolvedIds.get('inactive_newcomer')?.has(p.participant_id))
-
-        const getRotatedSlice = (arr: any[], offset: number, limit: number) => {
-          if (arr.length <= limit) return arr
-          const result = []
-          for (let i = 0; i < limit; i++) result.push(arr[(offset + i) % arr.length])
-          return result
-        }
-
-        attentionZones.churningParticipants = getRotatedSlice(churningParticipants, dayOfYear % Math.max(1, churningParticipants.length), 3)
-        attentionZones.inactiveNewcomers = getRotatedSlice(inactiveNewcomers, dayOfYear % Math.max(1, inactiveNewcomers.length), 3)
-        attentionZones.hasMore.churning = Math.max(0, churningParticipants.length - 3)
-        attentionZones.hasMore.newcomers = Math.max(0, inactiveNewcomers.length - 3)
+      const resolvedIds = new Map<string, Set<string>>()
+      for (const item of resolved.data || []) {
+        if (!resolvedIds.has(item.item_type)) resolvedIds.set(item.item_type, new Set())
+        resolvedIds.get(item.item_type)!.add(item.item_id)
       }
+
+      const criticalEvents = (critEvents.data || [])
+        .map(event => {
+          const eventRegs = regsMap.get(event.id) || [];
+          const registeredCount = eventRegs.filter((r: any) => r.status === 'registered').length || 0
+          const registrationRate = event.capacity ? (registeredCount / event.capacity) * 100 : 0
+          return {
+            id: event.id, title: event.title, event_date: event.event_date,
+            start_time: event.start_time, registeredCount,
+            capacity: event.capacity, registrationRate: Math.round(registrationRate)
+          }
+        })
+        .filter(e => e.registrationRate < 30 && e.capacity)
+        .filter(e => !resolvedIds.get('critical_event')?.has(e.id))
+
+      const eventsOffset = dayOfYear % Math.max(1, criticalEvents.length)
+      attentionZones.criticalEvents = criticalEvents.length <= 3
+        ? criticalEvents
+        : criticalEvents.slice(eventsOffset, eventsOffset + 3).concat(
+            criticalEvents.slice(0, Math.max(0, 3 - (criticalEvents.length - eventsOffset)))
+          ).slice(0, 3)
+      attentionZones.hasMore.events = Math.max(0, criticalEvents.length - 3)
+
+      const churningParticipants = (churning.data || [])
+        .filter((p: any) => !resolvedIds.get('churning_participant')?.has(p.participant_id))
+      const inactiveNewcomers = (inactive.data || [])
+        .filter((p: any) => !resolvedIds.get('inactive_newcomer')?.has(p.participant_id))
+
+      const getRotatedSlice = (arr: any[], offset: number, limit: number) => {
+        if (arr.length <= limit) return arr
+        const result = []
+        for (let i = 0; i < limit; i++) result.push(arr[(offset + i) % arr.length])
+        return result
+      }
+
+      attentionZones.churningParticipants = getRotatedSlice(churningParticipants, dayOfYear % Math.max(1, churningParticipants.length), 3)
+      attentionZones.inactiveNewcomers = getRotatedSlice(inactiveNewcomers, dayOfYear % Math.max(1, inactiveNewcomers.length), 3)
+      attentionZones.hasMore.churning = Math.max(0, churningParticipants.length - 3)
+      attentionZones.hasMore.newcomers = Math.max(0, inactiveNewcomers.length - 3)
     }
 
-    // Collect assistBotStarted — by now it has been running in parallel with all DB work above.
-    // If it still hasn't resolved (Telegram API is very slow), the 1.5s timeout inside will fire.
+    // Collect assistBotStarted — has been running in parallel with all DB work above
     const assistBotStartedFinal = await assistBotPromise;
-    if (assistBotStartedFinal !== onboardingStatus.assistBotStarted) {
-      onboardingStatus.assistBotStarted = assistBotStartedFinal;
-      onboardingStatus.progress = [
-        true,
-        hasCustomOrgName,
-        (eventsCount || 0) > 0,
-        !!telegramAccount,
-        assistBotStartedFinal,
-        hasSharedEvent,
-        linkedGroupsCount > 0
-      ].filter(Boolean).length * (100 / 7);
-    }
+    onboardingStatus.assistBotStarted = assistBotStartedFinal;
+    onboardingStatus.progress = [
+      true,
+      hasCustomOrgName,
+      (eventsCount || 0) > 0,
+      !!telegramAccount,
+      assistBotStartedFinal,
+      hasSharedEvent,
+      linkedGroupsCount > 0
+    ].filter(Boolean).length * (100 / 7)
 
     return NextResponse.json({
       success: true,
