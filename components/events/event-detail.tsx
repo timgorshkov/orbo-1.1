@@ -740,12 +740,17 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     ) : isRegistered ? (
                       <>
                         <div className="text-center py-2">
-                          <div className="text-green-600 font-medium mb-1">
-                            ✓ Вы зарегистрированы
-                          </div>
-                          <div className="text-sm text-neutral-600 mb-3">
-                            Мы напомним вам о событии
-                          </div>
+                          {/* Show green confirmation only when payment is not required or already paid */}
+                          {(!(event.requires_payment || event.is_paid) || (userRegistration?.payment_status === 'paid')) && (
+                            <>
+                              <div className="text-green-600 font-medium mb-1">
+                                ✓ Вы зарегистрированы
+                              </div>
+                              <div className="text-sm text-neutral-600 mb-3">
+                                Мы напомним вам о событии
+                              </div>
+                            </>
+                          )}
                           {/* Payment Info for Registered Users — shown BEFORE QR so it's visible first */}
                           {(event.requires_payment || event.is_paid) && (
                             <div className="mt-3 space-y-3 min-h-[80px]">
@@ -756,6 +761,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                   {userRegistration.payment_status !== 'paid' ? (
                                     /* Pending payment — prominent call-to-action */
                                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                                      <div className="text-sm text-orange-800 mb-2">
+                                        Вы ввели данные для регистрации. Для подтверждения участия необходимо оплатить.
+                                      </div>
                                       <div className="flex items-center justify-center gap-2">
                                         <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                                           userRegistration.payment_status === 'partially_paid'
@@ -1303,12 +1311,17 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                     ) : isRegistered ? (
                       <>
                         <div className="text-center py-2">
-                          <div className="text-green-600 font-medium mb-1">
-                            ✓ Вы зарегистрированы
-                          </div>
-                          <div className="text-sm text-neutral-600 mb-3">
-                            Мы напомним вам о событии
-                          </div>
+                          {/* Show green confirmation only when payment is not required or already paid */}
+                          {(!(event.requires_payment || event.is_paid) || (userRegistration?.payment_status === 'paid')) && (
+                            <>
+                              <div className="text-green-600 font-medium mb-1">
+                                ✓ Вы зарегистрированы
+                              </div>
+                              <div className="text-sm text-neutral-600 mb-3">
+                                Мы напомним вам о событии
+                              </div>
+                            </>
+                          )}
                           {/* Payment Info for Registered Users — shown BEFORE QR so it's visible first */}
                           {(event.requires_payment || event.is_paid) && (
                             <div className="mt-3 space-y-3 min-h-[80px]">
@@ -1318,6 +1331,9 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 <>
                                   {userRegistration.payment_status !== 'paid' ? (
                                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
+                                      <div className="text-sm text-orange-800 mb-2">
+                                        Вы ввели данные для регистрации. Для подтверждения участия необходимо оплатить.
+                                      </div>
                                       <div className="flex items-center justify-center gap-2">
                                         <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                                           userRegistration.payment_status === 'partially_paid'
