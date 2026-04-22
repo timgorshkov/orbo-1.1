@@ -265,6 +265,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Send registration confirmation after manual payment confirmation (fire-and-forget)
+    if (payment_status === 'paid' && updatedReg?.participant_id) {
+      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
+        sendRegistrationConfirmation({
+          registrationId: registration_id,
+          eventId,
+          orgId: orgId!,
+          participantId: updatedReg.participant_id,
+          qrToken: null,
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
     logger.info({
       registration_id,
       event_id: eventId,

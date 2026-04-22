@@ -773,6 +773,19 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
         })
         .eq('id', session.event_registration_id)
 
+      // Send registration confirmation after successful payment (fire-and-forget)
+      if (session.event_registration_id && session.event_id && session.participant_id) {
+        import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
+          sendRegistrationConfirmation({
+            registrationId: session.event_registration_id!,
+            eventId: session.event_id!,
+            orgId: session.org_id,
+            participantId: session.participant_id!,
+            qrToken: null, // will be fetched from DB
+          }).catch(() => {})
+        }).catch(() => {})
+      }
+
     } else if (session.payment_for === 'membership' && session.membership_payment_id) {
       await recordMembershipPayment({
         orgId: session.org_id,

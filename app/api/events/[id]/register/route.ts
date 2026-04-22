@@ -417,6 +417,20 @@ export async function POST(
       qr_token: registrationRow.registration_qr_token || null
     }
 
+    // Send confirmation (fire-and-forget) — only for free events
+    // For paid events, confirmation is sent after payment via paymentService
+    if (!event.requires_payment && !event.default_price) {
+      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
+        sendRegistrationConfirmation({
+          registrationId: registration.id,
+          eventId: registration.event_id,
+          orgId: event.org_id,
+          participantId: registration.participant_id,
+          qrToken: registration.qr_token,
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
     return NextResponse.json({ registration }, { status: 201 })
   } catch (error: any) {
     await logErrorToDatabase({
