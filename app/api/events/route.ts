@@ -352,7 +352,7 @@ export async function POST(request: NextRequest) {
           )
           fromDate.setHours(0, 0, 0, 0)
           const toDate = new Date(fromDate.getTime() + 28 * 24 * 60 * 60 * 1000)
-          const count = await generateAndScheduleInstances(event, fromDate, toDate, targetGroups, useMiniAppLink)
+          const count = await generateAndScheduleInstances(event, fromDate, toDate, targetGroups, useMiniAppLink, targetTopics, targetMaxGroups)
           logger.info({ event_id: event.id, instance_count: count }, 'Generated recurring instances')
         } else {
           // Non-recurring: create 24h + 1h reminder announcements as before

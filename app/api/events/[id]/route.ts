@@ -383,7 +383,8 @@ export async function PUT(
                 locationInfo ?? sibling.location_info,
                 eventType ?? sibling.event_type,
                 targetGroups,
-                targetTopics
+                targetTopics,
+                targetMaxGroups
               )
             }
           }
@@ -409,7 +410,8 @@ export async function PUT(
               locationInfo ?? existingEvent.location_info,
               eventType ?? existingEvent.event_type,
               targetGroups,
-              targetTopics
+              targetTopics,
+              targetMaxGroups
             )
           }
         }

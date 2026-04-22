@@ -158,7 +158,9 @@ export async function generateAndScheduleInstances(
   fromDate: Date,
   toDate: Date,
   targetGroups: string[],
-  useMiniAppLink: boolean = true
+  useMiniAppLink: boolean = true,
+  targetTopics: Record<string, number> = {},
+  targetMaxGroups: string[] = []
 ): Promise<number> {
   const db = createAdminServer()
   const rule = parentEvent.recurrence_rule
@@ -252,7 +254,9 @@ export async function generateAndScheduleInstances(
             parentEvent.location_info,
             targetGroups,
             useMiniAppLink,
-            parentEvent.event_type as 'online' | 'offline'
+            parentEvent.event_type as 'online' | 'offline',
+            targetTopics,
+            targetMaxGroups
           )
         } catch (err) {
           logger.error({ error: String(err), child_id: child.id }, 'Failed to create reminders for instance')
@@ -277,7 +281,8 @@ export async function rescheduleAnnouncements(
   locationInfo: string | null,
   eventType: string,
   targetGroups: string[],
-  targetTopics: Record<string, number> = {}
+  targetTopics: Record<string, number> = {},
+  targetMaxGroups: string[] = []
 ): Promise<void> {
   const db = createAdminServer()
 
@@ -302,7 +307,8 @@ export async function rescheduleAnnouncements(
     targetGroups,
     true,
     eventType as 'online' | 'offline',
-    targetTopics
+    targetTopics,
+    targetMaxGroups
   )
 }
 

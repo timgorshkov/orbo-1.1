@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createCronLogger } from '@/lib/logger';
-import { generateAndScheduleInstances, getOrgTargetGroups } from '@/lib/services/recurringEventsService';
+import { generateAndScheduleInstances, getOrgAnnouncementDefaults } from '@/lib/services/recurringEventsService';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -80,8 +80,8 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Get org's telegram groups for announcements
-        const targetGroups = await getOrgTargetGroups(parent.org_id);
+        // Get org's announcement defaults (TG groups + MAX groups + topics)
+        const { targetGroups, targetTopics, targetMaxGroups } = await getOrgAnnouncementDefaults(parent.org_id);
 
         // Generate instances from lastDate up to horizon
         const useMiniAppLink = true; // default
@@ -92,7 +92,9 @@ export async function GET(request: NextRequest) {
           lastDate,
           horizon,
           targetGroups,
-          useMiniAppLink
+          useMiniAppLink,
+          targetTopics,
+          targetMaxGroups
         );
 
         const afterCount = await countChildren(adminSupabase, parent.id);
