@@ -11,6 +11,7 @@ import OrganizationTeam from '@/components/settings/organization-team'
 import dynamic from 'next/dynamic'
 import PortalSettingsForm from '@/components/settings/portal-settings-form'
 import { createServiceLogger } from '@/lib/logger'
+import RegistratorsSection from '@/components/settings/registrators-section'
 
 // Dynamic import for tags page (it's a client component)
 const TagsManagementContent = dynamic(() => import('@/components/settings/tags-management-content'), {
@@ -123,13 +124,14 @@ export default async function OrganizationSettingsPage({
         })
 
         tabContent = (
-          <div className="p-6">
+          <div className="p-6 space-y-6">
             <OrganizationTeam
               organizationId={orgId}
               initialTeam={teamWithGroups}
               userRole={membership.role as 'owner' | 'admin'}
               allowTelegramAdminRole={organization.allow_telegram_admin_role ?? true}
             />
+            <RegistratorsSection orgId={orgId} />
           </div>
         )
         break

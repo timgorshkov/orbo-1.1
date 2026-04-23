@@ -101,14 +101,23 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/events/checkin — Confirm check-in (admin action)
+// POST /api/events/checkin — Confirm check-in (admin or registrator)
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/events/checkin' });
 
   try {
+    // Auth: try NextAuth first, then registrator session
     const user = await getUnifiedUser()
+    let authOrgId: string | null = null // org that registrator belongs to
+
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      // Try registrator session
+      const { getRegistratorSession } = await import('@/lib/registrator-auth/session')
+      const regSession = await getRegistratorSession()
+      if (!regSession) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      authOrgId = regSession.orgId
     }
 
     const body = await req.json()
@@ -129,13 +138,13 @@ export async function POST(req: NextRequest) {
 
     if (error || !registration) {
       logger.warn({ token: token.substring(0, 8) + '...' }, 'Invalid checkin token for POST');
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Билет не найден',
         error_code: 'INVALID_TOKEN'
       }, { status: 404 })
     }
 
-    // Get event to check admin access
+    // Get event to check access
     const { data: event } = await supabase
       .from('events')
       .select('id, org_id, title')
@@ -146,18 +155,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Check that user is admin of the org
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', event.org_id)
-      .eq('user_id', user.id)
-      .single()
+    // Authorization check
+    if (authOrgId) {
+      // Registrator — just check org matches
+      if (authOrgId !== event.org_id) {
+        return NextResponse.json({ error: 'Forbidden — event belongs to another organization' }, { status: 403 })
+      }
+    } else if (user) {
+      // Admin — check membership
+      const { data: membership } = await supabase
+        .from('memberships')
+        .select('role')
+        .eq('org_id', event.org_id)
+        .eq('user_id', user.id)
+        .single()
 
-    const role = membership?.role || 'guest'
-    if (role !== 'owner' && role !== 'admin') {
-      logger.warn({ user_id: user.id, org_id: event.org_id, role }, 'Non-admin attempted check-in');
-      return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })
+      const role = membership?.role || 'guest'
+      if (role !== 'owner' && role !== 'admin') {
+        logger.warn({ user_id: user.id, org_id: event.org_id, role }, 'Non-admin attempted check-in');
+        return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })
+      }
     }
 
     // Check if already checked in
@@ -198,7 +215,7 @@ export async function POST(req: NextRequest) {
       registration_id: registration.id, 
       event_id: registration.event_id,
       participant_id: registration.participant_id,
-      checked_in_by: user.id
+      checked_in_by: user?.id || 'registrator'
     }, 'Check-in successful');
 
     return NextResponse.json({

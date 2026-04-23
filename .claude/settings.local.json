@@ -116,7 +116,8 @@
       "WebFetch(domain:e-kontur.ru)",
       "WebFetch(domain:kontur.userecho.com)",
       "WebFetch(domain:kontur-elba.github.io)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xargs cat *)"
     ]
   }
 }
