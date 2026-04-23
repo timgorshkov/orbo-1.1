@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Copy, Check, Link2, Trash2, UserCheck, RefreshCw } from 'lucide-react'
+import { Copy, Check, Link2, Trash2, UserCheck, RefreshCw, ChevronDown } from 'lucide-react'
 
 interface Registrator {
   id: string
@@ -25,6 +25,7 @@ export default function RegistratorsSection({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   const loadData = async () => {
     try {
@@ -100,10 +101,55 @@ export default function RegistratorsSection({ orgId }: { orgId: string }) {
           Регистраторы на мероприятиях
         </CardTitle>
         <p className="text-sm text-gray-500 mt-1">
-          Временные сотрудники для проверки QR-кодов на входе. Не имеют доступа к пространству.
+          Дайте доступ к сканированию QR-кодов временным сотрудникам на входе, без доступа к пространству.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Collapsible instructions */}
+        <button
+          type="button"
+          onClick={() => setShowHelp(!showHelp)}
+          className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform ${showHelp ? 'rotate-180' : ''}`} />
+          Как это работает?
+        </button>
+        {showHelp && (
+          <div className="text-sm text-gray-600 space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div>
+              <div className="font-medium text-gray-800 mb-1">Для организатора:</div>
+              <ol className="list-decimal ml-4 space-y-1">
+                <li>Нажмите «Создать ссылку-приглашение» ниже</li>
+                <li>Скопируйте ссылку и отправьте сотрудникам, которые будут встречать гостей</li>
+                <li>Одной ссылкой может воспользоваться несколько человек</li>
+              </ol>
+            </div>
+            <div>
+              <div className="font-medium text-gray-800 mb-1">Для регистратора:</div>
+              <ol className="list-decimal ml-4 space-y-1">
+                <li>Переходит по ссылке и вводит своё имя</li>
+                <li>Попадает на страницу сканирования QR-кодов</li>
+                <li>Сканирует QR-код участника и подтверждает проход</li>
+              </ol>
+            </div>
+            <div>
+              <div className="font-medium text-gray-800 mb-1">Доступ регистратора:</div>
+              <ul className="list-disc ml-4 space-y-1">
+                <li>Может только проверять QR-коды и подтверждать проход</li>
+                <li>Не видит содержимое пространства, участников, события или настройки</li>
+                <li>Регистрация и аккаунт в Orbo не требуются</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium text-gray-800 mb-1">Управление доступом:</div>
+              <ul className="list-disc ml-4 space-y-1">
+                <li><strong>Отозвать</strong> конкретного регистратора — он сразу теряет доступ к сканированию</li>
+                <li><strong>Деактивировать ссылку</strong> — все текущие регистраторы теряют доступ, новые не смогут подключиться</li>
+                <li><strong>Перегенерировать</strong> — старая ссылка перестаёт работать, создаётся новая. Все сессии сбрасываются</li>
+              </ul>
+            </div>
+          </div>
+        )}
         {/* Invite link */}
         {invite?.isActive && invite.url ? (
           <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">

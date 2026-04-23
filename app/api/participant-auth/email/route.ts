@@ -34,7 +34,31 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!participant) {
-      // Return success anyway to avoid email enumeration
+      // Participant not found — try admin/owner auth flow as fallback.
+      // Admins may not have a participants record but do have a users record.
+      const { data: adminUser } = await db
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle()
+
+      if (adminUser) {
+        // Redirect to the standard admin magic link flow
+        try {
+          const adminRes = await fetch(`${APP_URL}/api/auth/email/request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          })
+          if (adminRes.ok) {
+            logger.info({ email, org_id: orgId }, 'Participant not found, sent admin magic link instead')
+          }
+        } catch (err) {
+          logger.warn({ email, error: String(err) }, 'Failed to send admin magic link fallback')
+        }
+      }
+
+      // Return success regardless to avoid email enumeration
       return NextResponse.json({ ok: true })
     }
 
