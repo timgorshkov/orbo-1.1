@@ -159,7 +159,7 @@ export async function PATCH(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Failed to update error log');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     logger.info({ errorId: id }, 'Error marked as resolved');
