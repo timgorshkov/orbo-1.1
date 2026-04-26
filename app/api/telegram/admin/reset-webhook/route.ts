@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createTelegramService, telegramFetch } from '@/lib/services/telegramService'
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +16,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'
     const results: any = {}
 
     // Переустанавливаем основной бот
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
       if (mainBotToken && mainWebhookSecret) {
         const mainService = createTelegramService('main')
-        const webhookUrl = `${appUrl}/api/telegram/webhook`
+        const webhookUrl = buildWebhookUrl('main')
         
         // Получаем текущую информацию о webhook
         const infoResponse = await telegramFetch(
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
       if (notificationsBotToken && notificationsWebhookSecret) {
         const notificationsService = createTelegramService('notifications')
-        const webhookUrl = `${appUrl}/api/telegram/notifications/webhook`
+        const webhookUrl = buildWebhookUrl('notifications')
         
         // Получаем текущую информацию о webhook
         const infoResponse = await telegramFetch(
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
       results.main = {
         webhook: info.result,
         expectedSecretLength: process.env.TELEGRAM_WEBHOOK_SECRET?.length || 0,
-        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`
+        expectedUrl: buildWebhookUrl('main')
       }
     }
 
@@ -138,10 +138,10 @@ export async function GET(req: NextRequest) {
       results.notifications = {
         webhook: info.result,
         expectedSecretLength: (
-          process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || 
+          process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET ||
           process.env.TELEGRAM_WEBHOOK_SECRET
         )?.length || 0,
-        expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`
+        expectedUrl: buildWebhookUrl('notifications')
       }
     }
 

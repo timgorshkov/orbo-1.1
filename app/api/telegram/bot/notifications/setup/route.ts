@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic';
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     }
     
     // Настраиваем webhook для бота уведомлений
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/notifications/webhook`
+    const webhookUrl = buildWebhookUrl('notifications')
     const webhookSecret = process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET
     
     await telegramService.setWebhook(webhookUrl, webhookSecret!)

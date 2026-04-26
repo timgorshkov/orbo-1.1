@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     
     // Инициализируем бота
     const telegramService = createTelegramService()
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/telegram/webhook`
+    const webhookUrl = buildWebhookUrl('main')
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || 'default-secret-replace-in-production'
     
     // Устанавливаем webhook для бота

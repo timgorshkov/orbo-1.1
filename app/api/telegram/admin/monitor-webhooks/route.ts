@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TelegramService } from '@/lib/services/telegramService';
 import { webhookRecoveryService } from '@/lib/services/webhookRecoveryService';
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -36,10 +37,9 @@ export async function GET(request: Request) {
     const [mainWebhookInfo, notificationsWebhookInfo] = results;
     const registrationWebhookInfo = hasRegBot ? results[2] : null;
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-    const expectedMainUrl = `${baseUrl}/api/telegram/webhook`;
-    const expectedNotificationsUrl = `${baseUrl}/api/telegram/notifications/webhook`;
-    const expectedRegistrationUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+    const expectedMainUrl = buildWebhookUrl('main');
+    const expectedNotificationsUrl = buildWebhookUrl('notifications');
+    const expectedRegistrationUrl = buildWebhookUrl('registration');
 
     const mainStatus = {
       bot: 'main',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 import { telegramFetch } from '@/lib/services/telegramService';
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay';
 
 /**
  * POST /api/telegram/event-bot/setup
@@ -28,8 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'TELEGRAM_EVENT_BOT_TOKEN not configured' }, { status: 500 });
     }
     
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://my.orbo.ru';
-    const webhookUrl = `${siteUrl}/api/telegram/event-bot/webhook`;
+    const webhookUrl = buildWebhookUrl('event');
     
     // Set webhook
     const setWebhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook`;

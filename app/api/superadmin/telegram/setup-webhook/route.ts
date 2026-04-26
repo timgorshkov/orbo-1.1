@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { TelegramService, telegramFetch } from '@/lib/services/telegramService';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'TELEGRAM_REGISTRATION_BOT_TOKEN not configured' }, { status: 500 });
       }
       
-      const webhookUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+      const webhookUrl = buildWebhookUrl('registration');
       const regSecret = process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET;
       
       logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting registration bot webhook');
@@ -106,8 +107,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'TELEGRAM_EVENT_BOT_TOKEN not configured' }, { status: 500 });
       }
       
-      const webhookUrl = `${baseUrl}/api/telegram/event-bot/webhook`;
-      
+      const webhookUrl = buildWebhookUrl('event');
+
       logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting event bot webhook');
       
       const response = await telegramFetch(`https://api.telegram.org/bot${eventBotToken}/setWebhook`, {
@@ -158,8 +159,8 @@ export async function POST(req: NextRequest) {
     }
 
     const webhookUrl = botType === 'main'
-      ? `${baseUrl}/api/telegram/webhook`
-      : `${baseUrl}/api/telegram/notifications/webhook`;
+      ? buildWebhookUrl('main')
+      : buildWebhookUrl('notifications');
 
     logger.info({ bot_type: botType, webhook_url: webhookUrl }, 'Setting webhook');
 

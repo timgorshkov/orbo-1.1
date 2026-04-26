@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TelegramService, telegramFetch } from '@/lib/services/telegramService';
 import { getEventBotToken } from '@/lib/telegram/webAppAuth';
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay';
 import { createAPILogger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -35,10 +36,9 @@ export async function GET(request: Request) {
       assistantBot.getWebhookInfo()
     ]);
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-    const expectedMainUrl = `${baseUrl}/api/telegram/webhook`;
-    const expectedAssistantUrl = `${baseUrl}/api/telegram/notifications/webhook`;
-    const expectedEventUrl = `${baseUrl}/api/telegram/event-bot/webhook`;
+    const expectedMainUrl = buildWebhookUrl('main');
+    const expectedAssistantUrl = buildWebhookUrl('notifications');
+    const expectedEventUrl = buildWebhookUrl('event');
 
     const mainStatus: WebhookStatus = {
       bot: 'orbo_community_bot (MAIN)',
@@ -92,7 +92,7 @@ export async function GET(request: Request) {
     // Check registration bot if configured
     let registrationStatus: WebhookStatus | null = null;
     const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
-    const expectedRegistrationUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+    const expectedRegistrationUrl = buildWebhookUrl('registration');
     if (regBotToken) {
       try {
         const regResponse = await telegramFetch(`https://api.telegram.org/bot${regBotToken}/getWebhookInfo`);
@@ -166,10 +166,9 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-    const mainWebhookUrl = `${baseUrl}/api/telegram/webhook`;
-    const assistantWebhookUrl = `${baseUrl}/api/telegram/notifications/webhook`;
-    const eventWebhookUrl = `${baseUrl}/api/telegram/event-bot/webhook`;
+    const mainWebhookUrl = buildWebhookUrl('main');
+    const assistantWebhookUrl = buildWebhookUrl('notifications');
+    const eventWebhookUrl = buildWebhookUrl('event');
 
     logger.info({ 
       main_webhook_url: mainWebhookUrl,
@@ -231,7 +230,7 @@ export async function POST(request: Request) {
     let registrationSuccess = true;
     let registrationResult: any = null;
     const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN;
-    const registrationWebhookUrl = `${baseUrl}/api/telegram/registration-bot/webhook`;
+    const registrationWebhookUrl = buildWebhookUrl('registration');
     
     if (regBotToken) {
       try {

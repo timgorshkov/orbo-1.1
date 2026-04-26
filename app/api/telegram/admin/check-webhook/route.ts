@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { telegramFetch } from '@/lib/services/telegramService'
+import { buildWebhookUrl } from '@/lib/telegram/webhookRelay'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -49,8 +50,8 @@ export async function GET(req: NextRequest) {
             max_connections: data.result.max_connections,
             allowed_updates: data.result.allowed_updates,
             // Важно: проверяем совпадение URL
-            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`,
-            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/webhook`
+            expectedUrl: buildWebhookUrl('main'),
+            urlMatches: data.result.url === buildWebhookUrl('main')
           }
         } else {
           results.mainBot = { error: data.description }
@@ -78,8 +79,8 @@ export async function GET(req: NextRequest) {
             max_connections: data.result.max_connections,
             allowed_updates: data.result.allowed_updates,
             // Важно: проверяем совпадение URL
-            expectedUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`,
-            urlMatches: data.result.url === `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/api/telegram/notifications/webhook`
+            expectedUrl: buildWebhookUrl('notifications'),
+            urlMatches: data.result.url === buildWebhookUrl('notifications')
           }
         } else {
           results.notificationsBot = { error: data.description }
