@@ -23,6 +23,12 @@ const NotificationRulesContent = dynamic(() => import('@/components/settings/not
   loading: () => <div className="p-6">Загрузка...</div>
 })
 
+// Dynamic import for event email template editor (admin-only customisation of
+// the confirmation message sent to participants after event registration).
+const EventEmailTemplateForm = dynamic(() => import('@/components/settings/event-email-template-form'), {
+  loading: () => <div className="p-6">Загрузка...</div>,
+})
+
 // Dynamic import for billing page (it's a client component)
 const BillingContent = dynamic(() => import('@/components/settings/billing-content'), {
   loading: () => <div className="p-6">Загрузка...</div>
@@ -159,11 +165,12 @@ export default async function OrganizationSettingsPage({
 
       case 'notifications': {
         tabContent = (
-          <div className="p-6">
-            <div className="mb-6">
+          <div className="p-6 space-y-6">
+            <div>
               <h2 className="text-2xl font-semibold">Уведомления</h2>
             </div>
             <NotificationRulesContent />
+            <EventEmailTemplateForm orgId={orgId} />
           </div>
         )
         break

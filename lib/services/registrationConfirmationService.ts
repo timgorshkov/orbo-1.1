@@ -14,6 +14,8 @@ import { createServiceLogger } from '@/lib/logger'
 import { telegramFetch } from '@/lib/services/telegramService'
 import { getEmailService } from '@/lib/services/emailService'
 import { getShortCode } from '@/lib/utils/qrTicket'
+import { applyTemplate, DEFAULT_EVENT_EMAIL_TEMPLATE, type TemplateVars } from '@/lib/utils/templateRenderer'
+import { marked } from 'marked'
 
 const logger = createServiceLogger('RegistrationConfirmation')
 
@@ -37,10 +39,10 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
     // not be on the participant record itself (typical for shadow profiles created
     // from a TG event or first-time registrants).
     const [eventResult, participantResult, orgResult, regResult] = await Promise.all([
-      db.from('events').select('title, event_date, start_time, end_time, location_info, event_type, enable_qr_checkin, cover_image_url').eq('id', params.eventId).single(),
+      db.from('events').select('title, event_date, start_time, end_time, location_info, event_type, enable_qr_checkin, cover_image_url, requires_payment').eq('id', params.eventId).single(),
       db.from('participants').select('full_name, username, email, tg_user_id').eq('id', params.participantId).single(),
-      db.from('organizations').select('name, logo_url').eq('id', params.orgId).single(),
-      db.from('event_registrations').select('qr_token, registration_data').eq('id', params.registrationId).single(),
+      db.from('organizations').select('name, logo_url, event_email_template').eq('id', params.orgId).single(),
+      db.from('event_registrations').select('qr_token, registration_data, payment_status, paid_amount, price').eq('id', params.registrationId).single(),
     ])
 
     const event = eventResult.data
@@ -58,9 +60,6 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
     // Resolve email and full name with fallback chain:
     //   1. registration_data (explicitly entered in the event registration form)
     //   2. participant record
-    // Reason: a participant created from Telegram (shadow profile) won't have an
-    // email until the registrant types one into the event form — and the typed
-    // value lives in event_registrations.registration_data, not on the participant.
     const formEmail = typeof regData.email === 'string' ? regData.email.trim() : ''
     const recipientEmail = formEmail || participant.email || null
 
@@ -72,22 +71,47 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
     const hasQr = event.enable_qr_checkin && qrToken
     const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/e/${params.eventId}`
 
-    // Format date/time
     const dateStr = formatEventDate(event.event_date)
     const timeStr = formatTime(event.start_time)
     const endTimeStr = event.end_time ? formatTime(event.end_time) : null
+
+    // Build template variables
+    const vars: TemplateVars = {
+      event: {
+        title: event.title,
+        date: dateStr,
+        time: timeStr,
+        endTime: endTimeStr || '',
+        location: event.event_type === 'online' ? 'Онлайн' : (event.location_info || ''),
+        url: eventUrl,
+        type: event.event_type,
+      },
+      participant: {
+        name: participantName,
+      },
+      org: {
+        name: orgName,
+      },
+      ticket: {
+        shortCode: qrToken ? getShortCode(qrToken) : '',
+        amount: regRow.paid_amount ? Number(regRow.paid_amount) : (regRow.price ? Number(regRow.price) : 0),
+        paid: regRow.payment_status === 'paid',
+        requiresPayment: !!event.requires_payment,
+      },
+    }
+
+    // Apply org template (or fall back to platform default)
+    const tpl = pickTemplate(org?.event_email_template)
+    const subject = applyTemplate(tpl.subject, vars)
+    const bodyMd = applyTemplate(tpl.bodyMarkdown, vars)
+    const qrInstructionMd = applyTemplate(tpl.qrInstructionMarkdown || '', vars)
 
     // Send Telegram and Email in parallel
     await Promise.allSettled([
       sendTelegramConfirmation({
         tgUserId: participant.tg_user_id ? Number(participant.tg_user_id) : null,
-        participantName,
-        eventTitle: event.title,
-        dateStr,
-        timeStr,
-        endTimeStr,
-        location: event.location_info,
-        eventType: event.event_type,
+        bodyMarkdown: bodyMd,
+        qrInstructionMarkdown: qrInstructionMd,
         eventUrl,
         hasQr,
         qrToken,
@@ -95,18 +119,14 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
       }),
       sendEmailConfirmation({
         email: recipientEmail,
-        participantName,
-        eventTitle: event.title,
-        dateStr,
-        timeStr,
-        endTimeStr,
-        location: event.location_info,
-        eventType: event.event_type,
-        eventUrl,
+        subject,
+        bodyMarkdown: bodyMd,
+        qrInstructionMarkdown: qrInstructionMd,
         hasQr,
         qrToken,
         orgName,
         orgLogo,
+        eventUrl,
       }),
     ])
 
@@ -127,13 +147,8 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
 
 interface TgParams {
   tgUserId: number | null
-  participantName: string
-  eventTitle: string
-  dateStr: string
-  timeStr: string
-  endTimeStr: string | null
-  location: string | null
-  eventType: string | null
+  bodyMarkdown: string
+  qrInstructionMarkdown: string
   eventUrl: string
   hasQr: boolean
   qrToken: string | null
@@ -143,23 +158,14 @@ interface TgParams {
 async function sendTelegramConfirmation(p: TgParams): Promise<void> {
   if (!p.tgUserId) return
 
-  // Build message (HTML parse mode)
-  let text = `✅ <b>Вы зарегистрированы!</b>\n\n`
-  text += `📌 <b>${escapeHtml(p.eventTitle)}</b>\n`
-  text += `📅 ${p.dateStr}`
-  if (p.timeStr) text += `, ${p.timeStr}`
-  if (p.endTimeStr) text += ` — ${p.endTimeStr}`
-  text += '\n'
-  if (p.location) {
-    text += p.eventType === 'online'
-      ? `🌐 Онлайн\n`
-      : `📍 ${escapeHtml(p.location)}\n`
+  // Convert the markdown body to Telegram-flavoured HTML. Telegram supports a tiny
+  // HTML subset: <b> <i> <u> <s> <code> <pre> <a> <br>. We render via marked then
+  // sanitise: only those tags are kept, the rest are stripped.
+  let bodyHtml = markdownToTelegramHtml(p.bodyMarkdown)
+  if (p.hasQr && p.qrToken && p.qrInstructionMarkdown) {
+    bodyHtml += '\n\n' + markdownToTelegramHtml(p.qrInstructionMarkdown)
   }
-  text += `\n🔗 <a href="${p.eventUrl}">Подробнее о событии</a>`
-  if (p.hasQr && p.qrToken) {
-    text += `\n\n🎫 QR-код для входа прикреплён ниже`
-    text += `\nКод билета: <code>${getShortCode(p.qrToken)}</code>`
-  }
+  const text = bodyHtml.trim()
 
   // Try bots in priority order
   const botTokens = [
@@ -233,24 +239,46 @@ async function sendTelegramConfirmation(p: TgParams): Promise<void> {
 
 interface EmailParams {
   email: string | null
-  participantName: string
-  eventTitle: string
-  dateStr: string
-  timeStr: string
-  endTimeStr: string | null
-  location: string | null
-  eventType: string | null
-  eventUrl: string
+  subject: string
+  bodyMarkdown: string
+  qrInstructionMarkdown: string
   hasQr: boolean
   qrToken: string | null
   orgName: string
   orgLogo: string | null
+  eventUrl: string
 }
 
 async function sendEmailConfirmation(p: EmailParams): Promise<void> {
   if (!p.email) return
 
   const emailService = getEmailService()
+  const html = buildEmailHtml(p)
+
+  try {
+    await emailService.sendEmail({ to: p.email, subject: p.subject, html })
+    logger.info({ to: p.email, has_qr: p.hasQr }, 'Registration email sent')
+  } catch (err: any) {
+    logger.error({ to: p.email, error: err?.message, stack: err?.stack }, 'Failed to send registration confirmation email')
+  }
+}
+
+/**
+ * Render the email HTML wrapping the user-supplied markdown body in our brand layout.
+ * Exported for the preview / test endpoints.
+ */
+export function buildEmailHtml(p: {
+  bodyMarkdown: string
+  qrInstructionMarkdown: string
+  hasQr: boolean
+  qrToken: string | null
+  orgName: string
+  orgLogo: string | null
+}): string {
+  const bodyHtml = marked.parse(p.bodyMarkdown || '', { async: false, gfm: true, breaks: true }) as string
+  const qrInstructionHtml = p.qrInstructionMarkdown
+    ? (marked.parse(p.qrInstructionMarkdown, { async: false, gfm: true, breaks: true }) as string)
+    : ''
 
   const qrImageTag = p.hasQr && p.qrToken
     ? `<div style="text-align:center;margin:24px 0;">
@@ -260,68 +288,30 @@ async function sendEmailConfirmation(p: EmailParams): Promise<void> {
          <p style="font-family:monospace;font-size:13px;color:#666;letter-spacing:2px;margin-top:8px;">
            Код билета: ${getShortCode(p.qrToken)}
          </p>
-         <p style="font-size:12px;color:#9ca3af;margin-top:4px;">
-           Если QR не считается — назовите этот код на входе
-         </p>
+         <div style="font-size:13px;color:#6b7280;margin-top:8px;">${qrInstructionHtml}</div>
        </div>`
     : ''
-
-  const locationHtml = p.location
-    ? p.eventType === 'online'
-      ? `<tr><td style="padding:4px 0;color:#666;">Формат:</td><td style="padding:4px 0;">Онлайн</td></tr>`
-      : `<tr><td style="padding:4px 0;color:#666;">Место:</td><td style="padding:4px 0;">${escapeHtml(p.location)}</td></tr>`
-    : ''
-
-  const timeDisplay = p.timeStr + (p.endTimeStr ? ` — ${p.endTimeStr}` : '')
 
   const logoHtml = p.orgLogo
     ? `<img src="${p.orgLogo}" alt="${escapeHtml(p.orgName)}" width="40" height="40" style="border-radius:8px;margin-right:12px;vertical-align:middle;" />`
     : ''
 
-  const html = `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"/></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;margin:0;padding:0;">
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-      <!-- Header -->
       <div style="background:#10b981;padding:24px;text-align:center;">
         <div style="font-size:36px;margin-bottom:8px;">✅</div>
         <h1 style="color:#fff;font-size:20px;margin:0;">Вы зарегистрированы!</h1>
       </div>
 
-      <!-- Body -->
-      <div style="padding:24px;">
-        <p style="color:#374151;font-size:15px;margin:0 0 16px;">
-          ${escapeHtml(p.participantName)}, вы успешно зарегистрированы на мероприятие:
-        </p>
-
-        <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-bottom:16px;">
-          <h2 style="color:#111827;font-size:17px;margin:0 0 12px;">${escapeHtml(p.eventTitle)}</h2>
-          <table style="font-size:14px;color:#374151;border-collapse:collapse;width:100%;">
-            <tr>
-              <td style="padding:4px 0;color:#666;">Дата:</td>
-              <td style="padding:4px 0;">${p.dateStr}</td>
-            </tr>
-            <tr>
-              <td style="padding:4px 0;color:#666;">Время:</td>
-              <td style="padding:4px 0;">${timeDisplay}</td>
-            </tr>
-            ${locationHtml}
-          </table>
-        </div>
-
+      <div style="padding:24px;color:#374151;font-size:15px;line-height:1.55;">
+        <div class="email-body">${bodyHtml}</div>
         ${qrImageTag}
-
-        <div style="text-align:center;margin:20px 0;">
-          <a href="${p.eventUrl}" style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px;">
-            Подробнее о событии
-          </a>
-        </div>
       </div>
 
-      <!-- Footer -->
       <div style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
         <div style="display:inline-flex;align-items:center;">
           ${logoHtml}
@@ -332,14 +322,6 @@ async function sendEmailConfirmation(p: EmailParams): Promise<void> {
   </div>
 </body>
 </html>`
-
-  const subject = `Регистрация: ${p.eventTitle}`
-  try {
-    await emailService.sendEmail({ to: p.email, subject, html })
-    logger.info({ to: p.email, has_qr: p.hasQr, event: p.eventTitle }, 'Registration email sent')
-  } catch (err: any) {
-    logger.error({ to: p.email, error: err?.message, stack: err?.stack }, 'Failed to send registration confirmation email')
-  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -360,4 +342,51 @@ function formatEventDate(dateStr: string): string {
 function formatTime(timeStr: string | null): string {
   if (!timeStr) return ''
   return timeStr.substring(0, 5) // HH:MM:SS → HH:MM
+}
+
+/**
+ * Picks an org's saved template, falling back to platform default for any missing
+ * field. Robust to bad input from the DB (random JSON, missing keys, wrong types).
+ */
+export function pickTemplate(saved: any): { subject: string; bodyMarkdown: string; qrInstructionMarkdown: string } {
+  const def = DEFAULT_EVENT_EMAIL_TEMPLATE
+  if (!saved || typeof saved !== 'object') {
+    return { subject: def.subject, bodyMarkdown: def.bodyMarkdown, qrInstructionMarkdown: def.qrInstructionMarkdown }
+  }
+  return {
+    subject: typeof saved.subject === 'string' && saved.subject.trim() ? saved.subject : def.subject,
+    bodyMarkdown: typeof saved.bodyMarkdown === 'string' && saved.bodyMarkdown.trim() ? saved.bodyMarkdown : def.bodyMarkdown,
+    qrInstructionMarkdown: typeof saved.qrInstructionMarkdown === 'string' ? saved.qrInstructionMarkdown : def.qrInstructionMarkdown,
+  }
+}
+
+/**
+ * Convert markdown to Telegram-flavoured HTML (subset: <b>, <i>, <u>, <s>, <code>,
+ * <pre>, <a>). We render via marked, then strip every other tag to comply with
+ * Telegram's "Bot API HTML" parse mode.
+ */
+function markdownToTelegramHtml(md: string): string {
+  if (!md) return ''
+  let html = marked.parse(md, { async: false, gfm: true, breaks: true }) as string
+
+  // Replace block-level wrappers with newlines
+  html = html
+    .replace(/<\/(p|h[1-6]|li|ul|ol|blockquote|hr|div)>/gi, '\n')
+    .replace(/<(p|h[1-6]|li|ul|ol|blockquote|hr|div)([^>]*)>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+
+  // Convert <strong>/<em> to <b>/<i> which Telegram accepts
+  html = html
+    .replace(/<strong[^>]*>/gi, '<b>')
+    .replace(/<\/strong>/gi, '</b>')
+    .replace(/<em[^>]*>/gi, '<i>')
+    .replace(/<\/em>/gi, '</i>')
+
+  // Strip every tag we don't allow. Whitelist: b,i,u,s,code,pre,a (with href attr).
+  html = html.replace(/<(?!\/?(b|i|u|s|code|pre|a)(\s|>|\/))[^>]*>/gi, '')
+
+  // Collapse 3+ newlines to 2
+  html = html.replace(/\n{3,}/g, '\n\n').trim()
+
+  return html
 }
