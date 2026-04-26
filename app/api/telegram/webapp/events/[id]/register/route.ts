@@ -19,10 +19,14 @@ export async function POST(
     
     // Get and validate initData - REQUIRED for registration
     const initDataString = request.headers.get('X-Telegram-Init-Data');
-    
+    const diag = request.headers.get('X-Telegram-Init-Diag') || null;
+    const ua = request.headers.get('user-agent') || null;
+
     if (!initDataString) {
-      logger.warn({ event_id: eventId }, 'Missing initData');
-      return NextResponse.json({ error: 'Требуется авторизация через Telegram' }, { status: 401 });
+      logger.warn({ event_id: eventId, client_diag: diag, user_agent: ua }, 'Missing initData');
+      return NextResponse.json({
+        error: 'Не удалось получить данные авторизации Telegram. Попробуйте полностью закрыть мини-приложение и открыть ссылку заново из Telegram.',
+      }, { status: 401 });
     }
     
     const eventBotToken = getEventBotToken();

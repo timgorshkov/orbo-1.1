@@ -88,7 +88,7 @@ export default function TelegramEventPage() {
       }
       return webAppInitData;
     }
-    
+
     // Fallback to stored initData
     try {
       return sessionStorage.getItem('tg_init_data') || '';
@@ -96,6 +96,27 @@ export default function TelegramEventPage() {
       return '';
     }
   };
+
+  // Diagnostic header value sent on every WebApp request so we can debug
+  // missing-initData situations from server logs without needing user replay.
+  const getInitDataDiag = (): string => {
+    try {
+      const tg = window.Telegram?.WebApp as any
+      const stored = (() => { try { return sessionStorage.getItem('tg_init_data'); } catch { return null; } })();
+      const parts = [
+        `tgPresent=${!!tg}`,
+        `initDataLen=${tg?.initData?.length || 0}`,
+        `unsafeUser=${!!tg?.initDataUnsafe?.user}`,
+        `unsafeStartParam=${!!tg?.initDataUnsafe?.start_param}`,
+        `storedLen=${stored?.length || 0}`,
+        `version=${tg?.version || 'n/a'}`,
+        `platform=${tg?.platform || 'n/a'}`,
+      ]
+      return parts.join(';')
+    } catch {
+      return 'diag_err'
+    }
+  }
 
   // Initialize Telegram WebApp
   useEffect(() => {
@@ -276,6 +297,7 @@ export default function TelegramEventPage() {
         headers: {
           'Content-Type': 'application/json',
           'X-Telegram-Init-Data': initData,
+          'X-Telegram-Init-Diag': getInitDataDiag(),
         },
         body: JSON.stringify({
           registration_data: formData,

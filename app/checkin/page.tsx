@@ -68,6 +68,68 @@ function formatDateTime(dateStr: string): string {
   })
 }
 
+function formatNowForUser(): string {
+  return new Date().toLocaleString('ru-RU', {
+    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+  })
+}
+
+/**
+ * Acceptable check-in window: from (event_start − 2h) to event_end.
+ * If end_time is missing, treat as end of event_date (23:59).
+ *
+ * Dates/times are stored without timezone — interpreted as the registrator's
+ * local timezone, which matches event timezone for in-person events.
+ */
+function computeCheckinWindow(
+  eventDate: string | null,
+  startTime: string | null,
+  endTime: string | null
+): { outOfWindow: boolean; reason: string } {
+  if (!eventDate) return { outOfWindow: false, reason: '' }
+
+  const [y, m, d] = eventDate.split('T')[0].split('-').map(Number)
+  if (!y || !m || !d) return { outOfWindow: false, reason: '' }
+
+  const [sh, sm] = (startTime || '00:00').split(':').map(Number)
+  const eventStart = new Date(y, m - 1, d, sh || 0, sm || 0)
+
+  let eventEnd: Date
+  if (endTime) {
+    const [eh, em] = endTime.split(':').map(Number)
+    eventEnd = new Date(y, m - 1, d, eh || 23, em || 59)
+    // If end_time is earlier than start_time (event crosses midnight), shift to next day
+    if (eventEnd < eventStart) eventEnd = new Date(eventEnd.getTime() + 24 * 60 * 60 * 1000)
+  } else {
+    eventEnd = new Date(y, m - 1, d, 23, 59)
+  }
+
+  const earliest = new Date(eventStart.getTime() - 2 * 60 * 60 * 1000)
+  const now = new Date()
+
+  if (now < earliest) {
+    return {
+      outOfWindow: true,
+      reason: `Билет на ${formatDayShort(eventStart)}, чек-ин откроется в ${formatTimeShort(earliest)}`,
+    }
+  }
+  if (now > eventEnd) {
+    return {
+      outOfWindow: true,
+      reason: `Событие завершилось ${formatDayShort(eventEnd)} в ${formatTimeShort(eventEnd)}`,
+    }
+  }
+  return { outOfWindow: false, reason: '' }
+}
+
+function formatDayShort(d: Date): string {
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+}
+
+function formatTimeShort(d: Date): string {
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function CheckinPageWrapper() {
   return (
     <Suspense fallback={
@@ -261,7 +323,7 @@ function CheckinPage() {
             <ol className="space-y-1.5 text-gray-600">
               <li className="flex gap-2"><span className="text-gray-400">1.</span> Нажмите «Запустить сканер» и наведите камеру на QR-код участника.</li>
               <li className="flex gap-2"><span className="text-gray-400">2.</span> Если сканер не запускается — откройте QR обычным приложением камеры на телефоне: оно само распознает код и предложит ссылку, перейдите по ней.</li>
-              <li className="flex gap-2"><span className="text-gray-400">3.</span> Если QR совсем не читается — введите 8 символов кода с билета вручную (под QR указан код вида <span className="font-mono text-gray-800">ABCD-1234</span>).</li>
+              <li className="flex gap-2"><span className="text-gray-400">3.</span> Если QR совсем не читается — введите 8 символов кода с билета вручную (под QR указан короткий код, например ABCD-1234).</li>
             </ol>
           </div>
 
@@ -397,26 +459,54 @@ function CheckinPage() {
             )}
           </div>
 
-          {/* Event info */}
+          {/* Event info — title and date prominent so registrator can verify at a glance */}
           <div className="px-6 py-4 border-b border-gray-100">
-            {event && (
-              <div className="space-y-2">
-                <h2 className="font-semibold text-gray-900 text-sm">{event.title}</h2>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span>{formatDate(event.event_date)}</span>
-                  {event.start_time && (
-                    <span>{formatTime(event.start_time)}–{formatTime(event.end_time)}</span>
+            {event && (() => {
+              const window = computeCheckinWindow(event.event_date, event.start_time, event.end_time)
+              const dateColor = window.outOfWindow ? 'text-red-700' : 'text-gray-900'
+              const dateBg = window.outOfWindow ? 'bg-red-50 border-red-200' : ''
+
+              return (
+                <div className="space-y-3">
+                  <h2 className="font-semibold text-gray-900 text-base leading-snug">
+                    {event.title}
+                  </h2>
+
+                  <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border ${dateBg || 'border-transparent'}`}>
+                    <Calendar className={`h-5 w-5 flex-shrink-0 mt-0.5 ${window.outOfWindow ? 'text-red-500' : 'text-gray-500'}`} />
+                    <div className="flex-1">
+                      <div className={`text-base font-semibold ${dateColor}`}>
+                        {formatDate(event.event_date)}
+                      </div>
+                      {event.start_time && (
+                        <div className={`text-base font-medium ${dateColor}`}>
+                          {formatTime(event.start_time)}{event.end_time ? `–${formatTime(event.end_time)}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {window.outOfWindow && (
+                    <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                      <div className="leading-snug">
+                        <div className="font-semibold">Билет на другую дату/время</div>
+                        <div className="text-xs text-red-600 mt-0.5">
+                          {window.reason}. Сейчас {formatNowForUser()}.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {event.location_info && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span>{event.location_info}</span>
+                    </div>
                   )}
                 </div>
-                {event.location_info && (
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <MapPin className="h-3.5 w-3.5" />
-                    <span>{event.location_info}</span>
-                  </div>
-                )}
-              </div>
-            )}
+              )
+            })()}
           </div>
 
           {/* Status */}
