@@ -91,7 +91,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: 'degraded',
     database: 'disconnected',
-    database_error: dbResult.error,
     version: process.env.NEXT_PUBLIC_APP_VERSION || '0.1.0',
     timestamp: new Date().toISOString(),
     response_time_ms: totalTime,

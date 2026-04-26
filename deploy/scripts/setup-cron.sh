@@ -18,82 +18,44 @@ APP_URL="${NEXT_PUBLIC_APP_URL:-https://my.orbo.ru}"
 echo "Setting up cron jobs for Orbo..."
 echo "APP_URL: $APP_URL"
 
-# Create cron script for error-digest (hourly)
-cat > ~/orbo/cron-error-digest.sh << EOF
-#!/bin/bash
-curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/error-digest" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-error-digest.sh
+# All cron scripts use runtime .env loading (secrets NOT inlined)
+CRON_SCRIPTS=(
+    "cron-error-digest.sh|GET|/api/cron/error-digest"
+    "cron-group-metrics.sh|GET|/api/cron/update-group-metrics"
+    "cron-notification-rules.sh|GET|/api/cron/check-notification-rules"
+    "cron-sync-attention-zones.sh|POST|/api/cron/sync-attention-zones"
+    "cron-send-announcements.sh|POST|/api/cron/send-announcements"
+    "cron-send-event-reminders.sh|GET|/api/cron/send-event-reminders"
+    "cron-send-weekly-digests.sh|GET|/api/cron/send-weekly-digests"
+    "cron-notification-health-check.sh|GET|/api/cron/notification-health-check"
+    "cron-send-onboarding.sh|POST|/api/cron/send-onboarding"
+    "cron-check-billing.sh|POST|/api/cron/check-billing"
+    "cron-check-memberships.sh|GET|/api/cron/check-memberships"
+)
 
-# Create cron script for group-metrics (every 5 minutes)
-cat > ~/orbo/cron-group-metrics.sh << EOF
+for entry in "${CRON_SCRIPTS[@]}"; do
+    IFS='|' read -r filename method endpoint <<< "$entry"
+    METHOD_FLAG=""
+    if [ "$method" = "POST" ]; then
+        METHOD_FLAG="-X POST "
+    fi
+    cat > ~/orbo/$filename << 'SCRIPT_EOF'
 #!/bin/bash
-curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/update-group-metrics" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-group-metrics.sh
-
-# Create cron script for notification-rules (every 15 minutes)
-cat > ~/orbo/cron-notification-rules.sh << EOF
-#!/bin/bash
-curl -s -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/check-notification-rules" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-notification-rules.sh
-
-# Create cron script for sync-attention-zones (hourly)
-cat > ~/orbo/cron-sync-attention-zones.sh << EOF
-#!/bin/bash
-curl -s -X POST -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/cron/sync-attention-zones" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-sync-attention-zones.sh
-
-# Create cron script for send-announcements (every minute)
-cat > ~/orbo/cron-send-announcements.sh << EOF
-#!/bin/bash
-curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-announcements" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-send-announcements.sh
-
-# Create cron script for send-event-reminders (hourly, personal DMs)
-cat > ~/orbo/cron-send-event-reminders.sh << EOF
-#!/bin/bash
-curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-event-reminders" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-send-event-reminders.sh
-
-# Create cron script for send-weekly-digests (every 3 hours, checks schedule internally)
-cat > ~/orbo/cron-send-weekly-digests.sh << EOF
-#!/bin/bash
-curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-weekly-digests" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-send-weekly-digests.sh
-
-# Create cron script for notification-health-check (every 6 hours)
-cat > ~/orbo/cron-notification-health-check.sh << EOF
-#!/bin/bash
-curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/notification-health-check" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-notification-health-check.sh
-
-# Create cron script for send-onboarding (every 15 minutes)
-cat > ~/orbo/cron-send-onboarding.sh << EOF
-#!/bin/bash
-curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/send-onboarding" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-send-onboarding.sh
-
-# Create cron script for check-billing (daily at 9:00 AM)
-cat > ~/orbo/cron-check-billing.sh << EOF
-#!/bin/bash
-curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-billing" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-check-billing.sh
-
-# Create cron script for check-memberships (hourly - expire memberships + sync access)
-cat > ~/orbo/cron-check-memberships.sh << EOF
-#!/bin/bash
-curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-memberships" >> /var/log/orbo-cron.log 2>&1
-EOF
-chmod +x ~/orbo/cron-check-memberships.sh
+ENV_FILE=~/orbo/.env
+if [ -f "$ENV_FILE" ]; then
+  export $(grep -E '^(CRON_SECRET|NEXT_PUBLIC_APP_URL)=' "$ENV_FILE" | xargs)
+fi
+APP_URL="${NEXT_PUBLIC_APP_URL:-https://my.orbo.ru}"
+if [ -z "$CRON_SECRET" ]; then
+  echo "$(date): CRON_SECRET not set, skipping" >> /var/log/orbo-cron.log
+  exit 1
+fi
+SCRIPT_EOF
+    # Append the curl command (with variables that will be evaluated at runtime)
+    echo "curl -s ${METHOD_FLAG}-H \"Authorization: Bearer \$CRON_SECRET\" \"\$APP_URL${endpoint}\" >> /var/log/orbo-cron.log 2>&1" >> ~/orbo/$filename
+    chmod 700 ~/orbo/$filename
+    echo "Created ~/orbo/$filename (chmod 700)"
+done
 
 # Create cron script for check-webhook (every 30 minutes)
 # Checks and auto-restores Telegram + MAX bot webhooks if they go missing
@@ -113,7 +75,7 @@ if [ -z "$CRON_SECRET" ]; then
 fi
 curl -s -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/check-webhook" >> /var/log/orbo-cron.log 2>&1
 EOF
-chmod +x ~/orbo/cron-check-webhook.sh
+chmod 700 ~/orbo/cron-check-webhook.sh
 
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
@@ -136,7 +98,11 @@ cat >> "$CRONTAB_FILE" << CRON
 0 9 * * * ~/orbo/cron-check-billing.sh
 */5 * * * * ~/orbo/cron-check-webhook.sh
 0 * * * * ~/orbo/cron-check-memberships.sh
-# Maintenance: Docker cleanup weekly, DB cleanup daily (already in backup cron)
+# Health monitoring (every 5 minutes)
+*/5 * * * * /home/deploy/orbo/scripts/health-monitor.sh >> /var/log/orbo-health.log 2>&1
+# Database backup (daily 3 AM, with S3 upload)
+0 3 * * * /home/deploy/orbo/scripts/backup.sh >> /home/deploy/orbo/scripts/backup.log 2>&1
+# Maintenance: Docker cleanup weekly
 0 4 * * 0 docker builder prune -f --filter until=168h >> /var/log/orbo-cron.log 2>&1 && docker image prune -f >> /var/log/orbo-cron.log 2>&1
 CRON
 

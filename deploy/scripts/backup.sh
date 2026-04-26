@@ -7,8 +7,8 @@
 # and sends alerts on failure.
 #
 # Usage:
-#   ./backup.sh           # Local backup only
-#   ./backup.sh --upload  # Local + S3 upload
+#   ./backup.sh             # Local + S3 upload (default)
+#   ./backup.sh --local     # Local backup only (skip S3)
 #
 # Add to crontab:
 #   0 3 * * * /home/deploy/orbo/scripts/backup.sh >> /home/deploy/orbo/scripts/backup.log 2>&1
@@ -29,9 +29,10 @@ ALERT_API_URL="https://my.orbo.ru/api/cron/backup-alert"
 # Load environment for CRON_SECRET
 source /home/deploy/orbo/.env 2>/dev/null || true
 
-# S3 Configuration (for upload)
+# S3 Configuration
 S3_BUCKET="orbo-backups"
 S3_ENDPOINT="https://s3.storage.selcloud.ru"
+S3_RETENTION_DAYS=30
 
 # Colors
 GREEN='\033[0;32m'
@@ -126,22 +127,39 @@ DELETED_COUNT=$(find $BACKUP_DIR -name "*.sql.gz" -mtime +$RETENTION_DAYS -delet
 echo "Deleted $DELETED_COUNT old backup(s)"
 
 # ============================================
-# Upload to S3 (optional)
+# Upload to S3 (default, skip with --local)
 # ============================================
-if [ "$1" == "--upload" ]; then
+if [ "$1" != "--local" ]; then
     echo -e "${YELLOW}Uploading to S3...${NC}"
     
-    # Check if s3cmd is configured
     if [ ! -f ~/.s3cfg ]; then
         echo -e "${YELLOW}Warning: S3 not configured (~/.s3cfg not found)${NC}"
-        echo "Skipping S3 upload. Configure s3cmd first."
+        echo "Skipping S3 upload. Run: s3cmd --configure"
+        send_alert "warning" "S3 not configured - backup is local only" "$BACKUP_SIZE"
     else
         if s3cmd put $BACKUP_FILE s3://$S3_BUCKET/ --host=$S3_ENDPOINT --host-bucket="%(bucket)s.$S3_ENDPOINT"; then
             echo -e "${GREEN}Uploaded to S3: s3://$S3_BUCKET/$(basename $BACKUP_FILE)${NC}"
+            
+            # Clean old S3 backups (older than S3_RETENTION_DAYS)
+            echo -e "${YELLOW}Cleaning old S3 backups (older than $S3_RETENTION_DAYS days)...${NC}"
+            S3_CUTOFF=$(date -d "-${S3_RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || date -v-${S3_RETENTION_DAYS}d +%Y%m%d 2>/dev/null)
+            if [ -n "$S3_CUTOFF" ]; then
+                s3cmd ls s3://$S3_BUCKET/ --host=$S3_ENDPOINT --host-bucket="%(bucket)s.$S3_ENDPOINT" 2>/dev/null | \
+                    awk '{print $4}' | while read -r s3file; do
+                    FILE_DATE=$(basename "$s3file" | grep -oP 'orbo_\K\d{8}' || true)
+                    if [ -n "$FILE_DATE" ] && [ "$FILE_DATE" -lt "$S3_CUTOFF" ] 2>/dev/null; then
+                        echo "Deleting old S3 backup: $s3file"
+                        s3cmd del "$s3file" --host=$S3_ENDPOINT --host-bucket="%(bucket)s.$S3_ENDPOINT" 2>/dev/null || true
+                    fi
+                done
+            fi
         else
-            echo -e "${YELLOW}Warning: S3 upload failed${NC}"
+            echo -e "${RED}S3 upload failed!${NC}"
+            send_alert "error" "S3 upload failed for $BACKUP_FILE" "$BACKUP_SIZE"
         fi
     fi
+else
+    echo -e "${YELLOW}Skipping S3 upload (--local mode)${NC}"
 fi
 
 # ============================================
