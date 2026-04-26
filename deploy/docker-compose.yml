@@ -16,6 +16,9 @@ services:
     image: postgres:16-alpine
     container_name: orbo_postgres
     restart: unless-stopped
+    # Increase /dev/shm beyond Docker's default 64MB so that parallel ops
+    # (VACUUM ANALYZE, parallel SELECT, hash joins) don't run out of shared memory.
+    shm_size: 1gb
     environment:
       POSTGRES_USER: orbo
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -36,6 +39,9 @@ services:
     # Performance tuning for 32GB RAM server (DB ~100MB, tuned with growth headroom)
     command: >
       postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c pg_stat_statements.max=5000
       -c shared_buffers=1GB
       -c effective_cache_size=8GB
       -c maintenance_work_mem=256MB

@@ -29,77 +29,53 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { orgId, eventId, redirectUrl, inviteToken } = body
 
-    // Генерируем уникальный код (6 символов: буквы и цифры)
-    let code: string = ''
-    let attempts = 0
-    const maxAttempts = 10
-
-    // Пытаемся сгенерировать уникальный код
-    timing.mark('generate_unique_code_start');
-    while (attempts < maxAttempts) {
-      // Генерируем 3 байта и конвертируем в hex (6 символов)
-      code = crypto.randomBytes(3).toString('hex').toUpperCase()
-
-      // Проверяем, не занят ли код
-      const { data: existing } = await supabaseAdmin
-        .from('telegram_auth_codes')
-        .select('id')
-        .eq('code', code)
-        .eq('is_used', false)
-        .maybeSingle()
-
-      if (!existing) {
-        break // Код уникален
-      }
-
-      attempts++
-    }
-    timing.mark('generate_unique_code_end');
-    timing.measure('generate_unique_code', 'generate_unique_code_start', 'generate_unique_code_end');
-
-    if (attempts >= maxAttempts) {
-      await logErrorToDatabase({
-        level: 'error',
-        message: 'Failed to generate unique auth code after max attempts',
-        errorCode: 'AUTH_TG_GENERATE_ERROR',
-        context: {
-          endpoint: '/api/auth/telegram-code/generate',
-          maxAttempts,
-          orgId,
-          eventId,
-          ip: ipAddress
-        }
-      })
-      return NextResponse.json({ error: 'Failed to generate unique code' }, { status: 500 })
-    }
-
     // Получаем IP и User Agent для безопасности
     const userAgent = req.headers.get('user-agent')
 
     // Срок действия: 10 минут
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-    // Сохраняем код в базу
+    // Generate + insert in one round-trip per attempt (was: SELECT then INSERT = 2 round-trips).
+    // 6 hex chars ⇒ 16M combinations vs at-most a few thousand active codes — collision is rare,
+    // so we insert speculatively and retry on the unique_violation error.
+    let code: string = ''
+    let authCode: any = null
+    let lastInsertError: any = null
+    const maxAttempts = 5
+
     timing.mark('insert_code_start');
-    const { data: authCode, error: insertError } = await supabaseAdmin
-      .from('telegram_auth_codes')
-      .insert({
-        code: code,
-        org_id: orgId || null,
-        event_id: eventId || null,
-        redirect_url: redirectUrl || null,
-        expires_at: expiresAt.toISOString(),
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        // If a logged-in user generates a code (e.g. from the welcome screen to link TG
-        // to an existing email account), store their id so verifyTelegramAuthCode can
-        // update that user's tg_user_id instead of creating a new TG-only account.
-        user_id: sessionUser?.id || null,
-      })
-      .select()
-      .single();
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
+      code = crypto.randomBytes(3).toString('hex').toUpperCase()
+      const insertResult = await supabaseAdmin
+        .from('telegram_auth_codes')
+        .insert({
+          code,
+          org_id: orgId || null,
+          event_id: eventId || null,
+          redirect_url: redirectUrl || null,
+          expires_at: expiresAt.toISOString(),
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          // If a logged-in user generates a code (e.g. from the welcome screen to link TG
+          // to an existing email account), store their id so verifyTelegramAuthCode can
+          // update that user's tg_user_id instead of creating a new TG-only account.
+          user_id: sessionUser?.id || null,
+        })
+        .select()
+        .single();
+
+      if (!insertResult.error && insertResult.data) {
+        authCode = insertResult.data
+        break
+      }
+      // 23505 = unique_violation. Anything else is a real error — bail out.
+      lastInsertError = insertResult.error
+      if (insertResult.error?.code !== '23505') break
+    }
     timing.mark('insert_code_end');
     timing.measure('insert_code', 'insert_code_start', 'insert_code_end');
+
+    const insertError = authCode ? null : lastInsertError
 
     if (insertError || !authCode) {
       await logErrorToDatabase({
