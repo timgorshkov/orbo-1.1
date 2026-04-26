@@ -57,12 +57,8 @@ jobs:
             source .env
             
             docker build \
-              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
               --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
               --build-arg NEXT_PUBLIC_TELEGRAM_BOT_USERNAME="$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME" \
-              --build-arg SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
-              --build-arg OPENAI_API_KEY="$OPENAI_API_KEY" \
               -t orbo-app \
               app/
             

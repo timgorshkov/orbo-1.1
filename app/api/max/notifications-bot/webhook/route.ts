@@ -16,8 +16,8 @@ export async function POST(request: NextRequest) {
   const expectedSecret = process.env.MAX_WEBHOOK_SECRET;
   const receivedSecret = request.headers.get('x-max-bot-api-secret');
 
-  if (expectedSecret && receivedSecret !== expectedSecret) {
-    logger.warn({ received: !!receivedSecret }, 'Unauthorized - secret mismatch');
+  if (!expectedSecret || receivedSecret !== expectedSecret) {
+    logger.warn({ received: !!receivedSecret, configured: !!expectedSecret }, 'Unauthorized - secret mismatch');
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

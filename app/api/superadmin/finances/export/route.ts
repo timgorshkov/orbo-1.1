@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (err: any) {
     logger.error({ error: err.message, type, from, to }, 'Finances export failed');
-    return NextResponse.json({ error: err.message || 'Export failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

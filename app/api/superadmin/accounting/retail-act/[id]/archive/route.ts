@@ -65,6 +65,6 @@ export async function GET(
       { error: err.message, stack: err.stack, docId: params.id },
       'Error in GET retail-act/[id]/archive'
     )
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

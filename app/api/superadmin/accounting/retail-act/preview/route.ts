@@ -73,6 +73,6 @@ export async function GET(request: NextRequest) {
       { error: err.message, stack: err.stack },
       'Error in GET retail-act/preview'
     )
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

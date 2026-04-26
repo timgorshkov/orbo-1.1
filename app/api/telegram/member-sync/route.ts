@@ -67,6 +67,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ jobId, message: 'Синхронизация запущена' })
   } catch (err: any) {
     logger.error({ error: err.message }, 'Failed to start member sync')
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

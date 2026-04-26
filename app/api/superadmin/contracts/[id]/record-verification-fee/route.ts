@@ -50,6 +50,6 @@ export async function POST(
     return NextResponse.json({ success: true, ...result })
   } catch (err: any) {
     logger.error({ error: err.message }, 'record-verification-fee failed')
-    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -22,6 +22,11 @@ export async function GET(
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
+    const role = await getEffectiveOrgRole(user.id, contract.org_id)
+    if (!role || !['owner', 'admin'].includes(role.role)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
     return NextResponse.json({ contract })
   } catch (error) {
     logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Error getting contract')

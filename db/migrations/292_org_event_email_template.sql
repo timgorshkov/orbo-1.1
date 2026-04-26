@@ -12,5 +12,4 @@ ALTER TABLE public.organizations
   ADD COLUMN IF NOT EXISTS event_email_template JSONB;
 
 COMMENT ON COLUMN public.organizations.event_email_template IS
-  'Customised confirmation template sent to participants after event registration / payment. ' ||
-  'Shape: { subject, bodyMarkdown, qrInstructionMarkdown, updatedAt }. NULL → use built-in default.';
+  'Customised confirmation template sent to participants after event registration / payment. Shape: { subject, bodyMarkdown, qrInstructionMarkdown, updatedAt }. NULL = use built-in default.';

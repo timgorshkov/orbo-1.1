@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 import { createMaxService } from '@/lib/services/maxService';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,11 @@ export async function GET(request: Request) {
     const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgRole = await getEffectiveOrgRole(user.id, orgId);
+    if (!orgRole) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = createAdminServer();
@@ -57,6 +63,11 @@ export async function POST(request: Request) {
     const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgRole = await getEffectiveOrgRole(user.id, orgId);
+    if (!orgRole) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = createAdminServer();
@@ -173,6 +184,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const orgRole = await getEffectiveOrgRole(user.id, orgId);
+    if (!orgRole) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const supabase = createAdminServer();
 
     const { data: account, error: findErr } = await supabase
@@ -231,6 +247,11 @@ export async function DELETE(request: Request) {
     const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgRole = await getEffectiveOrgRole(user.id, orgId);
+    if (!orgRole) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const supabase = createAdminServer();

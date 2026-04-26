@@ -17,9 +17,10 @@ import { ArrowLeft } from 'lucide-react'
 export const dynamic = 'force-dynamic'
 
 async function loadInstructionHtml(): Promise<{ html: string; loadError: string | null }> {
-  // Resolved relative to the running Next.js process. In production the docs
-  // directory is bundled into the standalone output via outputFileTracingIncludes.
-  const filePath = path.join(process.cwd(), 'docs', 'accounting-instruction.md')
+  // The markdown lives in public/ — that directory is always bundled into the
+  // standalone output by the Dockerfile (`COPY --from=builder /app/public ./public`),
+  // so we get a stable absolute path independent of Next's tracing heuristics.
+  const filePath = path.join(process.cwd(), 'public', 'docs', 'accounting-instruction.md')
   try {
     const md = await fs.readFile(filePath, 'utf-8')
     const html = await marked.parse(md, { async: true, gfm: true, breaks: false })

@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
         { status: 502 }
       )
     }
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -132,6 +132,6 @@ export async function POST(request: NextRequest) {
         { status: 502 }
       )
     }
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

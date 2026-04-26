@@ -84,6 +84,6 @@ export async function POST(request: NextRequest) {
       { error: err.message, stack: err.stack },
       'Error in POST retail-act/generate'
     )
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

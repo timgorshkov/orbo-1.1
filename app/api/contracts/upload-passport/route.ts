@@ -34,12 +34,13 @@ export async function POST(request: NextRequest) {
     }
 
     const orgIdMatch = counterpartyId.match(/^temp-([0-9a-f-]{36})$/i)
-    if (orgIdMatch) {
-      const orgId = orgIdMatch[1]
-      const role = await getEffectiveOrgRole(user.id, orgId)
-      if (!role || !['owner', 'admin'].includes(role.role)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+    if (!orgIdMatch) {
+      return NextResponse.json({ error: 'Invalid counterparty ID format' }, { status: 400 })
+    }
+    const orgId = orgIdMatch[1]
+    const role = await getEffectiveOrgRole(user.id, orgId)
+    if (!role || !['owner', 'admin'].includes(role.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const index = photoIndex === '1' ? 1 : 2

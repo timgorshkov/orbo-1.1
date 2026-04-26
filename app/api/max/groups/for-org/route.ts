@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 
 /**
  * GET /api/max/groups/for-org?orgId=...
@@ -19,6 +20,11 @@ export async function GET(request: NextRequest) {
     const user = await getUnifiedUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const orgRole = await getEffectiveOrgRole(user.id, orgId);
+    if (!orgRole) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const adminSupabase = createAdminServer();
