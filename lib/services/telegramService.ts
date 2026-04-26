@@ -1,35 +1,50 @@
 /**
  * Сервис для взаимодействия с Telegram Bot API
- * Поддержка прокси: TELEGRAM_PROXY_URL или OPENAI_PROXY_URL (fallback)
  *
- * Конфигурация прокси:
- *   TELEGRAM_PROXY_URL — URL прокси (http(s)://user:pass@host:port)
- *   TELEGRAM_PROXY_ENABLED — "false" чтобы отключить прокси
- *   TELEGRAM_PROXY_FALLBACK — "true" чтобы при полной неудаче прокси пробовать direct.
- *                             По умолчанию FALSE: с российских серверов api.telegram.org обычно заблокирован,
- *                             direct даёт только таймауты и задержку.
- *   TELEGRAM_DIRECT_FIRST    — "true" чтобы СНАЧАЛА пробовать direct, и только при ошибке — через прокси.
- *                              По умолчанию FALSE (прокси первый).
+ * Multi-channel outbound. Try in order until one succeeds:
+ *   1. Worker  — Cloudflare Worker reverse proxy (TELEGRAM_API_BASE_PRIMARY).
+ *                Cheapest and fastest if available; one canonical HTTPS URL.
+ *   2. Proxy   — undici ProxyAgent through a third-party HTTP(S) proxy
+ *                (TELEGRAM_PROXY_URL, fallback OPENAI_PROXY_URL).
+ *   3. Direct  — last resort to api.telegram.org. Usually blocked from RU
+ *                servers but kept as the final attempt.
+ *
+ * A failed channel goes into a 30s cooldown so we don't keep slamming it.
+ *
+ * Environment:
+ *   TELEGRAM_API_BASE_PRIMARY  — full origin of the Worker (e.g. https://orbo-tg-proxy.example.workers.dev).
+ *                                When set, this channel is tried first.
+ *   TELEGRAM_PROXY_URL         — http(s)://user:pass@host:port (proxys.io, etc).
+ *   OPENAI_PROXY_URL           — same format, used as fallback if TELEGRAM_PROXY_URL is unset.
+ *   TELEGRAM_PROXY_ENABLED     — "false" to disable the proxy channel entirely.
+ *   TELEGRAM_DIRECT_DISABLED   — "true" to skip the direct channel (recommended for RU-only servers).
  */
 import { createServiceLogger } from '@/lib/logger';
 import { ProxyAgent } from 'undici';
 
 const logger = createServiceLogger('TelegramService');
 
-// Proxy for Telegram API
+const TG_API_HOST = 'api.telegram.org';
+const TG_API_DIRECT_BASE = `https://${TG_API_HOST}`;
+
+// ─── Channel: Worker ────────────────────────────────────────
+// Trim trailing slash so we can safely concat with paths
+const WORKER_BASE = (process.env.TELEGRAM_API_BASE_PRIMARY || '').replace(/\/+$/, '');
+
+// ─── Channel: Proxy ─────────────────────────────────────────
 const TG_PROXY_URL = process.env.TELEGRAM_PROXY_URL || process.env.OPENAI_PROXY_URL;
 const PROXY_ENABLED = process.env.TELEGRAM_PROXY_ENABLED !== 'false';
-const PROXY_FALLBACK = process.env.TELEGRAM_PROXY_FALLBACK === 'true'; // default OFF
-const DIRECT_FIRST = process.env.TELEGRAM_DIRECT_FIRST === 'true'; // default OFF
 
-// Create a fresh ProxyAgent. Called at startup and can be re-created if we suspect
-// the connection pool has stale/half-closed sockets accumulating "fetch failed" errors.
+// ─── Channel: Direct ────────────────────────────────────────
+const DIRECT_DISABLED = process.env.TELEGRAM_DIRECT_DISABLED === 'true';
+
+// Build a fresh ProxyAgent. Re-created when we suspect the pool has stale
+// half-closed sockets accumulating "fetch failed" errors.
 function createProxyAgent(): ProxyAgent | undefined {
   if (!TG_PROXY_URL || !PROXY_ENABLED) return undefined;
   try {
     return new ProxyAgent({
       uri: TG_PROXY_URL,
-      // Tight keep-alive: close idle sockets quickly so we don't reuse a half-dead one.
       keepAliveTimeout: 4_000,
       keepAliveMaxTimeout: 30_000,
       connectTimeout: 10_000,
@@ -42,16 +57,18 @@ function createProxyAgent(): ProxyAgent | undefined {
 }
 
 let tgProxyAgent: ProxyAgent | undefined = createProxyAgent();
-if (tgProxyAgent && process.env.NEXT_PHASE !== 'phase-production-build') {
+
+if (process.env.NEXT_PHASE !== 'phase-production-build') {
   logger.info({
-    proxy_host: TG_PROXY_URL!.replace(/^https?:\/\/[^@]*@/, '').split(':')[0],
-    direct_first: DIRECT_FIRST,
-    fallback: PROXY_FALLBACK,
-  }, 'Telegram API proxy configured');
+    worker_configured: !!WORKER_BASE,
+    proxy_configured: !!tgProxyAgent,
+    proxy_host: tgProxyAgent ? TG_PROXY_URL!.replace(/^https?:\/\/[^@]*@/, '').split(':')[0] : null,
+    direct_disabled: DIRECT_DISABLED,
+  }, 'Telegram outbound channels configured');
 }
 
-// Periodically refresh the pool (every 5 min) — helps with long-running containers
-// accumulating broken connections.
+// Periodically refresh the proxy pool (every 5 min) — helps long-running
+// containers shed broken keep-alive connections.
 const POOL_REFRESH_MS = 5 * 60 * 1000;
 let lastPoolRefresh = Date.now();
 function maybeRefreshPool() {
@@ -63,7 +80,17 @@ function maybeRefreshPool() {
   }
 }
 
-// Counter for proxy failure aggregation (emit warn at most every 60s with summary)
+// ─── Channel cooldown — skip a known-broken channel for 30s ─
+type ChannelName = 'worker' | 'proxy' | 'direct';
+const channelCooldownUntil: Record<ChannelName, number> = { worker: 0, proxy: 0, direct: 0 };
+function isChannelCool(c: ChannelName): boolean {
+  return Date.now() >= channelCooldownUntil[c];
+}
+function markChannelDown(c: ChannelName) {
+  channelCooldownUntil[c] = Date.now() + 30_000;
+}
+
+// ─── Aggregate failure log (avoid spam) ─────────────────────
 let proxyFailsSinceLastLog = 0;
 let lastProxyFailLog = 0;
 function recordProxyFail(err: unknown) {
@@ -79,9 +106,28 @@ function recordProxyFail(err: unknown) {
   }
 }
 
-async function fetchDirect(url: string, init?: RequestInit): Promise<Response> {
-  const directInit: RequestInit = { ...init, signal: AbortSignal.timeout(10_000) };
-  return fetch(url, directInit);
+// ─── Channel implementations ────────────────────────────────
+
+/**
+ * Rewrite the host of a Telegram API URL to a different origin.
+ * `https://api.telegram.org/bot<token>/getMe` → `<base>/bot<token>/getMe`.
+ * Non-Telegram URLs (e.g. file CDN) are passed through unchanged.
+ */
+function rewriteHost(url: string, base: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== TG_API_HOST) return url;
+    return `${base}${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+async function fetchViaWorker(url: string, init?: RequestInit): Promise<Response> {
+  if (!WORKER_BASE) throw new Error('Worker not configured');
+  const target = rewriteHost(url, WORKER_BASE);
+  const workerInit: RequestInit = { ...init, signal: AbortSignal.timeout(15_000) };
+  return fetch(target, workerInit);
 }
 
 async function fetchViaProxy(url: string, init?: RequestInit): Promise<Response> {
@@ -90,58 +136,62 @@ async function fetchViaProxy(url: string, init?: RequestInit): Promise<Response>
   return fetch(url, options);
 }
 
+async function fetchDirect(url: string, init?: RequestInit): Promise<Response> {
+  const directInit: RequestInit = { ...init, signal: AbortSignal.timeout(10_000) };
+  return fetch(url, directInit);
+}
+
 /**
- * Единая точка вызова Telegram API.
- * Используйте ВМЕСТО голого fetch() для любых запросов к api.telegram.org.
- *
- * Стратегия (по умолчанию):
- * 1. Через прокси → если "fetch failed" (нестабильный pool) — ещё одна попытка через прокси (новый pool).
- * 2. Если оба прокси-запроса упали И TELEGRAM_PROXY_FALLBACK=true — попробовать direct.
- * 3. Если прокси не настроен — direct.
- *
- * С флагом TELEGRAM_DIRECT_FIRST=true — порядок обратный: сначала direct, потом прокси.
+ * Единая точка вызова Telegram API. Используйте ВМЕСТО голого fetch().
+ * Перебирает каналы worker → proxy → direct, пока один не ответит.
  */
 export async function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!tgProxyAgent) {
-    return fetchDirect(url, init);
-  }
-
   maybeRefreshPool();
 
-  if (DIRECT_FIRST) {
+  const errors: string[] = [];
+
+  // 1. Worker
+  if (WORKER_BASE && isChannelCool('worker')) {
     try {
-      return await fetchDirect(url, init);
-    } catch (directErr) {
+      return await fetchViaWorker(url, init);
+    } catch (err) {
+      errors.push(`worker: ${err instanceof Error ? err.message : String(err)}`);
+      markChannelDown('worker');
+    }
+  }
+
+  // 2. Paid HTTP(S) proxy
+  if (tgProxyAgent && isChannelCool('proxy')) {
+    try {
+      return await fetchViaProxy(url, init);
+    } catch (err1) {
+      // Single retry with a freshly created pool — covers stale-socket case
       try {
+        if (tgProxyAgent) {
+          const old = tgProxyAgent;
+          tgProxyAgent = createProxyAgent();
+          old.close().catch(() => { /* ignore */ });
+        }
         return await fetchViaProxy(url, init);
-      } catch (proxyErr) {
-        recordProxyFail(proxyErr);
-        throw proxyErr;
+      } catch (err2) {
+        recordProxyFail(err2);
+        errors.push(`proxy: ${err2 instanceof Error ? err2.message : String(err2)}`);
+        markChannelDown('proxy');
       }
     }
   }
 
-  // Default: proxy first, with a single retry via a fresh pool on transient failure
-  try {
-    return await fetchViaProxy(url, init);
-  } catch (proxyErr1) {
-    recordProxyFail(proxyErr1);
-    // Rebuild the pool (assume stale connections) and retry once
-    if (tgProxyAgent) {
-      const old = tgProxyAgent;
-      tgProxyAgent = createProxyAgent();
-      old.close().catch(() => { /* ignore */ });
-    }
+  // 3. Direct (last resort, usually blocked from RU servers)
+  if (!DIRECT_DISABLED && isChannelCool('direct')) {
     try {
-      return await fetchViaProxy(url, init);
-    } catch (proxyErr2) {
-      if (PROXY_FALLBACK) {
-        // Last-resort fallback to direct (usually blocked from RU servers, but try)
-        return await fetchDirect(url, init);
-      }
-      throw proxyErr2;
+      return await fetchDirect(url, init);
+    } catch (err) {
+      errors.push(`direct: ${err instanceof Error ? err.message : String(err)}`);
+      markChannelDown('direct');
     }
   }
+
+  throw new Error(`All Telegram outbound channels failed: ${errors.join(' | ') || 'none configured'}`);
 }
 
 export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';
