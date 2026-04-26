@@ -440,7 +440,7 @@ export async function GET(request: NextRequest) {
       stack: error.stack
     }, 'Profile API error');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -580,7 +580,7 @@ export async function PATCH(request: NextRequest) {
       stack: error.stack
     }, 'Profile API error');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

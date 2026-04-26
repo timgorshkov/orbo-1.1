@@ -9,10 +9,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/admin/check-webhook' });
   try {
-    const password = req.nextUrl.searchParams.get('password')
+    const authHeader = req.headers.get('authorization')
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const queryPassword = req.nextUrl.searchParams.get('password')
+    const password = bearerToken || queryPassword
     
-    // Простая защита
-    if (password !== process.env.ADMIN_PASSWORD && password !== 'check') {
+    if (password !== process.env.ADMIN_PASSWORD) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -97,7 +99,7 @@ export async function GET(req: NextRequest) {
       stack: error.stack
     }, 'Error checking webhooks');
     return NextResponse.json(
-      { error: error.message || 'Failed to check webhooks' },
+      { error: 'Failed to check webhooks' },
       { status: 500 }
     )
   }

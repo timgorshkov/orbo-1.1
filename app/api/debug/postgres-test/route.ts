@@ -36,8 +36,10 @@ async function getDirectPool() {
 }
 
 export async function GET(request: NextRequest) {
-  // Проверка авторизации
-  const secret = request.nextUrl.searchParams.get('secret');
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const querySecret = request.nextUrl.searchParams.get('secret');
+  const secret = bearerToken || querySecret;
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

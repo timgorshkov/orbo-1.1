@@ -21,6 +21,16 @@ function SpoilerText({ content }: { content: React.ReactNode }) {
   )
 }
 
+const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tg:|tel:)/i
+
+function sanitizeHref(url: string | undefined): string {
+  if (!url) return '#'
+  const trimmed = url.trim()
+  if (SAFE_URL_PROTOCOLS.test(trimmed)) return trimmed
+  if (trimmed.startsWith('/') || trimmed.startsWith('#')) return trimmed
+  return '#'
+}
+
 /**
  * Утилиты для работы с Telegram Markdown форматированием
  * Поддерживает: жирный, курсив, зачеркнутый, скрытый текст (spoiler), код, ссылки
@@ -248,7 +258,7 @@ export function renderTelegramMarkdown(nodes: TelegramMarkdownNode[]): React.Rea
         return (
           <a
             key={index}
-            href={node.url}
+            href={sanitizeHref(node.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline"
@@ -368,7 +378,7 @@ function parseHtmlLine(html: string, keyPrefix: string): React.ReactNode[] {
         break
       case 'a': {
         const hrefMatch = attrs.match(/href="([^"]*)"/)
-        const href = hrefMatch ? hrefMatch[1] : '#'
+        const href = sanitizeHref(hrefMatch ? hrefMatch[1] : undefined)
         elements.push(
           <a key={key} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
             {innerContent}

@@ -122,14 +122,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ 
         error: 'Invalid JSON in request body',
         errorCode: 'JSON_PARSE_ERROR',
-        details: error.message
       }, { status: 400 })
     }
     
     return NextResponse.json({ 
       error: 'Internal server error',
       errorCode: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }

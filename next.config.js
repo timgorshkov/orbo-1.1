@@ -1,4 +1,26 @@
 /** @type {import('next').NextConfig} */
+
+const cspDirectives = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru https://top-fwz1.mail.ru https://cdn5.helpdeskeddy.com https://telegram.org",
+  "style-src 'self' 'unsafe-inline' https://cdn5.helpdeskeddy.com",
+  "img-src 'self' data: blob: https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.s3.storage.selcloud.ru https://mc.yandex.ru https://top-fwz1.mail.ru",
+  "font-src 'self' data: https://cdn5.helpdeskeddy.com",
+  "connect-src 'self' https://api.telegram.org https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://mc.yandex.ru https://top-fwz1.mail.ru https://orbo.helpdeskeddy.com https://*.hawk.so",
+  "frame-src 'self' https://vk.com https://telegram.org",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ')
+
+const securityHeaders = [
+  { key: 'Content-Security-Policy', value: cspDirectives },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+]
+
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
@@ -28,6 +50,14 @@ const nextConfig = {
     '/api/**/*': ['./node_modules/@hawk.so/**/*', './node_modules/pino/**/*'],
     // Include docs in standalone output so the markdown instruction page can read them at runtime
     '/superadmin/accounting/instruction': ['./docs/**/*'],
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: securityHeaders,
+      },
+    ]
   },
   // Allow external images from storage providers
   images: {

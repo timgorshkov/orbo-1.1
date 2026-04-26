@@ -122,16 +122,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Также поддерживаем GET для ручного запуска через браузер (с секретом в query)
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get('secret');
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const querySecret = new URL(request.url).searchParams.get('secret');
+  const secret = bearerToken || querySecret;
   
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
-  // Перенаправляем на POST обработчик
   const headers = new Headers(request.headers);
   headers.set('authorization', `Bearer ${secret}`);
   
