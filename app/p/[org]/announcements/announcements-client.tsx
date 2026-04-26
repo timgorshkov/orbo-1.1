@@ -49,6 +49,8 @@ interface Announcement {
   scheduled_at: string;
   sent_at: string | null;
   status: 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
+  failure_reason?: 'event_passed' | 'max_retries' | 'no_targets' | null;
+  retry_count?: number;
   event_id: string | null;
   reminder_type: string | null;
   created_by_name: string;
@@ -473,7 +475,7 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
     });
   };
   
-  const getStatusBadge = (status: Announcement['status']) => {
+  const getStatusBadge = (status: Announcement['status'], failureReason?: Announcement['failure_reason']) => {
     switch (status) {
       case 'scheduled':
         return <Badge variant="outline" className="bg-blue-50 text-blue-700"><Clock className="w-3 h-3 mr-1" />Запланирован</Badge>;
@@ -482,12 +484,13 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
       case 'sent':
         return <Badge variant="outline" className="bg-green-50 text-green-700"><CheckCircle className="w-3 h-3 mr-1" />Отправлен</Badge>;
       case 'failed':
-        return <Badge variant="outline" className="bg-red-50 text-red-700"><XCircle className="w-3 h-3 mr-1" />Ошибка</Badge>;
+        return <Badge variant="outline" className="bg-red-50 text-red-700" title={getFailureReasonText(failureReason)}><XCircle className="w-3 h-3 mr-1" />Ошибка</Badge>;
       case 'cancelled':
         return <Badge variant="outline" className="bg-gray-50 text-gray-700"><XCircle className="w-3 h-3 mr-1" />Отменён</Badge>;
     }
   };
-  
+
+
   const monthNames = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
     'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
@@ -1241,6 +1244,20 @@ export default function AnnouncementsClient({ orgId }: AnnouncementsClientProps)
 }
 
 // Announcement Card Component
+/** Объясняет, почему анонс ушёл в статус "Ошибка". */
+function getFailureReasonText(reason?: Announcement['failure_reason']): string {
+  switch (reason) {
+    case 'event_passed':
+      return 'Не успели отправить — событие уже началось. Повторные попытки прекращены.';
+    case 'max_retries':
+      return 'Не удалось отправить из-за временных сбоев сети. Лимит автоматических попыток исчерпан.';
+    case 'no_targets':
+      return 'Не выбраны группы для отправки.';
+    default:
+      return 'Не удалось отправить анонс. Проверьте права бота и доступность групп.';
+  }
+}
+
 /** Переводит ошибки Telegram API и внутренние ошибки в понятные сообщения */
 function formatSendError(error: string): string {
   if (error.includes('Access revoked') || error.includes('no org admin is TG group admin')) {
@@ -1296,7 +1313,7 @@ function AnnouncementCard({
     });
   };
   
-  const getStatusBadge = (status: Announcement['status']) => {
+  const getStatusBadge = (status: Announcement['status'], failureReason?: Announcement['failure_reason']) => {
     const baseClass = compact ? "text-xs px-1.5 py-0" : "";
     switch (status) {
       case 'scheduled':
@@ -1306,7 +1323,7 @@ function AnnouncementCard({
       case 'sent':
         return <Badge variant="outline" className={`bg-green-50 text-green-700 ${baseClass}`}><CheckCircle className="w-3 h-3 mr-1" />{!compact && 'Отправлен'}</Badge>;
       case 'failed':
-        return <Badge variant="outline" className={`bg-red-50 text-red-700 ${baseClass}`}><XCircle className="w-3 h-3 mr-1" />{!compact && 'Ошибка'}</Badge>;
+        return <Badge variant="outline" className={`bg-red-50 text-red-700 ${baseClass}`} title={getFailureReasonText(failureReason)}><XCircle className="w-3 h-3 mr-1" />{!compact && 'Ошибка'}</Badge>;
       case 'cancelled':
         return <Badge variant="outline" className={`bg-gray-50 text-gray-700 ${baseClass}`}><XCircle className="w-3 h-3 mr-1" />{!compact && 'Отменён'}</Badge>;
     }
@@ -1329,7 +1346,7 @@ function AnnouncementCard({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <h4 className="text-sm font-medium truncate">{announcement.title}</h4>
-                {getStatusBadge(announcement.status)}
+                {getStatusBadge(announcement.status, announcement.failure_reason)}
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                 <span>{formatDate(announcement.scheduled_at)}</span>
@@ -1338,6 +1355,11 @@ function AnnouncementCard({
                   <span className="text-indigo-600" title="Также будет отправлено личным сообщением зарегистрированным участникам">+ ЛС участникам</span>
                 )}
               </div>
+              {announcement.status === 'failed' && announcement.failure_reason && (
+                <div className="text-xs text-red-600 mt-0.5">
+                  {getFailureReasonText(announcement.failure_reason)}
+                </div>
+              )}
               {(announcement.status === 'failed' || announcement.status === 'sent') && announcement.send_results && (() => {
                 const failedEntries = Object.entries(announcement.send_results).filter(([, r]) => !r.success);
                 if (failedEntries.length === 0) return null;
@@ -1377,7 +1399,7 @@ function AnnouncementCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-medium truncate">{announcement.title}</h3>
-              {getStatusBadge(announcement.status)}
+              {getStatusBadge(announcement.status, announcement.failure_reason)}
             </div>
             <div className="text-sm text-gray-500 mt-1 line-clamp-2">
               {renderTelegramContent(announcement.content)}

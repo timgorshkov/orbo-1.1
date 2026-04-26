@@ -27,11 +27,69 @@ interface SendResult {
 }
 
 /**
+ * Hard cap on absolute retry attempts to avoid infinite loops on permanently
+ * broken announcements (e.g. bot kicked from every target group). With cron
+ * running every minute this gives ~1h of retries even for a manual announcement
+ * with no event deadline. Event-linked announcements use the event start time
+ * as the natural cap and usually finish much earlier.
+ */
+const ABSOLUTE_MAX_RETRIES = 60;
+
+/**
+ * Returns true if the announcement is linked to an event and the event has
+ * already started (we should stop retrying — sending after the event begins
+ * has no value).
+ */
+async function eventAlreadyStarted(
+  supabase: ReturnType<typeof createAdminServer>,
+  eventId: string
+): Promise<{ started: boolean; eventTitle?: string }> {
+  const { data: event } = await supabase
+    .from('events')
+    .select('title, event_date, start_time')
+    .eq('id', eventId)
+    .single();
+  if (!event?.event_date) return { started: false };
+
+  const [y, m, d] = String(event.event_date).split('T')[0].split('-').map(Number);
+  const [sh, sm] = (event.start_time || '00:00').split(':').map(Number);
+  // Times stored without TZ — interpret as Moscow (org local time for RU events).
+  // Build a Date in MSK by composing UTC = MSK - 3h.
+  const eventStartUtcMs = Date.UTC(y, (m || 1) - 1, d || 1, (sh || 0) - 3, sm || 0);
+  return {
+    started: Date.now() >= eventStartUtcMs,
+    eventTitle: event.title,
+  };
+}
+
+/**
  * Отправляет анонс во все целевые группы
  */
 export async function sendAnnouncementToGroups(announcement: Announcement): Promise<SendResult> {
   const supabase = createAdminServer();
-  
+
+  // Pre-flight: for event-linked announcements, give up immediately if the
+  // event has already started — sending after it begins has no value.
+  if (announcement.event_id) {
+    const { started, eventTitle } = await eventAlreadyStarted(supabase, announcement.event_id);
+    if (started) {
+      logger.info({
+        announcementId: announcement.id,
+        event_id: announcement.event_id,
+        event_title: eventTitle,
+      }, 'Event already started — marking announcement as failed without sending');
+      await supabase
+        .from('announcements')
+        .update({
+          status: 'failed',
+          failure_reason: 'event_passed',
+          sent_at: new Date().toISOString(),
+        })
+        .eq('id', announcement.id);
+      return { successCount: 0, failCount: 0, results: {} };
+    }
+  }
+
   // Обновляем статус на "sending"
   await supabase
     .from('announcements')
@@ -381,38 +439,58 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
       logger.warn({ error: dmErr.message, announcementId: announcement.id }, 'Failed to send personal DMs');
     }
 
-    // Обновляем статус анонса
-    const MAX_RETRIES = 3;
+    // Обновляем статус анонса.
+    // Retry policy:
+    //   - Event-linked announcement: keep retrying every cron pass until either
+    //     success, the event start time is reached (cap), or we hit the absolute
+    //     hard cap to protect against permanently broken announcements.
+    //   - Manual announcement (no event_id): use the absolute hard cap as the
+    //     only deadline — there's no natural "too late" point.
     const retryCount = (announcement.retry_count || 0);
-    
+
     let finalStatus: string;
     const updateData: Record<string, any> = {
       send_results: results,
     };
-    
+
+    // Re-check event start time before deciding to reschedule
+    let eventPassed = false;
+    if (announcement.event_id && successCount === 0) {
+      const r = await eventAlreadyStarted(supabase, announcement.event_id);
+      eventPassed = r.started;
+    }
+
     if (failCount === 0) {
-      // All groups succeeded
       finalStatus = 'sent';
       updateData.sent_at = new Date().toISOString();
-    } else if (successCount === 0 && retryCount < MAX_RETRIES) {
-      // Complete failure but retries remain — reschedule for next cron pass
+    } else if (successCount > 0) {
+      // Partial success — mark as sent (some groups received the message)
+      finalStatus = 'sent';
+      updateData.sent_at = new Date().toISOString();
+    } else if (eventPassed) {
+      finalStatus = 'failed';
+      updateData.failure_reason = 'event_passed';
+      updateData.sent_at = new Date().toISOString();
+      logger.info({
+        announcementId: announcement.id,
+        event_id: announcement.event_id,
+      }, '⌛ Event already passed, giving up on retries');
+    } else if (retryCount < ABSOLUTE_MAX_RETRIES) {
+      // Reschedule for next cron pass
       finalStatus = 'scheduled';
       updateData.retry_count = retryCount + 1;
       logger.info({
         announcementId: announcement.id,
         retry_count: retryCount + 1,
-        max_retries: MAX_RETRIES,
+        max_retries: ABSOLUTE_MAX_RETRIES,
       }, '🔄 Announcement will be retried on next cron pass');
-    } else if (successCount > 0) {
-      // Partial success — mark as sent (some groups received the message)
-      finalStatus = 'sent';
-      updateData.sent_at = new Date().toISOString();
     } else {
-      // All retries exhausted
+      // Absolute cap reached
       finalStatus = 'failed';
+      updateData.failure_reason = 'max_retries';
       updateData.sent_at = new Date().toISOString();
     }
-    
+
     updateData.status = finalStatus;
     
     await supabase
@@ -432,23 +510,34 @@ export async function sendAnnouncementToGroups(announcement: Announcement): Prom
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
-    const MAX_RETRIES = 3;
     const retryCount = (announcement.retry_count || 0);
-    const canRetry = retryCount < MAX_RETRIES;
-    
+
+    // Same policy as the success-path block: prefer event-deadline cap over the
+    // raw retry counter so that we keep retrying through transient network blips
+    // for as long as the announcement still has a chance to be useful.
+    let eventPassed = false;
+    if (announcement.event_id) {
+      const r = await eventAlreadyStarted(supabase, announcement.event_id);
+      eventPassed = r.started;
+    }
+
+    const canRetry = !eventPassed && retryCount < ABSOLUTE_MAX_RETRIES;
+
     await supabase
       .from('announcements')
-      .update({ 
+      .update({
         status: canRetry ? 'scheduled' : 'failed',
         retry_count: canRetry ? retryCount + 1 : retryCount,
         send_results: { error: errorMessage },
-        ...(canRetry ? {} : { sent_at: new Date().toISOString() })
+        ...(canRetry ? {} : {
+          sent_at: new Date().toISOString(),
+          failure_reason: eventPassed ? 'event_passed' : 'max_retries',
+        }),
       })
       .eq('id', announcement.id);
-    
-    logger.error({ announcementId: announcement.id, error: errorMessage }, 'Announcement sending failed');
-    
+
+    logger.error({ announcementId: announcement.id, error: errorMessage, will_retry: canRetry }, 'Announcement sending failed');
+
     return { successCount, failCount, results };
   }
 }
