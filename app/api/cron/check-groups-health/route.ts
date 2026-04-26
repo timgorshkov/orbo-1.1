@@ -28,22 +28,14 @@ interface GroupHealthResult {
 export async function GET(request: NextRequest) {
   const logger = createCronLogger('check-groups-health');
   
-  // Authorization check
-  const cronSecretHeader = request.headers.get('x-cron-secret');
+  // Authorization check (supports both x-cron-secret header and Bearer token)
+  const cronSecret = request.headers.get('x-cron-secret');
   const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret) {
-    const isValidCronSecret = cronSecretHeader === cronSecret;
-    const isValidAuthHeader = authHeader === `Bearer ${cronSecret}`;
-    
-    if (!isValidCronSecret && !isValidAuthHeader) {
-      const url = new URL(request.url);
-      if (!url.hostname.includes('localhost') && url.hostname !== '127.0.0.1') {
-        logger.warn({}, 'Unauthorized cron request');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const isValidSecret = (cronSecret && cronSecret === process.env.CRON_SECRET) || (bearerToken && bearerToken === process.env.CRON_SECRET);
+  if (!process.env.CRON_SECRET || !isValidSecret) {
+    logger.warn({}, 'Unauthorized cron request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const startTime = Date.now();

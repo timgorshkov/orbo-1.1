@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error: error.message }, 'Failed to fetch error logs');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     // Get statistics

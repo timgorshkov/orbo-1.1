@@ -53,7 +53,7 @@ export async function GET(
 
     if (error) {
       logger.error({ error: error.message, event_id: eventId }, 'Error fetching registration fields');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Map database field names to frontend expected names
@@ -90,7 +90,7 @@ export async function GET(
       stack: error.stack
     }, 'Error in GET /api/events/[id]/registration-fields');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -192,7 +192,7 @@ export async function POST(
 
     if (createError) {
       logger.error({ error: createError.message, event_id: eventId }, 'Error creating registration field');
-      return NextResponse.json({ error: createError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     return NextResponse.json({ field }, { status: 201 })
@@ -202,7 +202,7 @@ export async function POST(
       stack: error.stack
     }, 'Error in POST /api/events/[id]/registration-fields');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -308,7 +308,7 @@ export async function PUT(
       stack: error.stack
     }, 'Error in PUT /api/events/[id]/registration-fields');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -376,7 +376,7 @@ export async function DELETE(
 
     if (deleteError) {
       logger.error({ error: deleteError.message, event_id: eventId, field_id: fieldId }, 'Error deleting registration field');
-      return NextResponse.json({ error: deleteError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
@@ -386,7 +386,7 @@ export async function DELETE(
       stack: error.stack
     }, 'Error in DELETE /api/events/[id]/registration-fields');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

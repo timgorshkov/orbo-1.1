@@ -180,6 +180,6 @@ export async function POST(request: Request) {
       group_id: groupId,
       org_id: orgId
     }, 'Error in clone-to-org');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

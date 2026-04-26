@@ -58,6 +58,10 @@ export async function GET(
     if (error || !event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
+
+    if (event.status !== 'published') {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
     
     // Fetch organization name separately
     let orgName = 'Organization'
@@ -186,7 +190,7 @@ export async function GET(
       event_id: eventId || 'unknown'
     }, 'Error generating ICS file');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       logger.error({ error }, 'Failed to fetch participants');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     logger.info({ count: participants?.length || 0, search }, 'Participants fetched');
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error fetching participants');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }

@@ -168,7 +168,7 @@ export async function POST(
       stack: error.stack
     }, 'Error in POST /api/events/[id]/cover');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -268,7 +268,7 @@ export async function DELETE(
       stack: error.stack
     }, 'Error in DELETE /api/events/[id]/cover');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

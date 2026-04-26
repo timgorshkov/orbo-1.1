@@ -7,6 +7,21 @@ import { sendEmail } from '@/lib/services/email'
 
 const supabaseAdmin = createAdminServer()
 
+const emailUpdateBuckets = new Map<string, { count: number; resetAt: number }>()
+const EMAIL_RATE_LIMIT = 3
+const EMAIL_RATE_WINDOW_MS = 300_000
+
+function isEmailRateLimited(key: string): boolean {
+  const now = Date.now()
+  const bucket = emailUpdateBuckets.get(key)
+  if (!bucket || now > bucket.resetAt) {
+    emailUpdateBuckets.set(key, { count: 1, resetAt: now + EMAIL_RATE_WINDOW_MS })
+    return false
+  }
+  bucket.count++
+  return bucket.count > EMAIL_RATE_LIMIT
+}
+
 /**
  * Update email for TG-registered users (replaces placeholder tg{id}@telegram.user).
  * Sends a verification magic link to the new email.
@@ -19,6 +34,10 @@ export async function POST(request: NextRequest) {
     const session = await getUnifiedSession()
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 })
+    }
+
+    if (isEmailRateLimited(session.user.id)) {
+      return NextResponse.json({ error: 'Слишком много запросов. Попробуйте позже.' }, { status: 429 })
     }
 
     const { email } = await request.json()

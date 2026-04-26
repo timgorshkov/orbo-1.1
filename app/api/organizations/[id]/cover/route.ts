@@ -106,7 +106,7 @@ export async function POST(
 
     if (uploadError) {
       logger.error({ error: uploadError.message, org_id: orgId, path: storagePath }, 'Upload error')
-      return NextResponse.json({ error: 'Failed to upload file: ' + uploadError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 })
     }
 
     const basePublicUrl = storage.getPublicUrl(bucket, storagePath)
@@ -128,7 +128,7 @@ export async function POST(
     return NextResponse.json({ success: true, cover_url: publicUrl, organization: updatedOrg })
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack, org_id: orgId }, 'Error in POST /api/organizations/[id]/cover')
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -193,6 +193,6 @@ export async function DELETE(
     return NextResponse.json({ success: true, organization: updatedOrg })
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error in DELETE /api/organizations/[id]/cover')
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -52,7 +52,7 @@ export async function GET(
       org_id: orgId || 'unknown'
     }, 'Error in GET /api/organizations/[id]');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -170,7 +170,7 @@ export async function PATCH(
       stack: error.stack,
       org_id: orgId || 'unknown'
     }, 'Error in PATCH /api/organizations/[id]');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -265,7 +265,7 @@ export async function PUT(
       org_id: orgId || 'unknown'
     }, 'Error in PUT /api/organizations/[id]');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

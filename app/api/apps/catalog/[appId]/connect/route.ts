@@ -30,7 +30,7 @@ export async function POST(
       const access = await requireOrgAccess(orgId, ['owner', 'admin']);
       user = access.user;
     } catch (error: any) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const adminSupabase = createAdminServer();
@@ -122,7 +122,7 @@ export async function DELETE(
     try {
       await requireOrgAccess(orgId, ['owner', 'admin']);
     } catch (error: any) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const adminSupabase = createAdminServer();

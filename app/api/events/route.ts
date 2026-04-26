@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await query
       if (error) {
         logger.error({ error: error.message, org_id: orgId }, 'Error fetching events');
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
       }
       events = data ?? []
     }
@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logger.error({ error: error.message, org_id: orgId, user_id: user.id }, 'Error creating event');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Log admin action
@@ -410,7 +410,7 @@ export async function POST(request: NextRequest) {
       stack: error.stack
     }, 'Error in POST /api/events');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -23,7 +23,7 @@ export async function GET(
     try {
       await requireOrgAccess(orgId);
     } catch (error: any) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const adminSupabase = createAdminServer();

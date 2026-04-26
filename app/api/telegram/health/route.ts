@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error: error.message }, '[Telegram Health] Error fetching groups');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     if (!groups || groups.length === 0) {
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
       stack: error instanceof Error ? error.stack : undefined
     }, '[Telegram Health] Unexpected error');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }

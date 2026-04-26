@@ -26,6 +26,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, ...result })
   } catch (error: any) {
     logger.error({ error: error.message }, 'Send fiscal receipts cron failed')
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

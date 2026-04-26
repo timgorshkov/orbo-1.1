@@ -446,6 +446,6 @@ export async function PATCH(request: NextRequest) {
     }
   } catch (error: any) {
     logger.error({ error: error.message }, 'Superadmin finances action error')
-    return NextResponse.json({ error: error.message || 'Internal error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

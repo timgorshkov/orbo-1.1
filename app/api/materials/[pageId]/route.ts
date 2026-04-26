@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       page_id: pageId,
       org_id: orgId
     }, 'Materials get error');
-    return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -63,7 +63,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       page_id: pageId,
       org_id: orgId
     }, 'Materials update error');
-    return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -86,7 +86,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       page_id: pageId,
       org_id: orgId
     }, 'Materials delete error');
-    return NextResponse.json({ error: error.message ?? 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

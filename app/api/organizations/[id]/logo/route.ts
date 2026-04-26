@@ -160,7 +160,7 @@ export async function POST(
         path: storagePath
       }, 'Upload error');
       return NextResponse.json(
-        { error: 'Failed to upload file: ' + uploadError.message },
+        { error: 'Failed to upload file' },
         { status: 500 }
       )
     }
@@ -204,7 +204,7 @@ export async function POST(
       org_id: orgId 
     }, 'Error in POST /api/organizations/[id]/logo')
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -292,7 +292,7 @@ export async function DELETE(
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error in DELETE /api/organizations/[id]/logo')
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

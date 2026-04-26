@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logger.error({ error: error.message, paymentSessionId, isTest }, 'Failed to update is_test flag');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     logger.info({ paymentSessionId, isTest }, 'Payment session test flag updated');

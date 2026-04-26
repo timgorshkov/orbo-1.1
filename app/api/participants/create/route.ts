@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       stack: error?.stack,
       org_id: orgId || 'unknown'
     }, 'Error creating participant');
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     logger.error({ error: error.message }, 'Failed to fetch partners')
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 
   // Get user counts per partner code
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Партнёр с таким кодом уже существует' }, { status: 409 })
     }
     logger.error({ error: error.message }, 'Failed to create partner')
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 
   logger.info({ code, name }, 'Partner created')

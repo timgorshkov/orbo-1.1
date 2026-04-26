@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       user_id: userId || 'unknown'
     }, 'Error in GET /api/memberships');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

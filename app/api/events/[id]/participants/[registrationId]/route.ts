@@ -98,7 +98,7 @@ export async function PATCH(
 
     if (updateError) {
       logger.error({ error: updateError.message, event_id: eventId, registration_id: registrationId }, '[Edit Registration] Error updating registration');
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Optionally update participant profile if participant exists
@@ -154,7 +154,7 @@ export async function PATCH(
       registration_id: registrationId
     }, 'Error in PATCH /api/events/[id]/participants/[registrationId]');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

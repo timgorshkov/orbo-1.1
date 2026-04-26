@@ -53,7 +53,7 @@ export async function GET(
 
     if (regError) {
       logger.error({ error: regError.message, event_id: eventId }, 'Error fetching registration');
-      return NextResponse.json({ error: regError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     if (!registration) {
@@ -106,7 +106,7 @@ export async function GET(
       stack: error.stack
     }, 'Error in GET /api/events/[id]/my-registration');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

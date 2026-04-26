@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in telegram accounts GET');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in telegram accounts POST');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -313,7 +313,7 @@ export async function PUT(request: Request) {
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in telegram accounts PUT');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -377,6 +377,6 @@ export async function DELETE(request: Request) {
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in telegram accounts DELETE');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

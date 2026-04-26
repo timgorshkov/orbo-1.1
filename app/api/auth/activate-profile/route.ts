@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       stack: error.stack
     }, 'Error in activate-profile');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -267,7 +267,7 @@ export async function GET(request: NextRequest) {
       stack: error.stack
     }, 'Error getting activation status');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

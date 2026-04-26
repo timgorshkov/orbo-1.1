@@ -63,7 +63,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ part
       error: error?.message || String(error),
       stack: error?.stack
     }, 'Error in participant GET');
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -162,7 +162,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ part
       stack: error?.stack,
       participant_id: participantId || 'unknown'
     }, 'Error in participant PUT');
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -211,7 +211,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pa
       stack: error?.stack,
       participant_id: participantId || 'unknown'
     }, 'Error in participant PATCH');
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

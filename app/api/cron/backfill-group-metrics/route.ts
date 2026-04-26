@@ -17,9 +17,12 @@ export async function GET(request: NextRequest) {
   const logger = createCronLogger('backfill-group-metrics');
   const startTime = Date.now();
   
-  // Verify cron secret
+  // Verify cron secret (supports both x-cron-secret header and Bearer token)
   const cronSecret = request.headers.get('x-cron-secret');
-  if (cronSecret !== process.env.CRON_SECRET) {
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const isValidSecret = (cronSecret && cronSecret === process.env.CRON_SECRET) || (bearerToken && bearerToken === process.env.CRON_SECRET);
+  if (!process.env.CRON_SECRET || !isValidSecret) {
     logger.warn('Unauthorized backfill access attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

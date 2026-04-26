@@ -47,7 +47,7 @@ export async function GET(
         period_days: periodDays,
         tg_chat_id: tgChatId
       }, 'Error fetching reactions-replies');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     // RPC returns array with single row, extract first element
@@ -61,7 +61,7 @@ export async function GET(
       org_id: orgId
     }, 'Reactions-Replies error');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

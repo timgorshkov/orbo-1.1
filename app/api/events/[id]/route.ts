@@ -29,7 +29,7 @@ export async function GET(
         return NextResponse.json({ error: 'Event not found' }, { status: 404 })
       }
       logger.error({ error: error.message, event_id: eventId }, 'Error fetching event');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Получаем организацию отдельно
@@ -291,7 +291,7 @@ export async function PUT(
 
     if (error) {
       logger.error({ error: error.message, event_id: eventId, user_id: user.id }, 'Error updating event');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // --- Update recurrence_rule on parent event ---
@@ -599,7 +599,7 @@ export async function DELETE(
 
     if (error) {
       logger.error({ error: error.message, event_id: eventId, user_id: user.id }, 'Error deleting event');
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Log admin action

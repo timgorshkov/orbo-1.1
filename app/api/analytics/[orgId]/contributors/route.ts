@@ -210,7 +210,7 @@ export async function GET(
       org_id: orgId
     }, 'Contributors error');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

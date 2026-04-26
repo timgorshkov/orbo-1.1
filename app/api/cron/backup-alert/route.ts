@@ -12,9 +12,12 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { cron: 'backup-alert' });
   
   try {
-    // Verify cron secret
+    // Verify cron secret (supports both x-cron-secret header and Bearer token)
     const cronSecret = request.headers.get('x-cron-secret');
-    if (cronSecret !== process.env.CRON_SECRET) {
+    const authHeader = request.headers.get('authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const isValidSecret = (cronSecret && cronSecret === process.env.CRON_SECRET) || (bearerToken && bearerToken === process.env.CRON_SECRET);
+    if (!process.env.CRON_SECRET || !isValidSecret) {
       logger.warn({}, 'Invalid cron secret for backup alert');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

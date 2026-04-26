@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       group_id: groupId
     }, 'Error refreshing group info');
     return NextResponse.json({ 
-      error: error.message || 'An unexpected error occurred' 
+      error: 'Internal server error' 
     }, { status: 500 })
   }
 }

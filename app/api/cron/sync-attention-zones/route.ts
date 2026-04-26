@@ -3,8 +3,6 @@ import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
 import { sendSystemNotification } from '@/lib/services/telegramNotificationService';
 
-const CRON_SECRET = process.env.CRON_SECRET;
-
 // Helper: retry wrapper for transient failures
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -42,15 +40,12 @@ async function withRetry<T>(
 export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/cron/sync-attention-zones' });
 
-  // Проверка авторизации
-  const authHeader = request.headers.get('Authorization');
+  // Проверка авторизации (supports both x-cron-secret header and Bearer token)
   const cronSecret = request.headers.get('x-cron-secret');
-  
-  const isAuthorized = 
-    (authHeader === `Bearer ${CRON_SECRET}`) || 
-    (cronSecret === CRON_SECRET);
-  
-  if (!isAuthorized) {
+  const authHeader = request.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const isValidSecret = (cronSecret && cronSecret === process.env.CRON_SECRET) || (bearerToken && bearerToken === process.env.CRON_SECRET);
+  if (!process.env.CRON_SECRET || !isValidSecret) {
     logger.warn({}, 'Unauthorized cron request');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

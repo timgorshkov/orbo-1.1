@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Failed to fetch payment methods');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     logger.info({ count: paymentMethods?.length || 0 }, 'Payment methods fetched');
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error fetching payment methods');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Failed to create payment method');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     // Log admin action
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error creating payment method');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }
@@ -219,7 +219,7 @@ export async function PATCH(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Failed to update payment method');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     // Log admin action
@@ -241,7 +241,7 @@ export async function PATCH(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error updating payment method');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }
@@ -295,7 +295,7 @@ export async function DELETE(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Failed to delete payment method');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     // Log admin action
@@ -314,7 +314,7 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error deleting payment method');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }

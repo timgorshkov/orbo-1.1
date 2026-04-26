@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error: error.message }, 'Failed to fetch archived participants');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     // Map to expected format
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error fetching archived participants');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }

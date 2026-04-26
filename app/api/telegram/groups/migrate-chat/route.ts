@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       logger.error({ error: error.message, old_chat_id: oldChatId, new_chat_id: newChatId }, '[Chat Migration] Error');
       return NextResponse.json(
-        { error: error.message },
+        { error: 'Internal server error' },
         { status: 500 }
       )
     }
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       new_chat_id: newChatId || 'unknown'
     }, '[Chat Migration] Unexpected error');
     return NextResponse.json(
-      { error: error.message || 'An unexpected error occurred' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

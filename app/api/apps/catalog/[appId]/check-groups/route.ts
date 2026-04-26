@@ -34,7 +34,7 @@ export async function POST(
     try {
       await requireOrgAccess(orgId, ['owner', 'admin']);
     } catch (error: any) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const adminSupabase = createAdminServer();

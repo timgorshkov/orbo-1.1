@@ -9,6 +9,21 @@ import type { GatewayCode } from '@/lib/services/paymentGateway'
 
 export const dynamic = 'force-dynamic'
 
+const checkoutBuckets = new Map<string, { count: number; resetAt: number }>()
+const CHECKOUT_RATE_LIMIT = 5
+const CHECKOUT_RATE_WINDOW_MS = 300_000
+
+function isCheckoutRateLimited(key: string): boolean {
+  const now = Date.now()
+  const bucket = checkoutBuckets.get(key)
+  if (!bucket || now > bucket.resetAt) {
+    checkoutBuckets.set(key, { count: 1, resetAt: now + CHECKOUT_RATE_WINDOW_MS })
+    return false
+  }
+  bucket.count++
+  return bucket.count > CHECKOUT_RATE_LIMIT
+}
+
 /**
  * POST /api/billing/checkout
  *
@@ -34,6 +49,10 @@ export async function POST(request: NextRequest) {
   const user = await getUnifiedUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  if (isCheckoutRateLimited(user.id)) {
+    return NextResponse.json({ error: 'Слишком много запросов. Попробуйте позже.' }, { status: 429 })
   }
 
   try {
@@ -160,7 +179,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error({ error: error.message }, 'Checkout failed')
-    return NextResponse.json({ error: error.message || 'Ошибка при создании платежа' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 

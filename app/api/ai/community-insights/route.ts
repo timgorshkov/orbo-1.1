@@ -76,28 +76,32 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Build activity count subquery combining Telegram + MAX messages
-    const tgPart = chatIds.length > 0
+    const tgChatIdsParam = chatIds.map(Number).filter(Number.isFinite)
+    const maxChatIdsParam = maxChatIds.map(Number).filter(Number.isFinite)
+
+    const tgPart = tgChatIdsParam.length > 0
       ? `SELECT tg_user_id AS uid, NULL::bigint AS max_uid, COUNT(*) AS cnt
          FROM activity_events
          WHERE event_type = 'message'
-           AND tg_chat_id = ANY(ARRAY[${chatIds.map(Number).join(',')}]::bigint[])
+           AND tg_chat_id = ANY($2::bigint[])
          GROUP BY tg_user_id`
       : null
 
-    const maxPart = maxChatIds.length > 0
+    const maxPart = maxChatIdsParam.length > 0
       ? `SELECT NULL::bigint AS uid, max_user_id AS max_uid, COUNT(*) AS cnt
          FROM activity_events
          WHERE event_type = 'message'
            AND messenger_type = 'max'
-           AND max_chat_id = ANY(ARRAY[${maxChatIds.map(Number).join(',')}]::bigint[])
+           AND max_chat_id = ANY($3::bigint[])
          GROUP BY max_user_id`
       : null
 
     const activityUnion = [tgPart, maxPart].filter(Boolean).join(' UNION ALL ')
 
-    // Find top 2 UN-ANALYZED participants first, then fall back to already-analyzed
-    // "analyzed" = custom_attributes->>'last_enriched_at' IS NOT NULL
+    const queryParams: any[] = [orgId]
+    queryParams.push(tgChatIdsParam.length > 0 ? tgChatIdsParam : [0])
+    queryParams.push(maxChatIdsParam.length > 0 ? maxChatIdsParam : [0])
+
     const { data: topByMessages } = await (supabase as any).raw(`
       WITH activity AS (
         SELECT COALESCE(uid, 0) AS tg_uid, COALESCE(max_uid, 0) AS max_uid, SUM(cnt) AS msg_count
@@ -118,12 +122,11 @@ export async function POST(request: NextRequest) {
           AND (p.tg_user_id IS NOT NULL OR p.max_user_id IS NOT NULL)
           AND COALESCE(a.msg_count, 0) >= 5
       )
-      -- Prefer un-analyzed; fall back to analyzed when not enough un-analyzed rows
       (SELECT * FROM candidates WHERE is_analyzed = 0 ORDER BY msg_count DESC LIMIT 2)
       UNION ALL
       (SELECT * FROM candidates WHERE is_analyzed = 1 ORDER BY msg_count DESC LIMIT 2)
       LIMIT 2
-    `, [orgId])
+    `, queryParams)
 
     const topParticipants = topByMessages || []
 

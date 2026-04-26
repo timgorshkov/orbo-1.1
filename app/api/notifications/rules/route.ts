@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       logger.error({ error: error.message, org_id: orgId }, 'Error fetching notification rules')
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     return NextResponse.json({ rules: rules || [] })
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logger.error({ error: error.message, org_id: orgId }, 'Error creating notification rule')
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     logger.info({ 

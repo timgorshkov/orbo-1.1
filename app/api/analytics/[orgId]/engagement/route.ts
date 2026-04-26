@@ -45,7 +45,7 @@ export async function GET(
         code: error.code,
         org_id: orgId
       }, 'Error fetching engagement');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
     logger.debug({ 
@@ -67,7 +67,7 @@ export async function GET(
       org_id: orgId || 'unknown'
     }, 'Engagement error');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

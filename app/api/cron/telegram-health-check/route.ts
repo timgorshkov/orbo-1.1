@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error }, 'Error fetching groups');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
     
     logger.info({ groupsCount: groups?.length || 0 }, 'Checking groups');
@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     logger.error({ error }, 'Unexpected error in health check cron');
     return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 }

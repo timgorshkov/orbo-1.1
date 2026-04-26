@@ -112,7 +112,7 @@ export async function PUT(
 
     if (error) {
       logger.error({ error: error.message, rule_id: id }, 'Error updating notification rule')
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     logger.info({ rule_id: id, updates: Object.keys(updateData) }, 'Notification rule updated')
@@ -170,7 +170,7 @@ export async function DELETE(
 
     if (error) {
       logger.error({ error: error.message, rule_id: id }, 'Error deleting notification rule')
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     logger.info({ rule_id: id }, 'Notification rule deleted')

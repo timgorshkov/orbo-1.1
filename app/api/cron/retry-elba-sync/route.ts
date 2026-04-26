@@ -20,14 +20,12 @@ export const maxDuration = 120
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/cron/retry-elba-sync' })
 
-  const expectedSecret = process.env.CRON_SECRET
-  if (!expectedSecret) {
-    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
-  }
-  const providedSecret =
-    request.headers.get('x-cron-secret') ||
-    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (providedSecret !== expectedSecret) {
+  // Authorization check (supports both x-cron-secret header and Bearer token)
+  const cronSecret = request.headers.get('x-cron-secret')
+  const authHeader = request.headers.get('authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const isValidSecret = (cronSecret && cronSecret === process.env.CRON_SECRET) || (bearerToken && bearerToken === process.env.CRON_SECRET)
+  if (!process.env.CRON_SECRET || !isValidSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
