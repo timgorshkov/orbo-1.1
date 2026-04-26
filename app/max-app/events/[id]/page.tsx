@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
+import { getShortCode } from '@/lib/utils/qrTicket';
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, AlertCircle, Download } from 'lucide-react';
 
 interface Event {
@@ -445,6 +446,9 @@ export default function MaxEventPage() {
                   alt="QR код для check-in"
                   className="w-48 h-48"
                 />
+                <div className="mt-2 text-center font-mono text-xs tracking-widest text-gray-500 select-all">
+                  {getShortCode(qrToken)}
+                </div>
               </div>
               <p className="text-xs text-gray-500 mt-3">Покажите этот QR-код на входе</p>
             </div>

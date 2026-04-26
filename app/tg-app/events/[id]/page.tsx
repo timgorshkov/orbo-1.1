@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
+import { getShortCode } from '@/lib/utils/qrTicket';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X, Download } from 'lucide-react';
 
@@ -554,6 +555,9 @@ export default function TelegramEventPage() {
                   alt="QR код для check-in"
                   className="w-48 h-48"
                 />
+                <div className="mt-2 text-center font-mono text-xs tracking-widest text-gray-500 select-all">
+                  {getShortCode(qrToken)}
+                </div>
               </div>
               <p className="text-xs text-gray-500 mt-3">
                 Покажите этот QR-код на входе

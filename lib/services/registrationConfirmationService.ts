@@ -13,6 +13,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { telegramFetch } from '@/lib/services/telegramService'
 import { getEmailService } from '@/lib/services/emailService'
+import { getShortCode } from '@/lib/utils/qrTicket'
 
 const logger = createServiceLogger('RegistrationConfirmation')
 
@@ -141,8 +142,9 @@ async function sendTelegramConfirmation(p: TgParams): Promise<void> {
       : `📍 ${escapeHtml(p.location)}\n`
   }
   text += `\n🔗 <a href="${p.eventUrl}">Подробнее о событии</a>`
-  if (p.hasQr) {
+  if (p.hasQr && p.qrToken) {
     text += `\n\n🎫 QR-код для входа прикреплён ниже`
+    text += `\nКод билета: <code>${getShortCode(p.qrToken)}</code>`
   }
 
   // Try bots in priority order
@@ -241,6 +243,12 @@ async function sendEmailConfirmation(p: EmailParams): Promise<void> {
          <p style="font-size:14px;color:#555;margin-bottom:8px;">QR-код для входа:</p>
          <img src="https://quickchart.io/qr?text=${encodeURIComponent(p.qrToken)}&size=400&margin=2&format=png"
               alt="QR-код" width="200" height="200" style="border:1px solid #e5e7eb;border-radius:8px;" />
+         <p style="font-family:monospace;font-size:13px;color:#666;letter-spacing:2px;margin-top:8px;">
+           Код билета: ${getShortCode(p.qrToken)}
+         </p>
+         <p style="font-size:12px;color:#9ca3af;margin-top:4px;">
+           Если QR не считается — назовите этот код на входе
+         </p>
        </div>`
     : ''
 

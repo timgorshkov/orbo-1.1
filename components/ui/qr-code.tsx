@@ -9,18 +9,21 @@ interface QRCodeProps {
   className?: string
   showDownload?: boolean
   downloadFileName?: string
+  /** Optional short code shown under the QR for manual entry */
+  shortCode?: string | null
 }
 
 /**
  * QR Code component using quickchart.io API for generation.
  * Falls back to a text URL if the image fails to load.
  */
-export default function QRCode({ 
-  value, 
-  size = 200, 
+export default function QRCode({
+  value,
+  size = 200,
   className = '',
   showDownload = false,
-  downloadFileName = 'qr-code'
+  downloadFileName = 'qr-code',
+  shortCode = null,
 }: QRCodeProps) {
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -50,9 +53,9 @@ export default function QRCode({
 
   return (
     <div className={`inline-flex flex-col items-center gap-2 ${className}`}>
-      <div 
+      <div
         className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"
-        style={{ width: size + 24, height: size + 24 }}
+        style={{ width: size + 24 }}
       >
         <img
           ref={imgRef}
@@ -63,6 +66,11 @@ export default function QRCode({
           className="block"
           loading="eager"
         />
+        {shortCode && (
+          <div className="mt-2 text-center font-mono text-xs tracking-widest text-gray-500 select-all">
+            {shortCode}
+          </div>
+        )}
       </div>
       {showDownload && (
         <button

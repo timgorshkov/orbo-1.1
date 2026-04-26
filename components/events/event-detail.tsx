@@ -13,6 +13,7 @@ import { formatRecurrenceLabel, RecurrenceRule } from '@/lib/utils/recurringEven
 import EventForm from './event-form'
 import PaymentsTab from './payments-tab'
 import QRCode from '@/components/ui/qr-code'
+import { getShortCode } from '@/lib/utils/qrTicket'
 import EventRegistrationForm from './event-registration-form'
 import EventParticipantsList from './event-participants-list'
 import AddParticipantDialog from './add-participant-dialog'
@@ -63,6 +64,8 @@ type Event = {
     id: string
     status: string
     registered_at: string
+    checked_in_at?: string | null
+    checked_in_by_name?: string | null
     payment_status?: 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled' | 'refunded' | null
     registration_data?: Record<string, any> | null
     participants: {
@@ -842,6 +845,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 size={160}
                                 showDownload
                                 downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
+                                shortCode={getShortCode(userRegistration.qr_token)}
                               />
                               <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
                             </div>
@@ -1159,10 +1163,20 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                               </td>
                               <td className="px-4 py-3 text-sm text-center">
                                 {registration.status === 'attended' ? (
-                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                    <Check className="w-3 h-3" />
-                                    Прошёл
-                                  </span>
+                                  <div className="inline-flex flex-col items-center gap-0.5">
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                      <Check className="w-3 h-3" />
+                                      Прошёл
+                                    </span>
+                                    {registration.checked_in_by_name && (
+                                      <span
+                                        className="text-[10px] text-neutral-400 truncate max-w-[120px]"
+                                        title={`Отметил: ${registration.checked_in_by_name}`}
+                                      >
+                                        {registration.checked_in_by_name}
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-xs text-neutral-400">—</span>
                                 )}
@@ -1415,6 +1429,7 @@ export default function EventDetail({ event, orgId, role, isEditMode, telegramGr
                                 size={160}
                                 showDownload
                                 downloadFileName={`ticket-${event.title.replace(/\s+/g, '-').slice(0, 30)}`}
+                                shortCode={getShortCode(userRegistration.qr_token)}
                               />
                               <p className="text-xs text-neutral-400 mt-2">Электронный билет</p>
                             </div>

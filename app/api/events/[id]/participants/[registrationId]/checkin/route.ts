@@ -90,13 +90,16 @@ export async function POST(
       })
     }
     
-    // Step 4: Perform check-in
+    // Step 4: Perform check-in — also record admin actor
     const now = new Date().toISOString()
     const { data: updated, error: updateError } = await adminSupabase
       .from('event_registrations')
-      .update({ 
+      .update({
         status: 'attended',
-        checked_in_at: now
+        checked_in_at: now,
+        checked_in_by_user_id: user.id,
+        checked_in_by_registrator_id: null,
+        checked_in_by_name: user.email || user.name || null,
       })
       .eq('id', registrationId)
       .select('id, status, checked_in_at')

@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
-import { setRegistratorCookie } from '@/lib/registrator-auth/session'
+import { setRegistratorCookie, getRegistratorSession } from '@/lib/registrator-auth/session'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
@@ -38,6 +38,21 @@ export async function POST(request: NextRequest) {
       .select('name, logo_url')
       .eq('id', invite.org_id)
       .single()
+
+    // If the visitor already has an active session for this same org, keep it.
+    // (This shouldn't normally hit because /r/[token] page checks via invite-info
+    // and offers a "Continue" button, but treat it as an idempotent activation.)
+    const existing = await getRegistratorSession()
+    if (existing && existing.orgId === invite.org_id) {
+      logger.info({ org_id: invite.org_id, session_id: existing.sessionId }, 'Registrator already active, reusing')
+      return NextResponse.json({
+        success: true,
+        orgId: invite.org_id,
+        orgName: org?.name || '',
+        orgLogo: org?.logo_url || null,
+        reused: true,
+      })
+    }
 
     // Create session
     const sessionSecret = crypto.randomBytes(32).toString('base64url')

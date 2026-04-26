@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
     // Auth: try NextAuth first, then registrator session
     const user = await getUnifiedUser()
     let authOrgId: string | null = null // org that registrator belongs to
+    let registratorSession: { sessionId: string; orgId: string; name: string } | null = null
 
     if (!user) {
       // Try registrator session
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
       authOrgId = regSession.orgId
+      registratorSession = regSession
     }
 
     const body = await req.json()
@@ -196,13 +198,18 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Perform check-in
+    // Perform check-in — also record who did it
     const now = new Date().toISOString()
+    const checkedInByName = registratorSession?.name || user?.email || user?.name || null
+
     const { error: updateError } = await supabase
       .from('event_registrations')
-      .update({ 
+      .update({
         status: 'attended',
-        checked_in_at: now
+        checked_in_at: now,
+        checked_in_by_user_id: user?.id || null,
+        checked_in_by_registrator_id: registratorSession?.sessionId || null,
+        checked_in_by_name: checkedInByName,
       })
       .eq('id', registration.id)
 
@@ -211,11 +218,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to check in' }, { status: 500 })
     }
 
-    logger.info({ 
-      registration_id: registration.id, 
+    logger.info({
+      registration_id: registration.id,
       event_id: registration.event_id,
       participant_id: registration.participant_id,
-      checked_in_by: user?.id || 'registrator'
+      checked_in_by_user_id: user?.id || null,
+      checked_in_by_registrator_id: registratorSession?.sessionId || null,
+      checked_in_by_name: checkedInByName,
     }, 'Check-in successful');
 
     return NextResponse.json({
