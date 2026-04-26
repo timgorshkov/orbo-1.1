@@ -286,6 +286,22 @@ export default function TelegramEventPage() {
       return;
     }
 
+    // Pre-flight: if Telegram didn't deliver initData, retrying the request will fail
+    // server-side with 401. Show an actionable hint instead of submitting blindly.
+    // Two situations look the same here: (a) page opened outside Telegram (no WebApp
+    // bridge at all); (b) page opened in Telegram but the WebApp bridge did not finish
+    // initializing — this happens intermittently on Android when network is degraded
+    // and `telegram-web-app.js` failed to attach to the native bridge.
+    const tg = (window as any).Telegram?.WebApp
+    const initData: string = tg?.initData || ''
+    if (!initData) {
+      setError(
+        'Telegram не передал данные авторизации. Попробуйте ещё раз. ' +
+        'Если ошибка повторится — включите VPN и сделайте 1-2 попытки: обычно это помогает, когда сеть оператора нестабильно подключается к серверам Telegram.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 

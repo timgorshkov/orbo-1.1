@@ -474,9 +474,12 @@ export async function createEventReminders(
   // Generate event link based on preference
   let eventUrl: string;
   if (useMiniAppLink) {
-    // MiniApp link format: https://t.me/orbo_event_bot/events?startapp=e-{eventId}
-    // Fixed bot username for events (not community bot)
-    eventUrl = `https://t.me/orbo_event_bot/events?startapp=e-${eventId}`;
+    // MiniApp link format: https://t.me/<bot>?startapp=e-{eventId}
+    // We deliberately use the bot main mini-app form (no /short_name path) — it is
+    // more reliable across clients than the /short_name variant, which falls back
+    // to in-app browser if the short_name isn't registered for the bot.
+    const { generateEventMiniAppLink } = await import('@/lib/telegram/webAppAuth');
+    eventUrl = generateEventMiniAppLink(eventId);
   } else {
     // Web link format: https://my.orbo.ru/e/{eventId}
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
