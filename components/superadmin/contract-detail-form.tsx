@@ -142,6 +142,9 @@ export default function ContractDetailForm({ contractId }: { contractId: string 
           {!editing && contract.status === 'filled_by_client' && (
             <PaymentVerifyButton contractId={contractId} />
           )}
+          {!editing && (contract.status === 'verified' || contract.status === 'signed' || contract.status === 'filled_by_client') && (
+            <ManualVerificationFeeButton contractId={contractId} />
+          )}
           {!editing ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="w-3.5 h-3.5 mr-1" /> Редактировать
@@ -529,5 +532,152 @@ function PaymentDetails({ payment }: { payment: NonNullable<VerifyResponse['paym
         <span className="text-gray-500">Назначение:</span><span className="break-all">{payment.purpose}</span>
       </div>
     </details>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Кнопка «Зафиксировать оплату вручную» — для случаев когда платёж пришёл, но
+// сверка по выписке не была проведена (старые платежи, потерянная выписка).
+// Создаёт org_invoice + триггерит акт АЛ + автосинхронизацию с Эльбой.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ManualVerificationFeeButton({ contractId }: { contractId: string }) {
+  const [open, setOpen] = useState(false)
+  const [paidDate, setPaidDate] = useState<string>('')
+  const [amount, setAmount] = useState<string>('200')
+  const [paymentNumber, setPaymentNumber] = useState<string>('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<{ actNumber: string | null; actUrl: string | null; alreadyExisted: boolean } | null>(null)
+
+  const close = () => {
+    if (submitting) return
+    setOpen(false)
+    setError(null)
+    setDone(null)
+  }
+
+  const submit = async () => {
+    if (!paidDate) {
+      setError('Укажите дату оплаты')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/superadmin/contracts/${contractId}/record-verification-fee`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paidDate,
+          amount: amount ? Number(amount) : 200,
+          paymentNumber: paymentNumber || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Не удалось зафиксировать')
+      setDone({ actNumber: data.actNumber, actUrl: data.actUrl, alreadyExisted: !!data.alreadyExisted })
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Upload className="w-3.5 h-3.5 mr-1" /> Зафиксировать оплату вручную
+      </Button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">Ручная фиксация оплаты</h3>
+              <button onClick={close} disabled={submitting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {!done ? (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Создаст инвойс, акт лицензии (АЛ) и отправит его в Контур.Эльбу.
+                    Используйте, когда оплата пришла на счёт, но сверка по выписке не проводилась.
+                  </p>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Дата оплаты</label>
+                    <input
+                      type="date"
+                      value={paidDate}
+                      onChange={(e) => setPaidDate(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Сумма, ₽</label>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      disabled={submitting}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">№ платёжки (необязательно)</label>
+                    <input
+                      type="text"
+                      value={paymentNumber}
+                      onChange={(e) => setPaymentNumber(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      disabled={submitting}
+                      placeholder="например, 1234"
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="text-sm text-red-600 p-2 bg-red-50 border border-red-200 rounded">{error}</div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" size="sm" onClick={close} disabled={submitting}>Отмена</Button>
+                    <Button size="sm" onClick={submit} disabled={submitting}>
+                      {submitting ? 'Создаём…' : 'Зафиксировать'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-green-700 text-sm">
+                    {done.alreadyExisted
+                      ? 'Оплата уже была зафиксирована ранее.'
+                      : 'Готово. Инвойс и акт созданы.'}
+                  </div>
+                  {done.actNumber && (
+                    <div className="text-sm text-gray-700">
+                      Акт: <span className="font-mono">{done.actNumber}</span>
+                    </div>
+                  )}
+                  {done.actUrl && (
+                    <a href={done.actUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
+                      Открыть HTML акта
+                    </a>
+                  )}
+                  <div className="flex justify-end pt-2">
+                    <Button size="sm" onClick={close}>Готово</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

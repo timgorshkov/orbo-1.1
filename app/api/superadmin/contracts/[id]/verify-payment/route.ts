@@ -105,6 +105,27 @@ export async function POST(
       'Contract payment verification completed'
     )
 
+    // If verification matched cleanly, record the fee as paid revenue and trigger
+    // act (АЛ-N) generation + Elba sync. Idempotent — running this twice is a no-op.
+    let bookkeeping: { invoiceId: string; actNumber: string | null; actUrl: string | null; alreadyExisted: boolean } | null = null
+    if (result.matched && result.payment) {
+      try {
+        const { recordVerificationFeePayment } = await import('@/lib/services/contractVerificationFee')
+        bookkeeping = await recordVerificationFeePayment({
+          contractId: id,
+          paidDate: result.payment.date,
+          amount: result.payment.amount,
+          paymentNumber: result.payment.number,
+          confirmedBy: 'auto',
+        })
+      } catch (bkErr: any) {
+        logger.error(
+          { contract_id: id, error: bkErr.message },
+          'Failed to record verification fee bookkeeping (verification itself succeeded)'
+        )
+      }
+    }
+
     return NextResponse.json({
       contractNumber: result.contract.contract_number,
       paymentsInStatement: result.paymentsInStatement,
@@ -113,6 +134,7 @@ export async function POST(
       payment: result.payment,
       discrepancies: result.discrepancies,
       warnings: result.warnings,
+      bookkeeping,
     })
   } catch (error: any) {
     if (error?.message === 'NEXT_REDIRECT') throw error

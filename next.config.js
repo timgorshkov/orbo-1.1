@@ -26,6 +26,8 @@ const nextConfig = {
   },
   outputFileTracingIncludes: {
     '/api/**/*': ['./node_modules/@hawk.so/**/*', './node_modules/pino/**/*'],
+    // Include docs in standalone output so the markdown instruction page can read them at runtime
+    '/superadmin/accounting/instruction': ['./docs/**/*'],
   },
   // Allow external images from storage providers
   images: {
