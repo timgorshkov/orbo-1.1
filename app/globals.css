@@ -39,3 +39,32 @@ body {
     display: none !important;
   }
 }
+
+/*
+ * Markdown-rendered instructions (Superadmin → Accounting → Instruction).
+ * Lightweight prose styling without pulling in @tailwindcss/typography.
+ */
+.instruction-prose {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.instruction-prose h1 { font-size: 1.75rem; font-weight: 700; margin: 0 0 1rem; color: #0f172a; }
+.instruction-prose h2 { font-size: 1.35rem; font-weight: 700; margin: 1.75rem 0 0.75rem; color: #0f172a; border-top: 1px solid #e5e7eb; padding-top: 1.25rem; }
+.instruction-prose h3 { font-size: 1.125rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: #1f2937; }
+.instruction-prose h2:first-child { border-top: none; padding-top: 0; }
+.instruction-prose p { margin: 0.65rem 0; }
+.instruction-prose ul, .instruction-prose ol { margin: 0.65rem 0; padding-left: 1.5rem; }
+.instruction-prose li { margin: 0.25rem 0; }
+.instruction-prose ul li { list-style: disc; }
+.instruction-prose ol li { list-style: decimal; }
+.instruction-prose strong { font-weight: 600; color: #0f172a; }
+.instruction-prose code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 0.875em; font-family: ui-monospace, SFMono-Regular, monospace; }
+.instruction-prose hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
+.instruction-prose table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 13px; }
+.instruction-prose th, .instruction-prose td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
+.instruction-prose th { background: #f9fafb; font-weight: 600; color: #1f2937; }
+.instruction-prose a { color: #2563eb; text-decoration: underline; }
+.instruction-prose a:hover { color: #1d4ed8; }
+.instruction-prose blockquote { border-left: 3px solid #d1d5db; margin: 0.75rem 0; padding: 0.25rem 0 0.25rem 1rem; color: #4b5563; }
+.instruction-prose em { font-style: italic; color: #4b5563; }

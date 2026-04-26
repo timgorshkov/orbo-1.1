@@ -1,25 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
-import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { isSuperadmin } from '@/lib/server/superadminGuard';
 
 /**
  * GET /api/admin/notification-health
- * Health check for the notification system.
- * Returns:
- * - Last successful cron runs
- * - Failed notification count (24h)
- * - Rules without recipients
- * - Bot status check
+ * Health check for the notification system. Superadmin only.
  */
 export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/admin/notification-health' });
 
   try {
-    // Auth check - must be superadmin or org owner
-    const user = await getUnifiedUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const isAdmin = await isSuperadmin();
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const adminSupabase = createAdminServer();
@@ -200,7 +194,7 @@ export async function GET(request: NextRequest) {
       { 
         status: 'error', 
         health_score: 0, 
-        error: error.message,
+        error: 'Health check failed',
         checked_at: new Date().toISOString(),
       },
       { status: 500 }

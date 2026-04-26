@@ -113,9 +113,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: false,
       duration_ms: duration,
-      error: error.message,
-      code: error.code,
-      stack: error.stack
+      error: 'Database test failed',
     }, { status: 500 });
   }
 }

@@ -35,14 +35,15 @@ FROM base AS builder
 WORKDIR /app
 
 # Build arguments for Next.js env vars (needed at build time)
+# Only NEXT_PUBLIC_* vars are needed at build time — they're inlined into client JS.
+# Server-side secrets (OPENAI_API_KEY etc.) are injected at runtime via env_file.
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-ARG OPENAI_API_KEY
 
-# Set as env vars for build process
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-ENV OPENAI_API_KEY=$OPENAI_API_KEY
+# Dummy key for build-time validation only (not embedded in image layers)
+ENV OPENAI_API_KEY=build-placeholder
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
