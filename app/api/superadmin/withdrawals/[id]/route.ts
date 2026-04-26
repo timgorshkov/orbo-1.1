@@ -104,7 +104,7 @@ export async function PATCH(
 
     // Return user-facing errors
     if (error.message.includes('Not found') || error.message.includes('wrong status') || error.message.includes('Cannot reject')) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: 'Bad request' }, { status: 400 })
     }
 
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
