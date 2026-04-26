@@ -160,24 +160,28 @@ class WebhookRecoveryService {
    */
   private getBotConfig(botType: RecoverableBotType) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
-    
+    // When the Cloudflare Worker relay is configured, route webhooks through it
+    // so Telegram does not need direct access to our origin (which is blocked
+    // from Telegram's outbound network in some Russian regions).
+    const relayBase = (process.env.TELEGRAM_WEBHOOK_RELAY_BASE || '').replace(/\/+$/, '');
+
     switch (botType) {
       case 'main':
         return {
           webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
-          webhookUrl: `${baseUrl}/api/telegram/webhook`,
+          webhookUrl: relayBase ? `${relayBase}/in/main` : `${baseUrl}/api/telegram/webhook`,
           allowedUpdates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request'],
         };
       case 'notifications':
         return {
           webhookSecret: process.env.TELEGRAM_NOTIFICATIONS_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
-          webhookUrl: `${baseUrl}/api/telegram/notifications/webhook`,
+          webhookUrl: relayBase ? `${relayBase}/in/notifications` : `${baseUrl}/api/telegram/notifications/webhook`,
           allowedUpdates: ['message'],
         };
       case 'registration':
         return {
           webhookSecret: process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
-          webhookUrl: `${baseUrl}/api/telegram/registration-bot/webhook`,
+          webhookUrl: relayBase ? `${relayBase}/in/registration` : `${baseUrl}/api/telegram/registration-bot/webhook`,
           allowedUpdates: ['message'],
         };
     }

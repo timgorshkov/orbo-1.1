@@ -34,13 +34,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL not configured' }, { status: 500 })
     }
 
+    // If TELEGRAM_WEBHOOK_RELAY_BASE is set (Cloudflare Worker), tell Telegram to deliver
+    // updates to the Worker instead of directly to our origin. The Worker forwards them
+    // to our backend. Used because direct Telegram → my.orbo.ru is timing out from
+    // Telegram's network (RU TSPU also filters incoming).
+    const relayBase = (process.env.TELEGRAM_WEBHOOK_RELAY_BASE || '').replace(/\/+$/, '');
+
     const bots: { name: string; token: string; webhookUrl: string; secret?: string; allowedUpdates: string[] }[] = [];
 
     if (process.env.TELEGRAM_BOT_TOKEN) {
       bots.push({
         name: 'main',
         token: process.env.TELEGRAM_BOT_TOKEN,
-        webhookUrl: `${baseUrl}/api/telegram/webhook`,
+        webhookUrl: relayBase ? `${relayBase}/in/main` : `${baseUrl}/api/telegram/webhook`,
         secret: process.env.TELEGRAM_WEBHOOK_SECRET,
         allowedUpdates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'message_reaction', 'message_reaction_count', 'my_chat_member', 'chat_member', 'chat_join_request'],
       });
@@ -50,7 +56,7 @@ export async function GET(request: NextRequest) {
       bots.push({
         name: 'registration',
         token: process.env.TELEGRAM_REGISTRATION_BOT_TOKEN,
-        webhookUrl: `${baseUrl}/api/telegram/registration-bot/webhook`,
+        webhookUrl: relayBase ? `${relayBase}/in/registration` : `${baseUrl}/api/telegram/registration-bot/webhook`,
         secret: process.env.TELEGRAM_REGISTRATION_WEBHOOK_SECRET || process.env.TELEGRAM_WEBHOOK_SECRET,
         allowedUpdates: ['message'],
       });
