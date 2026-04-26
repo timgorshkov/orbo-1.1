@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { getUnifiedUser } from '@/lib/auth/unified-auth';
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess';
 import { createAPILogger } from '@/lib/logger';
 import { recordEventPayment } from '@/lib/services/orgAccountService';
 
@@ -36,15 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Check user access to org
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', event.org_id)
-      .eq('user_id', user.id)
-      .single();
-
-    const role = membership?.role || 'guest';
+    // Check user access to org (incl. virtual owner for superadmins)
+    const access = await getEffectiveOrgRole(user.id, event.org_id);
+    const role = access?.role;
     if (role !== 'owner' && role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -202,15 +197,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const orgId = regEvent?.org_id;
 
-    // Check user access to org
-    const { data: membership } = await supabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .single();
-
-    const role = membership?.role || 'guest';
+    // Check user access to org (incl. virtual owner for superadmins)
+    const access = orgId ? await getEffectiveOrgRole(user.id, orgId) : null;
+    const role = access?.role;
     if (role !== 'owner' && role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

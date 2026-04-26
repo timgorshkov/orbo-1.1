@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic';
 
@@ -164,15 +165,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Forbidden — event belongs to another organization' }, { status: 403 })
       }
     } else if (user) {
-      // Admin — check membership
-      const { data: membership } = await supabase
-        .from('memberships')
-        .select('role')
-        .eq('org_id', event.org_id)
-        .eq('user_id', user.id)
-        .single()
-
-      const role = membership?.role || 'guest'
+      // Admin — check effective role (incl. virtual owner for superadmins)
+      const access = await getEffectiveOrgRole(user.id, event.org_id)
+      const role = access?.role
       if (role !== 'owner' && role !== 'admin') {
         logger.warn({ user_id: user.id, org_id: event.org_id, role }, 'Non-admin attempted check-in');
         return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })

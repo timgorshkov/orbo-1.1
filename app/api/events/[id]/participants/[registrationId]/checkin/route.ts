@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 import { createAPILogger } from '@/lib/logger'
 
 // POST /api/events/[id]/participants/[registrationId]/checkin - Manual check-in by admin
@@ -40,23 +41,17 @@ export async function POST(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
     
-    // Step 2: Check that user is admin of the org
-    const { data: member, error: memberError } = await adminSupabase
-      .from('memberships')
-      .select('role')
-      .eq('org_id', eventData.org_id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    
-    logger.info({ 
-      user_id: user.id, 
-      org_id: eventData.org_id, 
-      role: member?.role,
-      member_found: !!member,
-      member_error: memberError?.message
+    // Step 2: Check that user has admin/owner access to the org (incl. virtual owner for superadmins)
+    const access = await getEffectiveOrgRole(user.id, eventData.org_id)
+    const role = access?.role
+
+    logger.info({
+      user_id: user.id,
+      org_id: eventData.org_id,
+      role,
+      is_superadmin: access?.isSuperadmin || false,
     }, 'Membership check for checkin');
-    
-    const role = member?.role
+
     if (role !== 'owner' && role !== 'admin') {
       logger.warn({ user_id: user.id, org_id: eventData.org_id, role }, 'Non-admin attempted manual check-in');
       return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })

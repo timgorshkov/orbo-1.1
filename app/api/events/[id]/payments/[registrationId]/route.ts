@@ -3,6 +3,7 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { logAdminAction, AdminActions, ResourceTypes } from '@/lib/logAdminAction'
 import { createAPILogger } from '@/lib/logger'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 /**
  * PATCH /api/events/[id]/payments/[registrationId]
@@ -77,15 +78,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Check admin rights (use admin client to bypass RLS)
-    const { data: membership } = await supabaseAdmin
-      .from('memberships')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', event.org_id)
-      .single()
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    // Check admin rights (incl. virtual owner for superadmins)
+    const access = await getEffectiveOrgRole(user.id, event.org_id)
+    if (!access || !['owner', 'admin'].includes(access.role)) {
       return NextResponse.json(
         { error: 'Only admins can update payment information' },
         { status: 403 }
