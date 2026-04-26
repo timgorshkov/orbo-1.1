@@ -16,11 +16,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Download, Loader2, Calendar } from 'lucide-react'
+import { Download, Loader2, Calendar, FlaskConical } from 'lucide-react'
 
 type IncomeKind = 'service_fee' | 'agent_commission' | 'subscription' | 'service_fee_refund' | 'agent_commission_refund'
 
 interface DayRow { date: string; total: number; byKind: Partial<Record<IncomeKind, number>> }
+
+interface LedgerLine {
+  date: string
+  recognisedAt: string
+  kind: IncomeKind
+  kindLabel: string
+  amount: number
+  contractor: string
+  orgName: string | null
+  eventTitle: string | null
+  documentNumber: string | null
+  paymentSessionId: string | null
+  isTest: boolean
+  sourceTable: string
+  sourceId: string
+}
 
 interface Summary {
   periodFrom: string
@@ -56,37 +72,65 @@ export default function IncomeLedgerPanel() {
   const def = defaultPeriod()
   const [from, setFrom] = useState(def.from)
   const [to, setTo] = useState(def.to)
+  const [includeTest, setIncludeTest] = useState(false)
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [lines, setLines] = useState<LedgerLine[]>([])
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exportingType, setExportingType] = useState<string | null>(null)
+  const [markingId, setMarkingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/superadmin/finances?view=income-ledger&from=${from}&to=${to}`)
+      const params = new URLSearchParams({ view: 'income-ledger', from, to })
+      if (includeTest) params.set('includeTest', '1')
+      const res = await fetch(`/api/superadmin/finances?${params.toString()}`)
       if (!res.ok) {
         const e = await res.json().catch(() => ({}))
         throw new Error(e.error || 'Failed to load')
       }
       const data = await res.json()
       setSummary(data.summary)
+      setLines(data.lines || [])
       setTruncated(!!data.truncated)
     } catch (e: any) {
       setError(e.message || 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
-  }, [from, to])
+  }, [from, to, includeTest])
 
   useEffect(() => { load() }, [load])
+
+  const markAsTest = async (paymentSessionId: string, isTest: boolean) => {
+    setMarkingId(paymentSessionId)
+    try {
+      const res = await fetch('/api/superadmin/finances/mark-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentSessionId, isTest }),
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        throw new Error(e.error || 'Failed to mark')
+      }
+      await load() // reload to reflect change
+    } catch (e: any) {
+      setError(e.message || 'Не удалось отметить')
+    } finally {
+      setMarkingId(null)
+    }
+  }
 
   const downloadXlsx = async (type: 'income-ledger' | 'transactions' | 'withdrawals' | 'refunds') => {
     setExportingType(type)
     try {
-      const url = `/api/superadmin/finances/export?type=${type}&from=${from}&to=${to}`
+      const params = new URLSearchParams({ type, from, to })
+      if (includeTest && type === 'income-ledger') params.set('includeTest', '1')
+      const url = `/api/superadmin/finances/export?${params.toString()}`
       const res = await fetch(url)
       if (!res.ok) {
         const e = await res.json().catch(() => ({ error: 'Export failed' }))
@@ -143,6 +187,15 @@ export default function IncomeLedgerPanel() {
           <Button size="sm" variant="outline" onClick={load} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Обновить'}
           </Button>
+          <label className="ml-auto flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeTest}
+              onChange={(e) => setIncludeTest(e.target.checked)}
+              className="w-4 h-4"
+            />
+            Показать тестовые
+          </label>
         </div>
 
         {error && (
@@ -205,6 +258,62 @@ export default function IncomeLedgerPanel() {
 
         {summary && summary.byDay.length === 0 && (
           <p className="text-sm text-gray-500 text-center py-6">За выбранный период доходов нет.</p>
+        )}
+
+        {/* Detailed list with mark-as-test button */}
+        {lines.length > 0 && (
+          <details className="border-t border-gray-100 pt-3">
+            <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
+              Детализация ({lines.length} строк) — для пометки тестовых транзакций
+            </summary>
+            <div className="overflow-x-auto mt-3">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 text-gray-600">
+                    <th className="text-left py-1.5 pr-2">Дата</th>
+                    <th className="text-left py-1.5 pr-2">Тип</th>
+                    <th className="text-right py-1.5 pr-2">Сумма ₽</th>
+                    <th className="text-left py-1.5 pr-2">Контрагент</th>
+                    <th className="text-left py-1.5 pr-2">Событие/Документ</th>
+                    <th className="py-1.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => (
+                    <tr key={`${l.sourceTable}-${l.sourceId}`} className={`border-b border-gray-50 ${l.isTest ? 'bg-amber-50' : ''}`}>
+                      <td className="py-1 pr-2 text-gray-700">{l.date}</td>
+                      <td className="py-1 pr-2 text-gray-700">{l.kindLabel}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{fmt(l.amount)}</td>
+                      <td className="py-1 pr-2 text-gray-600 truncate max-w-[200px]">{l.contractor}</td>
+                      <td className="py-1 pr-2 text-gray-500 truncate max-w-[280px]">
+                        {l.documentNumber || l.eventTitle || l.orgName || '—'}
+                      </td>
+                      <td className="py-1 text-right">
+                        {l.paymentSessionId && (
+                          <button
+                            type="button"
+                            onClick={() => markAsTest(l.paymentSessionId!, !l.isTest)}
+                            disabled={markingId === l.paymentSessionId}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors ${
+                              l.isTest
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                : 'text-gray-500 hover:bg-gray-100'
+                            }`}
+                            title={l.isTest ? 'Снять метку тестовой' : 'Пометить как тестовую (исключить из доходов)'}
+                          >
+                            {markingId === l.paymentSessionId
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <FlaskConical className="w-3 h-3" />}
+                            {l.isTest ? 'тест' : ''}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
 
         {/* Export buttons */}

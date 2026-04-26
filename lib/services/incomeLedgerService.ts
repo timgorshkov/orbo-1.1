@@ -54,6 +54,10 @@ export interface IncomeLedgerLine {
   /** Source row id for traceability */
   sourceTable: 'platform_income' | 'org_invoices';
   sourceId: string;
+  /** Payment session id (for platform_income rows) — so the UI can mark the linked session as test */
+  paymentSessionId: string | null;
+  /** Whether the linked session is currently flagged as test (informational) */
+  isTest: boolean;
 }
 
 export interface IncomeLedgerSummary {
@@ -73,30 +77,45 @@ const KIND_LABELS: Record<IncomeKind, string> = {
   agent_commission_refund: 'Возврат агентского вознаграждения',
 };
 
+export interface LedgerOptions {
+  /** Include rows linked to test-mode payment sessions. Default: false (exclude tests from revenue). */
+  includeTest?: boolean;
+}
+
 /**
  * Fetch all income lines for the period (inclusive on both ends, dates as YYYY-MM-DD
  * in server-local timezone — Moscow for production).
  *
+ * By default test-terminal payments are excluded — they generate real-looking
+ * platform_income rows during acquirer setup but must NOT count as revenue.
+ *
  * The query joins minimal context (org name, event title, customer requisites) so the
  * caller can render a self-contained report without extra round-trips.
  */
-export async function getIncomeLedger(periodFrom: string, periodTo: string): Promise<IncomeLedgerLine[]> {
+export async function getIncomeLedger(periodFrom: string, periodTo: string, opts: LedgerOptions = {}): Promise<IncomeLedgerLine[]> {
   const db = createAdminServer();
+  const includeTest = !!opts.includeTest;
 
   const fromTs = `${periodFrom}T00:00:00+03:00`; // Moscow tz — matches how dates are read in UI
   const toTs = `${periodTo}T23:59:59.999+03:00`;
 
-  // Tickets & agent commission from platform_income
+  // Tickets & agent commission from platform_income.
+  // LEFT JOIN payment_sessions to filter out is_test=true unless explicitly requested.
+  const testFilter = includeTest ? '' : 'AND COALESCE(ps.is_test, FALSE) = FALSE';
   const { data: piRows, error: piErr } = await db.raw(
     `SELECT pi.id, pi.income_type, pi.amount, pi.currency, pi.created_at,
             pi.org_id, o.name AS org_name,
-            er.event_id, e.title AS event_title
+            er.event_id, e.title AS event_title,
+            pi.payment_session_id,
+            COALESCE(ps.is_test, FALSE) AS session_is_test
        FROM platform_income pi
        LEFT JOIN organizations o ON o.id = pi.org_id
        LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
        LEFT JOIN events e ON e.id = er.event_id
+       LEFT JOIN payment_sessions ps ON ps.id = pi.payment_session_id
       WHERE pi.created_at >= $1
         AND pi.created_at <= $2
+        ${testFilter}
       ORDER BY pi.created_at ASC`,
     [fromTs, toTs]
   );
@@ -106,11 +125,15 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string): Pro
     throw new Error('Failed to query platform_income');
   }
 
-  // Subscriptions paid in period (org_invoices.paid_at)
+  // Subscriptions paid in period (org_invoices.paid_at).
+  // Note: org_invoices has neither invoice_number nor plan_code columns — the
+  // user-facing act number lives in the linked accounting_documents row, the
+  // plan label is on subscriptions/billing_plans. For the ledger the human
+  // identifier is act_number (АЛ-...), so use that.
   const { data: invRows, error: invErr } = await db.raw(
     `SELECT inv.id, inv.amount, inv.currency, inv.paid_at,
             inv.org_id, o.name AS org_name,
-            inv.customer_name, inv.customer_inn, inv.invoice_number, inv.plan_code
+            inv.customer_name, inv.customer_inn, inv.act_number
        FROM org_invoices inv
        LEFT JOIN organizations o ON o.id = inv.org_id
       WHERE inv.status = 'paid'
@@ -150,6 +173,8 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string): Pro
       documentNumber: null, // resolved later by joining accounting_documents if needed
       sourceTable: 'platform_income',
       sourceId: row.id,
+      paymentSessionId: row.payment_session_id || null,
+      isTest: !!row.session_is_test,
     });
   }
 
@@ -168,9 +193,11 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string): Pro
       orgName: row.org_name,
       eventId: null,
       eventTitle: null,
-      documentNumber: row.invoice_number || null,
+      documentNumber: row.act_number || null,
       sourceTable: 'org_invoices',
       sourceId: row.id,
+      paymentSessionId: null,
+      isTest: false,
     });
   }
 

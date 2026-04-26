@@ -314,9 +314,10 @@ export async function GET(request: NextRequest) {
         if (!from || !to) {
           return NextResponse.json({ error: 'from and to (YYYY-MM-DD) required' }, { status: 400 })
         }
+        const includeTest = sp.get('includeTest') === '1'
 
         const { getIncomeLedger, summariseLedger } = await import('@/lib/services/incomeLedgerService')
-        const lines = await getIncomeLedger(from, to)
+        const lines = await getIncomeLedger(from, to, { includeTest })
         const summary = summariseLedger(from, to, lines)
 
         // Truncate detailed list to first 500 for UI; full list available via export endpoint

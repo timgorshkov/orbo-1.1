@@ -46,9 +46,11 @@ export async function GET(request: NextRequest) {
 
     let filename: string;
 
+    const includeTest = sp.get('includeTest') === '1';
+
     switch (type) {
       case 'income-ledger': {
-        await fillIncomeLedger(wb, from, to);
+        await fillIncomeLedger(wb, from, to, includeTest);
         filename = `orbo-income-ledger_${from}_${to}.xlsx`;
         break;
       }
@@ -88,8 +90,8 @@ export async function GET(request: NextRequest) {
 
 // ─── Workbook builders ───────────────────────────────────────────────
 
-async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string) {
-  const lines = await getIncomeLedger(from, to);
+async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, includeTest = false) {
+  const lines = await getIncomeLedger(from, to, { includeTest });
   const summary = summariseLedger(from, to, lines);
 
   // Sheet 1 — Summary by day
