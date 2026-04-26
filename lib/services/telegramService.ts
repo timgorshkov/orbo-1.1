@@ -411,7 +411,7 @@ async getChatMember(chatId: number, userId: number) {
   async getChatAdministrators(chatId: number) {
     // Private chats (positive IDs) have no administrators — Telegram returns 400
     if (chatId > 0) {
-      logger.warn({ chat_id: chatId }, 'getChatAdministrators skipped: private chat (positive ID)');
+      logger.debug({ chat_id: chatId }, 'getChatAdministrators skipped: private chat (positive ID)');
       return { ok: false, error_code: 400, description: 'Bad Request: private chat has no administrators' };
     }
     return this.callApi('getChatAdministrators', {

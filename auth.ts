@@ -390,6 +390,10 @@ export const authConfig: NextAuthConfig = {
 
   logger: {
     error(error: Error & { cause?: { err?: Error; [key: string]: unknown }; details?: unknown }) {
+      // UnknownAction = bots/scrapers hitting random /api/auth/* URLs — not a real error
+      if (error.name === 'UnknownAction' || error.message?.includes('Cannot parse action')) {
+        return
+      }
       const cause = error.cause?.err ?? (error.cause instanceof Error ? error.cause : undefined)
       logger.error({
         auth_error_code: error.message,

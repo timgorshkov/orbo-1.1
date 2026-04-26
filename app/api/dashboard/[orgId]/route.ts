@@ -195,15 +195,17 @@ export async function GET(
       activityResult,
       attentionZonesResult,
     ] = await Promise.all([
-      // hasSharedEvent — single query instead of 2
+      // hasSharedEvent — registrations exist for any of this org's events
       (async () => {
         if ((eventsCount || 0) === 0) return false;
-        const { count } = await adminSupabase
-          .from('event_registrations')
-          .select('*', { count: 'exact', head: true })
-          .eq('org_id', orgId)
-          .limit(1);
-        return (count || 0) > 0;
+        const { data } = await adminSupabase.raw(
+          `SELECT 1 FROM event_registrations er
+             JOIN events e ON e.id = er.event_id
+            WHERE e.org_id = $1
+            LIMIT 1`,
+          [orgId]
+        );
+        return Array.isArray(data) && data.length > 0;
       })(),
       // MAX groups
       adminSupabase

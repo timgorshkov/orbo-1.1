@@ -53,7 +53,13 @@ async function sendTelegramMessage(
     const data: TelegramResponse = await response.json();
     
     if (!data.ok) {
-      logger.error({
+      // 403 / "chat not found" — user blocked bot or never started it; not a server-side error
+      const desc = data.description || '';
+      const isUserSide =
+        data.error_code === 403 ||
+        (data.error_code === 400 && (desc.includes('chat not found') || desc.includes('user not found')));
+      const logFn = isUserSide ? logger.warn.bind(logger) : logger.error.bind(logger);
+      logFn({
         chat_id: params.chat_id,
         error_code: data.error_code,
         description: data.description,
@@ -239,17 +245,23 @@ export async function sendSystemNotification(
     });
 
     if (response.ok) {
-      logger.info({ 
-        tg_user_id: tgUserId, 
+      logger.info({
+        tg_user_id: tgUserId,
         message_id: response.result?.message_id,
-        message_length: message.length 
+        message_length: message.length
       }, 'System notification sent successfully');
     } else {
-      logger.error({ 
-        tg_user_id: tgUserId, 
+      // 403 "bot was blocked" / "user is deactivated" / 400 "chat not found" — user-side, not a server error
+      const desc = response.description || '';
+      const isUserSide =
+        response.error_code === 403 ||
+        (response.error_code === 400 && (desc.includes('chat not found') || desc.includes('user not found')));
+      const logFn = isUserSide ? logger.warn.bind(logger) : logger.error.bind(logger);
+      logFn({
+        tg_user_id: tgUserId,
         error_code: response.error_code,
         description: response.description,
-        message_length: message.length 
+        message_length: message.length
       }, 'System notification delivery failed');
     }
 

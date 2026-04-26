@@ -117,7 +117,10 @@
       "WebFetch(domain:kontur.userecho.com)",
       "WebFetch(domain:kontur-elba.github.io)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" diff auth.ts)",
+      "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" stash)",
+      "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" stash pop)"
     ]
   }
 }
