@@ -120,6 +120,36 @@ export async function generateMonthlyReport(
     [orgId, periodStart, periodEnd]
   )
 
+  // Withdrawals requested in the period — used both for the report registry and to
+  // surface "already withdrawn" in the to-transfer formula. Take only completed ones
+  // for the formula; show all (incl. processing/rejected) in the registry for context.
+  const { data: wdData } = await db.raw(
+    `SELECT id, status, amount, net_amount, act_number, requested_at, completed_at, period_from, period_to
+       FROM org_withdrawals
+      WHERE org_id = $1
+        AND requested_at >= $2::date
+        AND requested_at < ($3::date + interval '1 day')
+      ORDER BY requested_at ASC`,
+    [orgId, periodStart, periodEnd]
+  )
+
+  // Refund detail — for the registry section in the report. Pair refund tx with their
+  // commission_reversal counterparts (where applicable) by participant + ~timestamp window.
+  const { data: refundsDetail } = await db.raw(
+    `SELECT t.id, t.created_at, t.amount, t.event_id, e.title AS event_title,
+            t.participant_id, p.full_name AS participant_name, t.notes,
+            t.type
+       FROM org_transactions t
+       LEFT JOIN events e ON e.id = t.event_id
+       LEFT JOIN participants p ON p.id = t.participant_id
+      WHERE t.org_id = $1
+        AND t.type IN ('refund', 'agent_commission_reversal')
+        AND t.created_at >= $2::date
+        AND t.created_at < ($3::date + interval '1 day')
+      ORDER BY t.created_at ASC`,
+    [orgId, periodStart, periodEnd]
+  )
+
   const sales = salesData?.[0]
   const tx = txData?.[0]
 
@@ -130,8 +160,13 @@ export async function generateMonthlyReport(
   const salesCount = parseInt(sales?.sales_count || 0)
   const refundsCount = parseInt(sales?.refunds_count || 0)
 
-  // К перечислению = поступления - агентское вознаграждение - возвраты
-  const totalToTransfer = totalSalesAmount - totalAgentCommission - totalRefunds
+  // Already withdrawn within the period (only successful payouts reduce remaining balance)
+  const totalAlreadyWithdrawn = ((wdData || []) as any[])
+    .filter((w: any) => w.status === 'completed')
+    .reduce((acc: number, w: any) => acc + parseFloat(w.amount), 0)
+
+  // К перечислению = поступления - агентское вознаграждение - возвраты - уже выведено в этот период
+  const totalToTransfer = totalSalesAmount - totalAgentCommission - totalRefunds - totalAlreadyWithdrawn
 
   // Skip report if no sales
   if (salesCount === 0 && refundsCount === 0) {
@@ -165,6 +200,26 @@ export async function generateMonthlyReport(
         counterparty_type: contract?.cp_type,
         counterparty_name: contract?.cp_type === 'legal_entity' ? contract?.org_name : contract?.full_name,
         counterparty_inn: contract?.inn,
+        total_already_withdrawn: totalAlreadyWithdrawn,
+        // Registries surfaced in the printed HTML report
+        withdrawals: (wdData || []).map((w: any) => ({
+          id: w.id,
+          status: w.status,
+          amount: parseFloat(w.amount),
+          net_amount: parseFloat(w.net_amount),
+          act_number: w.act_number,
+          requested_at: w.requested_at,
+          completed_at: w.completed_at,
+        })),
+        refunds_detail: (refundsDetail || []).map((r: any) => ({
+          id: r.id,
+          created_at: r.created_at,
+          type: r.type,
+          amount: parseFloat(r.amount),
+          event_title: r.event_title,
+          participant_name: r.participant_name,
+          notes: r.notes,
+        })),
       },
     })
     .select('*')
@@ -298,8 +353,12 @@ export function generateReportHTML(report: AgentReport): string {
     <tr><td>Сервисный сбор (доход Агента)</td><td class="right">${parseFloat(String(report.total_service_fee)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</td></tr>
     ${parseFloat(String(report.total_agent_commission)) > 0 ? `<tr><td>Агентское вознаграждение</td><td class="right">${parseFloat(String(report.total_agent_commission)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</td></tr>` : ''}
     <tr><td>Возвраты</td><td class="right">${report.refunds_count} шт. / ${parseFloat(String(report.total_refunds)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</td></tr>
+    ${parseFloat(String(meta.total_already_withdrawn || 0)) > 0 ? `<tr><td>Уже выведено в течение периода</td><td class="right">${parseFloat(String(meta.total_already_withdrawn)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</td></tr>` : ''}
     <tr class="total-row"><td>К перечислению Принципалу</td><td class="right">${parseFloat(String(report.total_to_transfer)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽</td></tr>
   </table>
+
+  ${renderRefundsRegistry(meta.refunds_detail)}
+  ${renderWithdrawalsRegistry(meta.withdrawals)}
 
   <div class="signatures">
     <div class="sign-block">
@@ -317,6 +376,63 @@ export function generateReportHTML(report: AgentReport): string {
   </div>
 </body>
 </html>`
+}
+
+// ─── HTML helpers ──────────────────────────────────────────────────
+
+function escapeHtml(s: string | null | undefined): string {
+  if (!s) return ''
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function renderRefundsRegistry(refunds: any[] | undefined | null): string {
+  if (!refunds || refunds.length === 0) return ''
+  const rows = refunds.map((r) => {
+    const dt = new Date(r.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const typeLabel = r.type === 'agent_commission_reversal' ? 'Реверс комиссии' : 'Возврат тела билета'
+    const amount = parseFloat(r.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2 })
+    return `<tr>
+      <td>${dt}</td>
+      <td>${typeLabel}</td>
+      <td>${escapeHtml(r.event_title) || '—'}</td>
+      <td>${escapeHtml(r.participant_name) || '—'}</td>
+      <td class="right">${amount} ₽</td>
+    </tr>`
+  }).join('')
+  return `
+  <h3 style="margin-top:24px; font-size:12pt;">Реестр возвратов</h3>
+  <table>
+    <tr><th>Дата</th><th>Тип</th><th>Событие</th><th>Участник</th><th class="right">Сумма</th></tr>
+    ${rows}
+  </table>`
+}
+
+function renderWithdrawalsRegistry(withdrawals: any[] | undefined | null): string {
+  if (!withdrawals || withdrawals.length === 0) return ''
+  const STATUS_LABELS: Record<string, string> = {
+    requested: 'Запрошен',
+    processing: 'В обработке',
+    completed: 'Выплачено',
+    rejected: 'Отклонён',
+  }
+  const rows = withdrawals.map((w) => {
+    const reqDt = w.requested_at ? new Date(w.requested_at).toLocaleDateString('ru-RU') : '—'
+    const compDt = w.completed_at ? new Date(w.completed_at).toLocaleDateString('ru-RU') : '—'
+    const amount = parseFloat(w.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2 })
+    return `<tr>
+      <td>${reqDt}</td>
+      <td>${compDt}</td>
+      <td>${STATUS_LABELS[w.status] || w.status}</td>
+      <td>${escapeHtml(w.act_number) || '—'}</td>
+      <td class="right">${amount} ₽</td>
+    </tr>`
+  }).join('')
+  return `
+  <h3 style="margin-top:24px; font-size:12pt;">Заявки на вывод средств за период</h3>
+  <table>
+    <tr><th>Запрошено</th><th>Завершено</th><th>Статус</th><th>№ акта</th><th class="right">Сумма</th></tr>
+    ${rows}
+  </table>`
 }
 
 /**

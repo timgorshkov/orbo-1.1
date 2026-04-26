@@ -32,6 +32,18 @@ const InvoicesWithoutActPanel = dynamic(
   { ssr: false, loading: () => null }
 )
 
+const IncomeLedgerPanel = dynamic(
+  () => import('@/components/superadmin/income-ledger-panel'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse">
+        <div className="h-48 bg-gray-100 rounded-xl" />
+      </div>
+    ),
+  }
+)
+
 export default function SuperadminAccountingPage() {
   const [refreshKey, setRefreshKey] = useState(0)
   return (
@@ -44,6 +56,7 @@ export default function SuperadminAccountingPage() {
           автоматически отправляются в Контур.Эльбу.
         </p>
       </div>
+      <IncomeLedgerPanel />
       <RetailActPanel onGenerated={() => setRefreshKey((k) => k + 1)} />
       <InvoicesWithoutActPanel onRegenerated={() => setRefreshKey((k) => k + 1)} />
       <AccountingDocumentsTable key={refreshKey} />

@@ -307,6 +307,26 @@ export async function GET(request: NextRequest) {
         })
       }
 
+      // ─── Income ledger (Orbo's own taxable revenue) ────────────
+      case 'income-ledger': {
+        const from = sp.get('from')
+        const to = sp.get('to')
+        if (!from || !to) {
+          return NextResponse.json({ error: 'from and to (YYYY-MM-DD) required' }, { status: 400 })
+        }
+
+        const { getIncomeLedger, summariseLedger } = await import('@/lib/services/incomeLedgerService')
+        const lines = await getIncomeLedger(from, to)
+        const summary = summariseLedger(from, to, lines)
+
+        // Truncate detailed list to first 500 for UI; full list available via export endpoint
+        return NextResponse.json({
+          summary,
+          lines: lines.slice(0, 500),
+          truncated: lines.length > 500,
+        })
+      }
+
       // ─── Org search ────────────────────────────────────────────
       case 'org-search': {
         const query = (sp.get('query') || '').trim()
