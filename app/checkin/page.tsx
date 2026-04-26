@@ -259,9 +259,9 @@ function CheckinPage() {
           <div className="mt-4 bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-2 text-sm">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Подсказки</p>
             <ol className="space-y-1.5 text-gray-600">
-              <li className="flex gap-2"><span className="text-gray-400">1.</span> Наведите камеру на QR-код в билете участника.</li>
-              <li className="flex gap-2"><span className="text-gray-400">2.</span> Если QR не читается — введите 8 символов кода с билета вручную.</li>
-              <li className="flex gap-2"><span className="text-gray-400">3.</span> На каждом билете под QR есть короткий код вида <span className="font-mono text-gray-800">ABCD-1234</span>.</li>
+              <li className="flex gap-2"><span className="text-gray-400">1.</span> Нажмите «Запустить сканер» и наведите камеру на QR-код участника.</li>
+              <li className="flex gap-2"><span className="text-gray-400">2.</span> Если сканер не запускается — откройте QR обычным <span className="font-medium text-gray-700">приложением «Камера»</span> на телефоне: оно само распознает код и предложит ссылку, перейдите по ней.</li>
+              <li className="flex gap-2"><span className="text-gray-400">3.</span> Если QR совсем не читается — введите 8 символов кода с билета вручную (под QR на билете указан код вида <span className="font-mono text-gray-800">ABCD-1234</span>).</li>
             </ol>
           </div>
 
