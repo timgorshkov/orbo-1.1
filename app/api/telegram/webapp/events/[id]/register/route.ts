@@ -302,8 +302,22 @@ export async function POST(
       pd_consent: pdConsent,
       announcements_consent: announcementsConsent,
     }, '✅ New registration via MiniApp');
-    
-    return NextResponse.json({ 
+
+    // Send confirmation (TG DM + email if address given) — only for free events.
+    // Paid events trigger confirmation after payment via paymentService.markSessionSucceeded.
+    if (!event.requires_payment && !event.default_price && registrationRow?.registration_id) {
+      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
+        sendRegistrationConfirmation({
+          registrationId: registrationRow.registration_id,
+          eventId,
+          orgId: event.org_id,
+          participantId: participant.id,
+          qrToken,
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
+    return NextResponse.json({
       success: true,
       message: 'Вы успешно зарегистрированы!',
       registration: {

@@ -1,6 +1,8 @@
 // app/api/groups/[org]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +17,15 @@ export async function GET(
   }
 
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const role = await getEffectiveOrgRole(user.id, org)
+    if (!role) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const supabase = await createClientServer()
     
     // Получаем группы через связующую таблицу org_telegram_groups
@@ -24,7 +35,7 @@ export async function GET(
       .eq('org_id', org)
     
     if (orgGroupsError) {
-      return NextResponse.json({ error: orgGroupsError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch groups' }, { status: 500 })
     }
     
     if (!orgGroups || orgGroups.length === 0) {
@@ -40,7 +51,7 @@ export async function GET(
       .order('title')
     
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch group details' }, { status: 500 })
     }
     
     return NextResponse.json({ groups: data || [] })

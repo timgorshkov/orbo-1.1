@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { TelegramService } from '@/lib/services/telegramService';
 import { createAPILogger } from '@/lib/logger';
+import { getUnifiedUser } from '@/lib/auth/unified-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const logger = createAPILogger(request, { endpoint: '/api/telegram/notifications/send-verification' });
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { telegramUserId, verificationCode, orgId, userId } = body;
 
@@ -65,7 +71,6 @@ export async function POST(request: Request) {
 
       return NextResponse.json({ 
         error: 'Failed to send verification code via Telegram',
-        details: telegramError.message
       }, { status: 500 });
     }
 
@@ -74,6 +79,6 @@ export async function POST(request: Request) {
       error: error.message || String(error),
       stack: error.stack
     }, 'Error in send-verification');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

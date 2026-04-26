@@ -235,6 +235,20 @@ export async function POST(
       pd_consent: pdConsent, announcements_consent: announcementsConsent,
     }, '✅ New registration via MAX MiniApp');
 
+    // Send confirmation (email if given in registration form) — free events only.
+    // Paid events get confirmation after payment via paymentService.
+    if (!event.requires_payment && !event.default_price && registrationRow?.registration_id) {
+      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
+        sendRegistrationConfirmation({
+          registrationId: registrationRow.registration_id,
+          eventId,
+          orgId: event.org_id,
+          participantId: participant.id,
+          qrToken,
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Вы успешно зарегистрированы!',

@@ -2,16 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/notifications/send' });
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { org_id, user_ids, message, notification_type } = await req.json()
     
     if (!org_id || !message || !notification_type) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
+    }
+
+    const role = await getEffectiveOrgRole(user.id, org_id)
+    if (!role || !['owner', 'admin'].includes(role.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     
     const supabase = await createClientServer()

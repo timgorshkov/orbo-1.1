@@ -2,19 +2,35 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/server/supabaseServer'
 import { createTelegramService } from '@/lib/services/telegramService'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/telegram/bot/add-group' });
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { orgId, chatId } = await req.json()
+
+    if (!orgId) {
+      return NextResponse.json({ error: 'Missing orgId' }, { status: 400 })
+    }
     
     if (!chatId || isNaN(chatId)) {
       return NextResponse.json({ error: 'Invalid chat ID' }, { status: 400 })
     }
+
+    const role = await getEffectiveOrgRole(user.id, orgId)
+    if (!role || !['owner', 'admin'].includes(role.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     
-    logger.info({ org_id: orgId, chat_id: chatId }, 'Adding group');
+    logger.info({ org_id: orgId, chat_id: chatId, user_id: user.id }, 'Adding group');
     
     const supabase = await createClientServer()
     const telegramService = createTelegramService()

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createAPILogger } from '@/lib/logger'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
+import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +73,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    logger.info({ org_id: orgId, chat_id: chatId }, 'Analytics API request');
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const role = await getEffectiveOrgRole(user.id, orgId)
+    if (!role || !['owner', 'admin'].includes(role.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    logger.info({ org_id: orgId, chat_id: chatId, user_id: user.id }, 'Analytics API request');
 
     const supabase = createAdminServer()
     const numericChatId = Number(chatId)
@@ -437,6 +448,6 @@ export async function GET(request: Request) {
       org_id: orgId,
       chat_id: chatId,
     }, 'Error in analytics API');
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

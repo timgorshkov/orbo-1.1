@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAPILogger } from '@/lib/logger'
 import { initiatePayment } from '@/lib/services/paymentService'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import type { GatewayCode } from '@/lib/services/paymentGateway'
 
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,11 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/pay' })
 
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const {
       orgId,

@@ -16,6 +16,15 @@ const supabaseAdmin = createAdminServer();
 
 export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { cron: 'cleanup-idempotency' });
+
+  const authHeader = req.headers.get('authorization')
+  const cronHeader = req.headers.get('x-cron-secret')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const secret = bearerToken || cronHeader
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const startTime = Date.now();
   
   try {
@@ -29,7 +38,7 @@ export async function GET(req: NextRequest) {
     
     if (error) {
       logger.error({ error: error.message }, 'Cleanup RPC failed');
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Cleanup failed' }, { status: 500 });
     }
     
     const duration = Date.now() - startTime;
@@ -53,7 +62,7 @@ export async function GET(req: NextRequest) {
     }, 'Cleanup exception');
     
     return NextResponse.json({
-      error: error.message || 'Internal error'
+      error: 'Internal error'
     }, { status: 500 });
   }
 }

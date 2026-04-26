@@ -12,10 +12,9 @@ export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/max/setup' });
 
   try {
-    // Simple auth check via header (for superadmin use)
     const authHeader = request.headers.get('authorization');
     const setupSecret = process.env.MAX_SETUP_SECRET || process.env.MAX_WEBHOOK_SECRET;
-    if (setupSecret && authHeader !== `Bearer ${setupSecret}`) {
+    if (!setupSecret || authHeader !== `Bearer ${setupSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -84,7 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, results });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error setting up MAX webhooks');
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -96,6 +95,12 @@ export async function GET(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/max/setup' });
 
   try {
+    const authHeader = request.headers.get('authorization');
+    const setupSecret = process.env.MAX_SETUP_SECRET || process.env.MAX_WEBHOOK_SECRET;
+    if (!setupSecret || authHeader !== `Bearer ${setupSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const results: Record<string, any> = {};
 
     if (process.env.MAX_MAIN_BOT_TOKEN) {
@@ -134,6 +139,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, results });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error getting MAX webhook status');
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -32,30 +32,43 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
   try {
     const db = createAdminServer()
 
-    // Load all needed data in parallel
+    // Load all needed data in parallel.
+    // Always pull registration_data — for in-form fields (email, full_name) that may
+    // not be on the participant record itself (typical for shadow profiles created
+    // from a TG event or first-time registrants).
     const [eventResult, participantResult, orgResult, regResult] = await Promise.all([
       db.from('events').select('title, event_date, start_time, end_time, location_info, event_type, enable_qr_checkin, cover_image_url').eq('id', params.eventId).single(),
       db.from('participants').select('full_name, username, email, tg_user_id').eq('id', params.participantId).single(),
       db.from('organizations').select('name, logo_url').eq('id', params.orgId).single(),
-      // Get fresh registration data (qr_token may have been set by trigger)
-      params.qrToken
-        ? Promise.resolve({ data: { qr_token: params.qrToken } })
-        : db.from('event_registrations').select('qr_token').eq('id', params.registrationId).single(),
+      db.from('event_registrations').select('qr_token, registration_data').eq('id', params.registrationId).single(),
     ])
 
     const event = eventResult.data
     const participant = participantResult.data
     const org = orgResult.data
-    const qrToken = regResult.data?.qr_token || params.qrToken
+    const regRow: any = regResult.data || {}
+    const regData: any = regRow.registration_data || {}
+    const qrToken = regRow.qr_token || params.qrToken
 
     if (!event || !participant) {
       logger.warn({ ...params }, 'Missing event or participant data, skipping confirmation')
       return
     }
 
+    // Resolve email and full name with fallback chain:
+    //   1. registration_data (explicitly entered in the event registration form)
+    //   2. participant record
+    // Reason: a participant created from Telegram (shadow profile) won't have an
+    // email until the registrant types one into the event form — and the typed
+    // value lives in event_registrations.registration_data, not on the participant.
+    const formEmail = typeof regData.email === 'string' ? regData.email.trim() : ''
+    const recipientEmail = formEmail || participant.email || null
+
+    const formFullName = typeof regData.full_name === 'string' ? regData.full_name.trim() : ''
+    const formName = typeof regData.name === 'string' ? regData.name.trim() : ''
     const orgName = org?.name || 'Orbo'
     const orgLogo = org?.logo_url || null
-    const participantName = participant.full_name || participant.username || 'Участник'
+    const participantName = formFullName || formName || participant.full_name || participant.username || 'Участник'
     const hasQr = event.enable_qr_checkin && qrToken
     const eventUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru'}/e/${params.eventId}`
 
@@ -81,7 +94,7 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
         orgName,
       }),
       sendEmailConfirmation({
-        email: participant.email,
+        email: recipientEmail,
         participantName,
         eventTitle: event.title,
         dateStr,
@@ -101,7 +114,8 @@ export async function sendRegistrationConfirmation(params: ConfirmationParams): 
       registration_id: params.registrationId,
       event_id: params.eventId,
       has_tg: !!participant.tg_user_id,
-      has_email: !!participant.email,
+      has_email: !!recipientEmail,
+      email_source: formEmail ? 'registration_data' : (participant.email ? 'participant' : 'none'),
       has_qr: hasQr,
     }, 'Registration confirmation sent')
   } catch (err) {
@@ -320,7 +334,12 @@ async function sendEmailConfirmation(p: EmailParams): Promise<void> {
 </html>`
 
   const subject = `Регистрация: ${p.eventTitle}`
-  await emailService.sendEmail({ to: p.email, subject, html })
+  try {
+    await emailService.sendEmail({ to: p.email, subject, html })
+    logger.info({ to: p.email, has_qr: p.hasQr, event: p.eventTitle }, 'Registration email sent')
+  } catch (err: any) {
+    logger.error({ to: p.email, error: err?.message, stack: err?.stack }, 'Failed to send registration confirmation email')
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────

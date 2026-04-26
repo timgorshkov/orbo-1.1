@@ -23,6 +23,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
 
+    const isPublicRequest = publicOnly && status === 'published'
+
+    if (!isPublicRequest) {
+      const user = await getUnifiedUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const adminSupabaseAuth = createAdminServer()
+      const { data: membership } = await adminSupabaseAuth
+        .from('memberships')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('org_id', orgId)
+        .single()
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
     const adminSupabase = createAdminServer()
     const today = new Date().toISOString().split('T')[0]
 
@@ -142,7 +161,7 @@ export async function GET(request: NextRequest) {
       stack: error.stack
     }, 'Error in GET /api/events');
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

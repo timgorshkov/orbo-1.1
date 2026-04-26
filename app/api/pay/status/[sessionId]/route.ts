@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAPILogger } from '@/lib/logger'
 import { pollSessionStatus, getPaymentSession } from '@/lib/services/paymentService'
+import { getUnifiedUser } from '@/lib/auth/unified-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,10 @@ export async function GET(
   const { sessionId } = await params
 
   try {
+    const user = await getUnifiedUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     // If poll=true, check with gateway for latest status
     const poll = request.nextUrl.searchParams.get('poll') !== 'false'
 

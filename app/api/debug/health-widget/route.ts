@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createAPILogger } from '@/lib/logger';
+import { isSuperadmin } from '@/lib/server/superadminGuard';
 
 // Service role client for bypassing RLS
 const supabaseAdmin = createAdminServer();
 
-/**
- * Debug endpoint for TelegramHealthStatus widget
- * GET /api/debug/health-widget
- * 
- * Returns diagnostic information to help debug why the widget is not working
- */
 export async function GET(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/debug/health-widget' });
   try {
+    const isAdmin = await isSuperadmin();
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const diagnostics: any = {
       timestamp: new Date().toISOString(),
       checks: {}
@@ -178,8 +177,6 @@ export async function GET(req: NextRequest) {
     }, 'Debug Health Widget error');
     return NextResponse.json({ 
       error: 'Debug failed',
-      message: error.message,
-      stack: error.stack
     }, { status: 500 });
   }
 }
