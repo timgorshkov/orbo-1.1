@@ -58,6 +58,8 @@ export interface IncomeLedgerLine {
   paymentSessionId: string | null;
   /** Whether the linked session is currently flagged as test (informational) */
   isTest: boolean;
+  /** Acquiring gateway that processed this transaction (tbank / cloudpayments / manual / null for legacy) */
+  gatewayCode: string | null;
 }
 
 export interface IncomeLedgerSummary {
@@ -65,7 +67,15 @@ export interface IncomeLedgerSummary {
   periodTo: string;
   totalAmount: number;
   byKind: Record<IncomeKind, number>;
-  byDay: Array<{ date: string; total: number; byKind: Partial<Record<IncomeKind, number>> }>;
+  /** Per-acquiring-gateway totals — bookkeeper reconciles each one against the
+   *  matching settlement coming in from that acquirer's bank. */
+  byGateway: Record<string, number>;
+  byDay: Array<{
+    date: string;
+    total: number;
+    byKind: Partial<Record<IncomeKind, number>>;
+    byGateway: Record<string, number>;
+  }>;
   lineCount: number;
 }
 
@@ -107,7 +117,8 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string, opts
             pi.org_id, o.name AS org_name,
             er.event_id, e.title AS event_title,
             pi.payment_session_id,
-            COALESCE(ps.is_test, FALSE) AS session_is_test
+            COALESCE(ps.is_test, FALSE) AS session_is_test,
+            ps.gateway_code AS session_gateway_code
        FROM platform_income pi
        LEFT JOIN organizations o ON o.id = pi.org_id
        LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
@@ -133,7 +144,8 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string, opts
   const { data: invRows, error: invErr } = await db.raw(
     `SELECT inv.id, inv.amount, inv.currency, inv.paid_at,
             inv.org_id, o.name AS org_name,
-            inv.customer_name, inv.customer_inn, inv.act_number
+            inv.customer_name, inv.customer_inn, inv.act_number,
+            inv.gateway_code
        FROM org_invoices inv
        LEFT JOIN organizations o ON o.id = inv.org_id
       WHERE inv.status = 'paid'
@@ -175,6 +187,7 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string, opts
       sourceId: row.id,
       paymentSessionId: row.payment_session_id || null,
       isTest: !!row.session_is_test,
+      gatewayCode: row.session_gateway_code || null,
     });
   }
 
@@ -198,6 +211,7 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string, opts
       sourceId: row.id,
       paymentSessionId: null,
       isTest: false,
+      gatewayCode: row.gateway_code || null,
     });
   }
 
@@ -221,34 +235,55 @@ export function summariseLedger(periodFrom: string, periodTo: string, lines: Inc
     service_fee_refund: 0,
     agent_commission_refund: 0,
   };
-  const byDayMap = new Map<string, { total: number; byKind: Partial<Record<IncomeKind, number>> }>();
+  const byGateway: Record<string, number> = {};
+  const byDayMap = new Map<string, {
+    total: number;
+    byKind: Partial<Record<IncomeKind, number>>;
+    byGateway: Record<string, number>;
+  }>();
   let total = 0;
 
   for (const line of lines) {
     byKind[line.kind] = (byKind[line.kind] || 0) + line.amount;
     total += line.amount;
+    const gw = line.gatewayCode || 'unknown';
+    byGateway[gw] = (byGateway[gw] || 0) + line.amount;
 
-    const day = byDayMap.get(line.date) ?? { total: 0, byKind: {} };
+    const day = byDayMap.get(line.date) ?? { total: 0, byKind: {}, byGateway: {} };
     day.total += line.amount;
     day.byKind[line.kind] = (day.byKind[line.kind] || 0) + line.amount;
+    day.byGateway[gw] = (day.byGateway[gw] || 0) + line.amount;
     byDayMap.set(line.date, day);
   }
 
   const byDay = Array.from(byDayMap.entries())
-    .map(([date, v]) => ({ date, total: round2(v.total), byKind: roundKindMap(v.byKind) }))
+    .map(([date, v]) => ({
+      date,
+      total: round2(v.total),
+      byKind: roundKindMap(v.byKind),
+      byGateway: roundStringMap(v.byGateway),
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // Round bucket sums for display
   for (const k of Object.keys(byKind) as IncomeKind[]) byKind[k] = round2(byKind[k]);
+  const byGatewayRounded = roundStringMap(byGateway);
 
   return {
     periodFrom,
     periodTo,
     totalAmount: round2(total),
     byKind,
+    byGateway: byGatewayRounded,
     byDay,
     lineCount: lines.length,
   };
+}
+
+function roundStringMap(m: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(m)) out[k] = round2(m[k]);
+  return out;
 }
 
 // ─── helpers ────────────────────────────────────────────────────────

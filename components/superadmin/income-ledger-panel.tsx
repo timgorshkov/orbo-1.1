@@ -20,7 +20,12 @@ import { Download, Loader2, Calendar, FlaskConical } from 'lucide-react'
 
 type IncomeKind = 'service_fee' | 'agent_commission' | 'subscription' | 'service_fee_refund' | 'agent_commission_refund'
 
-interface DayRow { date: string; total: number; byKind: Partial<Record<IncomeKind, number>> }
+interface DayRow {
+  date: string
+  total: number
+  byKind: Partial<Record<IncomeKind, number>>
+  byGateway: Record<string, number>
+}
 
 interface LedgerLine {
   date: string
@@ -36,6 +41,7 @@ interface LedgerLine {
   isTest: boolean
   sourceTable: string
   sourceId: string
+  gatewayCode: string | null
 }
 
 interface Summary {
@@ -43,6 +49,7 @@ interface Summary {
   periodTo: string
   totalAmount: number
   byKind: Record<IncomeKind, number>
+  byGateway: Record<string, number>
   byDay: DayRow[]
   lineCount: number
 }
@@ -54,6 +61,24 @@ const KIND_HEADERS: Array<{ key: IncomeKind; label: string }> = [
   { key: 'service_fee_refund', label: 'Возвр. сборов' },
   { key: 'agent_commission_refund', label: 'Возвр. комиссии' },
 ]
+
+/**
+ * Display order and labels for acquiring gateways. Anything outside of this
+ * list (e.g. 'manual', 'yookassa', 'unknown' for legacy rows w/o session link)
+ * shows up as an extra column in the "Other" slot — keeps the report honest
+ * even if a stray gateway sneaks in.
+ */
+const GATEWAY_LABELS: Record<string, string> = {
+  tbank: 'T-Bank',
+  cloudpayments: 'CloudPayments',
+  yookassa: 'YooKassa',
+  manual: 'Ручные',
+  unknown: 'Без шлюза',
+}
+
+function gatewayLabel(code: string): string {
+  return GATEWAY_LABELS[code] || code
+}
 
 function defaultPeriod(): { from: string; to: string } {
   const now = new Date()
@@ -220,41 +245,71 @@ export default function IncomeLedgerPanel() {
                 </div>
               ))}
             </div>
+            {/* By gateway: each acquirer settles to a separate bank account, so
+                the bookkeeper reconciles each total against its own settlement. */}
+            {Object.keys(summary.byGateway).length > 0 && (
+              <div className="pt-2 border-t border-gray-200">
+                <div className="text-xs text-gray-500 mb-2">Из них поступило через эквайринг (для сверки с банком)</div>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  {Object.entries(summary.byGateway)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([gw, val]) => (
+                      <div key={gw} className="px-3 py-1.5 rounded bg-white border border-gray-200">
+                        <span className="text-gray-500 mr-1.5">{gatewayLabel(gw)}:</span>
+                        <span className="font-medium text-gray-900">{fmt(val)} ₽</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* By-day table */}
-        {summary && summary.byDay.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-600">Дата</th>
-                  {KIND_HEADERS.map((k) => (
-                    <th key={k.key} className="text-right py-2 px-2 font-medium text-gray-600 whitespace-nowrap">{k.label}</th>
-                  ))}
-                  <th className="text-right py-2 pl-2 font-medium text-gray-900 whitespace-nowrap">Итого</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.byDay.map((d) => (
-                  <tr key={d.date} className="border-b border-gray-100">
-                    <td className="py-1.5 pr-4 text-gray-700">{d.date}</td>
+        {summary && summary.byDay.length > 0 && (() => {
+          const gatewayKeys = Object.keys(summary.byGateway).sort()
+          return (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 pr-4 font-medium text-gray-600">Дата</th>
                     {KIND_HEADERS.map((k) => (
-                      <td key={k.key} className="text-right py-1.5 px-2 text-gray-600">{fmt(d.byKind[k.key])}</td>
+                      <th key={k.key} className="text-right py-2 px-2 font-medium text-gray-600 whitespace-nowrap">{k.label}</th>
                     ))}
-                    <td className="text-right py-1.5 pl-2 font-medium text-gray-900">{fmt(d.total)}</td>
+                    {gatewayKeys.map((gw) => (
+                      <th key={gw} className="text-right py-2 px-2 font-medium text-blue-700 whitespace-nowrap border-l border-gray-200">
+                        через {gatewayLabel(gw)}
+                      </th>
+                    ))}
+                    <th className="text-right py-2 pl-2 font-medium text-gray-900 whitespace-nowrap">Итого</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {truncated && (
-              <p className="text-xs text-gray-400 mt-2">
-                Показаны не все записи (более 500). Полный реестр — в выгрузке XLSX.
-              </p>
-            )}
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {summary.byDay.map((d) => (
+                    <tr key={d.date} className="border-b border-gray-100">
+                      <td className="py-1.5 pr-4 text-gray-700">{d.date}</td>
+                      {KIND_HEADERS.map((k) => (
+                        <td key={k.key} className="text-right py-1.5 px-2 text-gray-600">{fmt(d.byKind[k.key])}</td>
+                      ))}
+                      {gatewayKeys.map((gw) => (
+                        <td key={gw} className="text-right py-1.5 px-2 text-blue-700 border-l border-gray-100">
+                          {fmt(d.byGateway?.[gw])}
+                        </td>
+                      ))}
+                      <td className="text-right py-1.5 pl-2 font-medium text-gray-900">{fmt(d.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {truncated && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Показаны не все записи (более 500). Полный реестр — в выгрузке XLSX.
+                </p>
+              )}
+            </div>
+          )
+        })()}
 
         {summary && summary.byDay.length === 0 && (
           <p className="text-sm text-gray-500 text-center py-6">За выбранный период доходов нет.</p>
@@ -273,6 +328,7 @@ export default function IncomeLedgerPanel() {
                     <th className="text-left py-1.5 pr-2">Дата</th>
                     <th className="text-left py-1.5 pr-2">Тип</th>
                     <th className="text-right py-1.5 pr-2">Сумма ₽</th>
+                    <th className="text-left py-1.5 pr-2">Шлюз</th>
                     <th className="text-left py-1.5 pr-2">Контрагент</th>
                     <th className="text-left py-1.5 pr-2">Событие/Документ</th>
                     <th className="py-1.5"></th>
@@ -284,6 +340,7 @@ export default function IncomeLedgerPanel() {
                       <td className="py-1 pr-2 text-gray-700">{l.date}</td>
                       <td className="py-1 pr-2 text-gray-700">{l.kindLabel}</td>
                       <td className="py-1 pr-2 text-right tabular-nums">{fmt(l.amount)}</td>
+                      <td className="py-1 pr-2 text-gray-600">{l.gatewayCode ? gatewayLabel(l.gatewayCode) : '—'}</td>
                       <td className="py-1 pr-2 text-gray-600 truncate max-w-[200px]">{l.contractor}</td>
                       <td className="py-1 pr-2 text-gray-500 truncate max-w-[280px]">
                         {l.documentNumber || l.eventTitle || l.orgName || '—'}

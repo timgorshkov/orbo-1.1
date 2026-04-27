@@ -2,12 +2,15 @@
 
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru https://privacy-cs.mail.ru https://cdn5.helpdeskeddy.com https://orbo.helpdeskeddy.com https://telegram.org",
+  // CloudPayments widget bundle is loaded from widget.cloudpayments.ru.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru https://privacy-cs.mail.ru https://cdn5.helpdeskeddy.com https://orbo.helpdeskeddy.com https://telegram.org https://widget.cloudpayments.ru",
   "style-src 'self' 'unsafe-inline' https://cdn5.helpdeskeddy.com",
   "img-src 'self' data: blob: https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.s3.storage.selcloud.ru https://*.supabase.co https://quickchart.io https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru",
   "font-src 'self' data: https://cdn5.helpdeskeddy.com",
-  "connect-src 'self' https://api.telegram.org https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.supabase.co https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru https://orbo.helpdeskeddy.com https://*.hawk.so",
-  "frame-src 'self' https://vk.com https://telegram.org https://mc.yandex.ru https://mc.yandex.com",
+  // CloudPayments XHR/fetch + Yandex.Metrika WebSocket for solid.ws.
+  "connect-src 'self' https://api.telegram.org https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.supabase.co https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.com wss://mc.yandex.ru https://top-fwz1.mail.ru https://orbo.helpdeskeddy.com https://*.hawk.so https://*.cloudpayments.ru https://api.cloudpayments.ru",
+  // 3DS / payment confirmation pages may render in an iframe served from cloudpayments.ru subdomains.
+  "frame-src 'self' https://vk.com https://telegram.org https://mc.yandex.ru https://mc.yandex.com https://*.cloudpayments.ru",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",

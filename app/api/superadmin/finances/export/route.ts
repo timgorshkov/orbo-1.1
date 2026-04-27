@@ -94,22 +94,43 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
   const lines = await getIncomeLedger(from, to, { includeTest });
   const summary = summariseLedger(from, to, lines);
 
+  const GATEWAY_LABELS: Record<string, string> = {
+    tbank: 'T-Bank',
+    cloudpayments: 'CloudPayments',
+    yookassa: 'YooKassa',
+    manual: 'Ручные',
+    unknown: 'Без шлюза',
+  };
+  const gatewayLabel = (code: string) => GATEWAY_LABELS[code] || code;
+  const gatewayKeys = Object.keys(summary.byGateway).sort();
+
   // Sheet 1 — Summary by day
   const s1 = wb.addWorksheet('Сводка по дням');
-  s1.columns = [
-    { header: 'Дата', key: 'date', width: 14 },
-    { header: 'Сервисный сбор', key: 'service_fee', width: 18, style: { numFmt: '#,##0.00' } },
-    { header: 'Агентское вознагр.', key: 'agent_commission', width: 22, style: { numFmt: '#,##0.00' } },
-    { header: 'Подписки/тарифы', key: 'subscription', width: 20, style: { numFmt: '#,##0.00' } },
-    { header: 'Возвраты сборов', key: 'service_fee_refund', width: 18, style: { numFmt: '#,##0.00' } },
-    { header: 'Возвраты комиссии', key: 'agent_commission_refund', width: 20, style: { numFmt: '#,##0.00' } },
-    { header: 'Итого за день', key: 'total', width: 16, style: { numFmt: '#,##0.00' } },
+  const s1Columns: ExcelJS.Column[] = [
+    { header: 'Дата', key: 'date', width: 14 } as ExcelJS.Column,
+    { header: 'Сервисный сбор', key: 'service_fee', width: 18, style: { numFmt: '#,##0.00' } } as ExcelJS.Column,
+    { header: 'Агентское вознагр.', key: 'agent_commission', width: 22, style: { numFmt: '#,##0.00' } } as ExcelJS.Column,
+    { header: 'Подписки/тарифы', key: 'subscription', width: 20, style: { numFmt: '#,##0.00' } } as ExcelJS.Column,
+    { header: 'Возвраты сборов', key: 'service_fee_refund', width: 18, style: { numFmt: '#,##0.00' } } as ExcelJS.Column,
+    { header: 'Возвраты комиссии', key: 'agent_commission_refund', width: 20, style: { numFmt: '#,##0.00' } } as ExcelJS.Column,
   ];
+  // Per-gateway columns — bookkeeper uses these to reconcile each acquirer's
+  // settlement to the matching daily row.
+  for (const gw of gatewayKeys) {
+    s1Columns.push({
+      header: `через ${gatewayLabel(gw)}`,
+      key: `gw_${gw}`,
+      width: 18,
+      style: { numFmt: '#,##0.00' },
+    } as ExcelJS.Column);
+  }
+  s1Columns.push({ header: 'Итого за день', key: 'total', width: 16, style: { numFmt: '#,##0.00' } } as ExcelJS.Column);
+  s1.columns = s1Columns;
   s1.getRow(1).font = { bold: true };
   s1.views = [{ state: 'frozen', ySplit: 1 }];
 
   for (const day of summary.byDay) {
-    s1.addRow({
+    const row: Record<string, any> = {
       date: day.date,
       service_fee: day.byKind.service_fee || 0,
       agent_commission: day.byKind.agent_commission || 0,
@@ -117,10 +138,14 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
       service_fee_refund: day.byKind.service_fee_refund || 0,
       agent_commission_refund: day.byKind.agent_commission_refund || 0,
       total: day.total,
-    });
+    };
+    for (const gw of gatewayKeys) {
+      row[`gw_${gw}`] = day.byGateway?.[gw] || 0;
+    }
+    s1.addRow(row);
   }
   // Totals row
-  const totalsRow = s1.addRow({
+  const totalsRowData: Record<string, any> = {
     date: 'ИТОГО',
     service_fee: summary.byKind.service_fee,
     agent_commission: summary.byKind.agent_commission,
@@ -128,7 +153,11 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
     service_fee_refund: summary.byKind.service_fee_refund,
     agent_commission_refund: summary.byKind.agent_commission_refund,
     total: summary.totalAmount,
-  });
+  };
+  for (const gw of gatewayKeys) {
+    totalsRowData[`gw_${gw}`] = summary.byGateway[gw] || 0;
+  }
+  const totalsRow = s1.addRow(totalsRowData);
   totalsRow.font = { bold: true };
   totalsRow.eachCell((cell) => { cell.border = { top: { style: 'thin' } }; });
 
@@ -139,6 +168,7 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
     { header: 'Время', key: 'time', width: 9 },
     { header: 'Тип дохода', key: 'kindLabel', width: 28 },
     { header: 'Сумма ₽', key: 'amount', width: 12, style: { numFmt: '#,##0.00' } },
+    { header: 'Шлюз', key: 'gateway', width: 16 },
     { header: 'Контрагент в Эльбе', key: 'contractor', width: 32 },
     { header: 'Организатор (источник)', key: 'orgName', width: 28 },
     { header: 'Событие', key: 'eventTitle', width: 36 },
@@ -156,6 +186,7 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
       time: dt.toISOString().slice(11, 16),
       kindLabel: l.kindLabel,
       amount: l.amount,
+      gateway: l.gatewayCode ? gatewayLabel(l.gatewayCode) : '',
       contractor: l.contractor,
       orgName: l.orgName || '',
       eventTitle: l.eventTitle || '',
@@ -194,15 +225,24 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
     `SELECT t.id, t.created_at, t.org_id, o.name AS org_name,
             t.type, t.amount, t.balance_after, t.event_id, e.title AS event_title,
             t.participant_id, p.full_name AS participant_name,
-            t.payment_session_id, t.withdrawal_id, t.notes
+            t.payment_session_id, t.withdrawal_id, t.notes,
+            ps.gateway_code AS session_gateway_code
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
        LEFT JOIN participants p ON p.id = t.participant_id
+       LEFT JOIN payment_sessions ps ON ps.id = t.payment_session_id
       WHERE t.created_at >= $1 AND t.created_at <= $2
       ORDER BY t.created_at ASC`,
     [fromTs, toTs]
   );
+
+  const GATEWAY_LABELS: Record<string, string> = {
+    tbank: 'T-Bank',
+    cloudpayments: 'CloudPayments',
+    yookassa: 'YooKassa',
+    manual: 'Ручные',
+  };
 
   const ws = wb.addWorksheet('Транзакции');
   ws.columns = [
@@ -210,6 +250,7 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
     { header: 'Тип', key: 'type', width: 28 },
     { header: 'Сумма ₽', key: 'amount', width: 12, style: { numFmt: '#,##0.00' } },
     { header: 'Баланс после, ₽', key: 'balance', width: 16, style: { numFmt: '#,##0.00' } },
+    { header: 'Шлюз', key: 'gateway', width: 16 },
     { header: 'Организатор', key: 'org', width: 32 },
     { header: 'Событие', key: 'event', width: 36 },
     { header: 'Участник', key: 'participant', width: 28 },
@@ -225,6 +266,7 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
       type: TRANSACTION_TYPE_LABELS[r.type] || r.type,
       amount: Number(r.amount),
       balance: Number(r.balance_after),
+      gateway: r.session_gateway_code ? (GATEWAY_LABELS[r.session_gateway_code] || r.session_gateway_code) : '',
       org: r.org_name || '',
       event: r.event_title || '',
       participant: r.participant_name || '',
