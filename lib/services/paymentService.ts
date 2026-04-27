@@ -727,13 +727,92 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
     })
     .eq('id', session.id)
 
-  // Record in ledger
-  try {
-    const paidAmount = event.amount || session.amount
+  const paidAmount = event.amount || session.amount
 
+  // ────────────────────────────────────────────────────────────────────
+  // Critical path: registration MUST move to 'paid' here, regardless of
+  // whether the bookkeeping side-effects succeed. The participant's money
+  // already settled (the gateway told us so), the rest is internal accounting.
+  // Bug we're fixing: previously a failure in recordEventPaymentV2 would throw
+  // and the catch block below would swallow it, so we'd skip both the
+  // event_registration update AND the confirmation email — leaving the user
+  // showing as "overdue" even though they paid.
+  // ────────────────────────────────────────────────────────────────────
+  if (session.payment_for === 'event' && session.event_registration_id) {
+    try {
+      await db
+        .from('event_registrations')
+        .update({
+          payment_status: 'paid',
+          paid_amount: paidAmount,
+          payment_method: session.gateway_code,
+          paid_at: new Date().toISOString(),
+        })
+        .eq('id', session.event_registration_id)
+    } catch (regErr: any) {
+      logger.error({
+        session_id: session.id,
+        registration_id: session.event_registration_id,
+        error: regErr?.message,
+      }, 'Failed to mark event_registration as paid (session already marked succeeded)')
+    }
+
+    // Send registration confirmation right after we mark paid (fire-and-forget).
+    // Doing this OUTSIDE the bookkeeping try/catch ensures the participant
+    // receives their ticket + email even if internal ledger recording fails.
+    if (session.event_id && session.participant_id) {
+      import('@/lib/services/registrationConfirmationService')
+        .then(({ sendRegistrationConfirmation }) =>
+          sendRegistrationConfirmation({
+            registrationId: session.event_registration_id!,
+            eventId: session.event_id!,
+            orgId: session.org_id,
+            participantId: session.participant_id!,
+            qrToken: null,
+          }).catch((err: any) =>
+            logger.error(
+              { error: err?.message, session_id: session.id, registration_id: session.event_registration_id },
+              'sendRegistrationConfirmation runtime error'
+            )
+          )
+        )
+        .catch((err: any) =>
+          logger.error(
+            { error: err?.message, stack: err?.stack, session_id: session.id },
+            'sendRegistrationConfirmation module load failed'
+          )
+        )
+    }
+  }
+
+  // Record in ledger (bookkeeping side-effect — failures here do NOT block the user flow)
+  try {
     if (session.payment_for === 'event' && session.event_registration_id) {
       // Use V2 recording if fee data available, otherwise fall back to V1
       if (session.ticket_price != null && session.service_fee_amount != null) {
+        // If the gateway settled an amount that diverges from what we expected
+        // (different test-terminal limits, partial preauth, etc.), rescale
+        // ticket_price / service_fee proportionally so the V2 invariant
+        // (ticket + fee == total) holds for the actually-paid amount. Without
+        // this the V2 call rejects and ledger stays empty.
+        const expected = Number(session.ticket_price) + Number(session.service_fee_amount)
+        let ticketPrice = Number(session.ticket_price)
+        let serviceFeeAmount = Number(session.service_fee_amount)
+        if (expected > 0 && Math.abs(expected - paidAmount) > 0.01) {
+          const ratio = paidAmount / expected
+          ticketPrice = Math.round(Number(session.ticket_price) * ratio * 100) / 100
+          serviceFeeAmount = Math.round((paidAmount - ticketPrice) * 100) / 100
+          logger.warn({
+            session_id: session.id,
+            expected_total: expected,
+            actual_total: paidAmount,
+            original_ticket: session.ticket_price,
+            original_fee: session.service_fee_amount,
+            adjusted_ticket: ticketPrice,
+            adjusted_fee: serviceFeeAmount,
+          }, 'Gateway settled an amount different from expected — fees rescaled proportionally')
+        }
+
         const feeConfig = await getOrgFeeConfig(session.org_id)
         await recordEventPaymentV2({
           orgId: session.org_id,
@@ -741,8 +820,8 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
           eventRegistrationId: session.event_registration_id,
           participantId: session.participant_id!,
           totalAmount: paidAmount,
-          ticketPrice: session.ticket_price,
-          serviceFeeAmount: session.service_fee_amount,
+          ticketPrice,
+          serviceFeeAmount,
           counterpartyType: feeConfig.counterpartyType,
           currency: session.currency,
           paymentGateway: session.gateway_code,
@@ -761,44 +840,6 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
           externalPaymentId: event.gatewayPaymentId,
         })
       }
-
-      // Update event_registration payment status
-      await db
-        .from('event_registrations')
-        .update({
-          payment_status: 'paid',
-          paid_amount: paidAmount,
-          payment_method: session.gateway_code,
-          paid_at: new Date().toISOString(),
-        })
-        .eq('id', session.event_registration_id)
-
-      // Send registration confirmation after successful payment (fire-and-forget).
-      // Errors are logged so silent module-load failures don't go unnoticed.
-      if (session.event_registration_id && session.event_id && session.participant_id) {
-        import('@/lib/services/registrationConfirmationService')
-          .then(({ sendRegistrationConfirmation }) =>
-            sendRegistrationConfirmation({
-              registrationId: session.event_registration_id!,
-              eventId: session.event_id!,
-              orgId: session.org_id,
-              participantId: session.participant_id!,
-              qrToken: null,
-            }).catch((err: any) =>
-              logger.error(
-                { error: err?.message, session_id: session.id, registration_id: session.event_registration_id },
-                'sendRegistrationConfirmation runtime error'
-              )
-            )
-          )
-          .catch((err: any) =>
-            logger.error(
-              { error: err?.message, stack: err?.stack, session_id: session.id },
-              'sendRegistrationConfirmation module load failed'
-            )
-          )
-      }
-
     } else if (session.payment_for === 'membership' && session.membership_payment_id) {
       await recordMembershipPayment({
         orgId: session.org_id,
