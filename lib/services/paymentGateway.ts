@@ -5,13 +5,14 @@
  * - manual: admin confirms payments manually (bank transfer, cash, external links)
  * - yookassa: YooKassa (ЮKassa) — cards, SBP, wallets
  * - tbank: T-Bank (Tinkoff) — cards, SBP
+ * - cloudpayments: CloudPayments — cards via the Pay Widget (client-side)
  *
  * Each gateway implements createPayment, checkStatus, handleWebhook, and refund.
  */
 
 // ─── Shared Types ───────────────────────────────────────────────────
 
-export type GatewayCode = 'manual' | 'yookassa' | 'tbank' | 'sbp'
+export type GatewayCode = 'manual' | 'yookassa' | 'tbank' | 'sbp' | 'cloudpayments'
 
 export interface CreatePaymentParams {
   amount: number
@@ -125,5 +126,13 @@ if (process.env.TBANK_TERMINAL_KEY && process.env.TBANK_SECRET_KEY) {
   registerGateway('tbank', () => {
     const { TbankGateway } = require('./gateways/tbankGateway')
     return new TbankGateway()
+  })
+}
+
+// CloudPayments — available if credentials are set
+if (process.env.CLOUDPAYMENTS_PUBLIC_ID && process.env.CLOUDPAYMENTS_API_SECRET) {
+  registerGateway('cloudpayments', () => {
+    const { CloudPaymentsGateway } = require('./gateways/cloudpaymentsGateway')
+    return new CloudPaymentsGateway()
   })
 }
