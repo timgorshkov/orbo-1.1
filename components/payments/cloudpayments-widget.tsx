@@ -83,6 +83,14 @@ export default function CloudPaymentsWidget(props: CloudPaymentsWidgetProps) {
     setOpening(true)
     try {
       const widget = new window.cp.CloudPayments()
+      // After-payment redirect: bring the user back to OUR pay-page with
+      // ?sessionId=<id> so the PaymentReturnHandler shows a success state.
+      // Without these, CloudPayments' "Return to merchant" button defaults
+      // to the page that opened the widget — which on /p/<org>/pay re-opens
+      // the widget and double-charges the user.
+      const origin = window.location.origin
+      const sessionReturnUrl = `${origin}/p/${encodeURIComponent(String(props.data?.org_id || ''))}/pay?sessionId=${encodeURIComponent(props.invoiceId)}`
+
       widget.pay(
         'charge',
         {
@@ -95,6 +103,8 @@ export default function CloudPaymentsWidget(props: CloudPaymentsWidgetProps) {
           email: props.email,
           skin: 'mini',
           data: props.data || {},
+          successRedirectUrl: sessionReturnUrl,
+          failRedirectUrl: sessionReturnUrl,
         },
         {
           onSuccess: () => {

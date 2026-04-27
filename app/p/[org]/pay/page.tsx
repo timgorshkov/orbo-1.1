@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { getParticipantSession } from '@/lib/participant-auth/session'
@@ -71,6 +72,7 @@ export default async function PayPage({ params, searchParams }: Props) {
     // Load registration + event info (use default_price as fallback if price not set on registration)
     const { data: reg } = await db.raw(
       `SELECT er.id, er.price, er.event_id, er.participant_id, er.quantity,
+              er.payment_status,
               e.title, e.currency, e.default_price
        FROM event_registrations er
        JOIN events e ON e.id = er.event_id
@@ -80,6 +82,30 @@ export default async function PayPage({ params, searchParams }: Props) {
 
     if (reg && reg.length > 0) {
       const r = reg[0]
+
+      // If the registration is already paid we MUST NOT auto-open the widget
+      // again — sending the user back here right after a successful charge
+      // (which is what CloudPayments' "Return to merchant" button does by
+      // default) would trigger a second charge on the same ticket. Look up
+      // the most recent succeeded session for this registration and redirect
+      // the user to the success state instead.
+      if (r.payment_status === 'paid' || r.payment_status === 'refunded') {
+        const { data: succeededSessions } = await db
+          .from('payment_sessions')
+          .select('id')
+          .eq('event_registration_id', r.id)
+          .eq('status', 'succeeded')
+          .order('paid_at', { ascending: false })
+          .limit(1)
+        const lastSession = (succeededSessions as any)?.[0]
+        if (lastSession?.id) {
+          redirect(`/p/${orgId}/pay?sessionId=${lastSession.id}&returnPath=${encodeURIComponent(`/p/${orgId}/events/${r.event_id}`)}`)
+        }
+        // Fallback: just send them back to the event page if we somehow
+        // can't find the session (e.g. manual mark-paid, no session row).
+        redirect(`/p/${orgId}/events/${r.event_id}`)
+      }
+
       const unitPrice = parseFloat(r.price) || parseFloat(r.default_price) || 0
       const qty = parseInt(r.quantity) || 1
       amount = unitPrice * qty
