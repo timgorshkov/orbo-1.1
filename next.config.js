@@ -2,12 +2,12 @@
 
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru https://top-fwz1.mail.ru https://cdn5.helpdeskeddy.com https://telegram.org",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru https://privacy-cs.mail.ru https://cdn5.helpdeskeddy.com https://orbo.helpdeskeddy.com https://telegram.org",
   "style-src 'self' 'unsafe-inline' https://cdn5.helpdeskeddy.com",
-  "img-src 'self' data: blob: https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.s3.storage.selcloud.ru https://mc.yandex.ru https://top-fwz1.mail.ru",
+  "img-src 'self' data: blob: https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.s3.storage.selcloud.ru https://*.supabase.co https://quickchart.io https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru",
   "font-src 'self' data: https://cdn5.helpdeskeddy.com",
-  "connect-src 'self' https://api.telegram.org https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://mc.yandex.ru https://top-fwz1.mail.ru https://orbo.helpdeskeddy.com https://*.hawk.so",
-  "frame-src 'self' https://vk.com https://telegram.org",
+  "connect-src 'self' https://api.telegram.org https://*.selcdn.ru https://*.storage.selcloud.ru https://*.selstorage.ru https://*.supabase.co https://mc.yandex.ru https://mc.yandex.com https://top-fwz1.mail.ru https://orbo.helpdeskeddy.com https://*.hawk.so",
+  "frame-src 'self' https://vk.com https://telegram.org https://mc.yandex.ru https://mc.yandex.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",

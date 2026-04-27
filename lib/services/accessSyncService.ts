@@ -28,21 +28,33 @@ export async function syncMembershipAccess(
 ): Promise<SyncResult[]> {
   const supabase = createAdminServer()
 
-  const { data: membership, error } = await supabase
-    .from('participant_memberships')
-    .select(`
-      id, org_id, participant_id, plan_id, status,
-      participant:participants(id, tg_user_id, user_id)
-    `)
-    .eq('id', membershipId)
-    .single()
+  // Two queries instead of one — Supabase-style joins don't work on PostgresDbClient.
+  const { data: membershipRows, error } = await supabase.raw(
+    `SELECT m.id, m.org_id, m.participant_id, m.plan_id, m.status,
+            p.id AS p_id, p.tg_user_id AS p_tg_user_id, p.user_id AS p_user_id
+       FROM participant_memberships m
+       LEFT JOIN participants p ON p.id = m.participant_id
+      WHERE m.id = $1
+      LIMIT 1`,
+    [membershipId]
+  )
 
-  if (error || !membership) {
+  const row: any = (membershipRows && membershipRows[0]) || null
+  if (error || !row) {
     logger.error({ membership_id: membershipId, error: error?.message }, 'Membership not found for sync')
     return []
   }
 
-  const participant = membership.participant as any
+  const membership = {
+    id: row.id,
+    org_id: row.org_id,
+    participant_id: row.participant_id,
+    plan_id: row.plan_id,
+    status: row.status,
+  }
+  const participant = row.p_id
+    ? { id: row.p_id, tg_user_id: row.p_tg_user_id, user_id: row.p_user_id }
+    : null
   if (!participant) {
     logger.warn({ membership_id: membershipId }, 'No participant linked')
     return []
