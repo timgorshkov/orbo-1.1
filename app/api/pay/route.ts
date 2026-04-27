@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
     }
 
-    if (!['manual', 'yookassa', 'tbank', 'sbp'].includes(gatewayCode)) {
+    if (!['manual', 'yookassa', 'tbank', 'sbp', 'cloudpayments'].includes(gatewayCode)) {
       return NextResponse.json({ error: 'Invalid gatewayCode' }, { status: 400 })
     }
 
