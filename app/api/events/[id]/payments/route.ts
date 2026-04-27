@@ -254,17 +254,30 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Send registration confirmation after manual payment confirmation (fire-and-forget)
+    // Send registration confirmation after manual payment confirmation (fire-and-forget).
+    // Errors are logged so silent module-load failures don't go unnoticed.
     if (payment_status === 'paid' && updatedReg?.participant_id) {
-      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
-        sendRegistrationConfirmation({
-          registrationId: registration_id,
-          eventId,
-          orgId: orgId!,
-          participantId: updatedReg.participant_id,
-          qrToken: null,
-        }).catch(() => {})
-      }).catch(() => {})
+      import('@/lib/services/registrationConfirmationService')
+        .then(({ sendRegistrationConfirmation }) =>
+          sendRegistrationConfirmation({
+            registrationId: registration_id,
+            eventId,
+            orgId: orgId!,
+            participantId: updatedReg.participant_id,
+            qrToken: null,
+          }).catch((err: any) =>
+            logger.error(
+              { error: err?.message, registration_id },
+              'sendRegistrationConfirmation runtime error'
+            )
+          )
+        )
+        .catch((err: any) =>
+          logger.error(
+            { error: err?.message, stack: err?.stack, registration_id },
+            'sendRegistrationConfirmation module load failed'
+          )
+        )
     }
 
     logger.info({

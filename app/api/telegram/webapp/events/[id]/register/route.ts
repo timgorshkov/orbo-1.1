@@ -306,15 +306,27 @@ export async function POST(
     // Send confirmation (TG DM + email if address given) — only for free events.
     // Paid events trigger confirmation after payment via paymentService.markSessionSucceeded.
     if (!event.requires_payment && !event.default_price && registrationRow?.registration_id) {
-      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
-        sendRegistrationConfirmation({
-          registrationId: registrationRow.registration_id,
-          eventId,
-          orgId: event.org_id,
-          participantId: participant.id,
-          qrToken,
-        }).catch(() => {})
-      }).catch(() => {})
+      import('@/lib/services/registrationConfirmationService')
+        .then(({ sendRegistrationConfirmation }) =>
+          sendRegistrationConfirmation({
+            registrationId: registrationRow.registration_id,
+            eventId,
+            orgId: event.org_id,
+            participantId: participant.id,
+            qrToken,
+          }).catch((err: any) =>
+            logger.error(
+              { error: err?.message, registration_id: registrationRow.registration_id },
+              'sendRegistrationConfirmation runtime error'
+            )
+          )
+        )
+        .catch((err: any) =>
+          logger.error(
+            { error: err?.message, stack: err?.stack, registration_id: registrationRow.registration_id },
+            'sendRegistrationConfirmation module load failed'
+          )
+        )
     }
 
     return NextResponse.json({

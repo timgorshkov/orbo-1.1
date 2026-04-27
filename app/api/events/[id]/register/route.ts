@@ -417,18 +417,31 @@ export async function POST(
       qr_token: registrationRow.registration_qr_token || null
     }
 
-    // Send confirmation (fire-and-forget) — only for free events
-    // For paid events, confirmation is sent after payment via paymentService
+    // Send confirmation (fire-and-forget) — only for free events.
+    // For paid events, confirmation is sent after payment via paymentService.
+    // Errors are logged so silent module-load failures don't go unnoticed.
     if (!event.requires_payment && !event.default_price) {
-      import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
-        sendRegistrationConfirmation({
-          registrationId: registration.id,
-          eventId: registration.event_id,
-          orgId: event.org_id,
-          participantId: registration.participant_id,
-          qrToken: registration.qr_token,
-        }).catch(() => {})
-      }).catch(() => {})
+      import('@/lib/services/registrationConfirmationService')
+        .then(({ sendRegistrationConfirmation }) =>
+          sendRegistrationConfirmation({
+            registrationId: registration.id,
+            eventId: registration.event_id,
+            orgId: event.org_id,
+            participantId: registration.participant_id,
+            qrToken: registration.qr_token,
+          }).catch((err: any) =>
+            logger.error(
+              { error: err?.message, registration_id: registration.id },
+              'sendRegistrationConfirmation runtime error'
+            )
+          )
+        )
+        .catch((err: any) =>
+          logger.error(
+            { error: err?.message, stack: err?.stack, registration_id: registration.id },
+            'sendRegistrationConfirmation module load failed'
+          )
+        )
     }
 
     return NextResponse.json({ registration }, { status: 201 })

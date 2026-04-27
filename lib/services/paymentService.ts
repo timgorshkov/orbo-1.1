@@ -773,17 +773,30 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
         })
         .eq('id', session.event_registration_id)
 
-      // Send registration confirmation after successful payment (fire-and-forget)
+      // Send registration confirmation after successful payment (fire-and-forget).
+      // Errors are logged so silent module-load failures don't go unnoticed.
       if (session.event_registration_id && session.event_id && session.participant_id) {
-        import('@/lib/services/registrationConfirmationService').then(({ sendRegistrationConfirmation }) => {
-          sendRegistrationConfirmation({
-            registrationId: session.event_registration_id!,
-            eventId: session.event_id!,
-            orgId: session.org_id,
-            participantId: session.participant_id!,
-            qrToken: null, // will be fetched from DB
-          }).catch(() => {})
-        }).catch(() => {})
+        import('@/lib/services/registrationConfirmationService')
+          .then(({ sendRegistrationConfirmation }) =>
+            sendRegistrationConfirmation({
+              registrationId: session.event_registration_id!,
+              eventId: session.event_id!,
+              orgId: session.org_id,
+              participantId: session.participant_id!,
+              qrToken: null,
+            }).catch((err: any) =>
+              logger.error(
+                { error: err?.message, session_id: session.id, registration_id: session.event_registration_id },
+                'sendRegistrationConfirmation runtime error'
+              )
+            )
+          )
+          .catch((err: any) =>
+            logger.error(
+              { error: err?.message, stack: err?.stack, session_id: session.id },
+              'sendRegistrationConfirmation module load failed'
+            )
+          )
       }
 
     } else if (session.payment_for === 'membership' && session.membership_payment_id) {

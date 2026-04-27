@@ -177,6 +177,45 @@ export async function PATCH(
       }
     })
 
+    logger.info({
+      registration_id: registrationId,
+      event_id: eventId,
+      org_id: event.org_id,
+      payment_status_before: existingReg.payment_status,
+      payment_status_after: updateData.payment_status,
+      paid_amount: updateData.paid_amount,
+    }, 'Payment updated (per-registration)')
+
+    // Send registration confirmation when payment is newly confirmed (fire-and-forget).
+    // Errors are logged so silent module-load failures don't go unnoticed.
+    if (
+      payment_status === 'paid' &&
+      existingReg.payment_status !== 'paid' &&
+      updatedReg?.participant_id
+    ) {
+      import('@/lib/services/registrationConfirmationService')
+        .then(({ sendRegistrationConfirmation }) =>
+          sendRegistrationConfirmation({
+            registrationId: registrationId!,
+            eventId: eventId!,
+            orgId: event.org_id,
+            participantId: updatedReg.participant_id,
+            qrToken: null,
+          }).catch((err: any) =>
+            logger.error(
+              { error: err?.message, registration_id: registrationId },
+              'sendRegistrationConfirmation runtime error'
+            )
+          )
+        )
+        .catch((err: any) =>
+          logger.error(
+            { error: err?.message, stack: err?.stack, registration_id: registrationId },
+            'sendRegistrationConfirmation module load failed'
+          )
+        )
+    }
+
     return NextResponse.json({
       success: true,
       registration: updatedReg
