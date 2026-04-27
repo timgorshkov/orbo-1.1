@@ -39,7 +39,17 @@ export interface OrboRequisites {
     label: string
     /** Основание освобождения от НДС (для УПД без СФ) */
     vatExemptionReason: string
-    /** Числовой код для OrangeData ФФД: 1=ОСН, 2=УСН доходы, 3=УСН доходы-расходы, и т.д. */
+    /**
+     * Числовой код для OrangeData ФФД 1.2 (`checkClose.taxationSystem`):
+     *   0 = ОСН
+     *   1 = УСН доходы
+     *   2 = УСН доходы минус расходы
+     *   4 = ЕСХН
+     *   5 = ПСН
+     * Должен совпадать с СНО, под которой касса фискализирована в кабинете
+     * OrangeData / ФНС. Иначе OrangeData возвращает ошибку «В данной группе
+     * нет ККТ фискализированных на СНО указанную в чеке».
+     */
     orangeDataCode: number
   }
   /** Контакты */
@@ -72,7 +82,11 @@ export const ORBO_ENTITY: OrboRequisites = {
     label: 'УСН (упрощённая система налогообложения, «доходы»)',
     vatExemptionReason:
       'Организация применяет УСН и не признаётся плательщиком НДС (п. 2 ст. 346.11 НК РФ)',
-    orangeDataCode: 2,
+    // Per OrangeData ФФД 1.2 spec: 1 = УСН доходы. Was incorrectly set to 2
+    // (УСН доходы-расходы), which made OrangeData reject every receipt with
+    // «нет ККТ фискализированных на СНО указанную в чеке» since the cassa
+    // is registered under sno=1.
+    orangeDataCode: 1,
   },
   website: 'https://orbo.ru',
   email: 'hello@orbo.ru',

@@ -80,7 +80,7 @@ export interface FiscalReceipt {
 import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
 
 const ORBO_INN = ORBO_ENTITY.inn
-const TAXATION_SYSTEM = ORBO_ENTITY.taxation.orangeDataCode // 2 = УСН доходы
+const TAXATION_SYSTEM = ORBO_ENTITY.taxation.orangeDataCode // 1 = УСН доходы (ФФД 1.2)
 
 // ─── VAT / Payment mapping for OrangeData ──────────────────────────
 
