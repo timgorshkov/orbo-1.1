@@ -253,10 +253,11 @@ async function sendPostEventFollowUps({
       const regEventId = event.parent_event_id ?? event.id;
       const isRecurringChild = !!event.parent_event_id;
 
-      // Get registrations that attended (check-in)
+      // Get registrations that attended (check-in). We pull `id` so we can
+      // dedup post_event reminders via event_participant_reminders.
       const { data: attendedRegs } = await adminSupabase
         .from('event_registrations')
-        .select('participant_id')
+        .select('id, participant_id')
         .eq('event_id', regEventId)
         .eq('status', 'attended');
 
@@ -271,7 +272,7 @@ async function sendPostEventFollowUps({
       const orgName = org?.name || '';
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
 
-      // Send thank-you to attended
+      // Send thank-you to attended (dedup via event_participant_reminders)
       if (attendedRegs && attendedRegs.length > 0) {
         const participantIds = attendedRegs.map((r: any) => r.participant_id);
         const { data: participants } = await adminSupabase
@@ -279,10 +280,23 @@ async function sendPostEventFollowUps({
           .select('id, tg_user_id, full_name, merged_into')
           .in('id', participantIds)
           .is('merged_into', null);
+        const participantsByPid = new Map((participants || []).map((p: any) => [p.id, p]));
 
-        for (const p of (participants || [])) {
-          if (!p.tg_user_id) continue;
+        for (const r of attendedRegs) {
+          const p = participantsByPid.get(r.participant_id) as any;
+          if (!p?.tg_user_id) continue;
           try {
+            // Reserve atomically — skip if already sent for this (event, reg, type)
+            const { data: reservation } = await adminSupabase.raw(
+              `INSERT INTO event_participant_reminders (event_id, registration_id, reminder_type, status)
+                    VALUES ($1, $2, 'post_event', 'sent')
+               ON CONFLICT (event_id, registration_id, reminder_type) DO NOTHING
+               RETURNING id`,
+              [event.id, r.id]
+            );
+            const reservationId = (reservation || [])[0]?.id;
+            if (!reservationId) continue;
+
             const safeTitle = event.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const safeOrgName = orgName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const message = `✅ Спасибо за участие в <b>${safeTitle}</b>!\n\n` +
@@ -294,7 +308,20 @@ async function sendPostEventFollowUps({
               parse_mode: 'HTML',
               disable_web_page_preview: true
             });
-            if (result.ok) totalSent++;
+            if (result.ok) {
+              totalSent++;
+              await adminSupabase.raw(
+                `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
+                [(result as any)?.result?.message_id || null, reservationId]
+              );
+            } else {
+              await adminSupabase.raw(
+                `UPDATE event_participant_reminders
+                    SET status = 'failed', error_message = $1
+                  WHERE id = $2`,
+                [String(result.description || 'unknown').slice(0, 500), reservationId]
+              );
+            }
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (err) {
             // Skip errors for individual participants
@@ -367,20 +394,40 @@ async function sendReminderToParticipants({
 
     const participantsMap = new Map(participants?.map((p: any) => [p.id, p]) || []);
 
-    // Filter valid registrations
-    const validRegs = regsRaw
+    // Filter valid registrations (have a Telegram user id) AND filter out
+    // anyone who already received this reminder type for this event. The
+    // dedup gate is the unique index on event_participant_reminders, but we
+    // also pre-filter here to avoid attempting Telegram sends for everyone
+    // every cron run.
+    const candidateRegs = regsRaw
       .filter((r: any) => {
         const p = participantsMap.get(r.participant_id) as any;
         return p && p.tg_user_id;
       });
 
+    if (candidateRegs.length === 0) return 0;
+
+    const candidateIds = candidateRegs.map((r: any) => r.id);
+    const { data: alreadySent } = await adminSupabase.raw(
+      `SELECT registration_id
+         FROM event_participant_reminders
+        WHERE event_id = $1
+          AND reminder_type = $2
+          AND registration_id = ANY($3::uuid[])`,
+      [event.id, reminderType, candidateIds]
+    );
+    const alreadySentSet = new Set((alreadySent || []).map((r: any) => r.registration_id));
+
+    const validRegs = candidateRegs.filter((r: any) => !alreadySentSet.has(r.id));
+
     if (validRegs.length === 0) return 0;
 
-    logger.info({ 
+    logger.info({
       event_id: event.id,
       event_title: event.title,
       reminder_type: reminderType,
-      count: validRegs.length
+      count: validRegs.length,
+      skipped_already_sent: candidateRegs.length - validRegs.length,
     }, `📨 Sending ${reminderType} reminders`);
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://my.orbo.ru';
@@ -390,6 +437,19 @@ async function sendReminderToParticipants({
       try {
         const participant = participantsMap.get(reg.participant_id) as any;
         if (!participant?.tg_user_id) continue;
+
+        // Reserve the slot atomically: if another cron run already wrote a
+        // row for (event, registration, type) the INSERT does nothing, we
+        // get an empty RETURNING and skip. This survives parallel runs.
+        const { data: reservation } = await adminSupabase.raw(
+          `INSERT INTO event_participant_reminders (event_id, registration_id, reminder_type, status)
+                VALUES ($1, $2, $3, 'sent')
+           ON CONFLICT (event_id, registration_id, reminder_type) DO NOTHING
+           RETURNING id`,
+          [event.id, reg.id, reminderType]
+        );
+        const reservationId = (reservation || [])[0]?.id;
+        if (!reservationId) continue;
 
         const eventDate = new Date(event.event_date);
         const formattedDate = eventDate.toLocaleDateString('ru-RU', {
@@ -437,11 +497,26 @@ async function sendReminderToParticipants({
 
         if (result.ok) {
           sent++;
+          // Persist the Telegram message id for traceability
+          await adminSupabase.raw(
+            `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
+            [(result as any)?.result?.message_id || null, reservationId]
+          );
         } else {
-          logger.debug({ 
+          // Mark the reservation as failed so we have a record. We don't
+          // delete it — that would let the next cron run try again, which
+          // would spam users for the same systematic error (e.g. user
+          // blocked the bot). To explicitly retry: delete the row manually.
+          logger.debug({
             tg_user_id: participant.tg_user_id,
             error: result.description
           }, 'Failed to send personal reminder');
+          await adminSupabase.raw(
+            `UPDATE event_participant_reminders
+                SET status = 'failed', error_message = $1
+              WHERE id = $2`,
+            [String(result.description || 'unknown').slice(0, 500), reservationId]
+          );
         }
 
         await new Promise(resolve => setTimeout(resolve, 100));
