@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAPILogger } from '@/lib/logger'
 import { handlePaymentWebhook } from '@/lib/services/paymentService'
+import { verifyCloudPaymentsSignature } from '@/lib/services/gateways/cloudpaymentsGateway'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/webhooks/cloudpayments — CloudPayments payment webhook.
  *
- * Configure all event URLs (Pay/Fail/Cancel/Refund) in the CloudPayments
- * dashboard to point at this single endpoint. The gateway adapter classifies
- * events by their payload contents.
+ * Configure all event URLs in the CloudPayments dashboard to point at this
+ * single endpoint. The gateway adapter classifies events by their payload
+ * contents.
  *
- * CloudPayments expects a JSON response of the form { code: 0 } when the
- * webhook is accepted (the transaction is allowed to settle). Returning
- * { code: 13 } tells CP to mark the payment as rejected — we use that for
- * signature failures or unmatched sessions, so accidentally-misdirected
- * traffic isn't silently treated as a successful payment.
+ * Response codes (CloudPayments contract):
+ *   { code: 0  } — accepted (allow the transaction / acknowledge)
+ *   { code: 13 } — rejected (CP marks the payment as failed)
+ *
+ * We split signature verification from event handling so that "informational"
+ * events (e.g. Check before charging, Confirm for two-stage flows) — which
+ * have no actionable payload for our adapter and would otherwise surface as
+ * null/false — are still acknowledged with `{code:0}` instead of inadvertently
+ * blocking the payment.
  */
 export async function POST(request: NextRequest) {
   const logger = createAPILogger(request, { endpoint: '/api/webhooks/cloudpayments' })
@@ -27,19 +32,28 @@ export async function POST(request: NextRequest) {
       headers[key] = value
     })
 
-    const result = await handlePaymentWebhook('cloudpayments', rawBody, headers)
-
-    if (result.success) {
-      logger.info({ session_id: result.sessionId }, 'CloudPayments webhook processed')
-      return NextResponse.json({ code: 0 })
+    if (!verifyCloudPaymentsSignature(rawBody, headers)) {
+      logger.warn({}, 'CloudPayments webhook: invalid signature, rejecting')
+      return NextResponse.json({ code: 13 })
     }
 
-    logger.warn({}, 'CloudPayments webhook: rejected (invalid signature or unknown session)')
-    return NextResponse.json({ code: 13 })
+    // Signature is valid — at this point we always ACK with code:0 so we don't
+    // accidentally block legitimate transactions. The actionable processing
+    // (find session, mark succeeded, fire confirmation, etc.) runs through
+    // the regular paymentService pipeline; if it fails to find a session for
+    // an intermediate event that's expected — paymentService logs a warning
+    // and we continue.
+    const result = await handlePaymentWebhook('cloudpayments', rawBody, headers)
+    logger.info({
+      session_id: result.sessionId,
+      processed: result.success,
+    }, 'CloudPayments webhook acknowledged')
+
+    return NextResponse.json({ code: 0 })
   } catch (error: any) {
     logger.error({ error: error.message }, 'CloudPayments webhook error')
-    // Return code 0 to prevent retries for our own bugs — CP retries indefinitely
-    // if it receives non-zero codes, which would amplify any internal incident.
+    // Returning code:0 prevents CloudPayments from retrying our internal bugs
+    // forever; we'd rather surface the issue via logs.
     return NextResponse.json({ code: 0 })
   }
 }

@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CreditCard, QrCode, Building2, CheckCircle2, XCircle, Clock, Loader2, ArrowLeft, Copy, Check } from 'lucide-react'
+import CloudPaymentsWidget from './cloudpayments-widget'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
 type PaymentFor = 'event' | 'membership'
-type GatewayCode = 'manual' | 'yookassa' | 'tbank' | 'sbp'
+type GatewayCode = 'manual' | 'yookassa' | 'tbank' | 'sbp' | 'cloudpayments'
 type SessionStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled' | 'refunded'
 
 interface GatewayInfo {
@@ -58,6 +59,12 @@ interface PaymentPageProps {
     settlementAccount: string
     recipientName: string
   } | null
+  /** CloudPayments public_id (read from env on the server). When unset, the
+   *  widget cannot be rendered — paymentService still creates the session,
+   *  but the payer sees a configuration error message. */
+  cloudpaymentsPublicId?: string
+  /** Optional email used for the fiscal receipt the widget hands to CP. */
+  payerEmail?: string
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -81,6 +88,8 @@ export default function PaymentPage({
   userId,
   returnPath,
   bankDetails,
+  cloudpaymentsPublicId,
+  payerEmail,
 }: PaymentPageProps) {
   const [gateways, setGateways] = useState<GatewayInfo[]>([])
   const [selectedGateway, setSelectedGateway] = useState<GatewayCode | null>(null)
@@ -93,10 +102,10 @@ export default function PaymentPage({
   const currencySymbol = CURRENCY_SYMBOLS[currency] || currency
   const isTerminal = session && ['succeeded', 'failed', 'cancelled', 'refunded'].includes(session.status)
 
-  // Load available gateways
+  // Load available gateways (filtered by the org's active_gateway)
   const [autoPayTriggered, setAutoPayTriggered] = useState(false)
   useEffect(() => {
-    fetch('/api/pay/gateways')
+    fetch(`/api/pay/gateways?orgId=${encodeURIComponent(orgId)}`)
       .then(res => res.json())
       .then(data => {
         const gws = data.gateways || []
@@ -107,7 +116,7 @@ export default function PaymentPage({
       })
       .catch(() => setError('Не удалось загрузить способы оплаты'))
       .finally(() => setGatewaysLoading(false))
-  }, [])
+  }, [orgId])
 
   // Poll session status
   useEffect(() => {
@@ -164,6 +173,11 @@ export default function PaymentPage({
       }
 
       setSession(data.session)
+
+      // CloudPayments: no redirect — the widget opens client-side on the next render.
+      if (selectedGateway === 'cloudpayments') {
+        return
+      }
 
       // For card gateways — redirect to payment page
       if (data.redirectUrl && selectedGateway !== 'manual') {
@@ -234,6 +248,77 @@ export default function PaymentPage({
             </div>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  // ─── CloudPayments Widget (after session created) ─────────────────
+  if (session && session.gateway_code === 'cloudpayments') {
+    if (!cloudpaymentsPublicId) {
+      return (
+        <div className="min-h-[60vh] flex items-center justify-center px-4">
+          <Card className="max-w-md w-full text-center">
+            <CardContent className="pt-8 pb-6 space-y-4">
+              <XCircle className="w-12 h-12 text-red-500 mx-auto" />
+              <h2 className="text-lg font-semibold text-gray-900">Шлюз CloudPayments не настроен</h2>
+              <p className="text-sm text-gray-600">
+                Платёж не может быть проведён: на сервере не задан public_id CloudPayments. Сообщите организатору.
+              </p>
+              <Button variant="outline" onClick={() => window.location.href = returnPath}>
+                Вернуться
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )
+    }
+    return (
+      <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+        <div className="text-center">
+          <p className="text-sm text-gray-500 mb-1">{orgName}</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Оплата</h1>
+          <p className="text-gray-600">{description}</p>
+        </div>
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <p className="text-center text-sm text-gray-500">К оплате</p>
+            <p className="text-center text-3xl font-bold text-gray-900">
+              {amount.toLocaleString('ru-RU')} <span className="text-xl text-gray-500">{currencySymbol}</span>
+            </p>
+            <CloudPaymentsWidget
+              publicId={cloudpaymentsPublicId}
+              invoiceId={session.id}
+              amount={amount}
+              currency={currency}
+              description={description}
+              accountId={participantId || userId}
+              email={payerEmail}
+              data={{
+                session_id: session.id,
+                org_id: orgId,
+                payment_for: paymentFor,
+                event_id: eventId,
+                event_registration_id: eventRegistrationId,
+                membership_payment_id: membershipPaymentId,
+              }}
+              onSuccess={() => {
+                // Webhook will mark session 'succeeded' shortly; status polling
+                // upgrades the UI from 'processing' to 'succeeded' on the next tick.
+                setSession(prev => prev ? { ...prev, status: 'processing' } : null)
+              }}
+              onFail={(reason) => {
+                setError(reason || 'Не удалось провести оплату')
+                setSession(prev => prev ? { ...prev, status: 'failed', error_message: reason || null } : null)
+              }}
+            />
+          </CardContent>
+        </Card>
+        <button
+          onClick={() => window.location.href = returnPath}
+          className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
+        >
+          Вернуться назад
+        </button>
       </div>
     )
   }

@@ -57,6 +57,30 @@ function authHeader(): string {
 }
 
 /**
+ * Verify the HMAC signature of a CloudPayments webhook. Exported so the route
+ * handler can short-circuit "intermediate" events (e.g. Check, Confirm) with a
+ * `{code: 0}` response — even though the adapter's handleWebhook returns null
+ * for such events, the signature itself was valid and we don't want CP to
+ * treat a valid Check as a rejection.
+ */
+export function verifyCloudPaymentsSignature(rawBody: string, headers: Record<string, string>): boolean {
+  try {
+    const { apiSecret } = getCredentials()
+    const lower: Record<string, string> = {}
+    for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v
+    const signature = lower['content-hmac'] || lower['x-content-hmac']
+    if (!signature) return false
+    const expected = createHmac('sha256', apiSecret).update(rawBody, 'utf8').digest('base64')
+    const sigBuf = Buffer.from(signature, 'utf8')
+    const expBuf = Buffer.from(expected, 'utf8')
+    if (sigBuf.length !== expBuf.length) return false
+    return timingSafeEqual(sigBuf, expBuf)
+  } catch {
+    return false
+  }
+}
+
+/**
  * CloudPayments REST responses follow the shape:
  *   { Success: boolean, Message?: string, Model?: any }
  */
@@ -163,20 +187,7 @@ export class CloudPaymentsGateway implements PaymentGateway {
    */
   async handleWebhook(rawBody: string, headers: Record<string, string>): Promise<WebhookEvent | null> {
     try {
-      const { apiSecret } = getCredentials()
-
-      const lowerHeaders: Record<string, string> = {}
-      for (const [k, v] of Object.entries(headers)) lowerHeaders[k.toLowerCase()] = v
-      const signature = lowerHeaders['content-hmac'] || lowerHeaders['x-content-hmac']
-      if (!signature) {
-        logger.warn({}, 'CloudPayments webhook: missing Content-Hmac header')
-        return null
-      }
-
-      const expected = createHmac('sha256', apiSecret).update(rawBody, 'utf8').digest('base64')
-      const sigBuf = Buffer.from(signature, 'utf8')
-      const expBuf = Buffer.from(expected, 'utf8')
-      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+      if (!verifyCloudPaymentsSignature(rawBody, headers)) {
         logger.warn({}, 'CloudPayments webhook: invalid signature')
         return null
       }

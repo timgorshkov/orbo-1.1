@@ -161,6 +161,19 @@ export default async function PayPage({ params, searchParams }: Props) {
     }
   }
 
+  // Resolve payer email for the receipt — registration_data.email > participant.email > user.email.
+  let payerEmail: string | undefined
+  if (participantId) {
+    const { data: participant } = await db
+      .from('participants')
+      .select('email')
+      .eq('id', participantId)
+      .single()
+    if (participant?.email) payerEmail = participant.email
+  }
+  if (!payerEmail && user?.email) payerEmail = user.email
+  if (!payerEmail && participantSession?.email) payerEmail = participantSession.email
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <PaymentPage
@@ -178,6 +191,8 @@ export default async function PayPage({ params, searchParams }: Props) {
         userId={user?.id}
         returnPath={returnPath}
         bankDetails={bankDetails}
+        cloudpaymentsPublicId={process.env.CLOUDPAYMENTS_PUBLIC_ID || undefined}
+        payerEmail={payerEmail}
       />
     </div>
   )
