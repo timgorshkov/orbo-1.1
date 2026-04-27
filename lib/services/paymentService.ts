@@ -872,6 +872,47 @@ async function markSessionSucceeded(session: PaymentSession, event: WebhookEvent
         } : undefined,
         generateReceipt: true, // always for card payments
       })
+
+      // ─── Recurrent: handle init or scheduled charge ────────────────
+      // Two paths land here:
+      //   A) "Init" — first payment with auto-renewal opted in by the user.
+      //      The webhook payload carries a Token (cp_token) we save for later.
+      //   B) "Scheduled" — a token charge initiated by the cron. The session's
+      //      metadata holds the originating recurring_token_id so we can
+      //      advance its next_charge_at after the period was extended.
+      const recurring = await import('./recurringPaymentService')
+      const recurrentTokenId = meta.recurring_token_id as string | undefined
+      const cpToken = (event.metadata as any)?.cp_token as string | undefined
+      const cardLast4 = (event.rawData as any)?.CardLastFour
+      const cardExpiry = (event.rawData as any)?.CardExpDate
+      const paidAtIso = new Date().toISOString()
+
+      if (recurrentTokenId) {
+        // Path B: cron-initiated scheduled charge, advance schedule
+        await recurring.onChargeSucceeded(recurrentTokenId, session.id, paidAtIso)
+      } else if (meta.recurrent_init === true && cpToken) {
+        // Path A: first payment, opted into auto-renewal
+        await recurring.saveTokenFromInit({
+          orgId: session.org_id,
+          gatewayCode: session.gateway_code,
+          gatewayToken: cpToken,
+          paymentFor: 'subscription',
+          planCode,
+          periodMonths: Number(meta.period_months) || 1,
+          amount: paidAmount,
+          currency: session.currency,
+          cardLast4,
+          cardExpiry,
+          customerSnapshot: meta.customer || undefined,
+          sessionId: session.id,
+          paidAt: paidAtIso,
+        })
+      } else if (meta.recurrent_init === true && !cpToken) {
+        logger.warn({
+          session_id: session.id,
+          org_id: session.org_id,
+        }, 'Recurrent init requested but gateway did not return a token; auto-renewal NOT enabled')
+      }
     }
   } catch (ledgerErr: any) {
     logger.error({

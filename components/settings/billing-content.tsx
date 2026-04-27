@@ -351,6 +351,7 @@ function CheckoutModal({
   const [customerName, setCustomerName] = useState(licenseeFullName || '')
   const [customerEmail, setCustomerEmail] = useState(licenseeEmail || ownerEmail)
   const hasSavedLicensee = !!licenseeFullName
+  const [enableAutoRenewal, setEnableAutoRenewal] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -373,6 +374,7 @@ function CheckoutModal({
           customerName,
           customerEmail,
           customerType: 'individual',
+          enableAutoRenewal,
         }),
       })
       const data = await res.json()
@@ -469,6 +471,23 @@ function CheckoutModal({
           />
           <p className="text-xs text-gray-500 mt-1">На этот email придёт фискальный чек</p>
         </div>
+
+        {/* Auto-renewal */}
+        <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={enableAutoRenewal}
+            onChange={e => setEnableAutoRenewal(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+          />
+          <div className="text-sm">
+            <div className="font-medium text-gray-900">Включить автопродление</div>
+            <p className="text-xs text-gray-500 mt-1">
+              По окончании оплаченного периода с этой же карты будет автоматически списан тариф ещё на {periodMonths} мес.
+              Отменить можно в любой момент в настройках. До отмены акт об оказании услуг формируется при каждом списании.
+            </p>
+          </div>
+        </label>
 
         {/* Total */}
         <div className="bg-purple-50 rounded-lg p-4">

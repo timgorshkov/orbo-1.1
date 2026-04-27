@@ -31,6 +31,7 @@ CRON_SCRIPTS=(
     "cron-send-onboarding.sh|POST|/api/cron/send-onboarding"
     "cron-check-billing.sh|POST|/api/cron/check-billing"
     "cron-check-memberships.sh|GET|/api/cron/check-memberships"
+    "cron-charge-recurring.sh|POST|/api/cron/charge-recurring"
 )
 
 for entry in "${CRON_SCRIPTS[@]}"; do
@@ -81,7 +82,7 @@ chmod 700 ~/orbo/cron-check-webhook.sh
 CRONTAB_FILE=~/orbo/orbo-crontab
 
 # Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" | grep -v "cron-check-memberships" > "$CRONTAB_FILE" || true
+crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" | grep -v "cron-check-memberships" | grep -v "cron-charge-recurring" > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
@@ -98,6 +99,7 @@ cat >> "$CRONTAB_FILE" << CRON
 0 9 * * * ~/orbo/cron-check-billing.sh
 */5 * * * * ~/orbo/cron-check-webhook.sh
 0 * * * * ~/orbo/cron-check-memberships.sh
+30 9 * * * ~/orbo/cron-charge-recurring.sh
 # Health monitoring (every 5 minutes)
 */5 * * * * /home/deploy/orbo/scripts/health-monitor.sh >> /var/log/orbo-health.log 2>&1
 # Database backup (daily 3 AM, with S3 upload)

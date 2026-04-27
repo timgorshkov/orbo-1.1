@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       customerInn,
       customerType,
       returnUrl: customReturnUrl,
+      enableAutoRenewal,
     } = body
 
     // Validation
@@ -111,10 +112,15 @@ export async function POST(request: NextRequest) {
 
     const amount = plan.price_monthly * Number(periodMonths)
 
-    // Resolve org name for description
+    // Resolve org name for description, plus active acquiring gateway override.
+    // The form passes gatewayCode that the platform default; if the org
+    // explicitly chose another gateway via /superadmin → active_gateway, that
+    // overrides the form's choice.
     const db = createAdminServer()
-    const { data: org } = await db.from('organizations').select('name').eq('id', orgId).single()
+    const { data: org } = await db.from('organizations').select('name, active_gateway').eq('id', orgId).single()
     const orgName = org?.name || 'организация'
+    const orgActiveGateway = (org as any)?.active_gateway as string | null
+    const resolvedGateway = (orgActiveGateway || gatewayCode) as GatewayCode
 
     // Для физлица-покупателя — сохранить/обновить данные лицензиата.
     // Первая оплата — форма была пустой и пользователь ввёл их впервые; при
@@ -146,7 +152,7 @@ export async function POST(request: NextRequest) {
       amount,
       currency: 'RUB',
       description: `Тариф «${plan.name}» на ${periodMonths} мес. (${orgName})`,
-      gatewayCode: gatewayCode as GatewayCode,
+      gatewayCode: resolvedGateway,
       returnUrl: baseReturnUrl,
       createdBy: user.id,
       metadata: {
@@ -159,6 +165,10 @@ export async function POST(request: NextRequest) {
           phone: customerPhone || null,
           inn: customerInn || null,
         },
+        // When the buyer opted in to auto-renewal, paymentService will look
+        // for the gateway-returned card token in the success webhook and
+        // persist it for the cron-driven renewal flow.
+        recurrent_init: enableAutoRenewal === true,
       },
     })
 

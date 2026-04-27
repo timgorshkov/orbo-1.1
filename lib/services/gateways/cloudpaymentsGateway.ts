@@ -249,6 +249,66 @@ export class CloudPaymentsGateway implements PaymentGateway {
     }
   }
 
+  /**
+   * Charge a previously-saved card token (recurring payment).
+   *
+   * CloudPayments endpoint: POST /payments/tokens/charge
+   * Behaviour: synchronous in the response (Success/Model.Status) AND a
+   * regular Pay/Fail webhook is also delivered. We rely on the webhook for
+   * the canonical success path so accounting stays in one place; the return
+   * value here is mainly used by the cron to decide whether to retry now or
+   * mark the token as failed.
+   *
+   * Returns { success: true, gatewayPaymentId } when CP confirmed the charge.
+   * Returns { success: false, error } on any failure (declined card, network).
+   */
+  async chargeWithToken(params: {
+    token: string
+    amount: number
+    currency: string
+    description: string
+    invoiceId: string
+    accountId: string
+    email?: string
+  }): Promise<PaymentResult> {
+    try {
+      const reqBody: Record<string, any> = {
+        Amount: params.amount,
+        Currency: params.currency || 'RUB',
+        AccountId: params.accountId,
+        Token: params.token,
+        Description: params.description.slice(0, 256),
+        InvoiceId: params.invoiceId,
+      }
+      if (params.email) reqBody.Email = params.email
+
+      const data = await cpFetch<any>('/payments/tokens/charge', reqBody)
+      if (!data.Success) {
+        logger.warn({
+          invoice_id: params.invoiceId,
+          message: data.Message,
+        }, 'CloudPayments token charge declined')
+        return { success: false, error: data.Message || 'Token charge declined' }
+      }
+
+      const transactionId = data.Model?.TransactionId?.toString()
+      if (!transactionId) {
+        return { success: false, error: 'CloudPayments did not return TransactionId' }
+      }
+
+      logger.info({
+        invoice_id: params.invoiceId,
+        transaction_id: transactionId,
+        amount: params.amount,
+      }, 'CloudPayments token charge accepted (webhook will follow)')
+
+      return { success: true, gatewayPaymentId: transactionId }
+    } catch (err: any) {
+      logger.error({ error: err.message, invoice_id: params.invoiceId }, 'CloudPayments token charge exception')
+      return { success: false, error: err.message }
+    }
+  }
+
   async refund(gatewayPaymentId: string, amount?: number): Promise<RefundResult> {
     try {
       const transactionIdNum = Number(gatewayPaymentId)
