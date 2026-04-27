@@ -107,20 +107,17 @@ export async function POST(req: NextRequest) {
   const logger = createAPILogger(req, { endpoint: '/api/events/checkin' });
 
   try {
-    // Auth: try NextAuth first, then registrator session
-    const user = await getUnifiedUser()
-    let authOrgId: string | null = null // org that registrator belongs to
-    let registratorSession: { sessionId: string; orgId: string; name: string } | null = null
+    // Auth: read BOTH NextAuth and registrator sessions in parallel — the same browser
+    // can hold both (e.g. an org member who is also assigned as a registrator).
+    // We grant access if either path authorises the request for this event's org.
+    const { getRegistratorSession } = await import('@/lib/registrator-auth/session')
+    const [user, registratorSession] = await Promise.all([
+      getUnifiedUser(),
+      getRegistratorSession(),
+    ])
 
-    if (!user) {
-      // Try registrator session
-      const { getRegistratorSession } = await import('@/lib/registrator-auth/session')
-      const regSession = await getRegistratorSession()
-      if (!regSession) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-      authOrgId = regSession.orgId
-      registratorSession = regSession
+    if (!user && !registratorSession) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await req.json()
@@ -158,20 +155,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Authorization check
-    if (authOrgId) {
-      // Registrator — just check org matches
-      if (authOrgId !== event.org_id) {
-        return NextResponse.json({ error: 'Forbidden — event belongs to another organization' }, { status: 403 })
-      }
-    } else if (user) {
-      // Admin — check effective role (incl. virtual owner for superadmins)
+    // Authorization check — pass if EITHER:
+    //   (a) registrator session matches the event's org, OR
+    //   (b) the NextAuth user is an admin/owner (incl. virtual superadmin) of the event's org.
+    const registratorOrgMatches = registratorSession?.orgId === event.org_id
+    let userIsAdmin = false
+    let userRole: string | undefined
+    if (user) {
       const access = await getEffectiveOrgRole(user.id, event.org_id)
-      const role = access?.role
-      if (role !== 'owner' && role !== 'admin') {
-        logger.warn({ user_id: user.id, org_id: event.org_id, role }, 'Non-admin attempted check-in');
-        return NextResponse.json({ error: 'Forbidden — only admins can perform check-in' }, { status: 403 })
-      }
+      userRole = access?.role
+      userIsAdmin = userRole === 'owner' || userRole === 'admin'
+    }
+
+    if (!registratorOrgMatches && !userIsAdmin) {
+      logger.warn({
+        user_id: user?.id || null,
+        registrator_session_id: registratorSession?.sessionId || null,
+        registrator_org_id: registratorSession?.orgId || null,
+        org_id: event.org_id,
+        role: userRole,
+      }, 'Check-in forbidden — neither admin role nor matching registrator session');
+      return NextResponse.json({
+        error: 'Forbidden — only admins or assigned registrators can perform check-in'
+      }, { status: 403 })
     }
 
     // Check if already checked in
@@ -193,17 +199,23 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Perform check-in — also record who did it
+    // Record who did the check-in. Prefer the registrator session if it matches —
+    // the registrator role is the more specific one (admin who is also a registrator
+    // would still be acting as a registrator at the event door). If the registrator
+    // session is for a different org, ignore it for attribution purposes.
     const now = new Date().toISOString()
-    const checkedInByName = registratorSession?.name || user?.email || user?.name || null
+    const useRegistrator = registratorOrgMatches
+    const checkedInByName = useRegistrator
+      ? registratorSession!.name
+      : (user?.email || user?.name || null)
 
     const { error: updateError } = await supabase
       .from('event_registrations')
       .update({
         status: 'attended',
         checked_in_at: now,
-        checked_in_by_user_id: user?.id || null,
-        checked_in_by_registrator_id: registratorSession?.sessionId || null,
+        checked_in_by_user_id: useRegistrator ? null : (user?.id || null),
+        checked_in_by_registrator_id: useRegistrator ? registratorSession!.sessionId : null,
         checked_in_by_name: checkedInByName,
       })
       .eq('id', registration.id)
@@ -217,8 +229,9 @@ export async function POST(req: NextRequest) {
       registration_id: registration.id,
       event_id: registration.event_id,
       participant_id: registration.participant_id,
-      checked_in_by_user_id: user?.id || null,
-      checked_in_by_registrator_id: registratorSession?.sessionId || null,
+      auth_path: useRegistrator ? 'registrator' : 'admin',
+      checked_in_by_user_id: useRegistrator ? null : (user?.id || null),
+      checked_in_by_registrator_id: useRegistrator ? registratorSession!.sessionId : null,
       checked_in_by_name: checkedInByName,
     }, 'Check-in successful');
 
