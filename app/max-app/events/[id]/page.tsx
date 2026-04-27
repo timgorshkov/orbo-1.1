@@ -338,12 +338,24 @@ export default function MaxEventPage() {
 
   if (viewState === 'success') {
     const isPaid = paymentStatus === 'paid';
+    const awaitingPayment = !!event?.requires_payment && !isPaid;
     return (
       <div className="min-h-screen flex flex-col bg-white">
-        <div className="flex-shrink-0 bg-green-500 text-white p-8 text-center">
-          <CheckCircle2 className="w-20 h-20 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Вы зарегистрированы!</h1>
+        {/* Header — green "registered" for free/paid-completed events,
+            amber "data accepted, please pay" while payment is still required. */}
+        <div className={`flex-shrink-0 text-white p-8 text-center ${awaitingPayment ? 'bg-amber-500' : 'bg-green-500'}`}>
+          {awaitingPayment ? (
+            <AlertCircle className="w-20 h-20 mx-auto mb-4" />
+          ) : (
+            <CheckCircle2 className="w-20 h-20 mx-auto mb-4" />
+          )}
+          <h1 className="text-2xl font-bold mb-2">
+            {awaitingPayment ? 'Данные приняты' : 'Вы зарегистрированы!'}
+          </h1>
           <p className="opacity-90">{event?.title}</p>
+          {awaitingPayment && (
+            <p className="opacity-90 text-sm mt-2">Осталось оплатить, чтобы подтвердить участие</p>
+          )}
         </div>
 
         <div className="flex-1 p-6 overflow-y-auto">
