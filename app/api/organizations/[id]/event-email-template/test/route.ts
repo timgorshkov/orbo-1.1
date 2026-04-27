@@ -12,7 +12,7 @@ import { getUnifiedUser } from '@/lib/auth/unified-auth'
 import { getEffectiveOrgRole } from '@/lib/server/orgAccess'
 import { applyTemplate, type TemplateVars } from '@/lib/utils/templateRenderer'
 import { buildEmailHtml, pickTemplate } from '@/lib/services/registrationConfirmationService'
-import { getEmailService } from '@/lib/services/emailService'
+import { sendEmail } from '@/lib/services/email'
 import { createAPILogger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -63,8 +63,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
 
   try {
-    await getEmailService().sendEmail({ to, subject, html })
-    logger.info({ to, org_id: orgId }, 'Test confirmation email sent')
+    const result = await sendEmail({ to, subject, html })
+    if (!result.success) {
+      logger.warn({ to, org_id: orgId, error: result.error }, 'Test email returned non-success')
+      return NextResponse.json(
+        { error: result.error || 'Не удалось отправить (провайдер не настроен)' },
+        { status: 500 }
+      )
+    }
+    logger.info({ to, org_id: orgId, message_id: result.messageId }, 'Test confirmation email sent')
     return NextResponse.json({ success: true, to })
   } catch (err: any) {
     logger.error({ to, error: err?.message }, 'Test email failed')

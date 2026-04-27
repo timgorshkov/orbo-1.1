@@ -170,6 +170,20 @@ export default async function OrganizationSettingsPage({
               <h2 className="text-2xl font-semibold">Уведомления</h2>
             </div>
             <NotificationRulesContent />
+          </div>
+        )
+        break
+      }
+
+      case 'event-emails': {
+        tabContent = (
+          <div className="p-6 space-y-6">
+            <div>
+              <h2 className="text-2xl font-semibold">Письма участникам</h2>
+              <p className="text-gray-600 mt-1">
+                Шаблон письма (и сообщения в Telegram), которое получает участник после регистрации на событие.
+              </p>
+            </div>
             <EventEmailTemplateForm orgId={orgId} />
           </div>
         )

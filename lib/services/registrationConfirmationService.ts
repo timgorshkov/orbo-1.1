@@ -12,7 +12,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { telegramFetch } from '@/lib/services/telegramService'
-import { getEmailService } from '@/lib/services/emailService'
+import { sendEmail } from '@/lib/services/email'
 import { getShortCode } from '@/lib/utils/qrTicket'
 import { applyTemplate, DEFAULT_EVENT_EMAIL_TEMPLATE, type TemplateVars } from '@/lib/utils/templateRenderer'
 import { marked } from 'marked'
@@ -252,14 +252,13 @@ interface EmailParams {
 async function sendEmailConfirmation(p: EmailParams): Promise<void> {
   if (!p.email) return
 
-  const emailService = getEmailService()
   const html = buildEmailHtml(p)
-
-  try {
-    await emailService.sendEmail({ to: p.email, subject: p.subject, html })
-    logger.info({ to: p.email, has_qr: p.hasQr }, 'Registration email sent')
-  } catch (err: any) {
-    logger.error({ to: p.email, error: err?.message, stack: err?.stack }, 'Failed to send registration confirmation email')
+  // Routes through the active EMAIL_PROVIDER (unisender / mailgun / console).
+  const result = await sendEmail({ to: p.email, subject: p.subject, html })
+  if (result.success) {
+    logger.info({ to: p.email, has_qr: p.hasQr, message_id: result.messageId }, 'Registration email sent')
+  } else {
+    logger.warn({ to: p.email, error: result.error }, 'Registration email NOT sent')
   }
 }
 
