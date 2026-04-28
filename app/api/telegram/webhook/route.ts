@@ -699,15 +699,87 @@ async function processWebhookInBackground(body: any, logger: ReturnType<typeof c
                 logger.error({ 
                   org_id: binding.org_id,
                   chat_id: adminChatId,
-                  error: syncError.message 
+                  error: syncError.message
                 }, 'Membership sync error');
               }
             }
           }
         }
       }
+
+      // ────────────────────────────────────────────────────────────────
+      // Leave / kick / ban handling
+      // Telegram sends a chat_member update with new_chat_member.status set to
+      // 'left' (user left voluntarily), 'kicked' (banned by admin), or
+      // 'restricted' with is_member=false (banned but not removed). When this
+      // happens, we mark the corresponding participant_groups row so the org's
+      // CRM stops counting them as active group members.
+      //
+      // Without this handler the count grows forever — every join adds a row,
+      // no leave ever clears one. Periodic reconciliation in the
+      // telegramMemberSyncService also helps, but webhook-driven updates are
+      // the canonical real-time signal.
+      // ────────────────────────────────────────────────────────────────
+      const wasInGroup = ['member', 'administrator', 'creator'].includes(oldStatus) ||
+        (oldStatus === 'restricted' && (chatMember.old_chat_member as any)?.is_member === true);
+      const userLeft = ['left', 'kicked'].includes(newStatus) ||
+        (newStatus === 'restricted' && (chatMember.new_chat_member as any)?.is_member === false);
+
+      if (wasInGroup && userLeft && adminChatId && userId) {
+        try {
+          // Find every org bound to this group — the same chat may be linked
+          // to more than one org during transitions; mark in all.
+          const { data: bindings } = await supabaseServiceRole
+            .from('org_telegram_groups')
+            .select('org_id')
+            .eq('tg_chat_id', adminChatId);
+
+          for (const b of (bindings || [])) {
+            const { data: participant } = await supabaseServiceRole
+              .from('participants')
+              .select('id')
+              .eq('org_id', b.org_id)
+              .eq('tg_user_id', userId)
+              .is('merged_into', null)
+              .maybeSingle();
+
+            if (!participant) continue;
+
+            const { error: leftErr } = await supabaseServiceRole
+              .from('participant_groups')
+              .update({ left_at: new Date().toISOString(), is_active: false })
+              .eq('participant_id', participant.id)
+              .eq('tg_group_id', adminChatId)
+              .is('left_at', null);
+
+            if (leftErr) {
+              logger.warn({
+                org_id: b.org_id,
+                participant_id: participant.id,
+                chat_id: adminChatId,
+                error: leftErr.message,
+              }, 'Failed to mark participant as left');
+            } else {
+              logger.info({
+                org_id: b.org_id,
+                participant_id: participant.id,
+                tg_user_id: userId,
+                chat_id: adminChatId,
+                old_status: oldStatus,
+                new_status: newStatus,
+              }, 'Participant marked as left group');
+            }
+          }
+        } catch (leaveErr: any) {
+          logger.warn({
+            error: leaveErr?.message,
+            user_id: userId,
+            chat_id: adminChatId,
+          }, 'Error processing chat_member leave/kick event');
+        }
+      }
     }
-    
+
     // ========================================
     // STEP 2.6.1: Обработка заявок на вступление (chat_join_request)
     // ========================================

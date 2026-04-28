@@ -319,10 +319,54 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
       if (!isBasicGroup) await new Promise(r => setTimeout(r, 300))
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Reconcile leavers: anyone that was in this group in our DB but is NOT
+    // in the freshly-fetched list is no longer a member. We can't rely on
+    // webhooks alone — historical leaves predating the bot, kicks bypassing
+    // the bot, and brief network gaps all leave dangling participant_groups
+    // rows with `left_at IS NULL`. The MTProto scan is authoritative.
+    //
+    // We mark via UPDATE rather than DELETE so the join_at/source/history
+    // remains visible for analytics and a re-join later just clears left_at.
+    // Skip when the scan returned suspiciously few users (< 50% of reported)
+    // — it's safer to do nothing than mass-mark everyone "left" because of a
+    // partial fetch.
+    let leftMarked = 0
+    if (seenUserIds.size > 0 && (totalCount === 0 || seenUserIds.size >= Math.floor(totalCount * 0.5))) {
+      const seenIds = Array.from(seenUserIds)
+      const { data: leftRows, error: leftErr } = await db.raw(
+        `UPDATE participant_groups pg
+            SET left_at = NOW(),
+                is_active = FALSE
+           FROM participants p
+          WHERE pg.participant_id = p.id
+            AND p.org_id = $1
+            AND pg.tg_group_id = $2
+            AND pg.left_at IS NULL
+            AND p.tg_user_id IS NOT NULL
+            AND NOT (p.tg_user_id = ANY($3::bigint[]))
+        RETURNING pg.participant_id`,
+        [orgId, tgChatId, seenIds]
+      )
+      if (leftErr) {
+        logger.warn({ job_id: jobId, error: leftErr.message }, 'Reconcile leavers query failed')
+      } else {
+        leftMarked = (leftRows || []).length
+        logger.info({ job_id: jobId, left_marked: leftMarked }, 'Reconciled leavers')
+      }
+    } else {
+      logger.warn({
+        job_id: jobId,
+        seen: seenUserIds.size,
+        reported: totalCount,
+      }, 'Skipping leaver reconciliation — fetch looks partial')
+    }
+
     logger.info({
       job_id: jobId,
       synced: syncedCount,
       new_members: newCount,
+      left_marked: leftMarked,
       total_unique_fetched: seenUserIds.size,
       total_reported: totalCount
     }, 'Sync job completed')
