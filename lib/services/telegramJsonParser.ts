@@ -189,17 +189,20 @@ export class TelegramJsonParser {
     // Extract author name
     const authorName = msg.from || 'Unknown';
 
-    // Extract user/channel ID from from_id (format: "user1234567890" or "channel1234567890")
+    // Extract user ID from from_id (format: "user1234567890").
+    // Channel-authored messages (`from_id="channel..."` — anonymous admin or
+    // "send as channel" feature) are NOT real participants of the chat —
+    // they are linked channels speaking through the group. Importing them
+    // creates phantom "participants" with the channel's name (e.g. «Мяу
+    // канал», sometimes the group's own name when an anonymous admin posted
+    // as group). Skip them entirely so they never enter the CRM.
     let authorUserId: number | undefined;
     if (msg.from_id) {
-      const userMatch = msg.from_id.match(/user(\d+)/);
+      const userMatch = msg.from_id.match(/^user(\d+)$/);
       if (userMatch) {
         authorUserId = parseInt(userMatch[1], 10);
-      } else {
-        const channelMatch = msg.from_id.match(/channel(\d+)/);
-        if (channelMatch) {
-          authorUserId = -parseInt(channelMatch[1], 10);
-        }
+      } else if (/^channel\d+$/.test(msg.from_id)) {
+        return null; // skip channel-authored messages
       }
     }
 
