@@ -109,6 +109,22 @@ export async function generateWeeklyDigest(
     throw new Error(`Failed to fetch digest data: ${rpcError?.message || 'No data'}`);
   }
 
+  // Defensive: the RPC has historically returned partial shapes for empty/new
+  // orgs (no participants, no groups) — most fields fall back gracefully but
+  // a missing `attention_zones` / `key_metrics` blew up the cron with
+  // "Cannot read properties of undefined". Normalise here once so downstream
+  // code can rely on the full structure.
+  if (!digestData.attention_zones) {
+    digestData.attention_zones = { inactive_newcomers: 0, silent_members: 0 };
+  }
+  if (!digestData.key_metrics) {
+    const zero = { active_participants: 0, messages: 0, replies: 0, reactions: 0 };
+    digestData.key_metrics = { current: { ...zero }, previous: { ...zero } };
+  }
+  if (!Array.isArray(digestData.upcoming_events)) {
+    digestData.upcoming_events = [];
+  }
+
   // 2. Get organization info
   const { data: org } = await supabaseAdmin
     .from('organizations')

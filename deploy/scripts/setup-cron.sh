@@ -81,8 +81,34 @@ chmod 700 ~/orbo/cron-check-webhook.sh
 # Create crontab file (more reliable than pipe)
 CRONTAB_FILE=~/orbo/orbo-crontab
 
-# Get existing crontab entries (excluding our jobs)
-crontab -l 2>/dev/null | grep -v "cron-error-digest" | grep -v "cron-group-metrics" | grep -v "cron-notification-rules" | grep -v "cron-sync-attention-zones" | grep -v "cron-send-announcements" | grep -v "cron-send-event-reminders" | grep -v "cron-send-weekly-digests" | grep -v "cron-notification-health-check" | grep -v "cron-send-onboarding" | grep -v "cron-check-billing" | grep -v "cron-check-webhook" | grep -v "cron-check-memberships" | grep -v "cron-charge-recurring" > "$CRONTAB_FILE" || true
+# Get existing crontab entries (excluding our jobs).
+# IMPORTANT: also exclude the maintenance jobs we re-add below (backup,
+# health-monitor, docker cleanup, the "DO NOT EDIT MANUALLY" header) and the
+# explanatory comment lines — otherwise re-running this script duplicates
+# them, which already caused parallel backup runs and corrupted dumps.
+crontab -l 2>/dev/null \
+  | grep -v "cron-error-digest" \
+  | grep -v "cron-group-metrics" \
+  | grep -v "cron-notification-rules" \
+  | grep -v "cron-sync-attention-zones" \
+  | grep -v "cron-send-announcements" \
+  | grep -v "cron-send-event-reminders" \
+  | grep -v "cron-send-weekly-digests" \
+  | grep -v "cron-notification-health-check" \
+  | grep -v "cron-send-onboarding" \
+  | grep -v "cron-check-billing" \
+  | grep -v "cron-check-webhook" \
+  | grep -v "cron-check-memberships" \
+  | grep -v "cron-charge-recurring" \
+  | grep -v "health-monitor.sh" \
+  | grep -v "backup.sh >> " \
+  | grep -v "docker builder prune" \
+  | grep -v "docker image prune" \
+  | grep -vF "# Orbo cron jobs - DO NOT EDIT MANUALLY" \
+  | grep -vF "# Health monitoring (every 5 minutes)" \
+  | grep -vF "# Database backup (daily 3 AM, with S3 upload)" \
+  | grep -vF "# Maintenance: Docker cleanup weekly" \
+  > "$CRONTAB_FILE" || true
 
 # Add our cron jobs
 cat >> "$CRONTAB_FILE" << CRON
