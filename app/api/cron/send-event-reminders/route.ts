@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
-import { TelegramService } from '@/lib/services/telegramService';
+import { sendMessageWithFallback } from '@/lib/services/telegramService';
 import { createCronLogger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -22,7 +22,6 @@ export async function GET(request: NextRequest) {
     logger.info({}, '🔔 Starting personal event reminders cron');
 
     const adminSupabase = createAdminServer();
-    const telegramService = new TelegramService('main'); // @orbo_community_bot
 
     const now = new Date();
     let totalSent = 0;
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
 
     const sent24h = await sendRemindersForWindow({
       adminSupabase,
-      telegramService,
       logger,
       startDate: tomorrow.toISOString().split('T')[0],
       endDate: dayAfterTomorrow.toISOString().split('T')[0],
@@ -60,7 +58,6 @@ export async function GET(request: NextRequest) {
 
     const sent1h = await sendOneHourReminders({
       adminSupabase,
-      telegramService,
       logger,
       today,
       startTime: currentTime,
@@ -77,7 +74,6 @@ export async function GET(request: NextRequest) {
 
     const sentFollowUp = await sendPostEventFollowUps({
       adminSupabase,
-      telegramService,
       logger,
       eventDate: yesterday.toISOString().split('T')[0],
       errors
@@ -115,10 +111,9 @@ export async function GET(request: NextRequest) {
 
 // ===== HELPER: Send 24h reminders =====
 async function sendRemindersForWindow({
-  adminSupabase, telegramService, logger, startDate, endDate, reminderType, errors
+  adminSupabase, logger, startDate, endDate, reminderType, errors
 }: {
   adminSupabase: any;
-  telegramService: TelegramService;
   logger: any;
   startDate: string;
   endDate: string;
@@ -156,7 +151,7 @@ async function sendRemindersForWindow({
   for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
-      adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType, errors
+      adminSupabase, logger, event, orgName: org?.name || '', reminderType, errors
     });
     totalSent += sent;
   }
@@ -166,10 +161,9 @@ async function sendRemindersForWindow({
 
 // ===== HELPER: Send 1-hour reminders =====
 async function sendOneHourReminders({
-  adminSupabase, telegramService, logger, today, startTime, endTime, errors
+  adminSupabase, logger, today, startTime, endTime, errors
 }: {
   adminSupabase: any;
-  telegramService: TelegramService;
   logger: any;
   today: string;
   startTime: string;
@@ -205,7 +199,7 @@ async function sendOneHourReminders({
   for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
-      adminSupabase, telegramService, logger, event, orgName: org?.name || '', reminderType: '1h', errors
+      adminSupabase, logger, event, orgName: org?.name || '', reminderType: '1h', errors
     });
     totalSent += sent;
   }
@@ -215,10 +209,9 @@ async function sendOneHourReminders({
 
 // ===== HELPER: Send post-event follow-ups =====
 async function sendPostEventFollowUps({
-  adminSupabase, telegramService, logger, eventDate, errors
+  adminSupabase, logger, eventDate, errors
 }: {
   adminSupabase: any;
-  telegramService: TelegramService;
   logger: any;
   eventDate: string;
   errors: string[];
@@ -304,15 +297,17 @@ async function sendPostEventFollowUps({
               `Следите за новыми событиями от ${safeOrgName}.\n\n` +
               `📅 <a href="${baseUrl}/p/${event.org_id}/events">Все события</a>`;
 
-            const result = await telegramService.sendMessage(p.tg_user_id, message, {
+            // Try via the first bot that can DM this user (see comment in
+            // sendReminderToParticipants for the same logic).
+            const result = await sendMessageWithFallback(p.tg_user_id, message, {
               parse_mode: 'HTML',
-              disable_web_page_preview: true
+              disable_web_page_preview: true,
             });
             if (result.ok) {
               totalSent++;
               await adminSupabase.raw(
                 `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
-                [(result as any)?.result?.message_id || null, reservationId]
+                [result.message_id || null, reservationId]
               );
             } else {
               await adminSupabase.raw(
@@ -359,10 +354,9 @@ async function sendPostEventFollowUps({
 
 // ===== CORE: Send reminder to all participants of an event =====
 async function sendReminderToParticipants({
-  adminSupabase, telegramService, logger, event, orgName, reminderType, errors
+  adminSupabase, logger, event, orgName, reminderType, errors
 }: {
   adminSupabase: any;
-  telegramService: TelegramService;
   logger: any;
   event: any;
   orgName: string;
@@ -490,9 +484,14 @@ async function sendReminderToParticipants({
         if (safeOrgName) message += `Организатор: ${safeOrgName}\n`;
         message += `\nДо встречи! 🙌`;
 
-        const result = await telegramService.sendMessage(participant.tg_user_id, message, {
+        // Try sending via the first bot that can DM this user (notifications →
+        // event → main → registration). A participant who only opened the
+        // event MiniApp would otherwise be unreachable through the community
+        // bot — this fallback keeps reminders flowing without forcing the
+        // participant to /start every bot manually.
+        const result = await sendMessageWithFallback(participant.tg_user_id, message, {
           parse_mode: 'HTML',
-          disable_web_page_preview: true
+          disable_web_page_preview: true,
         });
 
         if (result.ok) {
@@ -500,7 +499,7 @@ async function sendReminderToParticipants({
           // Persist the Telegram message id for traceability
           await adminSupabase.raw(
             `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
-            [(result as any)?.result?.message_id || null, reservationId]
+            [result.message_id || null, reservationId]
           );
         } else {
           // Mark the reservation as failed so we have a record. We don't

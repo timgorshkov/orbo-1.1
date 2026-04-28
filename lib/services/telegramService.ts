@@ -770,6 +770,100 @@ export function createTelegramService(botType: 'main' | 'notifications' = 'main'
 }
 
 /**
+ * Send a Telegram DM via the FIRST bot that has the right to message the user.
+ *
+ * Why: a participant might have only ever interacted with one of our bots
+ * (e.g. opened the event MiniApp via @orbo_event_bot but never /started
+ * @orbo_community_bot). A direct send through @orbo_community_bot would then
+ * fail with `Forbidden: bot can't initiate conversation with a user` even
+ * though we COULD have reached them through @orbo_event_bot.
+ *
+ * Two presets reflect who we're talking to:
+ *
+ *   - 'participant' (default): event → main → notifications. The event bot is
+ *     the one community members interact with most often (event registrations,
+ *     reminders, follow-ups), main (@orbo_community_bot) is the secondary
+ *     touch-point, and notifications is a last-resort.
+ *
+ *   - 'admin': notifications → main → event. The notifications bot is the
+ *     dedicated channel for system alerts to org admins (group activity,
+ *     digests). It's intentionally first because admins explicitly /start
+ *     it, so reachability is highest.
+ *
+ * `registration` bot is excluded from both presets — it's only used for
+ * pipelined join-request flows, not for one-off DMs.
+ *
+ * On 5xx (transient gateway/network) the loop aborts so we don't burn through
+ * the whole bot list on a temporary failure. On any 4xx we fall through.
+ *
+ * Returns: ok=true with bot_type/message_id on first success, or ok=false with
+ * the last error after exhausting all bots.
+ */
+export type FallbackAudience = 'participant' | 'admin'
+
+const PARTICIPANT_BOT_ORDER: TelegramBotType[] = ['event', 'main', 'notifications']
+const ADMIN_BOT_ORDER: TelegramBotType[] = ['notifications', 'main', 'event']
+
+export async function sendMessageWithFallback(
+  chatId: number,
+  text: string,
+  options: any = {},
+  opts: { audience?: FallbackAudience } = {}
+): Promise<{
+  ok: boolean
+  bot_type?: TelegramBotType
+  message_id?: number
+  error_code?: number
+  description?: string
+  attempts?: Array<{ bot_type: TelegramBotType; ok: boolean; description?: string }>
+}> {
+  const order = opts.audience === 'admin' ? ADMIN_BOT_ORDER : PARTICIPANT_BOT_ORDER
+  const attempts: Array<{ bot_type: TelegramBotType; ok: boolean; description?: string }> = []
+  let lastError: { error_code?: number; description?: string } = {}
+
+  for (const botType of order) {
+    // Skip if this bot's token isn't configured for our deployment
+    const tokenEnvVar = (
+      botType === 'main' ? 'TELEGRAM_BOT_TOKEN' :
+      botType === 'notifications' ? 'TELEGRAM_NOTIFICATIONS_BOT_TOKEN' :
+      botType === 'event' ? 'TELEGRAM_EVENT_BOT_TOKEN' :
+      'TELEGRAM_REGISTRATION_BOT_TOKEN'
+    )
+    if (!process.env[tokenEnvVar]) continue
+
+    try {
+      const svc = new TelegramService(botType)
+      const res = await svc.sendMessage(chatId, text, options)
+      attempts.push({ bot_type: botType, ok: !!res.ok, description: res.description })
+      if (res.ok) {
+        return {
+          ok: true,
+          bot_type: botType,
+          message_id: (res as any)?.result?.message_id,
+          attempts,
+        }
+      }
+      lastError = { error_code: res.error_code, description: res.description }
+      // For 403 (no chat / blocked) try the next bot. For other errors that
+      // indicate a permanent problem with this user (e.g. 400 chat not found),
+      // also try next — they might still have a chat with another bot.
+      // Don't try further on 5xx — those are transient and not user-specific.
+      if (res.error_code && res.error_code >= 500) break
+    } catch (err: any) {
+      attempts.push({ bot_type: botType, ok: false, description: err?.message || 'send threw' })
+      lastError = { description: err?.message }
+    }
+  }
+
+  return {
+    ok: false,
+    error_code: lastError.error_code,
+    description: lastError.description,
+    attempts,
+  }
+}
+
+/**
  * Интерфейсы для типизации Telegram-обновлений
  */
 export interface TelegramUpdate {
