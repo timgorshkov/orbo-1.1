@@ -70,12 +70,19 @@ export async function GET(request: NextRequest) {
         }, 'Token recently used — likely mail client prefetch, rebuilding session')
         // Fall through with tokenRow so session gets created below
       } else {
-        logger.warn({
+        // Outside the 5-min grace window the token has been used by the real
+        // user already. Repeat hits at this stage are virtually always email
+        // archive scanners (Microsoft Defender / Office365 ATP / similar)
+        // periodically re-validating the link days later — not a real auth
+        // attempt, since we redirect them to /signin?error=invalid_token and
+        // they don't follow up. Logging at INFO so it doesn't dominate
+        // the warn-level signal.
+        logger.info({
           token_prefix: token.substring(0, 8),
           email: tokenRow.email,
           used_at: tokenRow.used_at,
           token_id: tokenRow.id
-        }, 'Token already used — possible bot prefetch or double-click')
+        }, 'Token already used — likely link scanner / mail archive ping')
         return NextResponse.redirect(new URL('/signin?error=invalid_token', baseUrl))
       }
     }

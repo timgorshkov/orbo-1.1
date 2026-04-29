@@ -146,14 +146,16 @@ class WeeekService {
       if (!contentType.includes('application/json')) {
         const text = await response.text();
         
-        // Handle 404 for deleted deals/contacts - log as warning, not error
+        // Handle 404 for deleted deals/contacts. Caller treats this as a
+        // "deleted in Weeek" signal and clears its sync log — i.e. expected
+        // housekeeping, not an error. INFO so it doesn't dominate alerting.
         if (response.status === 404) {
-          logger.warn({ 
-            status: response.status, 
+          logger.info({
+            status: response.status,
             endpoint,
           }, 'Weeek resource not found (may have been deleted)');
-          return { 
-            success: false, 
+          return {
+            success: false,
             error: `Resource not found (404)`,
             notFound: true
           };
@@ -423,7 +425,7 @@ class WeeekService {
 
     // If deal was deleted in Weeek, return notFound flag
     if (result.notFound) {
-      logger.warn({ dealId }, 'Weeek deal not found (deleted in CRM)');
+      logger.info({ dealId }, 'Weeek deal not found (deleted in CRM)');
       return { success: false, notFound: true };
     }
 
@@ -631,7 +633,7 @@ export async function onOrganizationCreated(
         })
         .eq('user_id', userId);
       
-      logger.warn({ userId, dealId: syncLog.weeek_deal_id }, 'Cleared deleted Weeek deal from sync log');
+      logger.info({ userId, dealId: syncLog.weeek_deal_id }, 'Cleared deleted Weeek deal from sync log');
       return;
     }
 

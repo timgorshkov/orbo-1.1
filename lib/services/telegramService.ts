@@ -91,16 +91,23 @@ function markChannelDown(c: ChannelName) {
 }
 
 // ─── Aggregate failure log (avoid spam) ─────────────────────
+// We log at INFO not WARN: every proxy failure that gets here was followed
+// by a successful Worker call (otherwise the route would've thrown
+// "All channels failed" — that DOES stay at WARN/ERROR). A flapping paid
+// proxy that the worker masks is a degraded-but-OK condition; it should
+// inform, not alarm. Aggregation window is 5 min so a multi-minute flap
+// produces one line, not five.
+const PROXY_FAIL_LOG_INTERVAL_MS = 5 * 60 * 1000
 let proxyFailsSinceLastLog = 0;
 let lastProxyFailLog = 0;
 function recordProxyFail(err: unknown) {
   proxyFailsSinceLastLog++;
   const now = Date.now();
-  if (now - lastProxyFailLog > 60_000) {
-    logger.warn({
+  if (now - lastProxyFailLog > PROXY_FAIL_LOG_INTERVAL_MS) {
+    logger.info({
       fails_since_last_log: proxyFailsSinceLastLog,
       last_error: err instanceof Error ? err.message : String(err),
-    }, 'Telegram proxy transient errors (aggregated)');
+    }, 'Telegram proxy transient errors (worker handled)');
     proxyFailsSinceLastLog = 0;
     lastProxyFailLog = now;
   }
