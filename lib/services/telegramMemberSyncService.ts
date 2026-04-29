@@ -234,7 +234,10 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
           // built-in timeout in gramjs's invoke. Race it ourselves so a stuck
           // call surfaces as an error instead of leaving the job 'running'
           // for hours. 90s is more than enough for a single page of 200 users.
-          logger.info({ job_id: jobId, query: searchQuery, offset }, 'MTProto GetParticipants: invoking')
+          // Per-query log is debug — a Russian alphabet sweep is ~33 calls
+          // and would otherwise spam info-level. Aggregate progress lives in
+          // the periodic `synced_members` update on the job row.
+          logger.debug({ job_id: jobId, query: searchQuery, offset }, 'MTProto GetParticipants: invoking')
           const result = await Promise.race([
             client.invoke(
               new Api.channels.GetParticipants({
@@ -261,7 +264,7 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
 
           participants = result.users as Api.TypeUser[]
           fetchedCount = result.participants.length
-          logger.info({ job_id: jobId, query: searchQuery, offset, fetched: fetchedCount, total: totalCount }, 'MTProto GetParticipants: page received')
+          logger.debug({ job_id: jobId, query: searchQuery, offset, fetched: fetchedCount, total: totalCount }, 'MTProto GetParticipants: page received')
         } catch (err: any) {
           if (err.errorMessage === 'CHAT_INVALID' || err.errorMessage === 'CHANNEL_INVALID') {
             // Try basic group API (returns all members at once)
