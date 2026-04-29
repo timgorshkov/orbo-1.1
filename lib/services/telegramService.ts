@@ -142,26 +142,56 @@ async function fetchDirect(url: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
+ * Build a status string describing why each channel was skipped or how it
+ * failed. Used for the thrown error so the log says exactly which channels
+ * were in cooldown vs. not configured vs. errored — instead of the misleading
+ * "none configured" message we used to throw when everything was cooled down.
+ */
+function describeChannelState(
+  failures: Record<ChannelName, string | null>
+): string {
+  const parts: string[] = []
+  const now = Date.now()
+  for (const ch of ['worker', 'proxy', 'direct'] as const) {
+    if (failures[ch]) { parts.push(`${ch}: ${failures[ch]}`); continue; }
+    if (ch === 'worker' && !WORKER_BASE) { parts.push(`${ch}: not configured`); continue; }
+    if (ch === 'proxy' && !tgProxyAgent) { parts.push(`${ch}: not configured`); continue; }
+    if (ch === 'direct' && DIRECT_DISABLED) { parts.push(`${ch}: disabled`); continue; }
+    const remaining = channelCooldownUntil[ch] - now
+    if (remaining > 0) parts.push(`${ch}: cooldown ${Math.ceil(remaining / 1000)}s`)
+  }
+  return parts.join(' | ') || 'no channels available'
+}
+
+/**
  * Единая точка вызова Telegram API. Используйте ВМЕСТО голого fetch().
  * Перебирает каналы worker → proxy → direct, пока один не ответит.
+ *
+ * If every channel is cooled down (no fresh attempt possible), waits until
+ * the shortest cooldown clears (capped at 2s) and retries once. Without this
+ * a burst caller (e.g. cron iterating 50 groups) would slam the cooldown and
+ * receive "all channels failed" for every call until the next 30s window.
  */
 export async function telegramFetch(url: string, init?: RequestInit): Promise<Response> {
   maybeRefreshPool();
 
-  const errors: string[] = [];
+  const failures: Record<ChannelName, string | null> = { worker: null, proxy: null, direct: null }
+  let anyAttempted = false
 
   // 1. Worker
   if (WORKER_BASE && isChannelCool('worker')) {
+    anyAttempted = true
     try {
       return await fetchViaWorker(url, init);
     } catch (err) {
-      errors.push(`worker: ${err instanceof Error ? err.message : String(err)}`);
+      failures.worker = err instanceof Error ? err.message : String(err)
       markChannelDown('worker');
     }
   }
 
   // 2. Paid HTTP(S) proxy
   if (tgProxyAgent && isChannelCool('proxy')) {
+    anyAttempted = true
     try {
       return await fetchViaProxy(url, init);
     } catch (err1) {
@@ -175,7 +205,7 @@ export async function telegramFetch(url: string, init?: RequestInit): Promise<Re
         return await fetchViaProxy(url, init);
       } catch (err2) {
         recordProxyFail(err2);
-        errors.push(`proxy: ${err2 instanceof Error ? err2.message : String(err2)}`);
+        failures.proxy = err2 instanceof Error ? err2.message : String(err2)
         markChannelDown('proxy');
       }
     }
@@ -183,15 +213,35 @@ export async function telegramFetch(url: string, init?: RequestInit): Promise<Re
 
   // 3. Direct (last resort, usually blocked from RU servers)
   if (!DIRECT_DISABLED && isChannelCool('direct')) {
+    anyAttempted = true
     try {
       return await fetchDirect(url, init);
     } catch (err) {
-      errors.push(`direct: ${err instanceof Error ? err.message : String(err)}`);
+      failures.direct = err instanceof Error ? err.message : String(err)
       markChannelDown('direct');
     }
   }
 
-  throw new Error(`All Telegram outbound channels failed: ${errors.join(' | ') || 'none configured'}`);
+  // If we didn't try anything (everything in cooldown), wait for the soonest
+  // cooldown to clear (≤2s) and retry once. This breaks the bursty-caller
+  // failure cascade where a sync loop hammers the function every few ms
+  // during a transient network blip.
+  if (!anyAttempted) {
+    const now = Date.now()
+    const candidates: number[] = []
+    if (WORKER_BASE) candidates.push(channelCooldownUntil.worker - now)
+    if (tgProxyAgent) candidates.push(channelCooldownUntil.proxy - now)
+    if (!DIRECT_DISABLED) candidates.push(channelCooldownUntil.direct - now)
+    const positive = candidates.filter((x) => x > 0)
+    if (positive.length > 0) {
+      const wait = Math.min(Math.min(...positive) + 50, 2000)
+      await new Promise((r) => setTimeout(r, wait))
+      // After wait try once more — re-enter the function (avoids deep recursion).
+      return telegramFetch(url, init)
+    }
+  }
+
+  throw new Error(`All Telegram outbound channels failed: ${describeChannelState(failures)}`);
 }
 
 export type TelegramBotType = 'main' | 'notifications' | 'event' | 'registration';

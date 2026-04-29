@@ -182,15 +182,25 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
         let fetchedCount = 0
 
         try {
-          const result = await client.invoke(
-            new Api.channels.GetParticipants({
-              channel: entity as Api.TypeInputChannel,
-              filter: new Api.ChannelParticipantsSearch({ q: searchQuery }),
-              offset,
-              limit: PAGE_SIZE,
-              hash: BigInt(0),
-            })
-          ) as Api.channels.ChannelParticipants
+          // MTProto invoke can silently hang on a flaky session — there's no
+          // built-in timeout in gramjs's invoke. Race it ourselves so a stuck
+          // call surfaces as an error instead of leaving the job 'running'
+          // for hours. 90s is more than enough for a single page of 200 users.
+          logger.info({ job_id: jobId, query: searchQuery, offset }, 'MTProto GetParticipants: invoking')
+          const result = await Promise.race([
+            client.invoke(
+              new Api.channels.GetParticipants({
+                channel: entity as Api.TypeInputChannel,
+                filter: new Api.ChannelParticipantsSearch({ q: searchQuery }),
+                offset,
+                limit: PAGE_SIZE,
+                hash: BigInt(0),
+              })
+            ),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('MTProto GetParticipants timed out after 90s')), 90_000)
+            ),
+          ]) as Api.channels.ChannelParticipants
 
           // Use server-reported total (same for all queries)
           if (result.count > totalCount) {
@@ -203,6 +213,7 @@ async function processSyncJob(jobId: string, orgId: string, tgChatId: number) {
 
           participants = result.users as Api.TypeUser[]
           fetchedCount = result.participants.length
+          logger.info({ job_id: jobId, query: searchQuery, offset, fetched: fetchedCount, total: totalCount }, 'MTProto GetParticipants: page received')
         } catch (err: any) {
           if (err.errorMessage === 'CHAT_INVALID' || err.errorMessage === 'CHANNEL_INVALID') {
             // Try basic group API (returns all members at once)

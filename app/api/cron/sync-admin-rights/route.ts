@@ -122,7 +122,11 @@ export async function GET(request: NextRequest) {
           let administrators: any[] | null | undefined = adminsCache.get(cacheKey);
 
           if (administrators === undefined) {
-            // Not cached — fetch from Telegram
+            // Not cached — fetch from Telegram.
+            // Tiny pause between groups so we don't slam the outbound channels
+            // when a worker/proxy hiccup happens — it avoids cascading every
+            // call into "all channels in cooldown" land for the whole run.
+            await new Promise((r) => setTimeout(r, 150));
             logger.debug({ chat_id: chatId, group_title: groupTitle }, 'Fetching admins for group');
             const adminsResponse = await telegramService.getChatAdministrators(Number(chatId));
 
