@@ -38,20 +38,68 @@ async function getClient(): Promise<TelegramClient> {
     throw new Error('TG_SERVICE_API_ID, TG_SERVICE_API_HASH, TG_SERVICE_SESSION are not configured')
   }
 
+  // MTProto runs on a binary TCP protocol, not HTTPS. Our HTTP/Cloudflare-worker
+  // outbound that handles Bot API does NOT cover MTProto. From a Russian
+  // datacenter the direct TCP to 149.154.175.x:80/443 is typically blocked
+  // (RKN). For sync to work we route gramjs through a SOCKS5 proxy or a
+  // dedicated MTProxy. Both are configured via env vars; if none set, we
+  // attempt a direct connection (works on non-RU hosts).
+  //
+  // SOCKS5: TG_SERVICE_PROXY_HOST + TG_SERVICE_PROXY_PORT (+ optional auth)
+  // MTProxy: TG_SERVICE_MTPROXY_HOST + TG_SERVICE_MTPROXY_PORT + TG_SERVICE_MTPROXY_SECRET
+  const proxy = resolveMTProtoProxy()
+
+  const clientOptions: any = {
+    connectionRetries: 3,
+    useWSS: false,
+  }
+  if (proxy) clientOptions.proxy = proxy
+
   const client = new TelegramClient(
     new StringSession(sessionStr),
     apiId,
     apiHash,
-    {
-      connectionRetries: 3,
-      useWSS: false,
-    }
+    clientOptions,
   )
 
   await client.connect()
   _client = client
-  logger.info('MTProto client connected')
+  logger.info({ proxy_kind: proxy ? (proxy as any).MTProxy ? 'mtproxy' : 'socks5' : 'direct' }, 'MTProto client connected')
   return client
+}
+
+/**
+ * Build the gramjs `proxy` option from env. Returns null when no proxy is
+ * configured — caller falls back to direct TCP. MTProxy takes precedence over
+ * SOCKS5 if both happen to be set.
+ */
+function resolveMTProtoProxy(): Record<string, any> | null {
+  const mtHost = process.env.TG_SERVICE_MTPROXY_HOST
+  const mtPort = process.env.TG_SERVICE_MTPROXY_PORT
+  const mtSecret = process.env.TG_SERVICE_MTPROXY_SECRET
+  if (mtHost && mtPort && mtSecret) {
+    return {
+      ip: mtHost,
+      port: parseInt(mtPort, 10),
+      MTProxy: true,
+      secret: mtSecret,
+    }
+  }
+
+  const socksHost = process.env.TG_SERVICE_PROXY_HOST
+  const socksPort = process.env.TG_SERVICE_PROXY_PORT
+  if (socksHost && socksPort) {
+    const opt: Record<string, any> = {
+      ip: socksHost,
+      port: parseInt(socksPort, 10),
+      socksType: 5,
+    }
+    if (process.env.TG_SERVICE_PROXY_USERNAME) opt.username = process.env.TG_SERVICE_PROXY_USERNAME
+    if (process.env.TG_SERVICE_PROXY_PASSWORD) opt.password = process.env.TG_SERVICE_PROXY_PASSWORD
+    return opt
+  }
+
+  return null
 }
 
 // ── Public: is the service account configured ─────────────────────────────────
