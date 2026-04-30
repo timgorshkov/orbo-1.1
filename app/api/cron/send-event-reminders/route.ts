@@ -309,6 +309,15 @@ async function sendPostEventFollowUps({
                 `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
                 [result.message_id || null, reservationId]
               );
+            } else if (result.noDmChannel) {
+              // No bot has an open dialog with this user — silent skip
+              // (group announcement / email cover this case).
+              await adminSupabase.raw(
+                `UPDATE event_participant_reminders
+                    SET status = 'skipped', error_message = 'no_dm_channel'
+                  WHERE id = $1`,
+                [reservationId]
+              );
             } else {
               await adminSupabase.raw(
                 `UPDATE event_participant_reminders
@@ -500,6 +509,18 @@ async function sendReminderToParticipants({
           await adminSupabase.raw(
             `UPDATE event_participant_reminders SET tg_message_id = $1 WHERE id = $2`,
             [result.message_id || null, reservationId]
+          );
+        } else if (result.noDmChannel) {
+          // The participant never started a dialog with any of our bots and
+          // didn't block them either — there is simply no channel to DM them.
+          // Mark as 'skipped' (not 'failed') so this doesn't pollute error
+          // dashboards: reaching them via group announcement / email is the
+          // expected fallback, and nothing went wrong on our side.
+          await adminSupabase.raw(
+            `UPDATE event_participant_reminders
+                SET status = 'skipped', error_message = 'no_dm_channel'
+              WHERE id = $1`,
+            [reservationId]
           );
         } else {
           // Mark the reservation as failed so we have a record. We don't

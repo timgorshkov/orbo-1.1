@@ -79,6 +79,14 @@ interface TelegramWebApp {
     selectionChanged: () => void;
   };
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
+  version?: string;
+  platform?: string;
+  isVersionAtLeast?: (version: string) => boolean;
+  // Available since Bot API 7.2 (April 2024). Shows the native "Allow @bot to
+  // send you messages?" prompt. If the user already granted (or denied) write
+  // access in the past, Telegram returns the previous answer without showing
+  // the dialog again, so it's safe to call on every open.
+  requestWriteAccess?: (callback?: (granted: boolean) => void) => void;
 }
 
 interface Window {

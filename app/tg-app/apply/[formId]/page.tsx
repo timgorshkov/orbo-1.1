@@ -12,6 +12,7 @@ import {
   Send
 } from 'lucide-react';
 import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
+import { requestTelegramWriteAccess } from '@/lib/telegram/webAppClient';
 
 // Telegram WebApp types are defined in @/lib/types/telegram-webapp.d.ts
 
@@ -102,10 +103,14 @@ export default function ApplicationFormPage() {
       const webApp = window.Telegram.WebApp;
       webApp.ready();
       webApp.expand();
-      
+
+      // Grant DM permission so we can send confirmation / status updates
+      // about the application. See lib/telegram/webAppClient.ts.
+      requestTelegramWriteAccess();
+
       setTgUser(webApp.initDataUnsafe?.user);
       setIsWebAppReady(true);
-      
+
       // Apply theme
       if (webApp.themeParams.bg_color) {
         document.body.style.backgroundColor = webApp.themeParams.bg_color;

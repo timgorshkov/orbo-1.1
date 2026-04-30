@@ -232,7 +232,11 @@ async function sendTelegramConfirmation(p: TgParams): Promise<void> {
     }
   }
 
-  logger.warn({ tg_user_id: p.tgUserId }, 'Could not send TG confirmation via any bot')
+  // No bot has an open dialog with this user. This is an expected scenario
+  // (registration via web form before opening any of our bots), not a failure
+  // — the email confirmation is the reliable channel here. Logged at info so
+  // it stays visible without polluting warn-level dashboards.
+  logger.info({ tg_user_id: p.tgUserId }, 'TG confirmation skipped — no DM channel available')
 }
 
 // ─── Email ──────────────────────────────────────────────────

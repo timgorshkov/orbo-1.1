@@ -230,29 +230,33 @@ export default function EventForm({ orgId, mode, initialEvent, defaultPaymentLin
     initialEvent?.allow_multiple_tickets ?? false
   )
   
-  // Registration fields configuration
+  // Registration fields configuration.
+  // For NEW events email defaults to required: it's the only reliable
+  // notification channel for participants who haven't /started any of our
+  // bots. The organizer can downgrade or disable any field below.
   const defaultFieldsConfig: RegistrationFieldsConfig = {
     full_name: { status: 'disabled' },
     phone_number: { status: 'disabled' },
-    email: { status: 'disabled' },
+    email: { status: 'required' },
     bio: { status: 'disabled', label: 'Кратко о себе' }
   }
-  
+
   const [requestContactInfo, setRequestContactInfo] = useState(() => {
-    // Check if any field is enabled in initial config
+    // Existing events: read from saved config. New events: on by default
+    // because the default config has email=required.
     const config = initialEvent?.registration_fields_config
-    if (!config) return false
+    if (!config) return mode === 'create'
     return Object.values(config).some(f => f?.status !== 'disabled')
   })
-  
+
   const [fieldsConfig, setFieldsConfig] = useState<RegistrationFieldsConfig>(() => {
     const config = initialEvent?.registration_fields_config
     if (config) {
       return {
-        full_name: config.full_name || defaultFieldsConfig.full_name,
-        phone_number: config.phone_number || defaultFieldsConfig.phone_number,
-        email: config.email || defaultFieldsConfig.email,
-        bio: config.bio || defaultFieldsConfig.bio
+        full_name: config.full_name || { status: 'disabled' },
+        phone_number: config.phone_number || { status: 'disabled' },
+        email: config.email || { status: 'disabled' },
+        bio: config.bio || { status: 'disabled', label: 'Кратко о себе' }
       }
     }
     return defaultFieldsConfig

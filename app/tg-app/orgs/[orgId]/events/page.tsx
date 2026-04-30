@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import { Calendar, MapPin, Users, Clock, Loader2, ChevronRight, Video } from 'lucide-react';
+import { requestTelegramWriteAccess } from '@/lib/telegram/webAppClient';
 
 interface Event {
   id: string;
@@ -47,6 +48,9 @@ export default function TelegramEventsListPage() {
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
+        // Grant DM permission so Orbo can send registration confirmations and
+        // event reminders. See lib/telegram/webAppClient.ts for the rationale.
+        requestTelegramWriteAccess();
         setWebAppReady(true);
         
         // Set theme

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Script from 'next/script';
 import { renderTelegramContent } from '@/lib/utils/telegramMarkdown';
 import { getShortCode } from '@/lib/utils/qrTicket';
+import { requestTelegramWriteAccess } from '@/lib/telegram/webAppClient';
 // Note: Using native img instead of Next.js Image for better Telegram WebApp compatibility
 import { Calendar, MapPin, Users, Clock, ExternalLink, CheckCircle2, Loader2, ChevronUp, AlertCircle, X, Download } from 'lucide-react';
 
@@ -125,12 +126,19 @@ export default function TelegramEventPage() {
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-        
+
+        // Ask Telegram to grant the bot permission to DM the user. Without
+        // this, opening the Mini App via a direct deep-link does NOT count
+        // as /start, and event reminders / QR-code / follow-ups fail with
+        // 403 "bot can't initiate conversation". Telegram caches the
+        // user's answer, so calling on every open is safe.
+        requestTelegramWriteAccess();
+
         // Set theme
         if (tg.themeParams.bg_color) {
           document.body.style.backgroundColor = tg.themeParams.bg_color;
         }
-        
+
         // Store initData if available
         if (tg.initData && tg.initData.length > 0) {
           try {

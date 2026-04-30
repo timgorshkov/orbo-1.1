@@ -861,6 +861,23 @@ export type FallbackAudience = 'participant' | 'admin'
 const PARTICIPANT_BOT_ORDER: TelegramBotType[] = ['event', 'main', 'notifications']
 const ADMIN_BOT_ORDER: TelegramBotType[] = ['notifications', 'main', 'event']
 
+/**
+ * True when a Telegram error means "this user is not reachable via this bot"
+ * — i.e. they never started the bot, blocked it, or the account is gone.
+ * Such errors are expected and shouldn't surface as warnings; they tell the
+ * caller "no DM channel available" rather than "something went wrong".
+ */
+export function isNoDmChannelError(err: { error_code?: number; description?: string }): boolean {
+  if (err.error_code !== 403 && err.error_code !== 400) return false
+  const d = (err.description || '').toLowerCase()
+  return (
+    d.includes("can't initiate conversation") ||
+    d.includes('blocked by the user') ||
+    d.includes('chat not found') ||
+    d.includes('user is deactivated')
+  )
+}
+
 export async function sendMessageWithFallback(
   chatId: number,
   text: string,
@@ -872,10 +889,11 @@ export async function sendMessageWithFallback(
   message_id?: number
   error_code?: number
   description?: string
-  attempts?: Array<{ bot_type: TelegramBotType; ok: boolean; description?: string }>
+  noDmChannel?: boolean
+  attempts?: Array<{ bot_type: TelegramBotType; ok: boolean; error_code?: number; description?: string }>
 }> {
   const order = opts.audience === 'admin' ? ADMIN_BOT_ORDER : PARTICIPANT_BOT_ORDER
-  const attempts: Array<{ bot_type: TelegramBotType; ok: boolean; description?: string }> = []
+  const attempts: Array<{ bot_type: TelegramBotType; ok: boolean; error_code?: number; description?: string }> = []
   let lastError: { error_code?: number; description?: string } = {}
 
   for (const botType of order) {
@@ -891,7 +909,7 @@ export async function sendMessageWithFallback(
     try {
       const svc = new TelegramService(botType)
       const res = await svc.sendMessage(chatId, text, options)
-      attempts.push({ bot_type: botType, ok: !!res.ok, description: res.description })
+      attempts.push({ bot_type: botType, ok: !!res.ok, error_code: res.error_code, description: res.description })
       if (res.ok) {
         return {
           ok: true,
@@ -912,10 +930,19 @@ export async function sendMessageWithFallback(
     }
   }
 
+  // If every attempted bot returned a "no DM channel" error, flag it so callers
+  // can distinguish "user unreachable" (expected, silent) from "transport
+  // failure" (warn-worthy). All-empty attempts (no bot configured) are not
+  // counted as noDmChannel.
+  const noDmChannel =
+    attempts.length > 0 &&
+    attempts.every((a) => !a.ok && isNoDmChannelError({ error_code: a.error_code, description: a.description }))
+
   return {
     ok: false,
     error_code: lastError.error_code,
     description: lastError.description,
+    noDmChannel,
     attempts,
   }
 }
