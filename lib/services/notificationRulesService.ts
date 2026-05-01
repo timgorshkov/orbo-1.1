@@ -15,6 +15,7 @@ import { createServiceLogger } from '@/lib/logger';
 import { sendSystemNotification } from './telegramNotificationService';
 import { analyzeNegativeContent, analyzeUnansweredQuestions } from './aiNotificationAnalysis';
 import { getOrgBillingStatus } from './billingService';
+import { moscowDateString } from '@/lib/utils/moscowTime';
 import crypto from 'crypto';
 
 const logger = createServiceLogger('NotificationRules');
@@ -1147,8 +1148,10 @@ async function processRule(rule: NotificationRule): Promise<RuleCheckResult> {
         };
         
         // Additional safety: dedup hash based on the DAY of the last message
-        // This prevents multiple notifications on the same day even if cron runs multiple times
-        const lastMessageDay = lastMessageTime.toISOString().split('T')[0];
+        // This prevents multiple notifications on the same day even if cron runs multiple times.
+        // Считаем «день» по МСК — иначе у сообщений около полуночи МСК hash будет
+        // прыгать между двумя UTC-датами, и dedup сломается.
+        const lastMessageDay = moscowDateString(lastMessageTime);
         const inactivityDedupHash = `inactivity_${rule.id}_${chatId}_${lastMessageDay}`;
         
         if (await isDuplicate(rule.id, inactivityDedupHash, 48)) { // 48 hours lookback

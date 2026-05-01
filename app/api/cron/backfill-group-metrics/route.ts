@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createCronLogger } from '@/lib/logger';
+import { moscowDateString } from '@/lib/utils/moscowTime';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes for backfill
@@ -75,11 +76,12 @@ export async function GET(request: NextRequest) {
     let totalUpdated = 0;
     let totalErrors = 0;
     
-    // Process each day
+    // Process each day (МСК-сутки, чтобы консистентно с update-group-metrics)
     for (let dayOffset = 0; dayOffset < daysToBackfill; dayOffset++) {
-      const date = new Date();
-      date.setDate(date.getDate() - dayOffset);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = moscowDateString(new Date(Date.now() - dayOffset * 24 * 60 * 60 * 1000));
+      // МСК-сутки [00:00 +03:00 .. 23:59:59 +03:00) для запросов по UTC-полю created_at.
+      const dayStart = `${dateStr}T00:00:00+03:00`;
+      const dayEnd = `${dateStr}T23:59:59+03:00`;
       
       // Process each unique chat_id
       for (const chatId of chatIdArray) {
@@ -90,8 +92,8 @@ export async function GET(request: NextRequest) {
             .select('*', { count: 'exact', head: true })
             .eq('tg_chat_id', chatId)
             .eq('event_type', 'message')
-            .gte('created_at', `${dateStr}T00:00:00Z`)
-            .lte('created_at', `${dateStr}T23:59:59Z`);
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
           
           const { count: replyCount } = await supabaseAdmin
             .from('activity_events')
@@ -99,16 +101,16 @@ export async function GET(request: NextRequest) {
             .eq('tg_chat_id', chatId)
             .eq('event_type', 'message')
             .not('reply_to_message_id', 'is', null)
-            .gte('created_at', `${dateStr}T00:00:00Z`)
-            .lte('created_at', `${dateStr}T23:59:59Z`);
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
           
           const { data: dauData } = await supabaseAdmin
             .from('activity_events')
             .select('tg_user_id')
             .eq('tg_chat_id', chatId)
             .eq('event_type', 'message')
-            .gte('created_at', `${dateStr}T00:00:00Z`)
-            .lte('created_at', `${dateStr}T23:59:59Z`);
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
           
           const dau = new Set(dauData?.map(d => d.tg_user_id) || []).size;
           
@@ -117,16 +119,16 @@ export async function GET(request: NextRequest) {
             .select('*', { count: 'exact', head: true })
             .eq('tg_chat_id', chatId)
             .eq('event_type', 'join')
-            .gte('created_at', `${dateStr}T00:00:00Z`)
-            .lte('created_at', `${dateStr}T23:59:59Z`);
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
           
           const { count: leaveCount } = await supabaseAdmin
             .from('activity_events')
             .select('*', { count: 'exact', head: true })
             .eq('tg_chat_id', chatId)
             .eq('event_type', 'leave')
-            .gte('created_at', `${dateStr}T00:00:00Z`)
-            .lte('created_at', `${dateStr}T23:59:59Z`);
+            .gte('created_at', dayStart)
+            .lte('created_at', dayEnd);
           
           const messages = messageCount || 0;
           const replies = replyCount || 0;

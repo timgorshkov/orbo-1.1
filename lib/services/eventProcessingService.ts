@@ -2,6 +2,7 @@ import { createClientServer, createAdminServer } from '@/lib/server/supabaseServ
 import { TelegramUpdate, TelegramMessage, TelegramUser, TelegramChatMemberUpdate } from './telegramService';
 import { createTelegramService } from './telegramService';
 import { createServiceLogger } from '@/lib/logger';
+import { moscowDateString } from '@/lib/utils/moscowTime';
 
 /**
  * Сервис для обработки и нормализации событий Telegram
@@ -1584,7 +1585,7 @@ export class EventProcessingService {
         return;
       }
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = moscowDateString();
       
       // Получаем метрики за сегодня
       const { data: todayMetrics, error: metricsError } = await this.supabase

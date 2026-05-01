@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { createCronLogger } from '@/lib/logger';
+import { moscowDateString } from '@/lib/utils/moscowTime';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow up to 60 seconds for this cron job
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Дневная агрегация ведётся по МСК — события в БД (даты, отчёты UI) у нас
+    // отображаются по Москве. См. lib/utils/moscowTime.ts.
+    const today = moscowDateString();
     
     // Get all active org-group mappings
     const { data: mappings, error: mappingsError } = await supabaseAdmin

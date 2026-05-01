@@ -1,6 +1,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { createEventReminders, deleteEventReminders } from '@/lib/services/announcementService'
+import { moscowDateString } from '@/lib/utils/moscowTime'
 
 const logger = createServiceLogger('RecurringEventsService')
 
@@ -319,7 +320,7 @@ export async function getNextInstance(
   parentEventId: string
 ): Promise<{ id: string; event_date: string; start_time: string } | null> {
   const db = createAdminServer()
-  const today = new Date().toISOString().split('T')[0]
+  const today = moscowDateString()
 
   const { data } = await db
     .from('events')
@@ -341,7 +342,7 @@ export async function getFutureInstances(
   limit: number = 8
 ): Promise<Array<{ id: string; event_date: string; start_time: string; occurrence_index: number }>> {
   const db = createAdminServer()
-  const today = new Date().toISOString().split('T')[0]
+  const today = moscowDateString()
 
   const { data } = await db
     .from('events')

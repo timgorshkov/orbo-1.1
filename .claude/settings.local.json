@@ -121,7 +121,9 @@
       "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" diff auth.ts)",
       "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" stash)",
       "Bash(git -C \"C:/Cursor WS/orbo-1.1.1/orbo-1.1\" stash pop)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Skill(schedule)",
+      "Bash(python *)"
     ]
   }
 }
