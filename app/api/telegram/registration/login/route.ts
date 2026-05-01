@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { validateInitDataWithReason } from '@/lib/telegram/webAppAuth'
+import { validateInitDataAnyBot } from '@/lib/telegram/webAppAuth'
 import { createAPILogger } from '@/lib/logger'
 import { encode } from 'next-auth/jwt'
 
@@ -22,36 +22,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing initData' }, { status: 400 })
     }
 
-    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
-    const communityBotToken = process.env.TELEGRAM_BOT_TOKEN!
+    // Проверяем initData против всех настроенных токенов ботов (registration,
+    // community, event). Mini-app может быть открыт из любого из них, и initData
+    // будет подписан тем токеном, через бота которого пользователь зашёл.
+    const validation = validateInitDataAnyBot(initDataString)
 
-    // Пробуем два токена: сначала registration-бот (если задан), потом community-бот.
-    // validateInitDataWithReason тихий — сам не пишет в логи. Шумим только если
-    // обе попытки провалились.
-    const regResult = regBotToken
-      ? validateInitDataWithReason(initDataString, regBotToken)
-      : { ok: false as const, reason: 'empty' as const }
-    const result = regResult.ok
-      ? regResult
-      : validateInitDataWithReason(initDataString, communityBotToken)
-
-    if (!result.ok || !result.data?.user) {
+    if (!validation.ok || !validation.data?.user) {
       logger.warn(
         {
-          reg_reason: regResult.reason,
-          community_reason: result.reason,
+          attempts: validation.attempts,
           init_data_len: initDataString.length,
-          meta: result.meta,
-          reg_bot_configured: !!regBotToken,
         },
-        'TG login: initData validation failed for both bots'
+        'TG login: initData validation failed for all configured bots'
       )
       return NextResponse.json({ error: 'Invalid initData' }, { status: 401 })
     }
 
-    const parsed = result.data
+    const parsed = validation.data
     const tgUser = parsed.user!
-    const botUsed = regResult.ok ? 'registration' : 'community'
+    const botUsed = validation.bot!
     const tgUserId = tgUser.id
 
     // Find registered users linked to this Telegram ID.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminServer } from '@/lib/server/supabaseServer'
-import { validateInitDataWithReason } from '@/lib/telegram/webAppAuth'
+import { validateInitDataAnyBot } from '@/lib/telegram/webAppAuth'
 import { createAPILogger } from '@/lib/logger'
 
 const supabaseAdmin = createAdminServer()
@@ -19,35 +19,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing initData' }, { status: 400 })
     }
 
-    // Validate against registration bot token first, fall back to community bot.
-    // Шумим в логах только если обе попытки провалились.
-    const regBotToken = process.env.TELEGRAM_REGISTRATION_BOT_TOKEN
-    const communityBotToken = process.env.TELEGRAM_BOT_TOKEN!
+    // Проверяем initData против всех настроенных токенов ботов (registration,
+    // community, event). Mini-app может быть открыт из любого из них.
+    const validation = validateInitDataAnyBot(initDataString)
 
-    const regResult = regBotToken
-      ? validateInitDataWithReason(initDataString, regBotToken)
-      : { ok: false as const, reason: 'empty' as const }
-    const result = regResult.ok
-      ? regResult
-      : validateInitDataWithReason(initDataString, communityBotToken)
-
-    if (!result.ok || !result.data?.user) {
+    if (!validation.ok || !validation.data?.user) {
       logger.warn(
         {
-          reg_reason: regResult.reason,
-          community_reason: result.reason,
+          attempts: validation.attempts,
           init_data_len: initDataString.length,
-          meta: result.meta,
-          reg_bot_configured: !!regBotToken,
         },
-        'TG registration/check: initData validation failed for both bots'
+        'TG registration/check: initData validation failed for all configured bots'
       )
       return NextResponse.json({ error: 'Invalid initData' }, { status: 401 })
     }
 
-    const parsed = result.data
+    const parsed = validation.data
     const tgUserId = parsed.user!.id
-    const botUsed = regResult.ok ? 'registration' : 'community'
+    const botUsed = validation.bot!
 
     // Check both auth sources:
     // 1) accounts table: users who registered via Telegram MiniApp

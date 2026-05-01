@@ -159,6 +159,58 @@ export function validateInitData(
   return res.ok && res.data ? res.data : null;
 }
 
+export type KnownBot = 'registration' | 'community' | 'event';
+
+export interface InitDataMultiBotResult {
+  ok: boolean;
+  data?: TelegramWebAppInitData;
+  /** Какой бот успешно подтвердил подпись (если ok=true). */
+  bot?: KnownBot;
+  /** Попытки в порядке проверки — для логирования при полном фейле. */
+  attempts: Array<{
+    bot: KnownBot;
+    reason: InitDataFailReason;
+    meta?: InitDataValidationResult['meta'];
+  }>;
+}
+
+/**
+ * Перебирает все настроенные токены ботов и пытается валидировать initData.
+ *
+ * У Orbo три бота: @orbo_assistant_bot (registration), @orbo_community_bot
+ * (community), @orbo_event_bot (event). Mini-app может быть открыт из любого
+ * из них, и initData будет подписан токеном именно того бота, через которого
+ * пользователь зашёл — мы не можем узнать заранее, какой это токен.
+ *
+ * Не настроенные в env токены тихо пропускаются. Если ни один токен не
+ * подтвердил подпись, `attempts` содержит причины отказа по каждому, что
+ * удобно логировать вызывающему коду.
+ */
+export function validateInitDataAnyBot(initDataString: string): InitDataMultiBotResult {
+  const tokens: Array<{ bot: KnownBot; token: string | undefined }> = [
+    { bot: 'registration', token: process.env.TELEGRAM_REGISTRATION_BOT_TOKEN },
+    { bot: 'community', token: process.env.TELEGRAM_BOT_TOKEN },
+    { bot: 'event', token: process.env.TELEGRAM_EVENT_BOT_TOKEN },
+  ];
+
+  const attempts: InitDataMultiBotResult['attempts'] = [];
+
+  for (const { bot, token } of tokens) {
+    if (!token) continue;
+    const result = validateInitDataWithReason(initDataString, token);
+    if (result.ok && result.data) {
+      return { ok: true, data: result.data, bot, attempts };
+    }
+    attempts.push({
+      bot,
+      reason: result.reason || 'exception',
+      meta: result.meta,
+    });
+  }
+
+  return { ok: false, attempts };
+}
+
 /**
  * Extract event ID from start_param
  * Format: "e-{eventId}" or just "{eventId}"
