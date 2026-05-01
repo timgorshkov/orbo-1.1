@@ -24,22 +24,18 @@ export async function POST(request: NextRequest) {
   try {
     const db = createAdminServer()
 
-    // Mark overdue: pending registrations where deadline has passed
+    // Делегируем в SQL-функцию — единый источник логики (см. мигр. 296):
+    // - standalone event: deadline = event_date - payment_deadline_days
+    // - series parent: deadline = MAX(child.event_date) - payment_deadline_days
+    //   (а пока children не сгенерированы — never overdue)
     const { data, error } = await db.raw(
-      `UPDATE event_registrations er
-       SET payment_status = 'overdue', payment_updated_at = NOW()
-       FROM events e
-       WHERE er.event_id = e.id
-         AND er.payment_status = 'pending'
-         AND e.requires_payment = true
-         AND er.price > 0
-         AND e.payment_deadline_days IS NOT NULL
-         AND (e.event_date::date - e.payment_deadline_days) < CURRENT_DATE
-       RETURNING er.id`,
+      `SELECT mark_overdue_payments() AS marked`,
       []
     )
 
-    const marked = data?.length || 0
+    if (error) throw new Error(error.message)
+
+    const marked = (data?.[0] as any)?.marked ?? 0
 
     if (marked > 0) {
       logger.info({ marked }, 'Overdue payments marked')
