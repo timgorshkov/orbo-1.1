@@ -9,7 +9,7 @@
  */
 
 import { createServiceLogger } from '@/lib/logger';
-import { telegramFetch } from '@/lib/services/telegramService';
+import { telegramFetch, isNoDmChannelError } from '@/lib/services/telegramService';
 
 const logger = createServiceLogger('TelegramNotification');
 
@@ -52,14 +52,11 @@ async function sendTelegramMessage(
 
     const data: TelegramResponse = await response.json();
     
+    // Тихий low-level wrapper: внешние функции (sendDigestDM, sendSystemNotification)
+    // сами логируют исход с нужным уровнем. Здесь оставляем только debug, чтобы
+    // не дублировать запись в логах при каждом 403/400.
     if (!data.ok) {
-      // 403 / "chat not found" — user blocked bot or never started it; not a server-side error
-      const desc = data.description || '';
-      const isUserSide =
-        data.error_code === 403 ||
-        (data.error_code === 400 && (desc.includes('chat not found') || desc.includes('user not found')));
-      const logFn = isUserSide ? logger.warn.bind(logger) : logger.error.bind(logger);
-      logFn({
+      logger.debug({
         chat_id: params.chat_id,
         error_code: data.error_code,
         description: data.description,
@@ -251,18 +248,25 @@ export async function sendSystemNotification(
         message_length: message.length
       }, 'System notification sent successfully');
     } else {
-      // 403 "bot was blocked" / "user is deactivated" / 400 "chat not found" — user-side, not a server error
+      // No DM channel (bot blocked, user never started, deactivated) — нормальное
+      // состояние пользователя, info. Прочие user-side (chat not found) — warn.
+      // Server-side ошибки — error.
       const desc = response.description || '';
-      const isUserSide =
+      const noDmChannel = isNoDmChannelError({ error_code: response.error_code, description: desc });
+      const isUserSide = noDmChannel ||
         response.error_code === 403 ||
         (response.error_code === 400 && (desc.includes('chat not found') || desc.includes('user not found')));
-      const logFn = isUserSide ? logger.warn.bind(logger) : logger.error.bind(logger);
+      const logFn = noDmChannel
+        ? logger.info.bind(logger)
+        : isUserSide
+          ? logger.warn.bind(logger)
+          : logger.error.bind(logger);
       logFn({
         tg_user_id: tgUserId,
         error_code: response.error_code,
         description: response.description,
         message_length: message.length
-      }, 'System notification delivery failed');
+      }, noDmChannel ? 'System notification skipped — no DM channel' : 'System notification delivery failed');
     }
 
     return {

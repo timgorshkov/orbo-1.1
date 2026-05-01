@@ -731,7 +731,9 @@ async getChatMember(chatId: number, userId: number) {
       }
 
       if (!response.ok || !responseData.ok) {
-        // Check if this is an expected/normal error (don't log as ERROR)
+        // Check if this is an expected/normal error (don't log as ERROR).
+        // 403 "can't initiate conversation" — пользователь не запускал бота,
+        // нет DM-канала; обычное состояние, не сбой инфраструктуры.
         const isExpectedError =
           (responseData.error_code === 400 && responseData.description?.includes('user not found')) ||
           (responseData.error_code === 400 && responseData.description?.includes('chat not found')) ||
@@ -739,6 +741,8 @@ async getChatMember(chatId: number, userId: number) {
           (responseData.error_code === 400 && responseData.description?.includes('member list is inaccessible')) ||
           (responseData.error_code === 400 && responseData.description?.includes('PARTICIPANT_ID_INVALID')) ||
           (responseData.error_code === 400 && responseData.description?.includes('CHAT_ADMIN_REQUIRED')) ||
+          (responseData.error_code === 400 && responseData.description?.includes('PEER_ID_INVALID')) ||
+          (responseData.error_code === 403 && responseData.description?.includes("can't initiate conversation")) ||
           (responseData.error_code === 403 && responseData.description?.includes('bot was blocked')) ||
           (responseData.error_code === 403 && responseData.description?.includes('user is deactivated')) ||
           (responseData.error_code === 403 && responseData.description?.includes('bot was kicked')) ||

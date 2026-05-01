@@ -64,10 +64,18 @@ export async function POST(req: NextRequest) {
     
     // Superadmin pages: log to Dozzle only (info level), don't send to Hawk
     const isSuperadmin = pathname.startsWith('/superadmin');
-    
+
+    // Абсурдно большие значения для time-метрик возникают, когда вкладка была
+    // в фоне и метрика "догналась" после возврата фокуса. Это не отражает
+    // реальный UX — отбрасываем в info, чтобы не засорять error-канал и Hawk.
+    const isTimeMetric = name === 'FCP' || name === 'LCP' || name === 'TTFB' || name === 'INP' || name === 'FID';
+    const isAbsurd = isTimeMetric && value > 60_000; // > 60 секунд — фоновая вкладка
+
     if (isSuperadmin) {
       // Info level won't trigger Hawk, but visible in Dozzle
       logger.info(logData, `Web Vitals [superadmin]: ${name}=${valueStr}${unit} on ${pathname}`);
+    } else if (isAbsurd) {
+      logger.info(logData, `Web Vitals [bg-tab?]: ${name}=${valueStr}${unit} on ${pathname}`);
     } else if (level === 'error') {
       logger.error(logData, `Web Vitals CRITICAL: ${name}=${valueStr}${unit} on ${pathname}`);
     } else if (level === 'warn') {
