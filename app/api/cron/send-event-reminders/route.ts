@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminServer } from '@/lib/server/supabaseServer';
 import { sendMessageWithFallback } from '@/lib/services/telegramService';
 import { createCronLogger } from '@/lib/logger';
+import { moscowDateString, moscowDateTimeAt, eventStartUtc } from '@/lib/utils/moscowTime';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,55 +28,68 @@ export async function GET(request: NextRequest) {
     let totalSent = 0;
     const errors: string[] = [];
 
-    // ===== 1. SEND 24-HOUR REMINDERS =====
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
+    // Все вычисления дат и времени ведём в МСК — события в БД хранятся как
+    // event_date/start_time без TZ, и это всегда московское время.
+    const ONE_HOUR = 60 * 60 * 1000;
+    const ONE_DAY = 24 * 60 * 60 * 1000;
 
-    const dayAfterTomorrow = new Date(tomorrow);
-    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
-    dayAfterTomorrow.setHours(0, 0, 0, 0);
+    // ===== 1. SEND 24-HOUR REMINDERS =====
+    // События, у которых event_date == «завтра по МСК».
+    const tomorrowMsk = moscowDateString(new Date(now.getTime() + ONE_DAY));
+    const dayAfterMsk = moscowDateString(new Date(now.getTime() + 2 * ONE_DAY));
 
     const sent24h = await sendRemindersForWindow({
       adminSupabase,
       logger,
-      startDate: tomorrow.toISOString().split('T')[0],
-      endDate: dayAfterTomorrow.toISOString().split('T')[0],
+      now,
+      startDate: tomorrowMsk,
+      endDate: dayAfterMsk,
       reminderType: '24h',
       errors
     });
     totalSent += sent24h;
 
     // ===== 2. SEND 1-HOUR REMINDERS =====
-    // Events starting in the next 1-2 hours
-    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
-    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    
-    // For 1h reminders, we need to check events happening today
-    const today = now.toISOString().split('T')[0];
-    const currentTime = `${String(oneHourFromNow.getHours()).padStart(2, '0')}:${String(oneHourFromNow.getMinutes()).padStart(2, '0')}`;
-    const twoHourTime = `${String(twoHoursFromNow.getHours()).padStart(2, '0')}:${String(twoHoursFromNow.getMinutes()).padStart(2, '0')}`;
+    // Окно [now+1h, now+2h) по МСК. event_date берём от старта окна, start_time
+    // сравниваем по строке. Если окно пересекает полночь МСК, проверяем оба дня
+    // (редкий случай — cron запущен в 23 МСК).
+    const oneHour = moscowDateTimeAt(now, ONE_HOUR);
+    const twoHour = moscowDateTimeAt(now, 2 * ONE_HOUR);
 
-    const sent1h = await sendOneHourReminders({
-      adminSupabase,
-      logger,
-      today,
-      startTime: currentTime,
-      endTime: twoHourTime,
-      errors
-    });
+    let sent1h = 0;
+    if (oneHour.date === twoHour.date) {
+      sent1h = await sendOneHourReminders({
+        adminSupabase,
+        logger,
+        now,
+        eventDate: oneHour.date,
+        startTime: oneHour.time,
+        endTime: twoHour.time,
+        errors
+      });
+    } else {
+      // Окно пересекло полночь МСК: [oneHour..23:59) первого дня + [00:00..twoHour) второго дня.
+      sent1h += await sendOneHourReminders({
+        adminSupabase, logger, now,
+        eventDate: oneHour.date, startTime: oneHour.time, endTime: '24:00',
+        errors
+      });
+      sent1h += await sendOneHourReminders({
+        adminSupabase, logger, now,
+        eventDate: twoHour.date, startTime: '00:00', endTime: twoHour.time,
+        errors
+      });
+    }
     totalSent += sent1h;
 
     // ===== 3. POST-EVENT FOLLOW-UPS =====
-    // Events that ended yesterday
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+    // События, у которых event_date == «вчера по МСК».
+    const yesterdayMsk = moscowDateString(new Date(now.getTime() - ONE_DAY));
 
     const sentFollowUp = await sendPostEventFollowUps({
       adminSupabase,
       logger,
-      eventDate: yesterday.toISOString().split('T')[0],
+      eventDate: yesterdayMsk,
       errors
     });
     totalSent += sentFollowUp;
@@ -111,10 +125,11 @@ export async function GET(request: NextRequest) {
 
 // ===== HELPER: Send 24h reminders =====
 async function sendRemindersForWindow({
-  adminSupabase, logger, startDate, endDate, reminderType, errors
+  adminSupabase, logger, now, startDate, endDate, reminderType, errors
 }: {
   adminSupabase: any;
   logger: any;
+  now: Date;
   startDate: string;
   endDate: string;
   reminderType: string;
@@ -151,7 +166,7 @@ async function sendRemindersForWindow({
   for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
-      adminSupabase, logger, event, orgName: org?.name || '', reminderType, errors
+      adminSupabase, logger, now, event, orgName: org?.name || '', reminderType, errors
     });
     totalSent += sent;
   }
@@ -161,21 +176,22 @@ async function sendRemindersForWindow({
 
 // ===== HELPER: Send 1-hour reminders =====
 async function sendOneHourReminders({
-  adminSupabase, logger, today, startTime, endTime, errors
+  adminSupabase, logger, now, eventDate, startTime, endTime, errors
 }: {
   adminSupabase: any;
   logger: any;
-  today: string;
+  now: Date;
+  eventDate: string;
   startTime: string;
   endTime: string;
   errors: string[];
 }): Promise<number> {
-  // Fetch events today with start_time in the 1-2 hour window
+  // Fetch events on the given Moscow date with start_time in the 1-2 hour window
   const { data: eventsRaw, error: eventsError } = await adminSupabase
     .from('events')
     .select('id, title, event_date, start_time, org_id, location_info, requires_payment, is_recurring, parent_event_id')
     .eq('status', 'published')
-    .eq('event_date', today)
+    .eq('event_date', eventDate)
     .gte('start_time', startTime)
     .lt('start_time', endTime);
 
@@ -199,7 +215,7 @@ async function sendOneHourReminders({
   for (const event of events) {
     const org = orgsMap.get(event.org_id) as any;
     const sent = await sendReminderToParticipants({
-      adminSupabase, logger, event, orgName: org?.name || '', reminderType: '1h', errors
+      adminSupabase, logger, now, event, orgName: org?.name || '', reminderType: '1h', errors
     });
     totalSent += sent;
   }
@@ -363,10 +379,11 @@ async function sendPostEventFollowUps({
 
 // ===== CORE: Send reminder to all participants of an event =====
 async function sendReminderToParticipants({
-  adminSupabase, logger, event, orgName, reminderType, errors
+  adminSupabase, logger, now, event, orgName, reminderType, errors
 }: {
   adminSupabase: any;
   logger: any;
+  now: Date;
   event: any;
   orgName: string;
   reminderType: string;
@@ -375,6 +392,24 @@ async function sendReminderToParticipants({
   let sent = 0;
 
   try {
+    // Safety guard: не шлём pre-event напоминания, если событие уже стартовало
+    // более часа назад — например, cron простоял из-за инфраструктурного сбоя
+    // и сейчас «догоняет». post_event сюда не попадает (он в отдельной ветке),
+    // так что guard применяется только к 24h/1h.
+    if (reminderType === '24h' || reminderType === '1h') {
+      const eventStart = eventStartUtc(event.event_date, event.start_time || '00:00');
+      const minutesAfterStart = (now.getTime() - eventStart.getTime()) / 60_000;
+      if (minutesAfterStart > 60) {
+        logger.info({
+          event_id: event.id,
+          event_title: event.title,
+          reminder_type: reminderType,
+          minutes_after_start: Math.round(minutesAfterStart),
+        }, '⏭️ Skipping reminder — event already started more than 1h ago');
+        return 0;
+      }
+    }
+
     // For recurring child instances, registrations are on the parent event
     const regEventId = event.parent_event_id ?? event.id;
 

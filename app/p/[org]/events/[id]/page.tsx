@@ -461,31 +461,45 @@ export default async function EventDetailPage({
 
   let hasSeriesRegistration = false  // has active parent reg (for child instances)
   let isInstanceCancelled = false    // opted out of THIS instance only
+  // Статус оплаты текущего пользователя — нужен чтобы показать кнопку «Перейти
+  // к оплате» на платных событиях. Для child instance берём с регистрации
+  // на родительский event (там лежит запись на серию), для standalone — со
+  // своей регистрации в event_registrations этого события.
+  let userPaymentStatus: string | null = null
 
-  if (participant && event.parent_event_id) {
-    // Check parent series registration
-    const { data: parentReg } = await adminSupabase
-      .from('event_registrations')
-      .select('id, status')
-      .eq('event_id', event.parent_event_id)
-      .eq('participant_id', participant.id)
-      .in('status', ['registered', 'attended'])
-      .maybeSingle()
-    hasSeriesRegistration = !!parentReg
-
-    // Check per-instance opt-out
-    if (hasSeriesRegistration) {
-      const { data: instanceOptOut } = await adminSupabase
+  if (participant) {
+    if (event.parent_event_id) {
+      // Check parent series registration
+      const { data: parentReg } = await adminSupabase
         .from('event_registrations')
-        .select('id')
-        .eq('event_id', eventId)
+        .select('id, status, payment_status')
+        .eq('event_id', event.parent_event_id)
         .eq('participant_id', participant.id)
-        .eq('status', 'cancelled')
+        .in('status', ['registered', 'attended'])
         .maybeSingle()
-      isInstanceCancelled = !!instanceOptOut
-    }
+      hasSeriesRegistration = !!parentReg
+      userPaymentStatus = (parentReg as any)?.payment_status ?? null
 
-    isUserRegistered = hasSeriesRegistration && !isInstanceCancelled
+      // Check per-instance opt-out
+      if (hasSeriesRegistration) {
+        const { data: instanceOptOut } = await adminSupabase
+          .from('event_registrations')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('participant_id', participant.id)
+          .eq('status', 'cancelled')
+          .maybeSingle()
+        isInstanceCancelled = !!instanceOptOut
+      }
+
+      isUserRegistered = hasSeriesRegistration && !isInstanceCancelled
+    } else {
+      const userReg = event.event_registrations?.find(
+        (reg: any) => reg.participants?.id === participant.id &&
+          (reg.status === 'registered' || reg.status === 'attended')
+      )
+      userPaymentStatus = userReg?.payment_status ?? null
+    }
   }
 
   // Fetch recurring context for child instances
@@ -514,7 +528,8 @@ export default async function EventDetailPage({
     available_spots: availableSpots,
     is_user_registered: isUserRegistered || false,
     has_series_registration: hasSeriesRegistration,
-    is_instance_cancelled: isInstanceCancelled
+    is_instance_cancelled: isInstanceCancelled,
+    user_payment_status: userPaymentStatus,
   }
 
   // Generate MAX mini-app link if org has a verified MAX account (admin only, for share button)
