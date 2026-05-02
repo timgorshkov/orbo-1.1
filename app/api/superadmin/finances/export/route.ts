@@ -55,17 +55,17 @@ export async function GET(request: NextRequest) {
         break;
       }
       case 'transactions': {
-        await fillTransactions(wb, from, to);
+        await fillTransactions(wb, from, to, includeTest);
         filename = `orbo-transactions_${from}_${to}.xlsx`;
         break;
       }
       case 'withdrawals': {
-        await fillWithdrawals(wb, from, to);
+        await fillWithdrawals(wb, from, to, includeTest);
         filename = `orbo-withdrawals_${from}_${to}.xlsx`;
         break;
       }
       case 'refunds': {
-        await fillRefunds(wb, from, to);
+        await fillRefunds(wb, from, to, includeTest);
         filename = `orbo-refunds_${from}_${to}.xlsx`;
         break;
       }
@@ -216,17 +216,18 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
   s3.getColumn(1).font = { bold: true };
 }
 
-async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) {
+async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string, includeTest = false) {
   const db = createAdminServer();
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
-  // org_transactions хранит шлюз прямо в колонке payment_gateway (text), а
-  // описание операции — в description. Связи payment_session_id и колонки
-  // notes здесь нет (это ledger самой организации, не платформы).
-  // Контрагент по агентскому договору тянется через LEFT JOIN LATERAL —
-  // берём самый свежий signed-контракт орга на дату транзакции, чтобы
-  // исторические записи ссылались на действовавшего тогда контрагента.
+  // Тестовые транзакции (флаг в metadata->>'is_test', выставляется в бэкфилле
+  // или ручной mark-test) исключаются по умолчанию.
+  // Имя контрагента — для физлица всегда ФИО (cps.full_name), для юрлица/ИП —
+  // org_name; так в реестре виден ровно тот, кто на агентском договоре.
+  const testFilter = includeTest
+    ? ''
+    : `AND COALESCE((t.metadata->>'is_test')::boolean, false) = false`;
   const { data: rows } = await db.raw(
     `SELECT t.id, t.created_at, t.org_id, o.name AS org_name,
             t.type, t.amount, t.event_id, e.title AS event_title,
@@ -234,14 +235,16 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
             t.withdrawal_id, t.description, t.payment_gateway,
             cp.contract_number, cp.type AS counterparty_type,
             cp.inn AS counterparty_inn,
-            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
+            cp.counterparty_name
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
        LEFT JOIN participants p ON p.id = t.participant_id
        LEFT JOIN LATERAL (
          SELECT c.contract_number,
-                cps.type, cps.inn, cps.org_name, cps.full_name
+                cps.type, cps.inn,
+                CASE WHEN cps.type = 'individual' THEN cps.full_name
+                     ELSE COALESCE(cps.org_name, cps.full_name) END AS counterparty_name
            FROM contracts c
            JOIN counterparties cps ON cps.id = c.counterparty_id
           WHERE c.org_id = t.org_id
@@ -251,6 +254,7 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
           LIMIT 1
        ) cp ON true
       WHERE t.created_at >= $1 AND t.created_at <= $2
+        ${testFilter}
       ORDER BY t.created_at ASC`,
     [fromTs, toTs]
   );
@@ -305,21 +309,31 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
   }
 }
 
-async function fillWithdrawals(wb: ExcelJS.Workbook, from: string, to: string) {
+async function fillWithdrawals(wb: ExcelJS.Workbook, from: string, to: string, includeTest = false) {
   const db = createAdminServer();
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
+  // bank_accounts хранит счёт в settlement_account (а не account_number),
+  // и привязан напрямую к counterparties — берём контрагента по нему,
+  // не через LATERAL: w.bank_account_id однозначно определяет получателя.
+  // Тестовые заявки (org_withdrawals.is_test) фильтруются по умолчанию (мигр. 298).
+  const testFilter = includeTest ? '' : 'AND COALESCE(w.is_test, false) = false';
   const { data: rows } = await db.raw(
     `SELECT w.id, w.requested_at, w.processed_at, w.completed_at, w.status,
             w.amount, w.commission_amount, w.net_amount, w.act_number, w.act_document_url,
             w.period_from, w.period_to, w.rejection_reason,
             o.name AS org_name,
-            ba.bank_name, ba.account_number, ba.bik
+            ba.bank_name, ba.settlement_account, ba.bik,
+            cps.type AS counterparty_type, cps.inn AS counterparty_inn,
+            CASE WHEN cps.type = 'individual' THEN cps.full_name
+                 ELSE COALESCE(cps.org_name, cps.full_name) END AS counterparty_name
        FROM org_withdrawals w
        LEFT JOIN organizations o ON o.id = w.org_id
        LEFT JOIN bank_accounts ba ON ba.id = w.bank_account_id
+       LEFT JOIN counterparties cps ON cps.id = ba.counterparty_id
       WHERE w.requested_at >= $1 AND w.requested_at <= $2
+        ${testFilter}
       ORDER BY w.requested_at ASC`,
     [fromTs, toTs]
   );
@@ -329,7 +343,10 @@ async function fillWithdrawals(wb: ExcelJS.Workbook, from: string, to: string) {
     { header: 'Запрошено', key: 'requested', width: 18 },
     { header: 'Завершено', key: 'completed', width: 18 },
     { header: 'Статус', key: 'status', width: 14 },
-    { header: 'Организатор', key: 'org', width: 32 },
+    { header: 'Организатор (тенант)', key: 'org', width: 28 },
+    { header: 'Контрагент по договору', key: 'counterparty', width: 36 },
+    { header: 'Тип контрагента', key: 'counterparty_type', width: 14 },
+    { header: 'ИНН', key: 'counterparty_inn', width: 14 },
     { header: 'Сумма gross, ₽', key: 'amount', width: 16, style: { numFmt: '#,##0.00' } },
     { header: 'К выплате, ₽', key: 'net', width: 14, style: { numFmt: '#,##0.00' } },
     { header: 'Период с', key: 'period_from', width: 12 },
@@ -350,36 +367,47 @@ async function fillWithdrawals(wb: ExcelJS.Workbook, from: string, to: string) {
     rejected: 'Отклонён',
   };
 
+  const COUNTERPARTY_TYPE_LABEL: Record<string, string> = {
+    legal_entity: 'Юрлицо',
+    individual: 'Физлицо',
+  };
+
   for (const r of (rows || []) as any[]) {
     ws.addRow({
       requested: r.requested_at ? new Date(r.requested_at).toISOString().replace('T', ' ').slice(0, 19) : '',
       completed: r.completed_at ? new Date(r.completed_at).toISOString().replace('T', ' ').slice(0, 19) : '',
       status: STATUS_LABELS[r.status] || r.status,
       org: r.org_name || '',
+      counterparty: r.counterparty_name || '',
+      counterparty_type: r.counterparty_type ? (COUNTERPARTY_TYPE_LABEL[r.counterparty_type] || r.counterparty_type) : '',
+      counterparty_inn: r.counterparty_inn || '',
       amount: Number(r.amount),
       net: Number(r.net_amount),
       period_from: r.period_from ? new Date(r.period_from).toISOString().slice(0, 10) : '',
       period_to: r.period_to ? new Date(r.period_to).toISOString().slice(0, 10) : '',
       act_number: r.act_number || '',
       bank: r.bank_name || '',
-      account: r.account_number || '',
+      account: r.settlement_account || '',
       bik: r.bik || '',
       rejection: r.rejection_reason || '',
     });
   }
 }
 
-async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
+async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string, includeTest = false) {
   const db = createAdminServer();
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
   // Контрагент по агентскому договору на момент возврата — для камералки
   // важно показать кому относится возврат (юрлицо/ИП/физлицо).
+  // Имя физлица — full_name (ФИО), юрлица/ИП — org_name.
   const counterpartyJoin = `
     LEFT JOIN LATERAL (
       SELECT c.contract_number,
-             cps.type, cps.inn, cps.org_name, cps.full_name
+             cps.type, cps.inn,
+             CASE WHEN cps.type = 'individual' THEN cps.full_name
+                  ELSE COALESCE(cps.org_name, cps.full_name) END AS counterparty_name
         FROM contracts c
         JOIN counterparties cps ON cps.id = c.counterparty_id
        WHERE c.org_id = $org_id_col
@@ -392,13 +420,16 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   // 1) Возвраты по балансу организаторов (refund + agent_commission_reversal).
   //    Эти движения трогают org_transactions: возврат тела билета участнику и
   //    реверс уже удержанной агентской комиссии.
+  const orgTxTestFilter = includeTest
+    ? ''
+    : `AND COALESCE((t.metadata->>'is_test')::boolean, false) = false`;
   const { data: orgTxRows } = await db.raw(
     `SELECT t.created_at, t.type, t.amount, o.name AS org_name,
             e.title AS event_title, p.full_name AS participant_name,
             t.description,
             cp.contract_number, cp.type AS counterparty_type,
             cp.inn AS counterparty_inn,
-            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
+            cp.counterparty_name
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
@@ -406,6 +437,7 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
        ${counterpartyJoin.replace('$org_id_col', 't.org_id').replace('$date_col', 't.created_at')}
       WHERE t.type IN ('refund', 'agent_commission_reversal')
         AND t.created_at >= $1 AND t.created_at <= $2
+        ${orgTxTestFilter}
       ORDER BY t.created_at ASC`,
     [fromTs, toTs]
   );
@@ -413,22 +445,28 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   // 2) Возвраты доходов платформы (service_fee_refund / agent_commission_refund).
   //    Эти живут в platform_income — отдельная таблица учёта выручки Orbo,
   //    они не двигают баланс организатора и не попадут в org_transactions.
-  //    Без этого блока реестр был неполным (см. service_fee_refund от мигр. 297).
+  //    Тестовые помечены либо в payment_sessions.is_test, либо в pi.metadata.
+  const piTestFilter = includeTest
+    ? ''
+    : `AND COALESCE(ps.is_test, false) = false
+       AND COALESCE((pi.metadata->>'is_test')::boolean, false) = false`;
   const { data: platformRefunds } = await db.raw(
     `SELECT pi.created_at, pi.income_type AS type, pi.amount, o.name AS org_name,
             e.title AS event_title, p.full_name AS participant_name,
             COALESCE(pi.metadata->>'reason', '') AS notes,
             cp.contract_number, cp.type AS counterparty_type,
             cp.inn AS counterparty_inn,
-            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
+            cp.counterparty_name
        FROM platform_income pi
        LEFT JOIN organizations o ON o.id = pi.org_id
        LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
        LEFT JOIN events e ON e.id = er.event_id
        LEFT JOIN participants p ON p.id = er.participant_id
+       LEFT JOIN payment_sessions ps ON ps.id = pi.payment_session_id
        ${counterpartyJoin.replace('$org_id_col', 'pi.org_id').replace('$date_col', 'pi.created_at')}
       WHERE pi.income_type IN ('service_fee_refund', 'agent_commission_refund')
         AND pi.created_at >= $1 AND pi.created_at <= $2
+        ${piTestFilter}
       ORDER BY pi.created_at ASC`,
     [fromTs, toTs]
   );
