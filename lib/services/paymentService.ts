@@ -364,6 +364,14 @@ export async function handlePaymentWebhook(
           .eq('id', session.event_registration_id)
       }
     }
+
+    // Распознаём, был ли это **полный** возврат (ticket + service_fee)
+    // или **дозоврат именно сервисного сбора** — в обоих случаях платформе
+    // service_fee становится не доходом и его нужно сторнировать в учёте.
+    // Partial refund (только ticket) сюда не попадает: service_fee остаётся.
+    // Идемпотентность — через UNIQUE INDEX uniq_platform_income_session_refund
+    // (мигр. 297): повторный webhook от шлюза не создаст дубль.
+    await tryRecordServiceFeeRefund(db, session, event.amount, event.rawData)
   }
 
   logger.info({
@@ -373,6 +381,78 @@ export async function handlePaymentWebhook(
   }, 'Webhook processed')
 
   return { success: true, sessionId: session.id }
+}
+
+/**
+ * Создаёт запись `service_fee_refund` в platform_income, если возврат соответствует
+ * одному из паттернов:
+ *   • полный возврат (refund_amount ≈ ticket_price + service_fee)
+ *   • дозоврат именно сервисного сбора (refund_amount ≈ service_fee)
+ *
+ * Partial refund «только тело билета» (refund_amount ≈ ticket_price) сюда не
+ * попадает — это бизнес-дефолт, и service_fee остаётся доходом платформы.
+ *
+ * Идемпотентность гарантирует уникальный индекс из мигр. 297.
+ */
+async function tryRecordServiceFeeRefund(
+  db: ReturnType<typeof createAdminServer>,
+  session: PaymentSession,
+  refundAmount: number,
+  rawData: any
+): Promise<void> {
+  const serviceFee = session.service_fee_amount != null
+    ? Number(session.service_fee_amount)
+    : 0
+  if (serviceFee <= 0) return
+
+  const ticketPrice = session.ticket_price != null
+    ? Number(session.ticket_price)
+    : Number(session.amount) - serviceFee
+  const totalAmount = ticketPrice + serviceFee
+
+  // 1 копейка допуск на округление gateway-сумм
+  const epsilon = 0.01
+  const isFullRefund = refundAmount >= totalAmount - epsilon
+  const isFeeOnlyRefund = Math.abs(refundAmount - serviceFee) < epsilon
+
+  if (!isFullRefund && !isFeeOnlyRefund) {
+    // Partial refund (только ticket) или произвольная сумма — service_fee
+    // у нас остаётся, refund-запись не нужна.
+    return
+  }
+
+  try {
+    await db.raw(
+      `INSERT INTO platform_income
+         (org_id, payment_session_id, event_registration_id, income_type, amount, currency, metadata)
+       VALUES ($1, $2, $3, 'service_fee_refund', $4, $5, $6::jsonb)
+       ON CONFLICT ON CONSTRAINT uniq_platform_income_session_refund DO NOTHING`,
+      [
+        session.org_id,
+        session.id,
+        session.event_registration_id,
+        serviceFee,
+        session.currency || 'RUB',
+        JSON.stringify({
+          source: 'gateway_webhook',
+          refund_amount: refundAmount,
+          refund_kind: isFullRefund ? 'full' : 'fee_only',
+          gateway_raw: rawData ?? null,
+        }),
+      ]
+    )
+    logger.info({
+      session_id: session.id,
+      service_fee_amount: serviceFee,
+      refund_kind: isFullRefund ? 'full' : 'fee_only',
+    }, 'Recorded service_fee_refund from gateway webhook')
+  } catch (err: any) {
+    // Не валим webhook — refund в БД не критичный для возврата клиенту
+    logger.error({
+      session_id: session.id,
+      error: err.message,
+    }, 'Failed to record service_fee_refund (non-critical)')
+  }
 }
 
 // ─── Confirm Manual Payment ─────────────────────────────────────────

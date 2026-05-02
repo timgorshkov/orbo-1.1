@@ -23,6 +23,9 @@ export interface RetailActLine {
   paymentIds: string[]
   /** Тип сервисного сбора: 'base' = 5% (юрлица), 'full' = 10% (физлица). */
   feeType: RetailActFeeType
+  /** Цена за один платёж. Все платежи в этой строке одинаковой суммы — иначе они
+   *  попали бы в разные RetailActLine (см. groupPaymentsByEvent: ключ = event_id + fee_type + amount). */
+  pricePerPayment: number
 }
 
 export interface RetailActTemplateData {
@@ -91,6 +94,7 @@ export function buildRetailActHtml(data: RetailActTemplateData): string {
       <tr>
         <td>${idx + 1}</td>
         <td>${escapeHtml(name)}</td>
+        <td class="amount-cell">${formatMoney(line.pricePerPayment)}</td>
         <td class="center">${line.paymentsCount}</td>
         <td class="amount-cell">${formatMoney(line.totalAmount)}</td>
       </tr>`
@@ -222,14 +226,15 @@ export function buildRetailActHtml(data: RetailActTemplateData): string {
       <tr>
         <th style="width: 42px;">№ п/п</th>
         <th>Наименование услуги</th>
+        <th style="width: 100px;">Цена за оплату, руб.</th>
         <th style="width: 90px;" class="center">Кол-во оплат</th>
-        <th style="width: 140px;">Сумма, руб.</th>
+        <th style="width: 130px;">Сумма, руб.</th>
       </tr>
     </thead>
     <tbody>
       ${rowsHtml}
       <tr class="total-row">
-        <td colspan="2">Итого</td>
+        <td colspan="3">Итого</td>
         <td class="center">${paymentsCount}</td>
         <td class="amount-cell">${formatMoney(totalAmount)}</td>
       </tr>

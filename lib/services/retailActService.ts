@@ -144,6 +144,12 @@ async function loadPayments(
   periodEnd: string
 ): Promise<RetailActPaymentDetail[]> {
   const db = createAdminServer()
+  // Исключаем service_fee, по которым в БД уже есть запись service_fee_refund
+  // (созданная webhook'ом полного возврата или вручную через record_service_fee_refund).
+  // Сравниваем по payment_session_id; refund в более раннем периоде тоже учитываем —
+  // если сторно прошло раньше, эту сделку нельзя включать в текущий акт.
+  // Если сторно окажется ПОСЛЕ закрытия периода — это ручной кейс корректировки
+  // прошлого АУ (отзыв документа в Эльбе + новый акт), webhook сам этим не занимается.
   const { data, error } = await db.raw(
     `SELECT
        pi.id AS income_id,
@@ -165,6 +171,12 @@ async function loadPayments(
        AND COALESCE((pi.metadata->>'is_test')::boolean, false) = false
        AND pi.created_at >= $1::date
        AND pi.created_at < ($2::date + INTERVAL '1 day')
+       AND NOT EXISTS (
+         SELECT 1 FROM platform_income r
+         WHERE r.income_type = 'service_fee_refund'
+           AND r.payment_session_id = pi.payment_session_id
+           AND r.created_at < ($2::date + INTERVAL '1 day')
+       )
      ORDER BY pi.created_at ASC`,
     [periodStart, periodEnd]
   )
@@ -210,9 +222,14 @@ function groupPaymentsByEvent(payments: RetailActPaymentDetail[]): RetailActLine
   const map = new Map<string, RetailActLine>()
 
   for (const p of payments) {
-    // Группируем по event_id + fee_type — чтобы платежи разных ставок (5% и 10%)
-    // попадали в отдельные позиции акта даже в рамках одного мероприятия.
-    const key = `${p.event_id || 'no_event'}__${p.fee_type}`
+    // Группируем по event_id + fee_type + amount (в копейках).
+    // Зачем amount: на одном событии могут быть платежи с разной суммой сбора —
+    // например, часть участников по полной цене, часть со скидкой. Эльба
+    // по позиции акта показывает Цену = Сумма / Кол-во, и при усреднении эта
+    // цена не совпадает ни с одной реальной транзакцией. С учётом amount в ключе
+    // каждая уникальная цена попадает в свою строку акта (qty=N, price=amount).
+    const amountCents = Math.round(p.amount * 100)
+    const key = `${p.event_id || 'no_event'}__${p.fee_type}__${amountCents}`
     const title =
       p.event_title ||
       (p.event_id
@@ -233,11 +250,16 @@ function groupPaymentsByEvent(payments: RetailActPaymentDetail[]): RetailActLine
         totalAmount: p.amount,
         paymentIds: [p.income_id],
         feeType: p.fee_type,
+        pricePerPayment: p.amount,
       })
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => b.totalAmount - a.totalAmount)
+  // Сортируем: сначала по сумме строки (вклад в выручку), потом по убыванию цены.
+  return Array.from(map.values()).sort((a, b) => {
+    if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount
+    return b.pricePerPayment - a.pricePerPayment
+  })
 }
 
 function buildDbLines(lines: RetailActLine[]) {
@@ -248,8 +270,11 @@ function buildDbLines(lines: RetailActLine[]) {
       name: `${namePrefix} за информационное обслуживание при приобретении билетов на мероприятие «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} шт.)` : ''}`,
       unit: 'усл. ед.',
       unit_code: '796',
-      quantity: 1,
-      price: line.totalAmount,
+      // quantity = paymentsCount, price = pricePerPayment, sum = totalAmount —
+      // тогда Эльба корректно отрисует столбец «Цена» (sum / quantity) и
+      // строки по разным ценам не сольются в одну с усреднённой ценой.
+      quantity: line.paymentsCount,
+      price: line.pricePerPayment,
       sum: line.totalAmount,
       vat_rate: 'Без НДС',
       event_id: line.eventId,
@@ -261,9 +286,10 @@ function buildDbLines(lines: RetailActLine[]) {
 }
 
 /**
- * Формирует позиции для отправки в Эльбу. Для каждого мероприятия одна позиция
- * с суммой = общая выручка по этому событию. Количество = 1 (условная услуга),
- * единица — «шт.» (Эльба принимает любую строку unitName).
+ * Формирует позиции для отправки в Эльбу. Одна позиция = одна цена-сбор
+ * по одному событию (см. groupPaymentsByEvent: ключ event_id + fee_type + amount).
+ * quantity = число платежей этой цены, price = amount одного платежа,
+ * sum = quantity × price автоматически считает Эльба.
  */
 function buildElbaItems(lines: RetailActLine[]): ElbaActItem[] {
   return lines.map((line) => {
@@ -271,12 +297,12 @@ function buildElbaItems(lines: RetailActLine[]): ElbaActItem[] {
     const namePrefix = feeLabel ? `Сервисный сбор Orbo ${feeLabel}` : 'Сервисный сбор Orbo'
     return {
       productName: truncate(
-        `${namePrefix}: «${line.eventTitle}»${line.paymentsCount > 1 ? ` (${line.paymentsCount} опл.)` : ''}${line.orgName ? ` / ${line.orgName}` : ''}`,
+        `${namePrefix}: «${line.eventTitle}»${line.orgName ? ` / ${line.orgName}` : ''}`,
         2000
       ),
-      quantity: 1,
+      quantity: line.paymentsCount,
       unitName: 'шт.',
-      price: round2(line.totalAmount),
+      price: round2(line.pricePerPayment),
       // Важно: Эльба требует ndsRate === null для акта с withNDS=false.
       // Иначе возвращает 400 «Для акта без НДС поле ActItemToCreate.NDSRate должно принимать значение null».
       ndsRate: null,
