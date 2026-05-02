@@ -10,6 +10,7 @@
 import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import { getOrgBalance } from './orgAccountService'
+import { ORBO_ENTITY } from '@/lib/config/orbo-entity'
 
 const logger = createServiceLogger('WithdrawalService')
 
@@ -570,11 +571,23 @@ export async function getWithdrawals(
   }
 }
 
-// ─── Act Generation ─────────────────────────────────────────────────
+// ─── Withdrawal Request Document ────────────────────────────────────
 
 /**
- * Generate a withdrawal act document (simple HTML for now, can be extended to PDF).
- * Uploads to S3 and saves URL to withdrawal record.
+ * Generates the «Требование на вывод средств» (см. п. 1.12 / 5.4 агентского
+ * договора) — распоряжение Принципала о перечислении доступного остатка
+ * с Баланса Организатора. Это **не акт оказанных услуг**: агентское
+ * вознаграждение Орбо фиксируется отдельно ежемесячным актом АВ-N.
+ *
+ * В документе:
+ *   • реквизиты Принципала (контрагент по агентскому договору) и Агента (Орбо);
+ *   • ссылка на договор;
+ *   • обобщённый реестр оплат-источников выплачиваемой суммы (без раскрытия
+ *     удержанной агентской комиссии — она к этому документу не относится);
+ *   • итоговая сумма к перечислению на банковский счёт Принципала.
+ *
+ * Сохраняется в S3, URL пишется в org_withdrawals.act_document_url.
+ * Имя поля историческое — это просто строка-идентификатор документа.
  */
 export async function generateWithdrawalAct(withdrawalId: string): Promise<string> {
   const db = createAdminServer()
@@ -584,10 +597,31 @@ export async function generateWithdrawalAct(withdrawalId: string): Promise<strin
     throw new Error('Withdrawal not found')
   }
 
-  // Build act HTML
-  const html = buildActHtml(withdrawal)
+  // Подтягиваем контрагента + номер агентского договора. Берём по
+  // contract_id заявки, если он привязан, иначе — последний signed-договор
+  // организации на дату запроса (та же логика, что и в реестрах).
+  const { data: contractRows } = await db.raw(
+    `SELECT c.contract_number, c.contract_date,
+            cps.type, cps.inn, cps.kpp, cps.ogrn,
+            cps.org_name, cps.full_name, cps.legal_address
+       FROM org_withdrawals w
+       LEFT JOIN contracts c
+         ON c.id = COALESCE(
+           w.contract_id,
+           (SELECT id FROM contracts c2
+              WHERE c2.org_id = w.org_id AND c2.status = 'signed'
+                AND c2.contract_date <= w.requested_at::date
+              ORDER BY c2.contract_date DESC LIMIT 1)
+         )
+       LEFT JOIN counterparties cps ON cps.id = c.counterparty_id
+      WHERE w.id = $1
+      LIMIT 1`,
+    [withdrawalId]
+  )
+  const contract = (contractRows && contractRows[0]) || null
 
-  // Upload to S3
+  const html = buildWithdrawalRequestHtml(withdrawal, contract as ContractCounterpartyRow | null)
+
   const { createStorage, getBucket, getStoragePath } = await import('@/lib/storage')
   const storage = createStorage()
   const localPath = `withdrawals/${withdrawal.org_id}/${withdrawal.act_number.replace(/[^a-zA-Z0-9а-яА-ЯёЁ-]/g, '_')}.html`
@@ -600,96 +634,185 @@ export async function generateWithdrawalAct(withdrawalId: string): Promise<strin
 
   const url = storage.getPublicUrl(bucket, storagePath)
 
-  // Save URL
   await db
     .from('org_withdrawals')
     .update({ act_document_url: url })
     .eq('id', withdrawalId)
 
-  logger.info({ withdrawal_id: withdrawalId, act_number: withdrawal.act_number, url }, 'Act generated')
+  logger.info({ withdrawal_id: withdrawalId, request_number: withdrawal.act_number, url }, 'Withdrawal request document generated')
   return url
 }
 
-/**
- * Build act HTML content.
- */
-function buildActHtml(withdrawal: WithdrawalWithItems): string {
-  const formatMoney = (v: number) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2 }).format(v)
+interface ContractCounterpartyRow {
+  contract_number: string | null
+  contract_date: string | null
+  type: 'individual' | 'legal_entity' | null
+  inn: string | null
+  kpp: string | null
+  ogrn: string | null
+  org_name: string | null
+  full_name: string | null
+  legal_address: string | null
+}
+
+function escapeHtml(s: string | number | null | undefined): string {
+  if (s === null || s === undefined) return ''
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function buildWithdrawalRequestHtml(
+  withdrawal: WithdrawalWithItems,
+  contract: ContractCounterpartyRow | null
+): string {
+  const formatMoney = (v: number) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
   const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('ru-RU') : '—'
 
-  const itemRows = withdrawal.items.map((item, idx) => `
+  const principalName = contract?.type === 'individual'
+    ? (contract.full_name || withdrawal.org_name || '—')
+    : (contract?.org_name || withdrawal.org_name || '—')
+  const principalLegalForm = contract?.type === 'legal_entity'
+    ? 'Юридическое лицо / ИП'
+    : contract?.type === 'individual' ? 'Физическое лицо' : ''
+
+  const principalReqLines: string[] = []
+  if (contract?.inn) principalReqLines.push(`ИНН ${escapeHtml(contract.inn)}`)
+  if (contract?.kpp) principalReqLines.push(`КПП ${escapeHtml(contract.kpp)}`)
+  if (contract?.ogrn) principalReqLines.push(`ОГРН ${escapeHtml(contract.ogrn)}`)
+  if (contract?.legal_address) principalReqLines.push(escapeHtml(contract.legal_address))
+
+  const ba = withdrawal.bank_account
+  const bankLines: string[] = []
+  if (ba?.bank_name) bankLines.push(`Банк: ${escapeHtml(ba.bank_name)}`)
+  if (ba?.bik) bankLines.push(`БИК: ${escapeHtml(ba.bik)}`)
+  if (ba?.settlement_account) bankLines.push(`Расчётный счёт: ${escapeHtml(ba.settlement_account)}`)
+
+  // Обобщённый реестр оплат-источников: одна строка на событие, без отдельного
+  // столбца агентской комиссии. Если items нет — рисуем пустое примечание.
+  // Колонка «Сумма к перечислению» = item.total (post-commission, как уже
+  // сохранено при формировании заявки — комиссия не выделяется).
+  const itemRows = (withdrawal.items || []).map((item, idx) => `
     <tr>
-      <td>${idx + 1}</td>
-      <td>${item.description}</td>
-      <td>${item.quantity}</td>
-      <td>${formatMoney(item.amount)} ₽</td>
-      <td>${formatMoney(item.total)} ₽</td>
+      <td class="center">${idx + 1}</td>
+      <td>${escapeHtml(item.event_name || item.description || '—')}</td>
+      <td class="center">${item.participant_count != null ? item.participant_count : '—'}</td>
+      <td class="amount">${formatMoney(item.total)} ₽</td>
     </tr>
   `).join('')
+
+  const docDate = formatDate(withdrawal.requested_at)
+  const periodLabel = withdrawal.period_from && withdrawal.period_to
+    ? `${formatDate(withdrawal.period_from)} — ${formatDate(withdrawal.period_to)}`
+    : '—'
+  const contractRef = contract?.contract_number
+    ? `на основании Агентского договора № ${escapeHtml(contract.contract_number)} от ${formatDate(contract.contract_date)}`
+    : 'на основании заключённого Агентского договора-оферты'
 
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Акт ${withdrawal.act_number}</title>
+  <title>Требование на вывод средств № ${escapeHtml(withdrawal.act_number)}</title>
   <style>
-    body { font-family: 'Times New Roman', serif; font-size: 14px; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-    h1 { text-align: center; font-size: 18px; }
-    .meta { margin: 20px 0; }
-    .meta p { margin: 4px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    th, td { border: 1px solid #000; padding: 6px 10px; text-align: left; }
-    th { background: #f5f5f5; }
-    .totals { margin-top: 20px; }
-    .totals p { margin: 4px 0; }
-    .signatures { margin-top: 60px; display: flex; justify-content: space-between; }
-    .sig-block { width: 45%; }
-    .sig-line { border-bottom: 1px solid #000; height: 30px; margin-top: 20px; }
+    @page { size: A4; margin: 1.5cm; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: #000; max-width: 190mm; margin: 0 auto; padding: 12px; }
+    h1 { text-align: center; font-size: 14pt; margin: 0 0 2px; text-transform: uppercase; }
+    .subtitle { text-align: center; font-size: 11pt; font-style: italic; margin-bottom: 18px; }
+    .meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; font-size: 11pt; }
+    .parties { margin: 12px 0 16px; font-size: 11pt; }
+    .parties .party { margin-bottom: 6px; }
+    .parties .party-title { font-weight: bold; }
+    .preamble { margin: 14px 0; font-size: 11pt; text-align: justify; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 10.5pt; }
+    th, td { border: 1px solid #000; padding: 5px 6px; vertical-align: top; }
+    th { background: #f0f0f0; font-size: 10pt; }
+    .center { text-align: center; }
+    .amount { text-align: right; white-space: nowrap; }
+    .total-row td { font-weight: bold; background: #fafafa; }
+    .bank { margin: 16px 0; padding: 10px 12px; background: #f7f7f7; border-left: 3px solid #888; font-size: 10.5pt; }
+    .bank-title { font-weight: bold; margin-bottom: 4px; }
+    .signature { margin-top: 36px; }
+    .signature-line { border-bottom: 1px solid #000; height: 30px; margin: 14px 0 4px; width: 60%; }
+    .signature-caption { font-size: 9.5pt; color: #555; }
+    .footnote { margin-top: 24px; font-size: 9.5pt; color: #666; }
+    @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
-  <h1>АКТ ${withdrawal.act_number}</h1>
-  <p style="text-align:center;">оказанных услуг</p>
+  <h1>Требование на вывод средств № ${escapeHtml(withdrawal.act_number)}</h1>
+  <p class="subtitle">распоряжение Принципала о перечислении средств (п. 5.4 Агентского договора)</p>
 
   <div class="meta">
-    <p><strong>Дата:</strong> ${formatDate(withdrawal.completed_at || withdrawal.requested_at)}</p>
-    <p><strong>Организация:</strong> ${withdrawal.org_name || '—'}</p>
-    <p><strong>Период:</strong> ${formatDate(withdrawal.period_from)} — ${formatDate(withdrawal.period_to)}</p>
+    <div><strong>Дата:</strong> ${docDate}</div>
+    <div><strong>Период расчётов:</strong> ${periodLabel}</div>
   </div>
 
-  ${withdrawal.items.length > 0 ? `
+  <div class="parties">
+    <div class="party">
+      <span class="party-title">Принципал:</span> ${escapeHtml(principalName)}${principalLegalForm ? ` (${principalLegalForm})` : ''}.
+      ${principalReqLines.length > 0 ? `<br>${principalReqLines.join(', ')}.` : ''}
+    </div>
+    <div class="party">
+      <span class="party-title">Агент:</span> ${escapeHtml(ORBO_ENTITY.fullName)}, ИНН ${ORBO_ENTITY.inn}, КПП ${ORBO_ENTITY.kpp}, ОГРН ${ORBO_ENTITY.ogrn}, адрес: ${escapeHtml(ORBO_ENTITY.legalAddress)}.
+    </div>
+  </div>
+
+  <p class="preamble">
+    Принципал ${contractRef} требует от Агента перечислить с Баланса Организатора
+    сумму <strong>${formatMoney(withdrawal.net_amount)} ${escapeHtml(withdrawal.currency || 'RUB')}</strong>
+    на банковские реквизиты, указанные ниже, в срок, установленный п. 5.5 Агентского договора
+    (5 рабочих дней с даты надлежащего оформления настоящего Требования).
+  </p>
+
+  ${withdrawal.items && withdrawal.items.length > 0 ? `
+  <p style="margin: 14px 0 6px; font-size: 11pt;"><strong>Обобщённый реестр выплачиваемых средств по событиям:</strong></p>
   <table>
     <thead>
       <tr>
-        <th>№</th>
-        <th>Описание</th>
-        <th>Кол-во</th>
-        <th>Цена</th>
-        <th>Сумма</th>
+        <th style="width: 40px;">№</th>
+        <th>Событие / основание</th>
+        <th style="width: 110px;" class="center">Участников</th>
+        <th style="width: 160px;">К перечислению, ₽</th>
       </tr>
     </thead>
     <tbody>
       ${itemRows}
+      <tr class="total-row">
+        <td colspan="3">Итого к перечислению</td>
+        <td class="amount">${formatMoney(withdrawal.net_amount)} ₽</td>
+      </tr>
     </tbody>
   </table>
-  ` : ''}
+  ` : `
+  <p style="margin: 14px 0; font-size: 11pt;">
+    <strong>Сумма к перечислению:</strong> ${formatMoney(withdrawal.net_amount)} ₽
+    <br>
+    <span style="color: #666; font-size: 10pt;">Детализация по событиям отсутствует — выплата сформирована по сводному остатку Баланса Организатора.</span>
+  </p>
+  `}
 
-  <div class="totals">
-    <p><strong>Итого:</strong> ${formatMoney(withdrawal.amount)} ₽</p>
-    <p><strong>Комиссия платформы:</strong> ${formatMoney(withdrawal.commission_amount)} ₽</p>
-    <p><strong>К выплате:</strong> ${formatMoney(withdrawal.net_amount)} ₽</p>
+  <div class="bank">
+    <div class="bank-title">Реквизиты для перечисления:</div>
+    ${bankLines.length > 0 ? bankLines.map(l => `<div>${l}</div>`).join('') : '<div>Реквизиты не указаны — будут уточнены до перечисления.</div>'}
+    <div style="margin-top: 6px;">Получатель: ${escapeHtml(principalName)}.</div>
   </div>
 
-  <div class="signatures">
-    <div class="sig-block">
-      <p><strong>Исполнитель:</strong></p>
-      <div class="sig-line"></div>
-    </div>
-    <div class="sig-block">
-      <p><strong>Заказчик:</strong></p>
-      <div class="sig-line"></div>
-    </div>
+  <div class="signature">
+    <p><strong>От Принципала:</strong></p>
+    <div class="signature-line"></div>
+    <div class="signature-caption">подпись / Ф.И.О. уполномоченного лица</div>
   </div>
+
+  <p class="footnote">
+    Документ сформирован автоматически в личном кабинете платформы Orbo на основании
+    запроса Принципала. Агентское вознаграждение Агента (Orbo) удерживается в безакцептном порядке
+    в соответствии с п. 6.3 Агентского договора и оформляется отдельным актом (АВ-N) ежемесячно;
+    в настоящем Требовании отражается только сумма к перечислению Принципалу.
+  </p>
 </body>
 </html>`
 }
