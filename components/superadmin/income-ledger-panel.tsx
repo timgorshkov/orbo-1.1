@@ -70,7 +70,7 @@ const KIND_HEADERS: Array<{ key: IncomeKind; label: string }> = [
  */
 const GATEWAY_LABELS: Record<string, string> = {
   tbank: 'T-Bank',
-  cloudpayments: 'CloudPayments',
+  cloudpayments: 'CP',
   yookassa: 'YooKassa',
   manual: 'Ручные',
   unknown: 'Без шлюза',

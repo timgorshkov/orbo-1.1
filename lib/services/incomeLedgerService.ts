@@ -110,15 +110,27 @@ export async function getIncomeLedger(periodFrom: string, periodTo: string, opts
   const toTs = `${periodTo}T23:59:59.999+03:00`;
 
   // Tickets & agent commission from platform_income.
-  // LEFT JOIN payment_sessions to filter out is_test=true unless explicitly requested.
-  const testFilter = includeTest ? '' : 'AND COALESCE(ps.is_test, FALSE) = FALSE';
+  // Тестовые отметки могут стоять в двух местах:
+  //   • payment_sessions.is_test=true  — платежи через тестовый терминал шлюза
+  //   • platform_income.metadata->>is_test='true' — ручная пометка через
+  //     /api/superadmin/finances/mark-test (для исторических записей и legacy
+  //     платежей без session_id).
+  // Без includeTest=1 исключаем оба варианта.
+  const testFilter = includeTest
+    ? ''
+    : `AND COALESCE(ps.is_test, FALSE) = FALSE
+       AND COALESCE((pi.metadata->>'is_test')::boolean, FALSE) = FALSE`;
   const { data: piRows, error: piErr } = await db.raw(
     `SELECT pi.id, pi.income_type, pi.amount, pi.currency, pi.created_at,
             pi.org_id, o.name AS org_name,
             er.event_id, e.title AS event_title,
             pi.payment_session_id,
-            COALESCE(ps.is_test, FALSE) AS session_is_test,
-            ps.gateway_code AS session_gateway_code
+            COALESCE(ps.is_test, FALSE)
+              OR COALESCE((pi.metadata->>'is_test')::boolean, FALSE) AS session_is_test,
+            -- Шлюз: сначала пытаемся взять с payment_sessions (snapshot на момент оплаты),
+            -- если payment_session_id отсутствует (legacy/manual записи) — берём с
+            -- event_registrations.payment_method.
+            COALESCE(ps.gateway_code, er.payment_method) AS session_gateway_code
        FROM platform_income pi
        LEFT JOIN organizations o ON o.id = pi.org_id
        LEFT JOIN event_registrations er ON er.id = pi.event_registration_id

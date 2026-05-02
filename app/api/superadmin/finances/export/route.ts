@@ -96,7 +96,7 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
 
   const GATEWAY_LABELS: Record<string, string> = {
     tbank: 'T-Bank',
-    cloudpayments: 'CloudPayments',
+    cloudpayments: 'CP',
     yookassa: 'YooKassa',
     manual: 'Ручные',
     unknown: 'Без шлюза',
@@ -345,11 +345,12 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
-  // refund + agent_commission_reversal pairs are the canonical "money back" record
-  const { data: rows } = await db.raw(
-    `SELECT t.id, t.created_at, t.type, t.amount, t.org_id, o.name AS org_name,
-            t.event_id, e.title AS event_title,
-            t.participant_id, p.full_name AS participant_name,
+  // 1) Возвраты по балансу организаторов (refund + agent_commission_reversal).
+  //    Эти движения трогают org_transactions: возврат тела билета участнику и
+  //    реверс уже удержанной агентской комиссии.
+  const { data: orgTxRows } = await db.raw(
+    `SELECT t.created_at, t.type, t.amount, o.name AS org_name,
+            e.title AS event_title, p.full_name AS participant_name,
             t.payment_session_id, t.notes
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
@@ -361,10 +362,52 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
     [fromTs, toTs]
   );
 
+  // 2) Возвраты доходов платформы (service_fee_refund / agent_commission_refund).
+  //    Эти живут в platform_income — отдельная таблица учёта выручки Orbo,
+  //    они не двигают баланс организатора и не попадут в org_transactions.
+  //    Без этого блока реестр был неполным (см. service_fee_refund от мигр. 297).
+  const { data: platformRefunds } = await db.raw(
+    `SELECT pi.created_at, pi.income_type AS type, pi.amount, o.name AS org_name,
+            e.title AS event_title, p.full_name AS participant_name,
+            pi.payment_session_id,
+            COALESCE(pi.metadata->>'reason', '') AS notes
+       FROM platform_income pi
+       LEFT JOIN organizations o ON o.id = pi.org_id
+       LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
+       LEFT JOIN events e ON e.id = er.event_id
+       LEFT JOIN participants p ON p.id = er.participant_id
+      WHERE pi.income_type IN ('service_fee_refund', 'agent_commission_refund')
+        AND pi.created_at >= $1 AND pi.created_at <= $2
+      ORDER BY pi.created_at ASC`,
+    [fromTs, toTs]
+  );
+
+  const merged = [
+    ...((orgTxRows || []) as any[]).map((r) => ({
+      created_at: r.created_at,
+      type: r.type,
+      // org_transactions хранит refund как отрицательную сумму — приводим к положительной для отчёта
+      amount: Math.abs(Number(r.amount)),
+      org_name: r.org_name,
+      event_title: r.event_title,
+      participant_name: r.participant_name,
+      notes: r.notes || '',
+    })),
+    ...((platformRefunds || []) as any[]).map((r) => ({
+      created_at: r.created_at,
+      type: r.type,
+      amount: Number(r.amount),
+      org_name: r.org_name,
+      event_title: r.event_title,
+      participant_name: r.participant_name,
+      notes: r.notes || '',
+    })),
+  ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
   const ws = wb.addWorksheet('Возвраты');
   ws.columns = [
     { header: 'Дата', key: 'date', width: 18 },
-    { header: 'Тип', key: 'type', width: 28 },
+    { header: 'Тип', key: 'type', width: 32 },
     { header: 'Сумма ₽', key: 'amount', width: 12, style: { numFmt: '#,##0.00' } },
     { header: 'Организатор', key: 'org', width: 32 },
     { header: 'Событие', key: 'event', width: 36 },
@@ -374,11 +417,11 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   ws.getRow(1).font = { bold: true };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
 
-  for (const r of (rows || []) as any[]) {
+  for (const r of merged) {
     ws.addRow({
       date: new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19),
       type: TRANSACTION_TYPE_LABELS[r.type] || r.type,
-      amount: Number(r.amount),
+      amount: r.amount,
       org: r.org_name || '',
       event: r.event_title || '',
       participant: r.participant_name || '',
@@ -393,6 +436,8 @@ const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   agent_commission: 'Агентское вознаграждение',
   agent_commission_reversal: 'Возврат агентского вознаграждения',
   refund: 'Возврат',
+  service_fee_refund: 'Возврат сервисного сбора',
+  agent_commission_refund: 'Возврат агентской выручки',
   withdrawal_requested: 'Запрос на вывод',
   withdrawal_completed: 'Вывод выполнен',
   withdrawal_rejected: 'Вывод отклонён',
