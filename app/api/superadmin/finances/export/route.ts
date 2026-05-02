@@ -221,17 +221,18 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
+  // org_transactions хранит шлюз прямо в колонке payment_gateway (text), а
+  // описание операции — в description. Связи payment_session_id и колонки
+  // notes здесь нет (это ledger самой организации, не платформы).
   const { data: rows } = await db.raw(
     `SELECT t.id, t.created_at, t.org_id, o.name AS org_name,
             t.type, t.amount, t.balance_after, t.event_id, e.title AS event_title,
             t.participant_id, p.full_name AS participant_name,
-            t.payment_session_id, t.withdrawal_id, t.notes,
-            ps.gateway_code AS session_gateway_code
+            t.withdrawal_id, t.description, t.payment_gateway
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
        LEFT JOIN participants p ON p.id = t.participant_id
-       LEFT JOIN payment_sessions ps ON ps.id = t.payment_session_id
       WHERE t.created_at >= $1 AND t.created_at <= $2
       ORDER BY t.created_at ASC`,
     [fromTs, toTs]
@@ -239,7 +240,7 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
 
   const GATEWAY_LABELS: Record<string, string> = {
     tbank: 'T-Bank',
-    cloudpayments: 'CloudPayments',
+    cloudpayments: 'CP',
     yookassa: 'YooKassa',
     manual: 'Ручные',
   };
@@ -266,11 +267,11 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
       type: TRANSACTION_TYPE_LABELS[r.type] || r.type,
       amount: Number(r.amount),
       balance: Number(r.balance_after),
-      gateway: r.session_gateway_code ? (GATEWAY_LABELS[r.session_gateway_code] || r.session_gateway_code) : '',
+      gateway: r.payment_gateway ? (GATEWAY_LABELS[r.payment_gateway] || r.payment_gateway) : '',
       org: r.org_name || '',
       event: r.event_title || '',
       participant: r.participant_name || '',
-      notes: r.notes || '',
+      notes: r.description || '',
       id: r.id,
     });
   }
@@ -348,10 +349,12 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   // 1) Возвраты по балансу организаторов (refund + agent_commission_reversal).
   //    Эти движения трогают org_transactions: возврат тела билета участнику и
   //    реверс уже удержанной агентской комиссии.
+  //    NB: в org_transactions нет payment_session_id и нет колонки notes —
+  //    реквизиты транзакции хранятся в description.
   const { data: orgTxRows } = await db.raw(
     `SELECT t.created_at, t.type, t.amount, o.name AS org_name,
             e.title AS event_title, p.full_name AS participant_name,
-            t.payment_session_id, t.notes
+            t.description
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
@@ -391,7 +394,7 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
       org_name: r.org_name,
       event_title: r.event_title,
       participant_name: r.participant_name,
-      notes: r.notes || '',
+      notes: r.description || '',
     })),
     ...((platformRefunds || []) as any[]).map((r) => ({
       created_at: r.created_at,
