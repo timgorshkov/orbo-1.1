@@ -608,7 +608,11 @@ export async function createEventReminders(
   
   const now = new Date();
   const topicsPayload = Object.keys(targetTopics).length > 0 ? targetTopics : undefined;
-  const maxGroupsPayload = targetMaxGroups.length > 0 ? targetMaxGroups : undefined;
+  // target_max_groups в БД — jsonb. Query-builder для array of strings шлёт его
+  // как PG-array (`{"a","b"}`), а не как jsonb (`["a","b"]`) → ошибка
+  // 'invalid input syntax for type json'. Поэтому явно сериализуем сами.
+  // См. тот же паттерн в app/api/announcements/[id]/route.ts:144.
+  const maxGroupsPayload = targetMaxGroups.length > 0 ? JSON.stringify(targetMaxGroups) : undefined;
   const announcements: Array<{
     org_id: string;
     title: string;
@@ -617,7 +621,7 @@ export async function createEventReminders(
     reminder_type: string;
     target_groups: string[];
     target_topics?: Record<string, number>;
-    target_max_groups?: string[];
+    target_max_groups?: string;
     scheduled_at: string;
     created_by_name: string;
   }> = [];

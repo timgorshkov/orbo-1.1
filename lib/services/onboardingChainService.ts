@@ -565,7 +565,10 @@ async function sendTelegramStep(ctx: UserContext, stepKey: string): Promise<void
   })
 
   if (!result.ok) {
-    logger.error({ user_id: ctx.userId, tg_user_id: ctx.tgUserId, step: stepKey, error: result.description }, 'TG send failed')
+    // Caller (processChain) classifies permanent vs transient and logs at the
+    // right level — avoid double error logging here. "chat not found" / "bot
+    // was blocked" попадают сюда часто и забивают error-канал.
+    logger.debug({ user_id: ctx.userId, tg_user_id: ctx.tgUserId, step: stepKey, error: result.description }, 'TG send failed')
     throw new Error(result.description || 'TG send failed')
   }
   logger.info({ user_id: ctx.userId, step: stepKey }, 'Onboarding TG message sent OK')

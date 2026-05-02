@@ -66,7 +66,10 @@ async function sendTelegramMessage(
     
     return data;
   } catch (error) {
-    logger.error({
+    // Молчаливо пробрасываем — внешний caller логирует с нужным уровнем
+    // (warn для инфра-фейлов "All Telegram outbound channels failed",
+    // error для неожиданных). Иначе одно и то же событие пишется дважды.
+    logger.debug({
       chat_id: params.chat_id,
       error: error instanceof Error ? error.message : String(error),
       message_length: params.text?.length
@@ -274,14 +277,20 @@ export async function sendSystemNotification(
       error: response.description,
     };
   } catch (error) {
-    logger.error({ 
-      tg_user_id: tgUserId, 
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    }, 'System notification send error');
+    const errMsg = error instanceof Error ? error.message : String(error);
+    // Инфра-сбои (worker/proxy недоступен) — это сетевая проблема, а не код,
+    // и Hawk на error-канале от них не нужно дёргать. Внутри cron у нас уже
+    // есть retry; если ошибка случилась — нотификация просто не дойдёт сейчас.
+    const isInfraOutage = errMsg.includes('All Telegram outbound channels failed');
+    const logFn = isInfraOutage ? logger.warn.bind(logger) : logger.error.bind(logger);
+    logFn({
+      tg_user_id: tgUserId,
+      error: errMsg,
+      stack: isInfraOutage ? undefined : (error instanceof Error ? error.stack : undefined),
+    }, isInfraOutage ? 'System notification skipped — Telegram outbound unavailable' : 'System notification send error');
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errMsg,
     };
   }
 }
