@@ -99,7 +99,8 @@ async function fillIncomeLedger(wb: ExcelJS.Workbook, from: string, to: string, 
     cloudpayments: 'CP',
     yookassa: 'YooKassa',
     manual: 'Ручные',
-    unknown: 'Без шлюза',
+    // gateway_code IS NULL — обычно платёж на р/сч банка (verification fee и т.п.)
+    unknown: 'Р/Сч',
   };
   const gatewayLabel = (code: string) => GATEWAY_LABELS[code] || code;
   const gatewayKeys = Object.keys(summary.byGateway).sort();

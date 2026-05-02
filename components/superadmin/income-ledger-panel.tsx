@@ -73,7 +73,9 @@ const GATEWAY_LABELS: Record<string, string> = {
   cloudpayments: 'CP',
   yookassa: 'YooKassa',
   manual: 'Ручные',
-  unknown: 'Без шлюза',
+  // gateway_code IS NULL — обычно это платёж на расчётный счёт банка
+  // (verification fee, ручные сверки), не через эквайринг.
+  unknown: 'Р/Сч',
 }
 
 function gatewayLabel(code: string): string {
