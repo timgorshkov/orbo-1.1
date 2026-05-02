@@ -197,19 +197,22 @@ export default async function OrganizationsPage() {
   // ⚡ Получаем дату последней активности для каждой организации
   if (organizations.length > 0) {
     const orgIds = organizations.map(o => o.org_id);
-    
-    // Запрос на получение последней активности для каждой организации
-    const { data: lastActivities } = await adminSupabase
-      .from('activity_events')
-      .select('org_id, created_at')
-      .in('org_id', orgIds)
-      .order('created_at', { ascending: false });
-    
-    // Создаём map org_id -> last_activity_at (берём первую, т.к. отсортировано desc)
+
+    // Агрегат вместо выгрузки всех строк — было SELECT org_id, created_at FROM
+    // activity_events WHERE org_id IN (...) ORDER BY created_at DESC, что
+    // тянуло десятки тысяч строк (rows_per_call ≈ 38k) на каждый просмотр /orgs.
+    const { data: lastActivities } = await adminSupabase.raw(
+      `SELECT org_id, MAX(created_at) AS last_activity_at
+         FROM activity_events
+        WHERE org_id = ANY($1::uuid[])
+        GROUP BY org_id`,
+      [orgIds]
+    );
+
     const activityMap = new Map<string, string>();
-    for (const activity of lastActivities || []) {
-      if (!activityMap.has(activity.org_id)) {
-        activityMap.set(activity.org_id, activity.created_at);
+    for (const activity of (lastActivities as Array<{ org_id: string; last_activity_at: string | null }>) || []) {
+      if (activity.last_activity_at) {
+        activityMap.set(activity.org_id, activity.last_activity_at);
       }
     }
     

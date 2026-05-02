@@ -26,18 +26,29 @@ export default async function SuperadminOrganizationsPage() {
   
   const orgIds = organizations.map(o => o.id)
   
-  // Параллельно получаем связанные данные
+  // Параллельно получаем связанные данные.
+  // Для participants/events возвращаем агрегаты (counts), а не сырые строки —
+  // на крупных org-ах сырых participant'ов могло быть ~21k, events ~5k.
+  // Это превращало супер-админку в пере-сборщик мегабайтов JSON на каждое открытие.
   const [
     { data: orgGroups },
-    { data: participants },
-    { data: events },
+    { data: participantCounts },
+    { data: eventCounts },
     { data: memberships },
     { data: telegramAccounts },
     { data: maxAccounts },
   ] = await Promise.all([
     supabase.from('org_telegram_groups').select('org_id, tg_chat_id').in('org_id', orgIds),
-    supabase.from('participants').select('id, org_id').in('org_id', orgIds),
-    supabase.from('events').select('id, org_id').in('org_id', orgIds),
+    supabase.raw(
+      `SELECT org_id, COUNT(*)::text AS cnt FROM participants
+        WHERE org_id = ANY($1::uuid[]) AND merged_into IS NULL GROUP BY org_id`,
+      [orgIds]
+    ),
+    supabase.raw(
+      `SELECT org_id, COUNT(*)::text AS cnt FROM events
+        WHERE org_id = ANY($1::uuid[]) GROUP BY org_id`,
+      [orgIds]
+    ),
     supabase.from('memberships').select('org_id, user_id, role').in('org_id', orgIds).in('role', ['owner', 'admin']),
     supabase.from('user_telegram_accounts').select('org_id, user_id, is_verified, telegram_username, telegram_first_name, telegram_last_name, telegram_user_id').in('org_id', orgIds),
     supabase.from('user_max_accounts').select('org_id').in('org_id', orgIds),
@@ -65,13 +76,13 @@ export default async function SuperadminOrganizationsPage() {
   }
   
   const participantsMap = new Map<string, number>()
-  for (const p of participants || []) {
-    participantsMap.set(p.org_id, (participantsMap.get(p.org_id) || 0) + 1)
+  for (const row of (participantCounts as Array<{ org_id: string; cnt: string }>) || []) {
+    participantsMap.set(row.org_id, parseInt(row.cnt, 10))
   }
-  
+
   const eventsMap = new Map<string, number>()
-  for (const e of events || []) {
-    eventsMap.set(e.org_id, (eventsMap.get(e.org_id) || 0) + 1)
+  for (const row of (eventCounts as Array<{ org_id: string; cnt: string }>) || []) {
+    eventsMap.set(row.org_id, parseInt(row.cnt, 10))
   }
   
   // Build user_id → name map for fallback display names
