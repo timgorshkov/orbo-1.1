@@ -453,6 +453,66 @@ async function tryRecordServiceFeeRefund(
       error: err.message,
     }, 'Failed to record service_fee_refund (non-critical)')
   }
+
+  // Фискальный чек на возврат (54-ФЗ требует чек на каждый возврат участнику-физлицу).
+  // Для full refund — возвращаем и ticket, и service_fee; для fee-only — только service_fee
+  // (тело билета было возвращено отдельным partial-refund'ом, на него уже выпустили
+  // чек в processRefund). Чек привязывается к оригинальному «приходному» чеку.
+  try {
+    const originalReceipts = await getReceiptsBySession(session.id)
+    const originalReceipt = originalReceipts.find(
+      (r) => r.receipt_type === 'income' && r.status === 'succeeded'
+    )
+    if (!originalReceipt) {
+      logger.warn({ session_id: session.id }, 'Cannot create refund receipt — original income receipt not found or not yet fiscalized')
+      return
+    }
+
+    // Идемпотентность: если для этого session уже есть income_return-чек на ту же
+    // подписку (full vs fee_only), второй раз не создаём.
+    const existingRefundReceipt = originalReceipts.find(
+      (r) => r.receipt_type === 'income_return' && r.metadata?.refund_kind === (isFullRefund ? 'full' : 'fee_only')
+    )
+    if (existingRefundReceipt) {
+      logger.info({ session_id: session.id, refund_kind: isFullRefund ? 'full' : 'fee_only' }, 'Refund receipt already exists for this session — skipping')
+      return
+    }
+
+    const { getContractByOrgId } = await import('./contractService')
+    const contract = await getContractByOrgId(session.org_id)
+    const cp = (contract as any)?.counterparty
+
+    const refundReceipt = await createRefundReceipt({
+      orgId: session.org_id,
+      originalReceiptId: originalReceipt.id,
+      refundAmount: isFullRefund ? totalAmount : serviceFee,
+      ticketRefundAmount: isFullRefund ? ticketPrice : 0,
+      serviceFeeRefundAmount: serviceFee,
+      eventName: session.description || 'Мероприятие',
+      supplierName: cp?.org_name || cp?.full_name || '',
+      supplierInn: cp?.inn || '',
+      customerEmail: originalReceipt.customer_email || undefined,
+      customerPhone: originalReceipt.customer_phone || undefined,
+    })
+    if (refundReceipt) {
+      // Метим refund_kind в metadata чтобы при повторном webhook'е не задвоить чек.
+      await db
+        .from('fiscal_receipts')
+        .update({
+          metadata: JSON.stringify({
+            payment_for: 'event_refund',
+            refund_kind: isFullRefund ? 'full' : 'fee_only',
+            source: 'gateway_webhook',
+          }),
+        })
+        .eq('id', refundReceipt.id)
+      sendReceiptToOrangeData(refundReceipt).catch((err) =>
+        logger.error({ receipt_id: refundReceipt.id, error: err.message }, 'Failed to send refund receipt to OrangeData')
+      )
+    }
+  } catch (receiptErr: any) {
+    logger.error({ session_id: session.id, error: receiptErr.message }, 'Failed to create refund fiscal receipt (non-critical)')
+  }
 }
 
 // ─── Confirm Manual Payment ─────────────────────────────────────────

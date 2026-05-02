@@ -133,6 +133,43 @@ export async function recordVerificationFeePayment(
     // Don't rethrow — invoice itself is recorded; the act can be regenerated later.
   }
 
+  // Фискальный чек по 54-ФЗ.
+  // Безналичные расчёты b2b (юрлицо → юрлицо без участия физлица) не требуют ККТ
+  // (п. 9 ст. 2 54-ФЗ). А вот платёж от физлица — требует чек, даже если деньги
+  // пришли на расчётный счёт банковским переводом, а не картой.
+  // Поэтому здесь чек создаётся только когда контрагент договора — физлицо.
+  if (customerType === 'individual') {
+    try {
+      const { createSubscriptionReceipt, sendReceiptToOrangeData } = await import('./fiscalReceiptService')
+      const receipt = await createSubscriptionReceipt({
+        orgId: contract.org_id,
+        amount: Math.round(amount),
+        planName: 'Ускоренная проверка реквизитов',
+        customerEmail: cp.email || undefined,
+        customerPhone: cp.phone || undefined,
+        paymentMethod: 'electronic',
+        metadata: {
+          invoice_id: created.id,
+          contract_id: input.contractId,
+          payment_for: 'verification_fee',
+          payment_number: input.paymentNumber || null,
+        },
+      })
+      if (receipt) {
+        sendReceiptToOrangeData(receipt).catch((err) =>
+          logger.error({ receipt_id: receipt.id, error: err.message }, 'Failed to send verification-fee receipt to OrangeData')
+        )
+      }
+    } catch (receiptErr: any) {
+      logger.error({ invoice_id: created.id, error: receiptErr.message }, 'Failed to create verification-fee fiscal receipt (non-critical)')
+    }
+  } else {
+    logger.info({
+      invoice_id: created.id,
+      customer_type: customerType,
+    }, 'Verification fee from legal entity — fiscal receipt not required (b2b)')
+  }
+
   return {
     invoiceId: created.id,
     actNumber,
