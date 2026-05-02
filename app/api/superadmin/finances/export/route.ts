@@ -224,15 +224,32 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
   // org_transactions хранит шлюз прямо в колонке payment_gateway (text), а
   // описание операции — в description. Связи payment_session_id и колонки
   // notes здесь нет (это ledger самой организации, не платформы).
+  // Контрагент по агентскому договору тянется через LEFT JOIN LATERAL —
+  // берём самый свежий signed-контракт орга на дату транзакции, чтобы
+  // исторические записи ссылались на действовавшего тогда контрагента.
   const { data: rows } = await db.raw(
     `SELECT t.id, t.created_at, t.org_id, o.name AS org_name,
-            t.type, t.amount, t.balance_after, t.event_id, e.title AS event_title,
+            t.type, t.amount, t.event_id, e.title AS event_title,
             t.participant_id, p.full_name AS participant_name,
-            t.withdrawal_id, t.description, t.payment_gateway
+            t.withdrawal_id, t.description, t.payment_gateway,
+            cp.contract_number, cp.type AS counterparty_type,
+            cp.inn AS counterparty_inn,
+            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
        LEFT JOIN participants p ON p.id = t.participant_id
+       LEFT JOIN LATERAL (
+         SELECT c.contract_number,
+                cps.type, cps.inn, cps.org_name, cps.full_name
+           FROM contracts c
+           JOIN counterparties cps ON cps.id = c.counterparty_id
+          WHERE c.org_id = t.org_id
+            AND c.status = 'signed'
+            AND c.contract_date <= t.created_at::date
+          ORDER BY c.contract_date DESC
+          LIMIT 1
+       ) cp ON true
       WHERE t.created_at >= $1 AND t.created_at <= $2
       ORDER BY t.created_at ASC`,
     [fromTs, toTs]
@@ -250,25 +267,36 @@ async function fillTransactions(wb: ExcelJS.Workbook, from: string, to: string) 
     { header: 'Дата', key: 'date', width: 18 },
     { header: 'Тип', key: 'type', width: 28 },
     { header: 'Сумма ₽', key: 'amount', width: 12, style: { numFmt: '#,##0.00' } },
-    { header: 'Баланс после, ₽', key: 'balance', width: 16, style: { numFmt: '#,##0.00' } },
-    { header: 'Шлюз', key: 'gateway', width: 16 },
-    { header: 'Организатор', key: 'org', width: 32 },
-    { header: 'Событие', key: 'event', width: 36 },
-    { header: 'Участник', key: 'participant', width: 28 },
-    { header: 'Заметки', key: 'notes', width: 40 },
+    { header: 'Шлюз', key: 'gateway', width: 12 },
+    { header: 'Организатор (тенант)', key: 'org', width: 28 },
+    { header: 'Контрагент по договору', key: 'counterparty', width: 36 },
+    { header: 'Тип контрагента', key: 'counterparty_type', width: 14 },
+    { header: 'ИНН', key: 'counterparty_inn', width: 14 },
+    { header: 'Договор №', key: 'contract_number', width: 18 },
+    { header: 'Событие', key: 'event', width: 32 },
+    { header: 'Участник', key: 'participant', width: 24 },
+    { header: 'Заметки', key: 'notes', width: 36 },
     { header: 'ID транзакции', key: 'id', width: 38 },
   ];
   ws.getRow(1).font = { bold: true };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const COUNTERPARTY_TYPE_LABEL: Record<string, string> = {
+    legal_entity: 'Юрлицо',
+    individual: 'Физлицо',
+  };
 
   for (const r of (rows || []) as any[]) {
     ws.addRow({
       date: new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19),
       type: TRANSACTION_TYPE_LABELS[r.type] || r.type,
       amount: Number(r.amount),
-      balance: Number(r.balance_after),
       gateway: r.payment_gateway ? (GATEWAY_LABELS[r.payment_gateway] || r.payment_gateway) : '',
       org: r.org_name || '',
+      counterparty: r.counterparty_name || '',
+      counterparty_type: r.counterparty_type ? (COUNTERPARTY_TYPE_LABEL[r.counterparty_type] || r.counterparty_type) : '',
+      counterparty_inn: r.counterparty_inn || '',
+      contract_number: r.contract_number || '',
       event: r.event_title || '',
       participant: r.participant_name || '',
       notes: r.description || '',
@@ -346,19 +374,36 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   const fromTs = `${from}T00:00:00+03:00`;
   const toTs = `${to}T23:59:59.999+03:00`;
 
+  // Контрагент по агентскому договору на момент возврата — для камералки
+  // важно показать кому относится возврат (юрлицо/ИП/физлицо).
+  const counterpartyJoin = `
+    LEFT JOIN LATERAL (
+      SELECT c.contract_number,
+             cps.type, cps.inn, cps.org_name, cps.full_name
+        FROM contracts c
+        JOIN counterparties cps ON cps.id = c.counterparty_id
+       WHERE c.org_id = $org_id_col
+         AND c.status = 'signed'
+         AND c.contract_date <= $date_col::date
+       ORDER BY c.contract_date DESC
+       LIMIT 1
+    ) cp ON true`;
+
   // 1) Возвраты по балансу организаторов (refund + agent_commission_reversal).
   //    Эти движения трогают org_transactions: возврат тела билета участнику и
   //    реверс уже удержанной агентской комиссии.
-  //    NB: в org_transactions нет payment_session_id и нет колонки notes —
-  //    реквизиты транзакции хранятся в description.
   const { data: orgTxRows } = await db.raw(
     `SELECT t.created_at, t.type, t.amount, o.name AS org_name,
             e.title AS event_title, p.full_name AS participant_name,
-            t.description
+            t.description,
+            cp.contract_number, cp.type AS counterparty_type,
+            cp.inn AS counterparty_inn,
+            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
        FROM org_transactions t
        LEFT JOIN organizations o ON o.id = t.org_id
        LEFT JOIN events e ON e.id = t.event_id
        LEFT JOIN participants p ON p.id = t.participant_id
+       ${counterpartyJoin.replace('$org_id_col', 't.org_id').replace('$date_col', 't.created_at')}
       WHERE t.type IN ('refund', 'agent_commission_reversal')
         AND t.created_at >= $1 AND t.created_at <= $2
       ORDER BY t.created_at ASC`,
@@ -372,13 +417,16 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
   const { data: platformRefunds } = await db.raw(
     `SELECT pi.created_at, pi.income_type AS type, pi.amount, o.name AS org_name,
             e.title AS event_title, p.full_name AS participant_name,
-            pi.payment_session_id,
-            COALESCE(pi.metadata->>'reason', '') AS notes
+            COALESCE(pi.metadata->>'reason', '') AS notes,
+            cp.contract_number, cp.type AS counterparty_type,
+            cp.inn AS counterparty_inn,
+            COALESCE(cp.org_name, cp.full_name) AS counterparty_name
        FROM platform_income pi
        LEFT JOIN organizations o ON o.id = pi.org_id
        LEFT JOIN event_registrations er ON er.id = pi.event_registration_id
        LEFT JOIN events e ON e.id = er.event_id
        LEFT JOIN participants p ON p.id = er.participant_id
+       ${counterpartyJoin.replace('$org_id_col', 'pi.org_id').replace('$date_col', 'pi.created_at')}
       WHERE pi.income_type IN ('service_fee_refund', 'agent_commission_refund')
         AND pi.created_at >= $1 AND pi.created_at <= $2
       ORDER BY pi.created_at ASC`,
@@ -392,6 +440,10 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
       // org_transactions хранит refund как отрицательную сумму — приводим к положительной для отчёта
       amount: Math.abs(Number(r.amount)),
       org_name: r.org_name,
+      counterparty_name: r.counterparty_name,
+      counterparty_type: r.counterparty_type,
+      counterparty_inn: r.counterparty_inn,
+      contract_number: r.contract_number,
       event_title: r.event_title,
       participant_name: r.participant_name,
       notes: r.description || '',
@@ -401,21 +453,34 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
       type: r.type,
       amount: Number(r.amount),
       org_name: r.org_name,
+      counterparty_name: r.counterparty_name,
+      counterparty_type: r.counterparty_type,
+      counterparty_inn: r.counterparty_inn,
+      contract_number: r.contract_number,
       event_title: r.event_title,
       participant_name: r.participant_name,
       notes: r.notes || '',
     })),
   ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
+  const COUNTERPARTY_TYPE_LABEL: Record<string, string> = {
+    legal_entity: 'Юрлицо',
+    individual: 'Физлицо',
+  };
+
   const ws = wb.addWorksheet('Возвраты');
   ws.columns = [
     { header: 'Дата', key: 'date', width: 18 },
     { header: 'Тип', key: 'type', width: 32 },
     { header: 'Сумма ₽', key: 'amount', width: 12, style: { numFmt: '#,##0.00' } },
-    { header: 'Организатор', key: 'org', width: 32 },
-    { header: 'Событие', key: 'event', width: 36 },
-    { header: 'Участник', key: 'participant', width: 28 },
-    { header: 'Заметки', key: 'notes', width: 40 },
+    { header: 'Организатор (тенант)', key: 'org', width: 28 },
+    { header: 'Контрагент по договору', key: 'counterparty', width: 36 },
+    { header: 'Тип контрагента', key: 'counterparty_type', width: 14 },
+    { header: 'ИНН', key: 'counterparty_inn', width: 14 },
+    { header: 'Договор №', key: 'contract_number', width: 18 },
+    { header: 'Событие', key: 'event', width: 32 },
+    { header: 'Участник', key: 'participant', width: 24 },
+    { header: 'Заметки', key: 'notes', width: 36 },
   ];
   ws.getRow(1).font = { bold: true };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -426,6 +491,10 @@ async function fillRefunds(wb: ExcelJS.Workbook, from: string, to: string) {
       type: TRANSACTION_TYPE_LABELS[r.type] || r.type,
       amount: r.amount,
       org: r.org_name || '',
+      counterparty: r.counterparty_name || '',
+      counterparty_type: r.counterparty_type ? (COUNTERPARTY_TYPE_LABEL[r.counterparty_type] || r.counterparty_type) : '',
+      counterparty_inn: r.counterparty_inn || '',
+      contract_number: r.contract_number || '',
       event: r.event_title || '',
       participant: r.participant_name || '',
       notes: r.notes || '',
