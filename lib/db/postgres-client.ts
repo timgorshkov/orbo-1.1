@@ -988,7 +988,7 @@ export class PostgresDbClient implements DbClient {
   async raw<T = any>(sql: string, params?: any[]): Promise<DbResult<T[]>> {
     try {
       await this.ensureInitialized();
-      
+
       const result = await this.pool.query(sql, params);
       return {
         data: result.rows as T[],
@@ -996,6 +996,19 @@ export class PostgresDbClient implements DbClient {
         count: result.rowCount
       };
     } catch (error: any) {
+      // Раньше ошибки тут глотались тихо: вызывающий код часто игнорирует поле
+      // error и видит просто пустой data. Это маскировало баги (см. отчёты в
+      // /superadmin/accounting, где запрос с несуществующей колонкой возвращал
+      // пустой реестр). Логируем компактно, чтобы было видно в Dozzle/Hawk.
+      const logger = createServiceLogger('PostgresClient.raw');
+      const sqlPreview = sql.replace(/\s+/g, ' ').trim().slice(0, 240);
+      logger.error({
+        error: error?.message || String(error),
+        code: error?.code,
+        position: error?.position,
+        sql_preview: sqlPreview,
+        params_count: Array.isArray(params) ? params.length : 0,
+      }, 'db.raw query failed');
       return { data: null, error: transformError(error) };
     }
   }
