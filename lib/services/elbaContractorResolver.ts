@@ -15,7 +15,9 @@ import { createAdminServer } from '@/lib/server/supabaseServer'
 import { createServiceLogger } from '@/lib/logger'
 import {
   createContractor,
+  findContractorByInn,
   resolveOrganizationId,
+  ElbaApiError,
   type ElbaCreateContractorRequest,
 } from '@/lib/services/elbaApiClient'
 
@@ -58,7 +60,12 @@ export async function ensureOrgElbaContractor(
     return { elbaOrganizationId, contractorId: existing.elba_contractor_id as string }
   }
 
-  // 2. Создать нового контрагента в Эльбе
+  // 2. Создать нового контрагента в Эльбе.
+  //    Если контрагент с таким ИНН уже существует (409 EntityAlreadyExists) —
+  //    значит, его создали ранее: либо вручную в Эльбе, либо через другой
+  //    инвойс этой же организации до того, как мы стали сохранять
+  //    elba_contractor_id. В таком случае не пытаемся создать дубликат, а
+  //    находим существующего по ИНН и используем его id.
   const payload: ElbaCreateContractorRequest = {
     name: snapshot.name,
     inn: snapshot.inn || null,
@@ -76,27 +83,55 @@ export async function ensureOrgElbaContractor(
         : null,
   }
 
-  const created = await createContractor(elbaOrganizationId, payload)
-
-  // 3. Сохранить id
-  const { error: updErr } = await db
-    .from('organizations')
-    .update({ elba_contractor_id: created.id })
-    .eq('id', orgId)
-
-  if (updErr) {
-    // Контрагент в Эльбе создан, но в БД id не сохранился — попадёт в логи,
-    // при следующем resend мы создадим дубликат (Эльба, к сожалению, это допускает).
-    logger.error(
-      { org_id: orgId, elba_contractor_id: created.id, error: updErr.message },
-      'Failed to save elba_contractor_id on organization'
-    )
-  } else {
+  let contractorId: string
+  try {
+    const created = await createContractor(elbaOrganizationId, payload)
+    contractorId = created.id
     logger.info(
-      { org_id: orgId, elba_contractor_id: created.id, name: snapshot.name },
+      { org_id: orgId, elba_contractor_id: contractorId, name: snapshot.name },
       'Elba contractor created for organization'
+    )
+  } catch (err: unknown) {
+    const isAlreadyExists =
+      err instanceof ElbaApiError &&
+      err.statusCode === 409 &&
+      typeof err.body === 'object' &&
+      err.body !== null &&
+      (err.body as any).error?.code === 'EntityAlreadyExists'
+
+    if (!isAlreadyExists || !snapshot.inn) {
+      throw err
+    }
+
+    logger.info(
+      { org_id: orgId, inn: snapshot.inn },
+      'Elba contractor with this INN already exists — searching for existing id'
+    )
+    const existing = await findContractorByInn(elbaOrganizationId, snapshot.inn)
+    if (!existing) {
+      throw new Error(
+        `Эльба сообщила что контрагент с ИНН ${snapshot.inn} существует, но поиск его не нашёл. Проверьте контрагента в кабинете Эльбы вручную.`
+      )
+    }
+    contractorId = existing.id
+    logger.info(
+      { org_id: orgId, elba_contractor_id: contractorId, inn: snapshot.inn, name: existing.name },
+      'Resolved existing Elba contractor by INN'
     )
   }
 
-  return { elbaOrganizationId, contractorId: created.id }
+  // 3. Сохранить id (для нового и для найденного по ИНН)
+  const { error: updErr } = await db
+    .from('organizations')
+    .update({ elba_contractor_id: contractorId })
+    .eq('id', orgId)
+
+  if (updErr) {
+    logger.error(
+      { org_id: orgId, elba_contractor_id: contractorId, error: updErr.message },
+      'Failed to save elba_contractor_id on organization'
+    )
+  }
+
+  return { elbaOrganizationId, contractorId }
 }

@@ -292,6 +292,86 @@ export async function createContractor(
   )
 }
 
+export interface ElbaFoundContractor {
+  id: string
+  name: string
+  shortName?: string | null
+  inn?: string | null
+  kpp?: string | null
+  address?: string | null
+}
+
+interface SearchContractorsResponse {
+  // Если 200 — приходит сразу результат с массивом
+  contractors?: ElbaFoundContractor[]
+  // Если 202 — длительная операция
+  id?: string
+  status?: 'inProcess' | 'completed' | 'failed'
+  type?: string
+  result?: { contractors?: ElbaFoundContractor[] }
+  errorDescription?: { message?: string } | null
+}
+
+/**
+ * Поиск контрагента по ИНН в Эльбе. Эндпоинт работает асинхронно: на запрос
+ * приходит либо 200 с уже готовым результатом, либо 202 с long-running task,
+ * которую надо опрашивать до completed.
+ *
+ * Возвращает первого найденного контрагента или null если не найдено.
+ * Используется в fallback-сценарии при 409 EntityAlreadyExists на create —
+ * чтобы достать id уже существующего контрагента и переиспользовать его.
+ */
+export async function findContractorByInn(
+  organizationId: string,
+  inn: string
+): Promise<ElbaFoundContractor | null> {
+  const initial = await request<SearchContractorsResponse>(
+    'POST',
+    `/{version}/organizations/${encodeURIComponent(organizationId)}/contractors/search`,
+    { filter: { inn }, limit: 5 }
+  )
+
+  // Sync path: уже есть результат
+  if (initial.contractors && initial.contractors.length > 0) {
+    return initial.contractors[0]
+  }
+
+  // Async path: long-running task — поллим
+  if (initial.id && initial.status) {
+    const taskId = initial.id
+    const maxAttempts = 10
+    const pollDelayMs = 800
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, pollDelayMs))
+      const state = await request<SearchContractorsResponse>(
+        'GET',
+        `/{version}/long-running-tasks/${encodeURIComponent(taskId)}`
+      )
+      if (state.status === 'completed') {
+        return state.result?.contractors?.[0] ?? null
+      }
+      if (state.status === 'failed') {
+        throw new ElbaApiError(
+          `Elba contractor search failed: ${state.errorDescription?.message || 'unknown error'}`,
+          500,
+          null,
+          null
+        )
+      }
+      // status === 'inProcess' → продолжаем
+    }
+    throw new ElbaApiError(
+      `Elba contractor search timed out after ${maxAttempts} polls`,
+      504,
+      null,
+      null
+    )
+  }
+
+  return null
+}
+
 /**
  * POST /{version}/organizations/{organizationId}/acts — создать акт об оказании услуг.
  * Возвращает UUID документа в Эльбе.
